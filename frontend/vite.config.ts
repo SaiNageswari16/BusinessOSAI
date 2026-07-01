@@ -12,6 +12,16 @@ export default defineConfig({
       tsconfigPaths: true,
     },
   },
+  nitro: {
+    preset: "vercel",
+    // Skip NFT for Vercel deployment to avoid ESM/CommonJS compatibility issues
+    externals: {
+      traceOptions: {
+        base: process.cwd(),
+        skipIgnore: true,
+      },
+    },
+  },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
