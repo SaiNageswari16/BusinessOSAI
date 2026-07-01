@@ -14,9 +14,7 @@ export default defineConfig({
   },
   nitro: {
     preset: "vercel",
-    externals: {
-      trace: false,
-    },
+    // nf3 ESM/CommonJS compatibility is handled by scripts/patch-nf3.js (postinstall)
   },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
