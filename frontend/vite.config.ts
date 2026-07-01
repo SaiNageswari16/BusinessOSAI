@@ -14,12 +14,8 @@ export default defineConfig({
   },
   nitro: {
     preset: "vercel",
-    // Skip NFT for Vercel deployment to avoid ESM/CommonJS compatibility issues
     externals: {
-      traceOptions: {
-        base: process.cwd(),
-        skipIgnore: true,
-      },
+      trace: false,
     },
   },
   tanstackStart: {
