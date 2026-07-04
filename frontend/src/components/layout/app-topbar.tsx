@@ -16,7 +16,7 @@ import { useTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
-import { companies, branches, notifications } from "@/data/mock";
+import { notifications } from "@/data/mock";
 import { CommandPalette } from "@/components/command-palette";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -24,11 +24,17 @@ import { cn } from "@/lib/utils";
 export function AppTopbar() {
   const { theme, toggle } = useTheme();
   const { user, logout } = useAuth();
-  const { tenant: company, setTenant: setCompany } = useTenant();
+  const {
+    tenant: company,
+    setTenant: setCompany,
+    activeBranch,
+    setActiveBranch,
+    companiesList,
+    branchesList,
+  } = useTenant();
   const { activeRole, availableRoles, setActiveRole } = useRbac();
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [branch, setBranch] = useState(branches[0]);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -68,12 +74,12 @@ export function AppTopbar() {
         <DropdownMenuContent align="start" className="w-64">
           <DropdownMenuLabel className="flex items-center gap-2"><Building2 className="size-3.5" /> Companies</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {companies.map((c) => (
+          {companiesList.map((c) => (
             <DropdownMenuItem key={c.id} onClick={() => setCompany(c)} className="gap-2">
               <div className="size-6 rounded gradient-brand grid place-items-center text-white text-[10px] font-bold">{c.logo}</div>
-              <div className="flex-1">
-                <div className="text-sm">{c.name}</div>
-                <div className="text-xs text-muted-foreground">{c.industry}</div>
+              <div className="flex-1 font-semibold truncate">
+                <div className="text-sm truncate">{c.name}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{c.industry}</div>
               </div>
               {company.id === c.id && <div className="size-1.5 rounded-full bg-primary" />}
             </DropdownMenuItem>
@@ -87,16 +93,23 @@ export function AppTopbar() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="hidden lg:inline-flex gap-2 px-2 h-10 text-sm font-medium">
             <GitBranch className="size-3.5 text-muted-foreground" />
-            {branch}
+            {activeBranch ? `${activeBranch.name} (${activeBranch.code})` : "Select Branch"}
             <ChevronDown className="size-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56 max-h-80 overflow-y-auto">
           <DropdownMenuLabel>Branches</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {branches.map((b) => (
-            <DropdownMenuItem key={b} onClick={() => setBranch(b)}>{b}</DropdownMenuItem>
-          ))}
+          {branchesList.length === 0 ? (
+            <div className="p-3 text-xs text-muted-foreground text-center">No active branches</div>
+          ) : (
+            branchesList.map((b) => (
+              <DropdownMenuItem key={b.id} onClick={() => setActiveBranch(b)} className="flex items-center justify-between">
+                <span>{b.name} <span className="text-[10px] text-muted-foreground font-mono">({b.code})</span></span>
+                {activeBranch?.id === b.id && <div className="size-1.5 rounded-full bg-primary" />}
+              </DropdownMenuItem>
+            ))
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

@@ -12,6 +12,47 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
+// Global Fetch Interceptor for SaaS Platform Impersonation Headers
+if (typeof window !== "undefined" && !(window as any).__fetch_intercepted) {
+  (window as any).__fetch_intercepted = true;
+  const originalFetch = window.fetch;
+  window.fetch = async function (input, init) {
+    let url = "";
+    if (typeof input === "string") {
+      url = input;
+    } else if (input instanceof URL) {
+      url = input.href;
+    } else if (input && typeof input === "object" && "url" in (input as any)) {
+      url = (input as any).url;
+    }
+
+    const isApiUrl = url.includes("/api/v1") || url.includes(":8000");
+
+    if (isApiUrl) {
+      const newInit = { ...(init || {}) };
+      const headers = new Headers(newInit.headers || {});
+
+      try {
+        const storedTenant = localStorage.getItem("bos-tenant");
+        if (storedTenant) {
+          const parsed = JSON.parse(storedTenant);
+          const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
+          if (targetTenantId) {
+            headers.set("X-Impersonate-Tenant", targetTenantId);
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      newInit.headers = headers;
+      return originalFetch(input, newInit);
+    }
+
+    return originalFetch(input, init);
+  };
+}
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">

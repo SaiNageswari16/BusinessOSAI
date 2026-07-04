@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useRbac } from "@/contexts/rbac-context";
+import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -103,6 +104,7 @@ const nav: NavGroup[] = [
       label: "System Administration", 
       icon: Settings,
       subItems: [
+        { to: "/erp?tab=global_users", label: "Global Users", icon: Users },
         { to: "/erp?tab=audit_logs", label: "Audit Logs", icon: History },
         { to: "/erp?tab=activity_logs", label: "Activity Logs", icon: Activity },
         { to: "/erp?tab=error_logs", label: "Error Logs", icon: Activity },
@@ -979,6 +981,7 @@ const nav: NavGroup[] = [
 ];
 
 export function AppSidebar() {
+  const { user } = useAuth();
   const router = useRouterState();
   const currentPath = router.location.pathname;
   const currentSearch = router.location.searchStr;
@@ -989,6 +992,8 @@ export function AppSidebar() {
 
   const { hasPermission } = useRbac();
 
+  const isPlatformAdmin = user?.tenantSlug === "system" && user?.isTenantOwner;
+
   // Filter navigation items based on active role permissions
   const authorizedNav = nav
     .filter(group => !group.permission || hasPermission(group.permission))
@@ -997,7 +1002,12 @@ export function AppSidebar() {
         .filter(item => !item.permission || hasPermission(item.permission))
         .map(item => {
           if (!item.subItems) return item;
-          const authorizedSubItems = item.subItems.filter(sub => !sub.permission || hasPermission(sub.permission));
+          const authorizedSubItems = item.subItems.filter(sub => {
+            if (sub.to.includes("global_users")) {
+              return isPlatformAdmin;
+            }
+            return !sub.permission || hasPermission(sub.permission);
+          });
           return { ...item, subItems: authorizedSubItems };
         })
         .filter(item => !item.subItems || item.subItems.length > 0);

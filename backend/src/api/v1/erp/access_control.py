@@ -20,6 +20,13 @@ from src.schemas.erp import (
     UserCreate,
     UserResponse,
     UserUpdate,
+    WorkspaceResponse,
+    WorkspaceCreate,
+    WorkspaceUpdate,
+    ApiKeyCreate,
+    ApiKeyResponse,
+    MfaPolicyCreate,
+    MfaPolicyResponse,
 )
 from src.utils.email import send_email
 from src.utils.pagination import PaginatedResponse, paginate
@@ -369,4 +376,203 @@ async def update_user(
             db.add(UserBranch(user_id=user.id, branch_id=branch_id, is_primary=idx == 0))
 
     return await _user_to_response(db, user)
+
+
+# ─── ERP Workspaces Endpoints ─────────────────────────────────────
+
+@router.get("/workspaces", response_model=list[WorkspaceResponse])
+async def list_workspaces(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Workspace
+    result = await db.execute(select(Workspace).where(Workspace.tenant_id == ctx.tenant_id))
+    return result.scalars().all()
+
+
+@router.post("/workspaces", response_model=WorkspaceResponse, status_code=status.HTTP_201_CREATED)
+async def create_workspace(
+    payload: WorkspaceCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Workspace
+    workspace = Workspace(
+        tenant_id=ctx.tenant_id,
+        company_id=payload.company_id,
+        branch_id=payload.branch_id,
+        name=payload.name,
+        theme=payload.theme,
+        language=payload.language,
+        timezone=payload.timezone,
+        status=EntityStatus(payload.status),
+    )
+    db.add(workspace)
+    await db.flush()
+    return workspace
+
+
+@router.patch("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
+async def update_workspace(
+    workspace_id: uuid.UUID,
+    payload: WorkspaceUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Workspace
+    workspace = await db.scalar(
+        select(Workspace).where(Workspace.id == workspace_id, Workspace.tenant_id == ctx.tenant_id)
+    )
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    for field, val in payload.model_dump(exclude_unset=True).items():
+        if field == "status" and val is not None:
+            setattr(workspace, field, EntityStatus(val))
+        elif val is not None:
+            setattr(workspace, field, val)
+
+    await db.flush()
+    return workspace
+
+
+@router.delete("/workspaces/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_workspace(
+    workspace_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import Workspace
+    workspace = await db.scalar(
+        select(Workspace).where(Workspace.id == workspace_id, Workspace.tenant_id == ctx.tenant_id)
+    )
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    await db.delete(workspace)
+    await db.flush()
+
+
+# ─── API Keys Endpoints ───────────────────────────────────────────
+
+@router.get("/api-keys", response_model=list[ApiKeyResponse])
+async def list_api_keys(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import ApiKey
+    result = await db.execute(select(ApiKey).where(ApiKey.tenant_id == ctx.tenant_id))
+    return result.scalars().all()
+
+
+@router.post("/api-keys", response_model=ApiKeyResponse, status_code=status.HTTP_201_CREATED)
+async def generate_api_key(
+    payload: ApiKeyCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    import secrets
+    from src.models import ApiKey
+    
+    # Generate mock secure key representation
+    secret_key = f"sk_{payload.env.lower()}_{secrets.token_hex(20)}"
+    api_key = ApiKey(
+        tenant_id=ctx.tenant_id,
+        name=payload.name,
+        service=payload.service,
+        env=payload.env,
+        secret_key=secret_key,
+        status=EntityStatus(payload.status),
+    )
+    db.add(api_key)
+    await db.flush()
+    return api_key
+
+
+@router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_api_key(
+    key_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import ApiKey
+    api_key = await db.scalar(
+        select(ApiKey).where(ApiKey.id == key_id, ApiKey.tenant_id == ctx.tenant_id)
+    )
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    await db.delete(api_key)
+    await db.flush()
+
+
+# ─── MFA Policies Endpoints ───────────────────────────────────────
+
+@router.get("/mfa-policies", response_model=list[MfaPolicyResponse])
+async def list_mfa_policies(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import MfaPolicy
+    result = await db.execute(select(MfaPolicy).where(MfaPolicy.tenant_id == ctx.tenant_id))
+    return result.scalars().all()
+
+
+@router.post("/mfa-policies", response_model=MfaPolicyResponse, status_code=status.HTTP_201_CREATED)
+async def create_mfa_policy(
+    payload: MfaPolicyCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import MfaPolicy
+    policy = MfaPolicy(
+        tenant_id=ctx.tenant_id,
+        role_id=payload.role_id,
+        methods=payload.methods,
+        timeout=payload.timeout,
+        restrict_ip=payload.restrict_ip,
+        status=EntityStatus(payload.status),
+    )
+    db.add(policy)
+    await db.flush()
+    return policy
+
+
+@router.patch("/mfa-policies/{policy_id}", response_model=MfaPolicyResponse)
+async def update_mfa_policy(
+    policy_id: uuid.UUID,
+    payload: MfaPolicyCreate,  # Reuse create payload for simple patch updates
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import MfaPolicy
+    policy = await db.scalar(
+        select(MfaPolicy).where(MfaPolicy.id == policy_id, MfaPolicy.tenant_id == ctx.tenant_id)
+    )
+    if not policy:
+        raise HTTPException(status_code=404, detail="MFA Policy not found")
+
+    policy.role_id = payload.role_id
+    policy.methods = payload.methods
+    policy.timeout = payload.timeout
+    policy.restrict_ip = payload.restrict_ip
+    policy.status = EntityStatus(payload.status)
+
+    await db.flush()
+    return policy
+
+
+@router.delete("/mfa-policies/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_mfa_policy(
+    policy_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from src.models import MfaPolicy
+    policy = await db.scalar(
+        select(MfaPolicy).where(MfaPolicy.id == policy_id, MfaPolicy.tenant_id == ctx.tenant_id)
+    )
+    if not policy:
+        raise HTTPException(status_code=404, detail="MFA Policy not found")
+    await db.delete(policy)
+    await db.flush()
+
 

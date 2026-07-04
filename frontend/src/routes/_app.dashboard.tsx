@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
+import { useTenant } from "@/contexts/tenant-context";
 import { KpiTile } from "@/components/dashboard/kpi-tile";
 import { AiInsightsPanel } from "@/components/dashboard/ai-insights-panel";
 import { Section } from "@/components/dashboard/section";
@@ -68,6 +69,7 @@ const fmt = (n: number) => n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` :
 
 function Dashboard() {
   const { user } = useAuth();
+  const { tenant: company, activeBranch } = useTenant();
   const [loading, setLoading] = useState(true);
   const [salesRange, setSalesRange] = useState("month");
   useEffect(() => { const t = setTimeout(() => setLoading(false), 400); return () => clearTimeout(t); }, []);
@@ -77,6 +79,8 @@ function Dashboard() {
   const today = useMemo(() => new Date().toLocaleDateString("en-US",
     { weekday: "long", month: "long", day: "numeric", year: "numeric" }), []);
   const firstName = user?.name?.split(" ")[0] ?? "there";
+
+  const isPlatformAdmin = user?.tenantSlug === "system" && user?.isTenantOwner;
 
   return (
     <div className="px-6 lg:px-10 py-8 space-y-6 max-w-[1600px] mx-auto">
@@ -88,11 +92,20 @@ function Dashboard() {
           <div className="absolute -bottom-24 -left-24 size-72 rounded-full bg-[var(--brand-blue)]/15 blur-3xl" />
           <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold">
                   <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   All systems operational
                 </span>
+                {isPlatformAdmin ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 font-bold border border-indigo-500/20">
+                    👑 Platform Owner Console (system tenant)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-500/10 text-sky-400 font-bold border border-sky-500/20">
+                    🏢 Customer Tenant Sandbox ({user?.tenantSlug || "default"})
+                  </span>
+                )}
                 <span>· {today}</span>
               </div>
               <h1 className="mt-2 text-3xl lg:text-4xl font-bold tracking-tight">
@@ -103,8 +116,8 @@ function Dashboard() {
                 <span className="text-gradient-brand font-semibold"> 4 AI insights</span> need your review.
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
-                <Chip icon={<Building2 className="size-3.5" />} label="Nimbus Retail Group" />
-                <Chip icon={<Store className="size-3.5" />} label="HQ — San Francisco" />
+                <Chip icon={<Building2 className="size-3.5" />} label={company?.name ?? "No Company"} />
+                <Chip icon={<Store className="size-3.5" />} label={activeBranch ? `${activeBranch.name} (${activeBranch.code})` : "All Branches"} />
                 <Chip icon={<Zap className="size-3.5" />} label="Business Health 92/100" tone="brand" />
               </div>
             </div>

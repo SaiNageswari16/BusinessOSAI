@@ -31,6 +31,17 @@ DEFAULT_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ("manage:roles", "Manage Roles", "erp", "Create and manage roles"),
     ("manage:companies", "Manage Companies", "erp", "Create and manage companies"),
     ("manage:branches", "Manage Branches", "erp", "Create and manage branches"),
+    ("manage:accounting", "Manage Accounting", "accounting", "Create and manage accounting entries"),
+    ("manage:audit", "Manage Audit", "system", "Manage and view audit logs"),
+    ("view:audit", "View Audit", "system", "View audit logs"),
+    # Financial ERP permissions — used by fiscal-years, currencies, taxes, payment-terms, cost-centers, number-series
+    ("view:financials", "View Financials", "erp", "Access fiscal years, currencies, tax configs, payment terms"),
+    ("manage:financials", "Manage Financials", "erp", "Create/edit fiscal years, currencies, tax configs, payment terms"),
+    # Access control permissions — used by roles/permissions management endpoints
+    ("view:access_control", "View Access Control", "erp", "View roles, permissions, and user role assignments"),
+    ("manage:access_control", "Manage Access Control", "erp", "Create and manage roles and permissions"),
+    # Audit log permissions — used by audit-log endpoints
+    ("view:audit_logs", "View Audit Logs", "erp", "Access the system-wide audit trail"),
 ]
 
 

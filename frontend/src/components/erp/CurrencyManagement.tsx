@@ -1,72 +1,223 @@
-import { useState } from "react";
-import { erpCurrencies } from "../../data/erp-mock";
-import { Button } from "../ui/button";
-import { Search, Filter, Plus, DollarSign, Edit2, MoreHorizontal } from "lucide-react";
+import { useState, useEffect, useCallback, type FormEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Search, Plus, Edit2, Trash2, X, Save, Loader2, AlertCircle, DollarSign, Star } from "lucide-react";
+import { currenciesApi, type Currency } from "@/lib/api-client";
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+
+function CurrencyFormModal({ currency, onClose, onSaved }: { currency: Currency | null; onClose: () => void; onSaved: () => void }) {
+  const isEdit = !!currency;
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    code: currency?.code ?? "",
+    symbol: currency?.symbol ?? "",
+    exchange_rate: currency?.exchange_rate ?? 1,
+    decimal_places: currency?.decimal_places ?? 2,
+    is_default: currency?.is_default ?? false,
+    status: currency?.status ?? "active",
+  });
+  const set = (f: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((p) => ({ ...p, [f]: e.target.value }));
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    try {
+      const payload = { ...form, exchange_rate: Number(form.exchange_rate), decimal_places: Number(form.decimal_places) };
+      if (isEdit) { await currenciesApi.update(currency.id, payload); toast.success("Currency updated"); }
+      else { await currenciesApi.create(payload); toast.success("Currency added"); }
+      onSaved(); onClose();
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-card border rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-5 border-b">
+          <h2 className="font-bold text-lg flex items-center gap-2"><DollarSign className="size-5 text-primary" />{isEdit ? "Edit Currency" : "Add Currency"}</h2>
+          <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center"><X className="size-4" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5">Currency Code *</label>
+              <input value={form.code} onChange={set("code")} required disabled={isEdit}
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono uppercase"
+                placeholder="USD" maxLength={10} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5">Symbol *</label>
+              <input value={form.symbol} onChange={set("symbol")} required
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono"
+                placeholder="$" maxLength={5} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5">Exchange Rate</label>
+              <input type="number" step="0.0001" value={form.exchange_rate} onChange={set("exchange_rate")}
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5">Decimal Places</label>
+              <select value={form.decimal_places} onChange={set("decimal_places")}
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20">
+                {[0, 1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5">Status</label>
+              <select value={form.status} onChange={set("status")}
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2 self-end pb-1">
+              <input type="checkbox" id="is_default" checked={form.is_default}
+                onChange={(e) => setForm((p) => ({ ...p, is_default: e.target.checked }))}
+                className="size-4 rounded" />
+              <label htmlFor="is_default" className="text-sm font-medium">Set as Default</label>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2 border-t">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving} className="gradient-brand text-white border-0 min-w-[100px]">
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <><Save className="size-4 mr-1.5" />{isEdit ? "Update" : "Add"}</>}
+            </Button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
 
 export function CurrencyManagement() {
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const filtered = erpCurrencies.filter(c => c.code.toLowerCase().includes(search.toLowerCase()));
+  const [showForm, setShowForm] = useState(false);
+  const [editCurrency, setEditCurrency] = useState<Currency | null>(null);
+  const [deleteCurrency, setDeleteCurrency] = useState<Currency | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await currenciesApi.list(1, 100);
+      setCurrencies(res.items);
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void load(); }, []);
+
+  const filtered = currencies.filter((c) =>
+    c.code.toLowerCase().includes(search.toLowerCase()) ||
+    c.symbol.includes(search),
+  );
+
+  const handleDelete = async () => {
+    if (!deleteCurrency) return;
+    setDeleting(true);
+    try {
+      await currenciesApi.delete(deleteCurrency.id);
+      toast.success("Currency deleted");
+      setDeleteCurrency(null);
+      void load();
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    finally { setDeleting(false); }
+  };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-8 space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Currency Management</h2>
-          <p className="text-sm text-muted-foreground">Manage multi-currency settings and exchange rates.</p>
+          <p className="text-sm text-muted-foreground">Configure currencies and exchange rates for multi-currency support.</p>
         </div>
-        <Button className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Add Currency</Button>
+        <Button className="gradient-brand text-white border-0 gap-2" onClick={() => { setEditCurrency(null); setShowForm(true); }}>
+          <Plus className="size-4" /> Add Currency
+        </Button>
       </div>
 
-      <div className="flex gap-4 items-center mb-6">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input 
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30" 
-            placeholder="Search currency code..." 
-          />
-        </div>
-        <Button variant="outline"><Filter className="size-4 mr-2" /> Filters</Button>
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)}
+          className="w-full h-10 pl-10 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
+          placeholder="Search currencies..." />
       </div>
 
-      <div className="bg-card border rounded-xl overflow-hidden">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
-            <tr>
-              <th className="px-6 py-4">Currency Code</th>
-              <th className="px-6 py-4">Symbol</th>
-              <th className="px-6 py-4">Exchange Rate</th>
-              <th className="px-6 py-4">Precision</th>
-              <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {filtered.map((curr) => (
-              <tr key={curr.code} className="hover:bg-muted/30 transition-colors">
-                <td className="px-6 py-4 font-medium flex items-center gap-2">
-                  <DollarSign className="size-4 text-primary" /> 
-                  {curr.code}
-                  {curr.isDefault && <span className="ml-2 text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded uppercase font-bold">Default</span>}
-                </td>
-                <td className="px-6 py-4 font-mono">{curr.symbol}</td>
-                <td className="px-6 py-4 font-mono">1 {curr.code} = {curr.rate.toFixed(2)}</td>
-                <td className="px-6 py-4">{curr.precision} Decimals</td>
-                <td className="px-6 py-4">
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600">
-                    <span className="size-1.5 rounded-full bg-emerald-500" />
-                    {curr.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <Button variant="ghost" size="icon" className="h-8 w-8"><Edit2 className="size-4" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="size-4" /></Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {loading ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-28 rounded-xl border bg-muted/30 animate-pulse" />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16">
+          <DollarSign className="size-10 mx-auto mb-3 text-muted-foreground opacity-20" />
+          <p className="text-sm text-muted-foreground">No currencies configured</p>
+          <Button size="sm" className="mt-4 gradient-brand text-white border-0" onClick={() => { setEditCurrency(null); setShowForm(true); }}>
+            <Plus className="size-4 mr-1" /> Add Currency
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {filtered.map((currency) => (
+            <Card key={currency.id} className={cn("p-4 hover:shadow-md transition-shadow group relative", currency.is_default && "border-primary/30 bg-primary/5")}>
+              {currency.is_default && (
+                <div className="absolute top-2 right-2">
+                  <Star className="size-3.5 text-primary fill-primary" />
+                </div>
+              )}
+              <div className="flex items-center gap-2 mb-3">
+                <div className="size-9 rounded-lg bg-primary/10 text-primary font-bold text-sm grid place-items-center">
+                  {currency.symbol}
+                </div>
+                <div>
+                  <div className="font-bold font-mono">{currency.code}</div>
+                  <div className="text-[10px] text-muted-foreground">{currency.decimal_places} decimals</div>
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground mb-3">
+                Rate: <span className="font-mono font-semibold text-foreground">{currency.exchange_rate}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className={cn("text-[10px] font-medium", currency.status === "active" ? "text-emerald-600" : "text-muted-foreground")}>
+                  {currency.status.charAt(0).toUpperCase() + currency.status.slice(1)}
+                </span>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button variant="ghost" size="icon" className="size-6" onClick={() => { setEditCurrency(currency); setShowForm(true); }}><Edit2 className="size-3" /></Button>
+                  <Button variant="ghost" size="icon" className="size-6 text-red-500" onClick={() => setDeleteCurrency(currency)}><Trash2 className="size-3" /></Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {showForm && (
+          <CurrencyFormModal currency={editCurrency}
+            onClose={() => { setShowForm(false); setEditCurrency(null); }} onSaved={load} />
+        )}
+        {deleteCurrency && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="size-10 rounded-lg bg-red-500/10 text-red-500 grid place-items-center"><AlertCircle className="size-5" /></div>
+                <h3 className="font-bold">Delete Currency</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">Delete <span className="font-semibold font-mono">{deleteCurrency.code}</span>?</p>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setDeleteCurrency(null)}>Cancel</Button>
+                <Button variant="destructive" disabled={deleting} onClick={handleDelete}>
+                  {deleting ? <Loader2 className="size-4 animate-spin mr-1" /> : <Trash2 className="size-4 mr-1" />} Delete
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

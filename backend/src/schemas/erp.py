@@ -714,3 +714,88 @@ class NumberSeriesResponse(ORMModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+# ─── Workspaces ───────────────────────────────────────────────────
+
+class WorkspaceBase(BaseModel):
+    company_id: uuid.UUID
+    branch_id: uuid.UUID | None = None
+    name: str = Field(min_length=2, max_length=150)
+    theme: str = "light"
+    language: str = "en"
+    timezone: str = "Asia/Kolkata"
+    status: str = "active"
+
+
+class WorkspaceCreate(WorkspaceBase):
+    pass
+
+
+class WorkspaceUpdate(BaseModel):
+    company_id: uuid.UUID | None = None
+    branch_id: uuid.UUID | None = None
+    name: str | None = None
+    theme: str | None = None
+    language: str | None = None
+    timezone: str | None = None
+    status: str | None = None
+
+
+class WorkspaceResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    company_id: uuid.UUID
+    branch_id: uuid.UUID | None
+    name: str
+    theme: str
+    language: str
+    timezone: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+# ─── API Keys ─────────────────────────────────────────────────────
+
+class ApiKeyCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    service: str = Field(min_length=2, max_length=100)
+    env: str = "Production"
+    status: str = "active"
+
+
+class ApiKeyResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    service: str
+    env: str
+    secret_key: str
+    status: str
+    last_used_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ─── MFA Policies ─────────────────────────────────────────────────
+
+class MfaPolicyCreate(BaseModel):
+    role_id: uuid.UUID | None = None
+    methods: str = "Authenticator"
+    timeout: str = "12 hours"
+    restrict_ip: bool = False
+    status: str = "active"
+
+
+class MfaPolicyResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    role_id: uuid.UUID | None
+    methods: str
+    timeout: str
+    restrict_ip: bool
+    status: str
+    created_at: datetime
+    updated_at: datetime
+

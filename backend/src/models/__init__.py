@@ -601,3 +601,35 @@ class ActivityLog(Base, UUIDPrimaryKeyMixin, TenantScopedMixin):
         server_default=func.now(),
         nullable=False,
     )
+
+
+class ApiKey(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "api_keys"
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    service: Mapped[str] = mapped_column(String(100), nullable=False)
+    env: Mapped[str] = mapped_column(String(20), default="Production")
+    secret_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MfaPolicy(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "mfa_policies"
+
+    role_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE")
+    )
+    methods: Mapped[str] = mapped_column(String(100), default="Authenticator")
+    timeout: Mapped[str] = mapped_column(String(50), default="12 hours")
+    restrict_ip: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+    role: Mapped["Role | None"] = relationship()
+

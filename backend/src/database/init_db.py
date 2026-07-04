@@ -10,6 +10,7 @@ from src.database.base import Base
 from src.database.session import engine
 from src.models import (
     ActivityLog,
+    ApiKey,
     AuditLog,
     Branch,
     BusinessUnit,
@@ -19,6 +20,7 @@ from src.models import (
     Department,
     Designation,
     FiscalYear,
+    MfaPolicy,
     NumberSeries,
     PaymentTerm,
     Permission,

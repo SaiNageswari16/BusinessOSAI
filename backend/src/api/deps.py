@@ -67,6 +67,9 @@ async def get_current_user_context(
     active_role_id_str = payload.get("active_role_id")
     active_role_id = uuid.UUID(active_role_id_str) if active_role_id_str else None
 
+    # Resolve actual tenant first to lookup the user record
+    actual_tenant_uuid = uuid.UUID(tenant_id)
+
     result = await db.execute(
         select(User)
         .options(
@@ -76,7 +79,7 @@ async def get_current_user_context(
             .selectinload(Role.role_permissions)
             .selectinload(RolePermission.permission),
         )
-        .where(User.id == uuid.UUID(user_id), User.tenant_id == uuid.UUID(tenant_id))
+        .where(User.id == uuid.UUID(user_id), User.tenant_id == actual_tenant_uuid)
     )
     user = result.scalar_one_or_none()
     if user is None:
@@ -91,6 +94,14 @@ async def get_current_user_context(
             detail="Your workspace has been suspended or cancelled. Please contact the platform owner."
         )
 
+    # Check if Platform Admin is impersonating a buyer tenant
+    resolved_tenant_id = actual_tenant_uuid
+    impersonate_header = request.headers.get("X-Impersonate-Tenant")
+    if impersonate_header and user.tenant.slug == "system" and user.is_tenant_owner:
+        try:
+            resolved_tenant_id = uuid.UUID(impersonate_header)
+        except ValueError:
+            pass
 
     permissions: set[str] = set(payload.get("permissions", []))
     if not permissions:
@@ -100,9 +111,9 @@ async def get_current_user_context(
                 permissions.add(role_perm.permission.code)
 
     request.state.user = user
-    request.state.tenant_id = user.tenant_id
+    request.state.tenant_id = resolved_tenant_id
     request.state.active_role_id = active_role_id
-    return CurrentUserContext(user=user, tenant_id=user.tenant_id, permissions=permissions, active_role_id=active_role_id)
+    return CurrentUserContext(user=user, tenant_id=resolved_tenant_id, permissions=permissions, active_role_id=active_role_id)
 
 
 
