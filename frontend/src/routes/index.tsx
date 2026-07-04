@@ -1,38 +1,105 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, Sparkles, ShieldCheck, Zap, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAuth } from "@/contexts/auth-context";
+import { useAuth, resolvePostAuthRoute } from "@/contexts/auth-context";
 import { toast } from "sonner";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
 export const Route = createFileRoute("/")({
   component: LoginPage,
 });
 
 function LoginPage() {
-  const { login, isAuthed } = useAuth();
+  const { login, register, isAuthed, user } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("alexandra.chen@businessos.ai");
-  const [password, setPassword] = useState("••••••••••");
+  const initialRedirectTriedRef = useRef(false);
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [tenantSlug, setTenantSlug] = useState("");
+  const [tenantName, setTenantName] = useState("");
+  const [adminName, setAdminName] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleOAuthEnabled, setGoogleOAuthEnabled] = useState(false);
+  const [oauthConfigLoading, setOAuthConfigLoading] = useState(true);
 
   useEffect(() => {
-    if (isAuthed) navigate({ to: "/role-select" });
-  }, [isAuthed, navigate]);
+    if (!initialRedirectTriedRef.current && isAuthed && user) {
+      initialRedirectTriedRef.current = true;
+      navigate({ to: resolvePostAuthRoute(user) });
+    }
+  }, [isAuthed, navigate, user]);
 
-  const handle = (provider?: string) => {
+  useEffect(() => {
+    let isMounted = true;
+    const loadOAuthConfig = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/oauth/config`);
+        if (!response.ok) return;
+        const json = await response.json();
+        if (isMounted) setGoogleOAuthEnabled(Boolean(json.google_oauth_enabled));
+      } catch {
+        // ignore
+      } finally {
+        if (isMounted) setOAuthConfigLoading(false);
+      }
+    };
+    void loadOAuthConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      login(email);
-      toast.success(provider ? `Signed in with ${provider}` : "Welcome back");
-      navigate({ to: "/role-select" });
-    }, 700);
+
+    try {
+      const result = mode === "login"
+        ? await login({ email, password, tenant_slug: tenantSlug || undefined })
+        : await register({
+            tenant_name: tenantName,
+            tenant_slug: tenantSlug || undefined,
+            admin_name: adminName,
+            admin_email: email,
+            admin_password: password,
+            company_name: companyName,
+          });
+
+      toast.success(mode === "login" ? "Signed in successfully" : "Workspace created and signed in");
+      navigate({ to: resolvePostAuthRoute(result.user, result.token) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Authentication failed";
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handleOAuthLogin = () => {
+    if (!googleOAuthEnabled) {
+      toast.error("Google OAuth is not configured. Use email login instead.");
+      return;
+    }
+
+    const params: string[] = [];
+    if (tenantSlug) params.push(`tenant_slug=${encodeURIComponent(tenantSlug)}`);
+    if (tenantName) params.push(`tenant_name=${encodeURIComponent(tenantName)}`);
+    params.push(`mode=${mode === "register" ? "register" : "login"}`);
+
+    const query = params.length ? `?${params.join("&")}` : "";
+    window.location.href = `${API_BASE_URL}/auth/oauth/google/login${query}`;
+  };
+
+  const googleButtonLabel = mode === "login" ? "Continue with Google" : "Register with Google";
 
   return (
     <div className="min-h-screen grid items-stretch lg:grid-cols-2 bg-background">
@@ -88,10 +155,40 @@ function LoginPage() {
             <span className="font-bold text-lg">BusinessOS AI</span>
           </div>
 
-          <h2 className="text-3xl font-bold tracking-tight">Welcome back</h2>
-          <p className="mt-2 text-muted-foreground">Sign in to your enterprise workspace.</p>
+<h2 className="text-3xl font-bold tracking-tight">{mode === "login" ? "Welcome back" : "Create your workspace"}</h2>
+          <p className="mt-2 text-muted-foreground">
+            {mode === "login"
+              ? "Sign in to your enterprise workspace."
+              : "Register a tenant admin account and get started."}
+          </p>
 
-          <form onSubmit={(e) => { e.preventDefault(); handle(); }} className="mt-8 space-y-4">
+          <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+            {mode === "register" ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="tenant_name">Workspace name</Label>
+                  <Input id="tenant_name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="h-11" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tenant_slug">Workspace slug (optional)</Label>
+                  <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="company_name">Company name</Label>
+                  <Input id="company_name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-11" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="admin_name">Admin full name</Label>
+                  <Input id="admin_name" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="h-11" />
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="tenant_slug">Workspace slug (optional)</Label>
+                <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11" />
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="email">Work email</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11" />
@@ -99,9 +196,11 @@ function LoginPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                <button type="button" className="text-xs text-primary hover:underline" onClick={() => toast.info("Password reset link sent.")}>
-                  Forgot password?
-                </button>
+                {mode === "login" ? (
+                  <button type="button" className="text-xs text-primary hover:underline" onClick={() => toast.info("Password reset link sent.")}> 
+                    Forgot password?
+                  </button>
+                ) : null}
               </div>
               <div className="relative">
                 <Input id="password" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="h-11 pr-10" />
@@ -111,15 +210,31 @@ function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Checkbox id="remember" defaultChecked />
-              <Label htmlFor="remember" className="text-sm font-normal cursor-pointer">Remember me on this device</Label>
-            </div>
+            {mode === "login" ? (
+              <div className="flex items-center gap-2">
+                <Checkbox id="remember" defaultChecked />
+                <Label htmlFor="remember" className="text-sm font-normal cursor-pointer">Remember me on this device</Label>
+              </div>
+            ) : null}
 
             <Button type="submit" disabled={loading} className="w-full h-11 gradient-brand text-white hover:opacity-90 border-0">
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? (mode === "login" ? "Signing in…" : "Registering…") : (mode === "login" ? "Sign in" : "Create workspace")}
             </Button>
           </form>
+
+          <div className="mt-4 text-sm text-center text-muted-foreground">
+            {mode === "login" ? (
+              <>
+                Don&apos;t have an account?{' '}
+                <button type="button" className="font-medium text-primary hover:underline" onClick={() => setMode("register")}>Create workspace</button>
+              </>
+            ) : (
+              <>
+                Already have an account?{' '}
+                <button type="button" className="font-medium text-primary hover:underline" onClick={() => setMode("login")}>Sign in</button>
+              </>
+            )}
+          </div>
 
           <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
             <div className="h-px flex-1 bg-border" />
@@ -128,11 +243,18 @@ function LoginPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" className="h-11" onClick={() => handle("Google")}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              onClick={handleOAuthLogin}
+              disabled={oauthConfigLoading || !googleOAuthEnabled}
+              title={oauthConfigLoading ? "Checking Google OAuth configuration..." : googleOAuthEnabled ? undefined : "Google OAuth not configured"}
+            >
               <svg className="size-4 mr-2" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.83z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
-              Google
+              {googleButtonLabel}
             </Button>
-            <Button variant="outline" className="h-11" onClick={() => handle("Microsoft")}>
+            <Button type="button" variant="outline" className="h-11" onClick={() => toast.info("Microsoft OAuth not available yet")}>
               <svg className="size-4 mr-2" viewBox="0 0 24 24"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M13 1h10v10H13z"/><path fill="#00A4EF" d="M1 13h10v10H1z"/><path fill="#FFB900" d="M13 13h10v10H13z"/></svg>
               Microsoft
             </Button>

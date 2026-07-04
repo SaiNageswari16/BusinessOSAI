@@ -10,16 +10,33 @@ export const Route = createFileRoute("/_app")({
 });
 
 function AppLayout() {
-  const { isAuthed } = useAuth();
+  const { isAuthed, authReady, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // demo: auto-login if not authed so deep links work
+    if (!authReady) return;
+
     if (!isAuthed) {
       const stored = localStorage.getItem("bos-auth");
       if (!stored) navigate({ to: "/" });
+      return;
     }
-  }, [isAuthed, navigate]);
+
+    if (user?.mustChangePassword && window.location.pathname !== "/change-password") {
+      navigate({ to: "/change-password" });
+    }
+  }, [authReady, isAuthed, user, navigate]);
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
+        <div className="text-center">
+          <div className="text-lg font-semibold">Loading authentication…</div>
+          <div className="mt-2 text-sm">Please wait while we restore your session.</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <TenantProvider>

@@ -1,48 +1,53 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./auth-context";
-import { mockRoles, Role } from "@/data/mockRbacData";
+import type { AuthRole } from "./auth-context";
 
 interface RbacContextType {
-  activeRole: Role | null;
-  setActiveRole: (role: Role) => void;
+  activeRole: AuthRole | null;
+  setActiveRole: (role: AuthRole) => void;
   hasPermission: (permission: string) => boolean;
-  availableRoles: Role[];
+  availableRoles: AuthRole[];
 }
 
 const RbacContext = createContext<RbacContextType | undefined>(undefined);
 
 export function RbacProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const [activeRole, setActiveRoleState] = useState<Role | null>(null);
+  const [activeRole, setActiveRoleState] = useState<AuthRole | null>(null);
 
-  const availableRoles = React.useMemo(() => {
-    if (!user) return [];
-    return user.assignedRoles.map(rid => mockRoles.find(r => r.id === rid)).filter(Boolean) as Role[];
+  // All available roles come directly from the authenticated user's real roles
+  const availableRoles: AuthRole[] = React.useMemo(() => {
+    return user?.roles ?? [];
   }, [user]);
 
   useEffect(() => {
     if (user && availableRoles.length > 0) {
       const storedRoleId = localStorage.getItem("bos-active-role");
-      let initialRole = availableRoles.find(r => r.id === storedRoleId);
-      
+      let initialRole = availableRoles.find((r) => r.id === storedRoleId);
+
       if (!initialRole) {
-        initialRole = availableRoles.find(r => r.id === user.defaultRole) || availableRoles[0];
+        // Fall back to the default role, then the first one
+        initialRole =
+          availableRoles.find((r) => r.is_default) ??
+          availableRoles.find((r) => r.id === user.defaultRole) ??
+          availableRoles[0];
       }
-      
-      setActiveRoleState(initialRole);
+
+      setActiveRoleState(initialRole ?? null);
     } else {
       setActiveRoleState(null);
     }
   }, [user, availableRoles]);
 
-  const setActiveRole = (role: Role) => {
+  const setActiveRole = (role: AuthRole) => {
     setActiveRoleState(role);
     localStorage.setItem("bos-active-role", role.id);
   };
 
-  const hasPermission = (permission: string) => {
-    if (!activeRole) return false;
-    return activeRole.permissions.includes(permission);
+  // hasPermission uses the flat permissions list on the user (aggregated across all roles by /auth/me)
+  const hasPermission = (permission: string): boolean => {
+    if (!user) return false;
+    return user.permissions.includes(permission);
   };
 
   return (
