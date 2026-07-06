@@ -131,7 +131,7 @@ export function DepartmentManagement() {
       const [dRes, cRes] = await Promise.all([departmentsApi.list(1, 100), companiesApi.list(1, 100)]);
       setDepts(dRes.items);
       setCompanies(cRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to load"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed to load"); }
     finally { setLoading(false); }
   }, []);
 

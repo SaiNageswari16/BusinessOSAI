@@ -10,7 +10,7 @@ const lifetimeData = [
   { customer: "David Chen", ltv: 28500, revenue: 28500, profit: 8550, visits: 22, orders: 12, years: 1, color: "from-amber-500 to-orange-600" },
 ];
 
-export function LifetimeValue({ tab = "ltv" }: Props) {
+export function LifetimeValue({ tab = "ltv" }: { tab?: string }) {
   const { mockCustomers } = useCrmData();
   const maxLTV = lifetimeData[0].ltv;
 

@@ -27,7 +27,7 @@ function CurrencyFormModal({ currency, onClose, onSaved }: { currency: Currency 
       if (isEdit) { await currenciesApi.update(currency.id, payload); toast.success("Currency updated"); }
       else { await currenciesApi.create(payload); toast.success("Currency added"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -105,7 +105,7 @@ export function CurrencyManagement() {
     try {
       const res = await currenciesApi.list(1, 100);
       setCurrencies(res.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setLoading(false); }
   }, []);
 
@@ -124,7 +124,7 @@ export function CurrencyManagement() {
       toast.success("Currency deleted");
       setDeleteCurrency(null);
       void load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setDeleting(false); }
   };
 

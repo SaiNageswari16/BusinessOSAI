@@ -31,7 +31,7 @@ function TaxFormModal({ tax, companies, onClose, onSaved }: {
       if (isEdit) { await taxConfigurationsApi.update(tax.id, payload); toast.success("Tax configuration updated"); }
       else { await taxConfigurationsApi.create(payload); toast.success("Tax configuration created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -112,7 +112,7 @@ export function TaxConfiguration() {
       const [tRes, cRes] = await Promise.all([taxConfigurationsApi.list(1, 100), companiesApi.list(1, 100)]);
       setTaxes(tRes.items);
       setCompanies(cRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setLoading(false); }
   }, []);
 
@@ -133,7 +133,7 @@ export function TaxConfiguration() {
       toast.success("Tax configuration deleted");
       setDeleteTax(null);
       void load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setDeleting(false); }
   };
 

@@ -9,17 +9,23 @@ export function useAccountingData() {
     return {
       ...baseData,
       mockFinanceStats: {
-        totalRevenue: 12500000,
+        totalRevenueYTD: 12500000,
+        totalExpensesYTD: 10700000,
         netProfit: 1800000,
-        ar: 420000,
-        ap: 310000,
-        revenueGrowth: 8.5,
         profitMargin: 14.4,
+        cashBalance: 3250000,
+        accountsReceivable: 420000,
+        accountsPayable: 310000,
+        totalAssets: 6943000,
+        totalLiabilities: 643000,
+        totalEquity: 3600000,
+        overdueReceivables: 2100000,
+        overduePayables: 4200,
       },
       mockBankAccounts: baseData.mockBankAccounts.map(b => ({
         ...b,
         balance: b.balance * 1.5,
-        accountName: b.accountName.replace("Nimbus", "Atlas")
+        name: b.name.replace("Nimbus", "Atlas")
       })),
       mockInvoices: baseData.mockInvoices.map(i => ({
         ...i,
@@ -28,9 +34,8 @@ export function useAccountingData() {
       })),
       mockJournalEntries: baseData.mockJournalEntries.map(j => ({
         ...j,
-        amount: j.amount * 1.5,
-        debit: j.debit ? j.debit * 1.5 : undefined,
-        credit: j.credit ? j.credit * 1.5 : undefined,
+        debit: j.debit ? j.debit * 1.5 : 0,
+        credit: j.credit ? j.credit * 1.5 : 0,
       })),
     };
   }
@@ -40,17 +45,23 @@ export function useAccountingData() {
     return {
       ...baseData,
       mockFinanceStats: {
-        totalRevenue: 6200000,
+        totalRevenueYTD: 6200000,
+        totalExpensesYTD: 5350000,
         netProfit: 850000,
-        ar: 150000,
-        ap: 80000,
-        revenueGrowth: 15.2,
         profitMargin: 13.7,
+        cashBalance: 1250000,
+        accountsReceivable: 150000,
+        accountsPayable: 80000,
+        totalAssets: 3000000,
+        totalLiabilities: 300000,
+        totalEquity: 2700000,
+        overdueReceivables: 100000,
+        overduePayables: 2000,
       },
       mockBankAccounts: baseData.mockBankAccounts.map(b => ({
         ...b,
         balance: b.balance * 0.8,
-        accountName: b.accountName.replace("Nimbus", "Helios")
+        name: b.name.replace("Nimbus", "Helios")
       })),
       mockInvoices: baseData.mockInvoices.map(i => ({
         ...i,
@@ -59,9 +70,8 @@ export function useAccountingData() {
       })),
       mockJournalEntries: baseData.mockJournalEntries.map(j => ({
         ...j,
-        amount: j.amount * 0.8,
-        debit: j.debit ? j.debit * 0.8 : undefined,
-        credit: j.credit ? j.credit * 0.8 : undefined,
+        debit: j.debit ? j.debit * 0.8 : 0,
+        credit: j.credit ? j.credit * 0.8 : 0,
       })),
     };
   }

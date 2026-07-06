@@ -32,7 +32,7 @@ function PaymentTermFormModal({ term, onClose, onSaved }: { term: PaymentTerm | 
       if (isEdit) { await paymentTermsApi.update(term.id, payload); toast.success("Payment term updated"); }
       else { await paymentTermsApi.create(payload); toast.success("Payment term created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -103,7 +103,7 @@ export function PaymentTerms() {
     try {
       const res = await paymentTermsApi.list(1, 100);
       setTerms(res.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setLoading(false); }
   }, []);
 
@@ -119,7 +119,7 @@ export function PaymentTerms() {
       toast.success("Payment term deleted");
       setDeleteTerm(null);
       void load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setDeleting(false); }
   };
 

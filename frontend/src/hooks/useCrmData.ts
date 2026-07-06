@@ -9,21 +9,21 @@ export function useCrmData() {
     return {
       ...baseData,
       mockCrmStats: {
+        ...baseData.mockCrmStats,
         totalCustomers: 450,
-        activePipelines: 12,
-        winRate: 38,
-        mrr: 210000,
-        mrrGrowth: 15,
+        activeCustomers: 380,
+        totalRevenue: 2100000,
+        churnRate: 1.5,
       },
       mockCustomers: baseData.mockCustomers.map(c => ({
         ...c,
         name: c.name.replace("Group", "Industries").replace("Corp", "Manufacturing"),
-        ltv: c.ltv * 1.5,
+        totalPurchases: Math.floor(c.totalPurchases * 1.5),
       })),
       mockDeals: baseData.mockDeals.map(d => ({
         ...d,
         amount: d.amount * 2,
-        name: d.name.replace("Enterprise Plan", "Bulk Order").replace("Pro Plan", "Custom Tooling"),
+        title: d.title.replace("Enterprise Plan", "Bulk Order").replace("Pro Plan", "Custom Tooling"),
       })),
       mockLeads: baseData.mockLeads.map(l => ({
         ...l,
@@ -37,21 +37,21 @@ export function useCrmData() {
     return {
       ...baseData,
       mockCrmStats: {
+        ...baseData.mockCrmStats,
         totalCustomers: 120,
-        activePipelines: 8,
-        winRate: 62,
-        mrr: 450000,
-        mrrGrowth: 8,
+        activeCustomers: 110,
+        totalRevenue: 4500000,
+        churnRate: 0.8,
       },
       mockCustomers: baseData.mockCustomers.map(c => ({
         ...c,
         name: c.name.replace("Technologies", "Shipping Co").replace("Retail", "Distributors"),
-        ltv: c.ltv * 0.8,
+        totalPurchases: Math.floor(c.totalPurchases * 0.8),
       })),
       mockDeals: baseData.mockDeals.map(d => ({
         ...d,
         amount: d.amount * 0.5,
-        name: d.name.replace("Enterprise Plan", "Freight Contract").replace("Pro Plan", "Warehouse Lease"),
+        title: d.title.replace("Enterprise Plan", "Freight Contract").replace("Pro Plan", "Warehouse Lease"),
       })),
       mockLeads: baseData.mockLeads.map(l => ({
         ...l,

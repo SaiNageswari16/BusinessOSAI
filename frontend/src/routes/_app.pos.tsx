@@ -53,9 +53,9 @@ function PosModule() {
   const isTerminal = activeTab === "terminal";
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-background">
-      <main className={`flex-1 overflow-y-auto relative bg-background/50 ${isTerminal ? 'p-0' : 'p-6'}`}>
-        <div className={isTerminal ? 'w-full h-full' : 'max-w-7xl mx-auto w-full'}>
+    <div className="flex min-h-full flex-col bg-background">
+      <div className={`flex-1 relative bg-background/50 ${isTerminal ? 'p-0' : 'p-6'}`}>
+        <div className={isTerminal ? 'w-full h-full' : 'w-full px-6 py-6'}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -69,7 +69,7 @@ function PosModule() {
             </motion.div>
           </AnimatePresence>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

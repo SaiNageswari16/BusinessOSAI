@@ -56,7 +56,18 @@ export function AppTopbar() {
   const unread = notifications.filter((n) => n.unread).length;
 
   return (
-    <header className="h-16 sticky top-0 z-20 glass border-b flex items-center gap-3 px-4 sm:px-6">
+    <header className="h-[56px] shrink-0 bg-card border-b border-border z-20 flex items-center gap-3 px-4 sm:px-6">
+      {/* Brand / Logo */}
+      <div className="flex items-center gap-3 mr-4">
+        <div className="size-8 shrink-0 rounded-lg gradient-brand grid place-items-center text-white shadow-elegant">
+          <Sparkles className="size-4" />
+        </div>
+        <div className="hidden lg:block overflow-hidden">
+          <div className="font-bold tracking-tight text-foreground leading-none">BusinessOS AI</div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">AI Edition</div>
+        </div>
+      </div>
+
       {/* Company / Branch switcher */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -142,7 +153,7 @@ export function AppTopbar() {
       {/* Search */}
       <button
         onClick={() => setPaletteOpen(true)}
-        className="flex-1 max-w-xl ml-2 h-10 px-3 rounded-lg border border-border bg-muted/40 hover:bg-muted transition flex items-center gap-2 text-sm text-muted-foreground"
+        className="flex-1 max-w-xl ml-2 h-9 px-3 rounded-lg border-0 bg-muted hover:bg-muted/80 transition flex items-center gap-2 text-sm text-muted-foreground"
       >
         <Search className="size-4" />
         <span className="hidden sm:inline">Search anything — orders, products, people…</span>

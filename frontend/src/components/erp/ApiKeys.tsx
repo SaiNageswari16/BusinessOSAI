@@ -49,7 +49,7 @@ function ApiKeyModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
       onSaved();
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      console.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setSaving(false);
     }
@@ -125,7 +125,7 @@ export function ApiKeys() {
       const data = await res.json();
       setKeys(data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      console.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setLoading(false);
     }
@@ -146,7 +146,7 @@ export function ApiKeys() {
       setDeleteKey(null);
       void load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      console.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setDeleting(false);
     }

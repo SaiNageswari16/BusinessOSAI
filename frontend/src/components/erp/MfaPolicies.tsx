@@ -74,7 +74,7 @@ function MfaPolicyModal({
       onSaved();
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      console.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setSaving(false);
     }
@@ -168,7 +168,7 @@ export function MfaPolicies() {
       setPolicies(pData);
       setRoles(rData.items);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      console.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setLoading(false);
     }
@@ -189,7 +189,7 @@ export function MfaPolicies() {
       setDeletePolicy(null);
       void load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      console.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setDeleting(false);
     }
@@ -284,7 +284,7 @@ export function MfaPolicies() {
               </div>
 
               <div className="mt-5">
-                <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => { setEditPolicy(policy); setShowModal(policy); }}>
+                <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => { setEditPolicy(policy); setShowModal(true); }}>
                   Configure Rules
                 </Button>
               </div>

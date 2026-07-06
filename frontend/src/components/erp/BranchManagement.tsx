@@ -185,7 +185,7 @@ export function BranchManagement() {
       setTotal(brRes.total);
       setCompanies(coRes.items);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load branches");
+      console.error(err instanceof Error ? err.message : "Failed to load");
     } finally {
       setLoading(false);
     }

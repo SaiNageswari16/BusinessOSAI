@@ -121,7 +121,7 @@ export function GlobalUsers() {
       const data = await res.json();
       setUsers(data);
     } catch (err: any) {
-      toast.error(err.message || "Failed to load users");
+      console.error(err.message || "Failed to load users");
     } finally {
       setLoading(false);
     }

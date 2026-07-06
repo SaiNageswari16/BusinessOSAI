@@ -30,7 +30,7 @@ function NumberSeriesFormModal({ ns, companies, onClose, onSaved }: {
       if (isEdit) { await numberSeriesApi.update(ns.id, payload); toast.success("Number series updated"); }
       else { await numberSeriesApi.create(payload); toast.success("Number series created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   const preview = `${form.prefix}${String(Number(form.current_number) + 1).padStart(Number(form.padding), "0")}`;
@@ -116,7 +116,7 @@ export function NumberSeries() {
       const [nsRes, cRes] = await Promise.all([numberSeriesApi.list(1, 100), companiesApi.list(1, 100)]);
       setSeries(nsRes.items);
       setCompanies(cRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setLoading(false); }
   }, []);
 

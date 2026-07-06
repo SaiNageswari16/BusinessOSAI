@@ -119,8 +119,8 @@ function ErpModule() {
   const ActiveComponent = componentMap[activeTab] || CompanyManagement;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-background">
-      <main className="flex-1 overflow-y-auto relative bg-background/50">
+    <div className="flex min-h-full flex-col bg-background">
+      <div className="flex-1 relative bg-background/50">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -133,7 +133,7 @@ function ErpModule() {
             <ActiveComponent />
           </motion.div>
         </AnimatePresence>
-      </main>
+      </div>
     </div>
   );
 }

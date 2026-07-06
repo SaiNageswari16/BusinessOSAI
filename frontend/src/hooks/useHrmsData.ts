@@ -9,10 +9,12 @@ export function useHrmsData() {
     return {
       ...baseData,
       mockHrStats: {
+        ...baseData.mockHrStats,
         totalEmployees: 412,
-        openRoles: 18,
+        activeEmployees: 390,
+        newJoinees: 12,
+        openPositions: 18,
         avgAttendance: 96,
-        payrollRun: 1.45,
         attritionRate: 4.2,
       },
       mockEmployees: baseData.mockEmployees.map((e, i) => ({
@@ -23,7 +25,7 @@ export function useHrmsData() {
       mockDepartments: baseData.mockDepartments.map((d, i) => ({
         ...d,
         name: d.name === "Sales" ? "Production" : d.name === "Engineering" ? "Quality Control" : d.name,
-        headcount: d.headcount * 1.5,
+        employees: Math.floor(d.employees * 1.5),
       })),
       mockAttendance: baseData.mockAttendance.map((a) => ({
         ...a,
@@ -37,10 +39,12 @@ export function useHrmsData() {
     return {
       ...baseData,
       mockHrStats: {
+        ...baseData.mockHrStats,
         totalEmployees: 205,
-        openRoles: 42,
+        activeEmployees: 190,
+        newJoinees: 8,
+        openPositions: 42,
         avgAttendance: 92,
-        payrollRun: 0.95,
         attritionRate: 8.5,
       },
       mockEmployees: baseData.mockEmployees.map((e, i) => ({
@@ -50,7 +54,7 @@ export function useHrmsData() {
       mockDepartments: baseData.mockDepartments.map((d, i) => ({
         ...d,
         name: d.name === "Sales" ? "Dispatch" : d.name === "Engineering" ? "Fleet Maintenance" : d.name,
-        headcount: d.headcount * 0.8,
+        employees: Math.floor(d.employees * 0.8),
       })),
     };
   }

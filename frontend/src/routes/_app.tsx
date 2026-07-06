@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AppNavbar } from "@/components/layout/app-navbar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { useAuth } from "@/contexts/auth-context";
 import { TenantProvider } from "@/contexts/tenant-context";
@@ -25,7 +25,7 @@ function AppLayout() {
     if (user?.mustChangePassword && window.location.pathname !== "/change-password") {
       navigate({ to: "/change-password" });
     }
-  }, [authReady, isAuthed, user, navigate]);
+  }, [isAuthed, authReady, navigate, user]);
 
   if (!authReady) {
     return (
@@ -40,14 +40,12 @@ function AppLayout() {
 
   return (
     <TenantProvider>
-      <div className="min-h-screen flex bg-background">
-        <AppSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
-          <AppTopbar />
-          <main className="flex-1 min-w-0">
-            <Outlet />
-          </main>
-        </div>
+      <div className="h-screen overflow-hidden flex flex-col bg-background">
+        <AppTopbar />
+        <AppNavbar />
+        <main className="flex-1 min-h-0 overflow-y-auto">
+          <Outlet />
+        </main>
       </div>
     </TenantProvider>
   );

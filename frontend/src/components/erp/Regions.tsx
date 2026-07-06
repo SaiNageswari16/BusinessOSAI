@@ -27,7 +27,7 @@ function RegionFormModal({ region, companies, onClose, onSaved }: {
       if (isEdit) { await regionsApi.update(region.id, form); toast.success("Region updated"); }
       else { await regionsApi.create(form); toast.success("Region created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -101,7 +101,7 @@ export function Regions() {
       const [rRes, cRes] = await Promise.all([regionsApi.list(1, 100), companiesApi.list(1, 100)]);
       setRegions(rRes.items);
       setCompanies(cRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to load"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed to load"); }
     finally { setLoading(false); }
   }, []);
 
@@ -120,7 +120,7 @@ export function Regions() {
       toast.success("Region deleted");
       setDeleteRegion(null);
       void load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setDeleting(false); }
   };
 

@@ -77,7 +77,7 @@ function WorkspaceModal({
       onSaved();
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      console.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setSaving(false);
     }
@@ -194,7 +194,7 @@ export function WorkspaceManagement() {
       setCompanies(cRes.items);
       setBranches(bRes.items);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      console.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setLoading(false);
     }
@@ -215,7 +215,7 @@ export function WorkspaceManagement() {
       setDeleteWorkspace(null);
       void load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      console.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setDeleting(false);
     }

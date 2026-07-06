@@ -83,7 +83,7 @@ export function AuditLogs() {
         setTotal(res.total);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load audit logs");
+      console.error(err instanceof Error ? err.message : "Failed to load");
     } finally {
       setLoading(false);
     }

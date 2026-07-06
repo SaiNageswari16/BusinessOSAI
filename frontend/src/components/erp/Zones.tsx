@@ -25,7 +25,7 @@ function ZoneFormModal({ zone, regions, onClose, onSaved }: {
       if (isEdit) { await zonesApi.update(zone.id, form); toast.success("Zone updated"); }
       else { await zonesApi.create(form); toast.success("Zone created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -88,7 +88,7 @@ export function Zones() {
       const [zRes, rRes] = await Promise.all([zonesApi.list(1, 100), regionsApi.list(1, 100)]);
       setZones(zRes.items);
       setRegions(rRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to load"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed to load"); }
     finally { setLoading(false); }
   }, []);
 
@@ -104,7 +104,7 @@ export function Zones() {
       toast.success("Zone deleted");
       setDeleteZone(null);
       void load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setDeleting(false); }
   };
 

@@ -28,7 +28,7 @@ function CostCenterFormModal({ cc, departments, onClose, onSaved }: {
       if (isEdit) { await costCentersApi.update(cc.id, payload); toast.success("Cost center updated"); }
       else { await costCentersApi.create(payload); toast.success("Cost center created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -100,7 +100,7 @@ export function CostCenters() {
       const [ccRes, dRes] = await Promise.all([costCentersApi.list(1, 100), departmentsApi.list(1, 100)]);
       setCostCenters(ccRes.items);
       setDepartments(dRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setLoading(false); }
   }, []);
 

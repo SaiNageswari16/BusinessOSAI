@@ -1,14 +1,14 @@
 import React from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
-import { ComingSoon } from "@/components/coming-soon";
+import { MockScreen } from "@/components/mock-screen";
 
 export const Route = createFileRoute("/_app/reports")({
   component: ReportsModule,
 });
 
 const componentMap: Record<string, React.ElementType> = {
-  executive_dashboard: () => <ComingSoon title="Executive Dashboard" />,
+  executive_dashboard: () => <MockScreen type="analytics" title="Executive Dashboard" />,
 };
 
 function ReportsModule() {
@@ -22,11 +22,11 @@ function ReportsModule() {
   }
 
   const formatTitle = (str: string) => str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-  const ActiveComponent = componentMap[activeTab] || (() => <ComingSoon title={formatTitle(activeTab)} />);
+  const ActiveComponent = componentMap[activeTab] || (() => <MockScreen type="analytics" title={formatTitle(activeTab)} />);
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-background">
-      <main className="flex-1 overflow-y-auto relative bg-background/50">
+    <div className="flex min-h-full flex-col bg-background">
+      <div className="flex-1 relative bg-background/50">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -39,7 +39,7 @@ function ReportsModule() {
             <ActiveComponent />
           </motion.div>
         </AnimatePresence>
-      </main>
+      </div>
     </div>
   );
 }

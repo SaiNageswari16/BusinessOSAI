@@ -28,7 +28,7 @@ function DesignationFormModal({ desig, companies, onClose, onSaved }: {
       if (isEdit) { await designationsApi.update(desig.id, form); toast.success("Designation updated"); }
       else { await designationsApi.create(form); toast.success("Designation created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -111,7 +111,7 @@ export function DesignationManagement() {
       const [dRes, cRes] = await Promise.all([designationsApi.list(1, 100), companiesApi.list(1, 100)]);
       setDesignations(dRes.items);
       setCompanies(cRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to load"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed to load"); }
     finally { setLoading(false); }
   }, []);
 
@@ -130,7 +130,7 @@ export function DesignationManagement() {
       toast.success("Designation deleted");
       setDeleteDesig(null);
       void load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setDeleting(false); }
   };
 

@@ -33,7 +33,7 @@ function FiscalYearFormModal({ fy, companies, onClose, onSaved }: {
       if (isEdit) { await fiscalYearsApi.update(fy.id, form); toast.success("Fiscal year updated"); }
       else { await fiscalYearsApi.create(form); toast.success("Fiscal year created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -107,7 +107,7 @@ export function FiscalYears() {
       const [fRes, cRes] = await Promise.all([fiscalYearsApi.list(1, 100), companiesApi.list(1, 100)]);
       setFiscalYears(fRes.items);
       setCompanies(cRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to load"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed to load"); }
     finally { setLoading(false); }
   }, []);
 
@@ -124,7 +124,7 @@ export function FiscalYears() {
       toast.success("Fiscal year deleted");
       setDeleteFY(null);
       void load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setDeleting(false); }
   };
 

@@ -25,7 +25,7 @@ function BusinessUnitFormModal({ bu, companies, onClose, onSaved }: {
       if (isEdit) { await businessUnitsApi.update(bu.id, form); toast.success("Business unit updated"); }
       else { await businessUnitsApi.create(form); toast.success("Business unit created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -88,7 +88,7 @@ export function BusinessUnits() {
       const [uRes, cRes] = await Promise.all([businessUnitsApi.list(1, 100), companiesApi.list(1, 100)]);
       setUnits(uRes.items);
       setCompanies(cRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setLoading(false); }
   }, []);
 
@@ -104,7 +104,7 @@ export function BusinessUnits() {
       toast.success("Business unit deleted");
       setDeleteUnit(null);
       void load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setDeleting(false); }
   };
 

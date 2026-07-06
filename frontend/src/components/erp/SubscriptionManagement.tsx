@@ -58,7 +58,7 @@ export function SubscriptionManagement() {
       const data = await res.json();
       setTenants(data);
     } catch (error: any) {
-      toast.error(error.message || "Could not fetch platform data");
+      console.error(error.message || "Could not fetch platform data");
     } finally {
       setLoading(false);
     }
@@ -75,7 +75,7 @@ export function SubscriptionManagement() {
       const data = await res.json();
       setAuditLogs(data);
     } catch (error: any) {
-      toast.error(error.message || "Could not load system audit trail");
+      console.error(error.message || "Could not load system audit trail");
     } finally {
       setLogsLoading(false);
     }

@@ -25,7 +25,7 @@ function TeamFormModal({ team, departments, onClose, onSaved }: {
       if (isEdit) { await teamsApi.update(team.id, form); toast.success("Team updated"); }
       else { await teamsApi.create(form); toast.success("Team created"); }
       onSaved(); onClose();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setSaving(false); }
   };
   return (
@@ -88,7 +88,7 @@ export function Teams() {
       const [tRes, dRes] = await Promise.all([teamsApi.list(1, 100), departmentsApi.list(1, 100)]);
       setTeams(tRes.items);
       setDepartments(dRes.items);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setLoading(false); }
   }, []);
 
@@ -104,7 +104,7 @@ export function Teams() {
       toast.success("Team deleted");
       setDeleteTeam(null);
       void load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { console.error(err instanceof Error ? err.message : "Failed"); }
     finally { setDeleting(false); }
   };
 
