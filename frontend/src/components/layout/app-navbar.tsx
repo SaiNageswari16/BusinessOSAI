@@ -966,18 +966,18 @@ export function AppNavbar() {
   const { hasPermission } = useRbac();
   const isPlatformAdmin = user?.tenantSlug === "system" && user?.isTenantOwner;
 
-  const GROUP_COLORS: Record<string, string> = {
-    "Workspace": "text-blue-500 hover:text-blue-600",
-    "Core ERP": "text-indigo-500 hover:text-indigo-600",
-    "Inventory & Warehouse": "text-emerald-500 hover:text-emerald-600",
-    "Operations": "text-cyan-500 hover:text-cyan-600",
-    "Sales & CRM": "text-rose-500 hover:text-rose-600",
-    "Marketplace": "text-amber-500 hover:text-amber-600",
-    "Accounting & Finance": "text-violet-500 hover:text-violet-600",
-    "HRMS": "text-pink-500 hover:text-pink-600",
-    "IoT": "text-teal-500 hover:text-teal-600",
-    "Analytics & Intelligence": "text-fuchsia-500 hover:text-fuchsia-600",
-    "System Configuration": "text-slate-500 hover:text-slate-600",
+  const GROUP_COLORS: Record<string, { text: string; gradient: string; glow: string }> = {
+    "Workspace":               { text: "text-blue-600 dark:text-blue-400",    gradient: "bg-gradient-to-r from-blue-500 to-indigo-500",          glow: "shadow-blue-500/25" },
+    "Core ERP":                { text: "text-indigo-600 dark:text-indigo-400", gradient: "bg-gradient-to-r from-indigo-500 to-purple-600",        glow: "shadow-indigo-500/25" },
+    "Inventory & Warehouse":   { text: "text-emerald-600 dark:text-emerald-400", gradient: "bg-gradient-to-r from-emerald-500 to-teal-500",      glow: "shadow-emerald-500/25" },
+    "Operations":              { text: "text-cyan-600 dark:text-cyan-400",      gradient: "bg-gradient-to-r from-cyan-500 to-sky-500",           glow: "shadow-cyan-500/25" },
+    "Sales & CRM":             { text: "text-rose-600 dark:text-rose-400",      gradient: "bg-gradient-to-r from-rose-500 to-pink-600",         glow: "shadow-rose-500/25" },
+    "Marketplace":             { text: "text-amber-600 dark:text-amber-400",    gradient: "bg-gradient-to-r from-amber-500 to-orange-500",       glow: "shadow-amber-500/25" },
+    "Accounting & Finance":    { text: "text-violet-600 dark:text-violet-400",  gradient: "bg-gradient-to-r from-violet-500 to-fuchsia-600",    glow: "shadow-violet-500/25" },
+    "HRMS":                    { text: "text-pink-600 dark:text-pink-400",      gradient: "bg-gradient-to-r from-pink-500 to-rose-500",         glow: "shadow-pink-500/25" },
+    "IoT":                     { text: "text-teal-600 dark:text-teal-400",      gradient: "bg-gradient-to-r from-teal-500 to-cyan-600",         glow: "shadow-teal-500/25" },
+    "Analytics & Intelligence":{ text: "text-fuchsia-600 dark:text-fuchsia-400",gradient: "bg-gradient-to-r from-fuchsia-500 to-purple-600",   glow: "shadow-fuchsia-500/25" },
+    "System Configuration":    { text: "text-slate-600 dark:text-slate-400",   gradient: "bg-gradient-to-r from-slate-500 to-gray-600",        glow: "shadow-slate-500/20" },
   };
 
   const authorizedNav = nav
@@ -1028,21 +1028,21 @@ export function AppNavbar() {
           const isActive = activeGroup?.group === g.group;
           const firstItem = g.items[0];
           const Icon = firstItem.icon;
-          const colorClass = GROUP_COLORS[g.group] || "text-primary";
+          const color = GROUP_COLORS[g.group] || GROUP_COLORS["Workspace"];
           
           return (
             <Link
               key={g.group}
               to={firstItem.to}
               className={cn(
-                "group flex flex-col items-center justify-center gap-2 px-5 h-full min-w-[100px] transition-all relative outline-none",
+                "group flex flex-col items-center justify-center gap-1.5 px-5 h-full min-w-[90px] transition-all relative outline-none",
                 isActive ? "bg-muted/50" : "hover:bg-muted/30"
               )}
             >
-              <Icon className={cn("size-6 transition-transform duration-300", isActive ? colorClass : "text-muted-foreground group-hover:scale-110", !isActive && `group-hover:${colorClass}`)} />
-              <span className={cn("text-xs font-semibold tracking-tight whitespace-nowrap", isActive ? colorClass : "text-muted-foreground group-hover:text-foreground")}>{g.group}</span>
+              <Icon className={cn("size-5 transition-all duration-300", isActive ? color.text : "text-muted-foreground group-hover:scale-110")} />
+              <span className={cn("text-[11px] font-semibold tracking-tight whitespace-nowrap leading-tight text-center", isActive ? color.text : "text-muted-foreground group-hover:text-foreground")}>{g.group}</span>
               {isActive && (
-                <motion.div layoutId="nav-pill-top" className={cn("absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full", colorClass.replace('text-', 'bg-').split(' ')[0])} />
+                <motion.div layoutId="nav-pill-top" className={cn("absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full", color.gradient)} />
               )}
             </Link>
           );
@@ -1057,28 +1057,28 @@ export function AppNavbar() {
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}
-            className="bg-muted/40 border-t border-border flex items-center px-6 h-12 overflow-x-auto scrollbar-none"
+            className="bg-muted/30 border-t border-border flex items-center px-6 h-11 overflow-x-auto scrollbar-none"
           >
-            <nav className="flex items-center gap-2">
+            <nav className="flex items-center gap-1.5">
               {activeGroup.items.map((item) => {
                 const isItemActive = currentPath === getBasePath(item.to) || item.subItems?.some((sub: any) => currentPath === getBasePath(sub.to));
-                const colorClass = GROUP_COLORS[activeGroup.group] || "text-primary";
+                const color = GROUP_COLORS[activeGroup.group] || GROUP_COLORS["Workspace"];
                 
                 if (item.subItems && item.subItems.length > 0) {
                   // Render as a dropdown menu
                   return (
                     <DropdownMenu key={item.label}>
                       <DropdownMenuTrigger className={cn(
-                        "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-all whitespace-nowrap outline-none group",
+                        "flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] transition-all whitespace-nowrap outline-none group font-semibold",
                         isItemActive
-                          ? cn("bg-background shadow-sm border border-border font-bold", colorClass)
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/60 hover:shadow-sm hover:border hover:border-border/50 font-semibold"
+                          ? cn("text-white shadow-sm", color.gradient, color.glow, "shadow-md")
+                          : "text-muted-foreground hover:text-foreground hover:bg-background/70 hover:shadow-sm"
                       )}>
-                        <item.icon className={cn("size-4 transition-transform group-hover:scale-110", isItemActive && colorClass)} />
-                        <span className={cn("transition-colors", !isItemActive && "group-hover:text-foreground")}>{item.label}</span>
-                        <ChevronDown className="size-3 opacity-50 ml-1" />
+                        <item.icon className={cn("size-3.5 transition-transform group-hover:scale-110", isItemActive ? "text-white" : "")} />
+                        <span>{item.label}</span>
+                        <ChevronDown className="size-3 opacity-60 ml-0.5" />
                         {item.badge && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm gradient-brand text-white ml-1">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-white/25 text-white ml-1">
                             {item.badge}
                           </span>
                         )}
@@ -1089,10 +1089,10 @@ export function AppNavbar() {
                           return (
                             <DropdownMenuItem key={sub.label} asChild className="focus:bg-muted/50 rounded-md cursor-pointer">
                               <Link to={sub.to} className="flex items-center gap-3 w-full py-2 px-1">
-                                <div className={cn("p-1.5 rounded-md bg-background shadow-sm border border-border/50", isSubActive ? cn("bg-muted", colorClass) : "text-muted-foreground")}>
+                                <div className={cn("p-1.5 rounded-md", isSubActive ? cn(color.gradient, "text-white shadow-sm") : "bg-muted text-muted-foreground")}>
                                   <sub.icon className="size-3.5" />
                                 </div>
-                                <span className={cn("text-sm", isSubActive ? cn("font-bold", colorClass) : "font-medium")}>{sub.label}</span>
+                                <span className={cn("text-sm", isSubActive ? cn("font-bold", color.text) : "font-medium")}>{sub.label}</span>
                               </Link>
                             </DropdownMenuItem>
                           );
@@ -1107,16 +1107,16 @@ export function AppNavbar() {
                     key={item.label}
                     to={item.to}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-all whitespace-nowrap group",
+                      "flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] transition-all whitespace-nowrap group font-semibold",
                       isItemActive
-                        ? cn("bg-background shadow-sm border border-border font-bold", colorClass)
-                        : "text-muted-foreground hover:text-foreground hover:bg-background/60 hover:shadow-sm hover:border hover:border-border/50 font-semibold"
+                        ? cn("text-white shadow-sm", color.gradient, color.glow, "shadow-md")
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/70 hover:shadow-sm"
                     )}
                   >
-                    <item.icon className={cn("size-4 transition-transform group-hover:scale-110", isItemActive && colorClass)} />
-                    <span className={cn("transition-colors", !isItemActive && "group-hover:text-foreground")}>{item.label}</span>
+                    <item.icon className={cn("size-3.5 transition-transform group-hover:scale-110", isItemActive ? "text-white" : "")} />
+                    <span>{item.label}</span>
                     {item.badge && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm gradient-brand text-white ml-1">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-white/25 text-white ml-1">
                         {item.badge}
                       </span>
                     )}

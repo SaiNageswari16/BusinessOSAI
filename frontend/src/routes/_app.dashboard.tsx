@@ -92,24 +92,22 @@ function Dashboard() {
   const isPlatformAdmin = user?.tenantSlug === "system" && user?.isTenantOwner;
 
   return (
-    <div className="px-6 lg:px-10 py-8 space-y-8 w-full">
+    <div className="px-4 lg:px-6 py-4 space-y-5 w-full max-w-full">
 
       {/* ── Welcome Banner ── */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="relative overflow-hidden border-border/60 p-6 lg:p-8">
-          <div className="absolute inset-0 gradient-brand opacity-[0.06]" />
-          <div className="absolute -top-24 -right-24 size-72 rounded-full bg-[var(--brand-purple)]/15 blur-3xl" />
-          <div className="absolute -bottom-24 -left-24 size-72 rounded-full bg-[var(--brand-blue)]/15 blur-3xl" />
-
-          <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white p-5 shadow-md shadow-teal-500/10">
+          <div className="absolute -top-24 -right-24 size-72 rounded-full bg-emerald-400/20 blur-3xl" />
+          
+          <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold">
-                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-50 font-medium">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/20 text-white shadow-sm">
+                  <span className="size-1.5 rounded-full bg-emerald-300 animate-pulse" />
                   All systems operational
                 </span>
                 {isPlatformAdmin ? (
-                  <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                  <span className="px-2 py-0.5 rounded-full bg-white/20 text-white">
                     Platform Admin Console
                   </span>
                 ) : (
@@ -118,22 +116,21 @@ function Dashboard() {
                 <span>· {today}</span>
               </div>
 
-              <h1 className="text-3xl lg:text-4xl font-bold mt-3 tracking-tight">
-                {greeting},{" "}
-                <span className="text-transparent bg-clip-text gradient-brand">{firstName}</span>
+              <h1 className="text-2xl font-bold mt-2 tracking-tight">
+                {greeting}, {firstName}
               </h1>
-              <p className="text-muted-foreground mt-2 text-sm lg:text-base max-w-xl">
+              <p className="text-emerald-50/90 mt-1 text-sm max-w-xl">
                 Your business is up{" "}
-                <span className="font-semibold text-emerald-600">+12.4%</span> this month.
+                <span className="font-semibold text-white">+12.4%</span> this month.
                 Here's your workspace overview for today.
               </p>
             </div>
 
             <div className="flex items-center gap-3 shrink-0">
-              <Button variant="outline" className="gap-1.5">
+              <Button variant="outline" className="gap-1.5 bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white transition-colors">
                 <FileText className="size-4" /> Export brief
               </Button>
-              <Button asChild className="gap-1.5 gradient-brand text-white border-0 hover:opacity-90 shadow-lg shadow-primary/25">
+              <Button asChild className="gap-1.5 bg-white text-teal-700 hover:bg-white/90 shadow-sm border-0 transition-colors">
                 <Link to="/copilot">
                   <Sparkles className="size-4" /> Ask Antigravity AI
                 </Link>
@@ -157,9 +154,9 @@ function Dashboard() {
             </TabsList>
           </Tabs>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5">
           {loading
-            ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
+            ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
             : kpis.slice(0, 8).map((k, i) => {
                 const Icon = KPI_ICONS[i] ?? DollarSign;
                 return (
@@ -207,7 +204,7 @@ function Dashboard() {
           </Tabs>
         }
       >
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={revenueData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
@@ -255,7 +252,7 @@ function Dashboard() {
         </Section>
 
         <Section title="Orders — 14-day Trend" subtitle="Across all stores and channels" className="lg:col-span-2">
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={160}>
             <BarChart data={ordersTrend} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
@@ -290,7 +287,7 @@ function Dashboard() {
       {/* ── Branch Performance + Inventory Alerts ── */}
       <div className="grid lg:grid-cols-3 gap-6">
         <Section title="Branch Performance" subtitle="Revenue & profit — current month" className="lg:col-span-2">
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={200}>
             <BarChart data={branchPerformance} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="branch" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
