@@ -100,6 +100,52 @@ const componentMap: Record<string, React.ElementType> = {
   global_settings: GlobalSettings,
 };
 
+const tabPermissions: Record<string, string> = {
+  companies: "view:erp",
+  business_units: "view:erp",
+  regions: "view:geography",
+  zones: "view:geography",
+  branches: "view:branches",
+  departments: "view:departments",
+  designations: "view:designations",
+  teams: "view:teams",
+  org_structure: "view:branches",
+
+  fiscal_years: "view:fiscal_years",
+  cost_centers: "view:cost_centers",
+  currencies: "view:currencies",
+  taxes: "view:taxes",
+  payment_terms: "view:payment_terms",
+  number_series: "view:number_series",
+
+  users: "view:users",
+  roles: "view:roles",
+  permission_matrix: "view:permission_matrix",
+  workspaces: "view:workspaces",
+  subscriptions: "view:subscription",
+  api_keys: "view:api_keys",
+  mfa_policies: "view:mfa_policies",
+
+  approval_workflows: "view:workflows",
+  notification_templates: "view:notification_templates",
+  document_templates: "view:document_templates",
+  custom_fields: "view:settings",
+  automation_rules: "view:workflows",
+
+  geography: "view:geography",
+  locations: "view:locations",
+  calendars_shifts: "view:erp",
+  tags_labels: "view:tags",
+
+  global_users: "manage:users",
+  audit_logs: "view:audit_logs",
+  activity_logs: "view:activity_logs",
+  error_logs: "view:error_logs",
+  system_health: "view:system_health",
+  backup_restore: "view:backup",
+  global_settings: "view:settings",
+};
+
 function ErpModule() {
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
@@ -114,6 +160,11 @@ function ErpModule() {
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "companies";
+  }
+
+  const requiredPerm = tabPermissions[activeTab];
+  if (requiredPerm && !hasPermission(requiredPerm)) {
+    return <Unauthorized />;
   }
 
   const ActiveComponent = componentMap[activeTab] || CompanyManagement;

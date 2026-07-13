@@ -48,8 +48,141 @@ interface RoleFormPayload {
 // ─── Permission groups for display ────────────────────────────────
 
 const PERMISSION_LABELS: Record<string, string> = {
+  // Workspace
   "view:dashboard": "View Dashboard",
   "view:copilot": "Access AI Copilot",
+
+  // Core ERP - Access Control
+  "view:users": "View Users List",
+  "manage:users": "Manage Users (Add/Edit/Delete)",
+  "view:roles": "View System Roles",
+  "manage:roles": "Manage Roles & Permissions",
+  "view:permission_matrix": "View Permission Matrix",
+  "view:workspaces": "View Workspaces",
+  "manage:workspaces": "Manage Workspaces (Create/Edit)",
+  "view:subscription": "View Plan & License",
+  "manage:subscription": "Manage Plan & Billing",
+  "view:api_keys": "View Integration API Keys",
+  "manage:api_keys": "Manage API Keys (Gen/Delete)",
+  "view:mfa_policies": "View MFA Policies",
+  "manage:mfa_policies": "Configure MFA Settings",
+
+  // Core ERP - Organization Structure
+  "view:branches": "View Branches list",
+  "manage:branches": "Manage Branches (Add/Edit)",
+  "view:departments": "View Departments structure",
+  "manage:departments": "Manage Departments",
+  "view:designations": "View Job Designations",
+  "manage:designations": "Manage Designations",
+  "view:teams": "View Company Teams",
+  "manage:teams": "Manage Teams",
+
+  // Core ERP - Master Data & Setup
+  "view:currencies": "View Currency Settings",
+  "manage:currencies": "Manage Exchange Rates",
+  "view:fiscal_years": "View Fiscal Cycles",
+  "manage:fiscal_years": "Configure Fiscal Years",
+  "view:taxes": "View Tax Configuration",
+  "manage:taxes": "Configure GST & Taxes",
+  "view:payment_terms": "View Payment Terms",
+  "manage:payment_terms": "Configure Payment Terms",
+  "view:cost_centers": "View Cost Centers",
+  "manage:cost_centers": "Configure Cost Centers",
+  "view:number_series": "View Auto-Numbering",
+  "manage:number_series": "Configure Number Series",
+  "view:workflows": "View Automated Workflows",
+  "manage:workflows": "Configure Approval Workflows",
+  "view:geography": "View Geography Configs",
+  "manage:geography": "Modify Countries/States/Cities",
+  "view:locations": "View Warehousing Locations",
+  "manage:locations": "Configure Warehousing Locations",
+  "view:tags": "View Classifications Tags",
+  "manage:tags": "Configure Tags & Labels",
+  "view:document_templates": "View Document Templates",
+  "manage:document_templates": "Modify Print/PDF Templates",
+  "view:notification_templates": "View Alert Templates",
+  "manage:notification_templates": "Modify Email/SMS Templates",
+
+  // Core ERP - System Admin
+  "view:backup": "View Backup Tasks",
+  "manage:backup": "Run Backups & Restore",
+  "view:system_health": "View System Health Monitor",
+  "view:activity_logs": "View Audit Activity Logs",
+  "view:error_logs": "View Debug Error Logs",
+
+  // Granular HRMS - Employee Management
+  "view:hrms_employees": "View HRMS Employees list",
+  "manage:hrms_employees": "Manage Employees (Add/Edit)",
+  "view:hrms_departments": "View HRMS Departments",
+  "manage:hrms_departments": "Manage HRMS Departments",
+  "view:hrms_designations": "View HRMS Designations",
+  "manage:hrms_designations": "Manage HRMS Designations",
+  "view:hrms_teams": "View HRMS Teams",
+  "manage:hrms_teams": "Manage HRMS Teams",
+  "view:hrms_documents": "View Employee Files",
+  "manage:hrms_documents": "Verify/Upload Employee Files",
+  "view:hrms_profiles": "Access Profiles Details",
+
+  // Granular HRMS - Attendance
+  "view:hrms_attendance": "View Attendance Records",
+  "manage:hrms_attendance": "Manual Clock-ins & Edits",
+  "view:hrms_biometric": "Configure Biometric Scanners",
+  "view:hrms_face": "Access Face ID Logs",
+  "view:hrms_gps": "Access GPS Check-in Maps",
+  "view:hrms_shifts": "Configure Roster & Shifts",
+  "view:hrms_corrections": "View Attendance Corrections",
+  "manage:hrms_corrections": "Approve/Reject Corrections",
+
+  // Granular HRMS - Leave
+  "view:hrms_leaves": "View Leave Request Matrix",
+  "manage:hrms_leaves": "Apply Leaves for Employees",
+  "view:hrms_leave_calendar": "View Holiday Calendars",
+  "view:hrms_leave_balance": "View Balances Matrix",
+  "view:hrms_leave_policies": "View Leave Policies",
+  "manage:hrms_leave_policies": "Configure Leave Policies",
+  "view:hrms_leave_approvals": "View Leave Approvals",
+  "manage:hrms_leave_approvals": "Approve/Reject Leaves",
+
+  // Granular HRMS - Payroll
+  "view:hrms_salary_structure": "View Salary structures",
+  "manage:hrms_salary_structure": "Configure Formulas",
+  "view:hrms_pay_grades": "View Pay Grades",
+  "manage:hrms_pay_grades": "Configure Pay Grades",
+  "view:hrms_payroll_processing": "Process Monthly Payrolls",
+  "view:hrms_pf_esi": "View PF & ESI Configs",
+  "view:hrms_tds": "View TDS Withholding",
+  "view:hrms_payslips": "View & Send Payslips",
+  "view:hrms_loans_advances": "View Loans & Advances",
+  "manage:hrms_loans_advances": "Manage Loans & Advances",
+  "view:hrms_bonuses_commissions": "Manage Bonus & Commissions",
+
+  // Granular HRMS - Recruitment & Onboarding
+  "view:hrms_recruitment": "View Job Openings/Applicants",
+  "manage:hrms_recruitment": "Manage Jobs & Interviews",
+  "view:hrms_onboarding": "Manage Offers & Onboarding",
+
+  // Granular HRMS - Performance & Learning
+  "view:hrms_performance": "View Review Goals & KPIs",
+  "manage:hrms_performance": "Approve Employee Appraisals",
+  "view:hrms_learning": "View Training & Certificates",
+  "manage:hrms_learning": "Manage Courses & Tests",
+
+  // Granular HRMS - Exit Management
+  "view:hrms_exit": "View Exit/Resignations list",
+  "manage:hrms_exit": "Approve Settlements & Letters",
+
+  // Granular HRMS - HR Intelligence
+  "view:hrms_intelligence": "Access AI HR Analytics",
+
+  // Granular HRMS - ESS (Employee Self Service)
+  "view:ess_dashboard": "Access ESS Workspace",
+  "view:ess_attendance": "ESS: Check-in & View Card",
+  "view:ess_leaves": "ESS: Apply Leave & View Bal",
+  "view:ess_payroll": "ESS: Download Payslips",
+  "view:ess_documents": "ESS: Upload Personal files",
+  "view:ess_tasks_announcements": "ESS: View Tasks & Notices",
+
+  // Standard modules
   "view:erp": "View ERP / Back Office",
   "view:inventory": "View Inventory",
   "view:warehouse": "View Warehouse",
@@ -57,23 +190,126 @@ const PERMISSION_LABELS: Record<string, string> = {
   "view:pos": "Use POS Terminal",
   "view:accounting": "View Accounting",
   "view:crm": "View CRM",
-  "view:hrms": "View HRMS",
-  "view:payroll": "View Payroll",
-  "view:reports": "View Reports",
-  "view:settings": "Change Settings",
-  "manage:users": "Manage Users",
-  "manage:roles": "Manage Roles & Permissions",
+  "view:hrms": "View HRMS Dashboard",
+  "view:payroll": "View HRMS Payroll",
+  "view:reports": "View Intelligence Reports",
+  "view:settings": "Change System Settings",
 };
 
 const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
   { label: "Workspace", keys: ["view:dashboard", "view:copilot"] },
-  { label: "Core ERP", keys: ["view:erp", "manage:users", "manage:roles"] },
-  { label: "Operations", keys: ["view:inventory", "view:warehouse", "view:procurement", "view:pos"] },
-  { label: "Finance", keys: ["view:accounting", "view:payroll"] },
-  { label: "Customer & Sales", keys: ["view:crm"] },
-  { label: "People", keys: ["view:hrms"] },
-  { label: "Intelligence", keys: ["view:reports"] },
-  { label: "System", keys: ["view:settings"] },
+  { 
+    label: "Core ERP - Access & Security", 
+    keys: [
+      "view:users", "manage:users", 
+      "view:roles", "manage:roles", 
+      "view:permission_matrix", 
+      "view:workspaces", "manage:workspaces", 
+      "view:subscription", "manage:subscription", 
+      "view:api_keys", "manage:api_keys", 
+      "view:mfa_policies", "manage:mfa_policies"
+    ] 
+  },
+  { 
+    label: "Core ERP - Org Structure", 
+    keys: [
+      "view:branches", "manage:branches", 
+      "view:departments", "manage:departments", 
+      "view:designations", "manage:designations", 
+      "view:teams", "manage:teams"
+    ] 
+  },
+  { 
+    label: "Core ERP - Setup & Master Data", 
+    keys: [
+      "view:currencies", "manage:currencies", 
+      "view:fiscal_years", "manage:fiscal_years", 
+      "view:taxes", "manage:taxes", 
+      "view:payment_terms", "manage:payment_terms", 
+      "view:cost_centers", "manage:cost_centers", 
+      "view:number_series", "manage:number_series", 
+      "view:workflows", "manage:workflows", 
+      "view:geography", "manage:geography", 
+      "view:locations", "manage:locations", 
+      "view:tags", "manage:tags", 
+      "view:document_templates", "manage:document_templates", 
+      "view:notification_templates", "manage:notification_templates"
+    ] 
+  },
+  { 
+    label: "Core ERP - System & Logs", 
+    keys: [
+      "view:backup", "manage:backup", 
+      "view:system_health", 
+      "view:activity_logs", "view:error_logs"
+    ] 
+  },
+  { 
+    label: "HRMS - Employees & Org", 
+    keys: [
+      "view:hrms_employees", "manage:hrms_employees", 
+      "view:hrms_departments", "manage:hrms_departments", 
+      "view:hrms_designations", "manage:hrms_designations", 
+      "view:hrms_teams", "manage:hrms_teams", 
+      "view:hrms_documents", "manage:hrms_documents", 
+      "view:hrms_profiles"
+    ] 
+  },
+  { 
+    label: "HRMS - Attendance Management", 
+    keys: [
+      "view:hrms_attendance", "manage:hrms_attendance", 
+      "view:hrms_biometric", "view:hrms_face", 
+      "view:hrms_gps", "view:hrms_shifts", 
+      "view:hrms_corrections", "manage:hrms_corrections"
+    ] 
+  },
+  { 
+    label: "HRMS - Leave Management", 
+    keys: [
+      "view:hrms_leaves", "manage:hrms_leaves", 
+      "view:hrms_leave_calendar", "view:hrms_leave_balance", 
+      "view:hrms_leave_policies", "manage:hrms_leave_policies", 
+      "view:hrms_leave_approvals", "manage:hrms_leave_approvals"
+    ] 
+  },
+  { 
+    label: "HRMS - Payroll Management", 
+    keys: [
+      "view:hrms_salary_structure", "manage:hrms_salary_structure", 
+      "view:hrms_pay_grades", "manage:hrms_pay_grades", 
+      "view:hrms_payroll_processing", "view:hrms_pf_esi", 
+      "view:hrms_tds", "view:hrms_payslips", 
+      "view:hrms_loans_advances", "manage:hrms_loans_advances", 
+      "view:hrms_bonuses_commissions"
+    ] 
+  },
+  { 
+    label: "HRMS - Recruitment, Perf & Exit", 
+    keys: [
+      "view:hrms_recruitment", "manage:hrms_recruitment", 
+      "view:hrms_onboarding", "view:hrms_performance", 
+      "manage:hrms_performance", "view:hrms_learning", 
+      "manage:hrms_learning", "view:hrms_exit", 
+      "manage:hrms_exit", "view:hrms_intelligence"
+    ] 
+  },
+  { 
+    label: "HRMS - Employee Self Service", 
+    keys: [
+      "view:ess_dashboard", "view:ess_attendance", 
+      "view:ess_leaves", "view:ess_payroll", 
+      "view:ess_documents", "view:ess_tasks_announcements"
+    ] 
+  },
+  { 
+    label: "Operations & Sales Modules", 
+    keys: ["view:inventory", "view:warehouse", "view:procurement", "view:pos", "view:crm"] 
+  },
+  { 
+    label: "Accounting & Settings", 
+    keys: ["view:accounting", "view:reports", "view:settings"] 
+  },
 ];
 
 // ─── Role Form Modal ──────────────────────────────────────────────

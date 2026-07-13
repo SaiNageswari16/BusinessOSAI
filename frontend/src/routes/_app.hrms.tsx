@@ -41,10 +41,12 @@ const componentMap: Record<string, React.ElementType> = {
   leave_requests:  LeaveManagement,
   leave_calendar:  LeaveManagement,
   leave_balance:   LeaveManagement,
+  leave_policies:  LeaveManagement,
   approvals:       LeaveManagement,
 
   // Payroll
   salary_structure:   PayrollManagement,
+  pay_grades:         PayrollManagement,
   payroll_processing: PayrollManagement,
   pf:                 PayrollManagement,
   esi:                PayrollManagement,
@@ -98,6 +100,86 @@ const componentMap: Record<string, React.ElementType> = {
   training_recommendation:  HRIntelligence,
 };
 
+const tabPermissions: Record<string, string> = {
+  // Employee Management
+  employees:        "view:hrms_employees",
+  departments:      "view:hrms_departments",
+  designations:     "view:hrms_designations",
+  teams:            "view:hrms_teams",
+  documents:        "view:hrms_documents",
+  employee_profile: "view:hrms_profiles",
+
+  // Attendance
+  daily_attendance:       "view:hrms_attendance",
+  biometric:              "view:hrms_biometric",
+  face_recognition:       "view:hrms_face",
+  gps_attendance:         "view:hrms_gps",
+  shift_attendance:       "view:hrms_shifts",
+  attendance_corrections: "view:hrms_corrections",
+
+  // Leave
+  leave_requests:  "view:hrms_leaves",
+  leave_calendar:  "view:hrms_leave_calendar",
+  leave_balance:   "view:hrms_leave_balance",
+  leave_policies:  "view:hrms_leave_policies",
+  approvals:       "view:hrms_leave_approvals",
+
+  // Payroll
+  salary_structure:   "view:hrms_salary_structure",
+  pay_grades:         "view:hrms_pay_grades",
+  payroll_processing: "view:hrms_payroll_processing",
+  pf:                 "view:hrms_pf_esi",
+  esi:                "view:hrms_pf_esi",
+  tds:                "view:hrms_tds",
+  payslips:           "view:hrms_payslips",
+  loans:              "view:hrms_loans_advances",
+  advances:           "view:hrms_loans_advances",
+  bonuses:            "view:hrms_bonuses_commissions",
+  commissions:        "view:hrms_bonuses_commissions",
+
+  // Recruitment
+  job_openings:  "view:hrms_recruitment",
+  applicants:    "view:hrms_recruitment",
+  interviews:    "view:hrms_recruitment",
+  offer_letters: "view:hrms_onboarding",
+  onboarding:    "view:hrms_onboarding",
+
+  // Performance
+  goals:               "view:hrms_performance",
+  kpis:                "view:hrms_performance",
+  appraisals:          "view:hrms_performance",
+  performance_reviews: "view:hrms_performance",
+  incentives:          "view:hrms_performance",
+
+  // Learning
+  training:    "view:hrms_learning",
+  courses:     "view:hrms_learning",
+  certificates: "view:hrms_learning",
+  assessments: "view:hrms_learning",
+
+  // ESS
+  ess_attendance:    "view:ess_attendance",
+  ess_leaves:        "view:ess_leaves",
+  ess_payroll:       "view:ess_payroll",
+  ess_documents:     "view:ess_documents",
+  ess_tasks:         "view:ess_tasks_announcements",
+  ess_announcements: "view:ess_tasks_announcements",
+
+  // Exit Management
+  resignation:      "view:hrms_exit",
+  clearance:        "view:hrms_exit",
+  final_settlement: "view:hrms_exit",
+  experience_letter: "view:hrms_exit",
+
+  // HR Intelligence
+  attendance_analytics:     "view:hrms_intelligence",
+  payroll_analytics:        "view:hrms_intelligence",
+  attrition_prediction:     "view:hrms_intelligence",
+  shift_optimization:       "view:hrms_intelligence",
+  productivity_score:       "view:hrms_intelligence",
+  training_recommendation:  "view:hrms_intelligence",
+};
+
 function HrmsModule() {
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
@@ -111,6 +193,25 @@ function HrmsModule() {
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "employees";
+  }
+
+  if (activeTab === "dashboard") {
+    if (hasPermission("view:hrms_employees")) {
+      activeTab = "employees";
+    } else if (hasPermission("view:ess_attendance")) {
+      activeTab = "ess_attendance";
+    } else {
+      // Find the first tab they have permission for
+      const allowedTab = Object.keys(tabPermissions).find(t => hasPermission(tabPermissions[t]));
+      if (allowedTab) {
+        activeTab = allowedTab;
+      }
+    }
+  }
+
+  const requiredPerm = tabPermissions[activeTab];
+  if (requiredPerm && !hasPermission(requiredPerm)) {
+    return <Unauthorized />;
   }
 
   const formatTitle = (str: string) =>

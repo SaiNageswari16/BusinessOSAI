@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import CurrentUserContext, require_permission
+from src.api.deps import CurrentUserContext, require_permission, require_any_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import EntityStatus
@@ -53,7 +53,7 @@ def _parse_status(value: str) -> EntityStatus:
 
 @router.get("/companies", response_model=PaginatedResponse[CompanyResponse])
 async def list_companies(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -106,7 +106,7 @@ async def create_company(
 @router.get("/companies/{company_id}", response_model=CompanyResponse)
 async def get_company(
     company_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Company
@@ -194,7 +194,7 @@ async def delete_company(
 
 @router.get("/branches", response_model=PaginatedResponse[BranchResponse])
 async def list_branches(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
@@ -275,7 +275,7 @@ async def update_branch(
 
 @router.get("/departments", response_model=PaginatedResponse[DepartmentResponse])
 async def list_departments(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
@@ -313,7 +313,7 @@ async def create_department(
 
 @router.get("/designations", response_model=PaginatedResponse[DesignationResponse])
 async def list_designations(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
@@ -349,7 +349,7 @@ async def create_designation(
 
 @router.get("/regions", response_model=PaginatedResponse[RegionResponse])
 async def list_regions(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
@@ -415,7 +415,7 @@ async def create_region(
 @router.get("/regions/{region_id}", response_model=RegionResponse)
 async def get_region(
     region_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Region
@@ -504,7 +504,7 @@ async def delete_region(
 
 @router.get("/zones", response_model=PaginatedResponse[ZoneResponse])
 async def list_zones(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     region_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
@@ -568,7 +568,7 @@ async def create_zone(
 @router.get("/zones/{zone_id}", response_model=ZoneResponse)
 async def get_zone(
     zone_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Zone
@@ -651,7 +651,7 @@ async def delete_zone(
 
 @router.get("/teams", response_model=PaginatedResponse[TeamResponse])
 async def list_teams(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     department_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
@@ -716,7 +716,7 @@ async def create_team(
 @router.get("/teams/{team_id}", response_model=TeamResponse)
 async def get_team(
     team_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Team
@@ -799,7 +799,7 @@ async def delete_team(
 
 @router.get("/business-units", response_model=PaginatedResponse[BusinessUnitResponse])
 async def list_business_units(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     company_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
@@ -863,7 +863,7 @@ async def create_business_unit(
 @router.get("/business-units/{business_unit_id}", response_model=BusinessUnitResponse)
 async def get_business_unit(
     business_unit_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import BusinessUnit

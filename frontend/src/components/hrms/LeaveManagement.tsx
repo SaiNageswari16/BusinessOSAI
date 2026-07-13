@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Calendar, CheckCircle, Clock, XCircle } from "lucide-react";
-import { useHrmsData } from "@/hooks/useHrmsData";
+import { Plus, Calendar, CheckCircle, Clock, XCircle, Loader2, BookOpen, FileText } from "lucide-react";
+import { leavesApi, LeaveRequest, LeaveBalance, LeavePolicy } from "../../lib/api-client";
+import { Button } from "../ui/button";
 
 interface Props { tab?: string; }
 
@@ -17,30 +18,180 @@ const leaveTypeColor = (t: string) => {
 };
 
 export function LeaveManagement({ tab = "leave_requests" }: Props) {
-  const { mockLeaveRequests, mockLeaveBalances } = useHrmsData();
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [balances, setBalances] = useState<LeaveBalance[]>([]);
+  const [policies, setPolicies] = useState<LeavePolicy[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Policy form states
+  const [policyDialogOpen, setPolicyDialogOpen] = useState(false);
+  const [policyName, setPolicyName] = useState("");
+  const [policyType, setPolicyType] = useState("Annual");
+  const [policyDays, setPolicyDays] = useState("12");
+  const [policyApplicable, setPolicyApplicable] = useState("All");
+
+  const loadLeavesData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const reqsRes = await leavesApi.list(1, 100);
+      setRequests(reqsRes.items || []);
+      const balsRes = await leavesApi.listBalances();
+      setBalances(balsRes || []);
+      const polsRes = await leavesApi.listPolicies();
+      setPolicies(polsRes || []);
+    } catch (e) {
+      console.error("Failed to load leaves data", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLeavesData();
+  }, [loadLeavesData]);
+
+  const handleCreatePolicy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await leavesApi.createPolicy({
+        name: policyName,
+        leave_type: policyType,
+        entitled_days: parseInt(policyDays) || 12,
+        applicable_to: policyApplicable,
+      });
+      setPolicyDialogOpen(false);
+      setPolicyName("");
+      loadLeavesData();
+    } catch (err: any) {
+      alert("Failed to create policy: " + err.message);
+    }
+  };
+
+  const handleReview = async (id: string, approve: boolean) => {
+    try {
+      if (approve) {
+        await leavesApi.approve(id);
+      } else {
+        await leavesApi.reject(id);
+      }
+      loadLeavesData();
+    } catch (e: any) {
+      alert("Failed to review: " + e.message);
+    }
+  };
+
+  if (tab === "leave_policies") {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Leave Schemes & Policies</h1>
+            <p className="text-sm text-muted-foreground">Configure yearly leave allocation policies for staff.</p>
+          </div>
+          <Button onClick={() => setPolicyDialogOpen(true)} className="gradient-brand text-white border-0">
+            <Plus className="size-4 mr-1.5" /> Create Leave Policy
+          </Button>
+        </div>
+
+        {loading && policies.length === 0 && (
+          <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {policies.map((p, i) => (
+            <motion.div key={p.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
+              className="glass-panel p-6 rounded-xl border border-border/50 hover:shadow-sm transition-shadow flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-3 bg-primary/10 rounded-xl"><BookOpen className="size-6 text-primary" /></div>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${leaveTypeColor(p.leave_type)}`}>
+                    {p.leave_type} Leave
+                  </span>
+                </div>
+                <h3 className="font-bold text-foreground text-lg mb-1 leading-tight">{p.name}</h3>
+                <p className="text-sm text-muted-foreground mb-4">Entitled limit: <span className="font-bold text-foreground">{p.entitled_days} days / year</span></p>
+              </div>
+              <div className="border-t pt-4 text-xs flex justify-between text-muted-foreground">
+                <span>Applicable To: <span className="font-semibold text-foreground">{p.applicable_to}</span></span>
+                <span>Yearly Accrual</span>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Create Policy Dialog */}
+        {policyDialogOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-sm rounded-2xl bg-card border p-6 space-y-4 shadow-2xl">
+              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                <BookOpen className="size-5 text-primary" /> Create Leave Policy
+              </h3>
+              <form onSubmit={handleCreatePolicy} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Policy Name</label>
+                  <input type="text" value={policyName} onChange={e => setPolicyName(e.target.value)} placeholder="e.g. Standard Paid Leave" className="w-full h-10 px-3 text-sm rounded-md border bg-background" required />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Leave Type</label>
+                    <select value={policyType} onChange={e => setPolicyType(e.target.value)} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                      <option>Annual</option>
+                      <option>Sick</option>
+                      <option>Casual</option>
+                      <option>Maternity</option>
+                      <option>Unpaid</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Yearly Entitled Days</label>
+                    <input type="number" value={policyDays} onChange={e => setPolicyDays(e.target.value)} className="w-full h-10 px-3 text-sm rounded-md border bg-background" required />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Applicable Group</label>
+                  <select value={policyApplicable} onChange={e => setPolicyApplicable(e.target.value)} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option>All</option>
+                    <option>Engineering</option>
+                    <option>Human Resources</option>
+                    <option>Marketing</option>
+                    <option>Sales</option>
+                  </select>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setPolicyDialogOpen(false)} className="px-4 py-2 border rounded-md text-sm">Cancel</button>
+                  <button type="submit" className="px-4 py-2 bg-primary text-white rounded-md text-sm">Save Policy</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (tab === "leave_calendar") {
-    const calendarEvents = mockLeaveRequests.filter(l => l.status === "Approved").map(l => ({ ...l, color: l.type === "Maternity" ? "bg-pink-500/20 border-pink-500/40 text-pink-600" : "bg-blue-500/20 border-blue-500/40 text-blue-600" }));
+    const calendarEvents = requests.filter(l => l.status === "Approved").map(l => ({ ...l, color: l.leave_type === "Maternity" ? "bg-pink-500/20 border-pink-500/40 text-pink-600" : "bg-blue-500/20 border-blue-500/40 text-blue-600" }));
     const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const dates = Array.from({ length: 31 }, (_, i) => i + 1);
     return (
       <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground">Leave Calendar</h1><p className="text-sm text-muted-foreground">Team leave overview for July 2026.</p></div>
-          <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> Apply Leave</button>
         </div>
         <div className="glass-panel p-6 rounded-xl border border-border/50">
           <h3 className="font-semibold text-foreground mb-4">Approved Leaves — July 2026</h3>
+          {loading && <div className="flex justify-center"><Loader2 className="size-6 animate-spin text-primary" /></div>}
           <div className="space-y-3">
-            {calendarEvents.map((event, i) => (
+            {!loading && calendarEvents.length === 0 && <p className="text-sm text-muted-foreground italic">No approved leaves scheduled this month.</p>}
+            {!loading && calendarEvents.map((event, i) => (
               <motion.div key={event.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}
                 className={`p-4 rounded-lg border ${event.color} flex justify-between items-center`}>
                 <div>
-                  <p className="font-semibold">{event.employeeName}</p>
-                  <p className="text-sm">{event.type} Leave · {event.from} to {event.to}</p>
+                  <p className="font-semibold">{event.employee_name || "Unassigned"}</p>
+                  <p className="text-sm">{event.leave_type} Leave · {event.from_date} to {event.to_date}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-xl">{event.days}</p>
+                  <p className="font-bold text-xl">{event.days_requested}</p>
                   <p className="text-xs">days</p>
                 </div>
               </motion.div>
@@ -75,39 +226,34 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Employee</th>
-                  <th className="px-6 py-4 text-center font-medium" colSpan={3}>Annual Leave</th>
-                  <th className="px-6 py-4 text-center font-medium" colSpan={3}>Sick Leave</th>
-                  <th className="px-6 py-4 text-center font-medium" colSpan={3}>Casual Leave</th>
-                </tr>
-                <tr className="text-xs text-muted-foreground border-b border-border/30">
-                  <th className="px-6 py-3"></th>
-                  <th className="px-3 py-3 text-center">Total</th><th className="px-3 py-3 text-center">Used</th><th className="px-3 py-3 text-center text-emerald-600">Balance</th>
-                  <th className="px-3 py-3 text-center">Total</th><th className="px-3 py-3 text-center">Used</th><th className="px-3 py-3 text-center text-emerald-600">Balance</th>
-                  <th className="px-3 py-3 text-center">Total</th><th className="px-3 py-3 text-center">Used</th><th className="px-3 py-3 text-center text-emerald-600">Balance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mockLeaveBalances.map((emp, i) => (
-                  <motion.tr key={emp.employeeId} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.06 }}
-                    className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-foreground">{emp.name}</td>
-                    <td className="px-3 py-4 text-center text-muted-foreground">{emp.annual.total}</td>
-                    <td className="px-3 py-4 text-center text-amber-500">{emp.annual.used}</td>
-                    <td className="px-3 py-4 text-center font-bold text-emerald-500">{emp.annual.balance}</td>
-                    <td className="px-3 py-4 text-center text-muted-foreground">{emp.sick.total}</td>
-                    <td className="px-3 py-4 text-center text-amber-500">{emp.sick.used}</td>
-                    <td className="px-3 py-4 text-center font-bold text-emerald-500">{emp.sick.balance}</td>
-                    <td className="px-3 py-4 text-center text-muted-foreground">{emp.casual.total}</td>
-                    <td className="px-3 py-4 text-center text-amber-500">{emp.casual.used}</td>
-                    <td className="px-3 py-4 text-center font-bold text-emerald-500">{emp.casual.balance}</td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
+            {loading && <div className="flex justify-center py-6"><Loader2 className="size-6 animate-spin text-primary" /></div>}
+            {!loading && (
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                  <tr>
+                    <th className="px-6 py-4 font-medium">Employee</th>
+                    <th className="px-6 py-4 font-medium text-center">Leave Type</th>
+                    <th className="px-6 py-4 text-center font-medium">Total Entitled</th>
+                    <th className="px-6 py-4 text-center font-medium">Used Days</th>
+                    <th className="px-6 py-4 text-center font-medium text-emerald-600">Balance Left</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {balances.length === 0 ? (
+                    <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No leave balances set yet.</td></tr>
+                  ) : balances.map((bal, i) => (
+                    <motion.tr key={bal.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.04 }}
+                      className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-foreground">{bal.employee_name}</td>
+                      <td className="px-6 py-4 text-center"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${leaveTypeColor(bal.leave_type)}`}>{bal.leave_type}</span></td>
+                      <td className="px-6 py-4 text-center text-muted-foreground">{bal.total_days} days</td>
+                      <td className="px-6 py-4 text-center text-amber-500">{bal.used_days} days</td>
+                      <td className="px-6 py-4 text-center font-bold text-emerald-500">{bal.balance} days</td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>
@@ -115,7 +261,7 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
   }
 
   if (tab === "approvals") {
-    const pending = mockLeaveRequests.filter(l => l.status === "Pending");
+    const pending = requests.filter(l => l.status === "Pending");
     return (
       <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
@@ -124,25 +270,27 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
             <Clock className="size-4" /> {pending.length} pending
           </div>
         </div>
-        {pending.map((req, i) => (
+        {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
+        {!loading && pending.length === 0 ? (
+          <div className="glass-panel p-8 text-center text-muted-foreground rounded-xl border">No pending leave requests found.</div>
+        ) : pending.map((req, i) => (
           <motion.div key={req.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
             className="glass-panel p-6 rounded-xl border border-amber-500/20 bg-amber-500/5">
             <div className="flex justify-between items-start">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <span className="font-mono text-sm text-primary">{req.id}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${leaveTypeColor(req.type)}`}>{req.type}</span>
+                  <span className="font-mono text-xs text-muted-foreground">ID: {req.id.substring(0, 8)}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${leaveTypeColor(req.leave_type)}`}>{req.leave_type}</span>
                 </div>
-                <p className="font-semibold text-foreground text-lg">{req.employeeName} <span className="font-normal text-muted-foreground text-sm">· {req.department}</span></p>
-                <p className="text-sm text-muted-foreground mt-1">{req.from} → {req.to} ({req.days} day{req.days > 1 ? "s" : ""})</p>
-                <p className="text-sm text-muted-foreground">Reason: {req.reason}</p>
-                <p className="text-xs text-muted-foreground mt-1">Applied: {req.appliedOn}</p>
+                <p className="font-semibold text-foreground text-lg">{req.employee_name} <span className="font-normal text-muted-foreground text-sm">· {req.department}</span></p>
+                <p className="text-sm text-muted-foreground mt-1">{req.from_date} → {req.to_date} ({req.days_requested} day{req.days_requested > 1 ? "s" : ""})</p>
+                <p className="text-sm text-muted-foreground">Reason: {req.reason || "N/A"}</p>
+                <p className="text-xs text-muted-foreground mt-1">Applied: {new Date(req.created_at).toLocaleDateString()}</p>
               </div>
             </div>
             <div className="flex gap-2 mt-4 pt-4 border-t border-border/50">
-              <button className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 transition-colors flex items-center gap-2"><CheckCircle className="size-4" /> Approve</button>
-              <button className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center gap-2"><XCircle className="size-4" /> Reject</button>
-              <button className="px-4 py-2 bg-muted text-muted-foreground rounded-lg text-sm hover:bg-muted/80 transition-colors">Request More Info</button>
+              <button onClick={() => handleReview(req.id, true)} className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 transition-colors flex items-center gap-2"><CheckCircle className="size-4" /> Approve</button>
+              <button onClick={() => handleReview(req.id, false)} className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center gap-2"><XCircle className="size-4" /> Reject</button>
             </div>
           </motion.div>
         ))}
@@ -155,13 +303,12 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground">Leave Requests</h1><p className="text-sm text-muted-foreground">All employee leave applications and their current status.</p></div>
-        <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> Apply Leave</button>
       </div>
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Pending", value: mockLeaveRequests.filter(l => l.status === "Pending").length, color: "text-amber-500" },
-          { label: "Approved", value: mockLeaveRequests.filter(l => l.status === "Approved").length, color: "text-emerald-500" },
-          { label: "Rejected", value: mockLeaveRequests.filter(l => l.status === "Rejected").length, color: "text-red-500" },
+          { label: "Pending", value: requests.filter(l => l.status === "Pending").length, color: "text-amber-500" },
+          { label: "Approved", value: requests.filter(l => l.status === "Approved").length, color: "text-emerald-500" },
+          { label: "Rejected", value: requests.filter(l => l.status === "Rejected").length, color: "text-red-500" },
         ].map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
             className="glass-panel p-5 rounded-xl border border-border/50 text-center">
@@ -172,35 +319,40 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
       </div>
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
-              <tr>
-                <th className="px-6 py-4 font-medium">ID</th>
-                <th className="px-6 py-4 font-medium">Employee</th>
-                <th className="px-6 py-4 font-medium">Type</th>
-                <th className="px-6 py-4 font-medium">From</th>
-                <th className="px-6 py-4 font-medium">To</th>
-                <th className="px-6 py-4 text-center font-medium">Days</th>
-                <th className="px-6 py-4 font-medium">Applied On</th>
-                <th className="px-6 py-4 text-center font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mockLeaveRequests.map((req, i) => (
-                <motion.tr key={req.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.06 }}
-                  className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-6 py-4 font-medium text-primary">{req.id}</td>
-                  <td className="px-6 py-4"><p className="font-medium text-foreground">{req.employeeName}</p><p className="text-xs text-muted-foreground">{req.department}</p></td>
-                  <td className="px-6 py-4"><span className={`px-2 py-1 rounded-md text-xs font-medium ${leaveTypeColor(req.type)}`}>{req.type}</span></td>
-                  <td className="px-6 py-4 text-muted-foreground">{req.from}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{req.to}</td>
-                  <td className="px-6 py-4 text-center font-bold text-foreground">{req.days}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{req.appliedOn}</td>
-                  <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-medium ${leaveStatusStyle(req.status)}`}>{req.status}</span></td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
+          {loading && <div className="flex justify-center py-8"><Loader2 className="size-8 animate-spin text-primary" /></div>}
+          {!loading && (
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <tr>
+                  <th className="px-6 py-4 font-medium">ID</th>
+                  <th className="px-6 py-4 font-medium">Employee</th>
+                  <th className="px-6 py-4 font-medium">Type</th>
+                  <th className="px-6 py-4 font-medium">From</th>
+                  <th className="px-6 py-4 font-medium">To</th>
+                  <th className="px-6 py-4 text-center font-medium">Days</th>
+                  <th className="px-6 py-4 font-medium">Applied On</th>
+                  <th className="px-6 py-4 text-center font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.length === 0 ? (
+                  <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No leave requests found.</td></tr>
+                ) : requests.map((req, i) => (
+                  <motion.tr key={req.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.06 }}
+                    className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                    <td className="px-6 py-4 font-medium text-primary">{req.id.substring(0, 8)}</td>
+                    <td className="px-6 py-4"><p className="font-medium text-foreground">{req.employee_name || "Unassigned"}</p><p className="text-xs text-muted-foreground">{req.department || "General"}</p></td>
+                    <td className="px-6 py-4"><span className={`px-2 py-1 rounded-md text-xs font-medium ${leaveTypeColor(req.leave_type)}`}>{req.leave_type}</span></td>
+                    <td className="px-6 py-4 text-muted-foreground">{req.from_date}</td>
+                    <td className="px-6 py-4 text-muted-foreground">{req.to_date}</td>
+                    <td className="px-6 py-4 text-center font-bold text-foreground">{req.days_requested}</td>
+                    <td className="px-6 py-4 text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-medium ${leaveStatusStyle(req.status)}`}>{req.status}</span></td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

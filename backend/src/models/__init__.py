@@ -633,3 +633,435 @@ class MfaPolicy(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 
     role: Mapped["Role | None"] = relationship()
 
+
+# ─── Workflow Engine ──────────────────────────────────────────────
+
+
+class ApprovalWorkflow(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Multi-level approval workflow definitions per module."""
+    __tablename__ = "approval_workflows"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", "module", name="uq_approval_workflows_tenant_name_module"),
+    )
+
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    module: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    # Steps stored as JSONB: [{level, approver_role_id, approver_user_id, timeout_hours}]
+    steps: Mapped[list | None] = mapped_column(JSONB, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+    company: Mapped["Company | None"] = relationship()
+
+
+class NotificationTemplate(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Email / SMS / in-app notification templates."""
+    __tablename__ = "notification_templates"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", "channel", name="uq_notification_templates_name_channel"),
+    )
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    event: Mapped[str] = mapped_column(String(100), nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False, default="email")  # email|sms|in_app
+    subject: Mapped[str | None] = mapped_column(String(500))
+    body: Mapped[str | None] = mapped_column(Text)
+    variables: Mapped[list | None] = mapped_column(JSONB, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+
+class DocumentTemplate(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Document templates (PDF, Word) for ERP documents."""
+    __tablename__ = "document_templates"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", "document_type", name="uq_document_templates_name_type"),
+    )
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    document_type: Mapped[str] = mapped_column(String(100), nullable=False)  # invoice|po|receipt|report
+    format: Mapped[str] = mapped_column(String(20), default="pdf")  # pdf|word|excel
+    description: Mapped[str | None] = mapped_column(Text)
+    template_content: Mapped[str | None] = mapped_column(Text)  # HTML/Jinja2 template
+    variables: Mapped[list | None] = mapped_column(JSONB, default=list)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+
+class AutomationRule(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Trigger-action automation rules."""
+    __tablename__ = "automation_rules"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_automation_rules_tenant_name"),
+    )
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    module: Mapped[str] = mapped_column(String(100), nullable=False)
+    trigger_event: Mapped[str] = mapped_column(String(100), nullable=False)
+    conditions: Mapped[dict | None] = mapped_column(JSONB, default=dict)  # field/operator/value conditions
+    actions: Mapped[list | None] = mapped_column(JSONB, default=list)    # action type + params
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    run_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+
+class CustomField(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Tenant-level custom field definitions for any entity."""
+    __tablename__ = "custom_fields"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "entity_type", "field_name", name="uq_custom_fields_entity_name"),
+    )
+
+    entity_type: Mapped[str] = mapped_column(String(100), nullable=False)  # employee|customer|product
+    field_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    field_label: Mapped[str] = mapped_column(String(200), nullable=False)
+    field_type: Mapped[str] = mapped_column(String(50), nullable=False, default="text")  # text|number|date|dropdown|checkbox
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    options: Mapped[list | None] = mapped_column(JSONB)  # dropdown options
+    default_value: Mapped[str | None] = mapped_column(String(500))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+
+# ─── Master Data ──────────────────────────────────────────────────
+
+
+class GeographyCountry(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Countries master data for geography management."""
+    __tablename__ = "geography_countries"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "iso_code", name="uq_geography_countries_tenant_iso"),
+    )
+
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    iso_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    phone_code: Mapped[str | None] = mapped_column(String(10))
+    currency_code: Mapped[str | None] = mapped_column(String(10))
+    states: Mapped[list | None] = mapped_column(JSONB, default=list)  # [{name, code, cities:[]}]
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+
+class Location(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Physical locations beyond branches (warehouses, offices, sites)."""
+    __tablename__ = "locations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_locations_tenant_code"),
+    )
+
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE")
+    )
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("branches.id", ondelete="SET NULL")
+    )
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    location_type: Mapped[str] = mapped_column(String(50), default="office")  # office|warehouse|factory|site
+    address: Mapped[str | None] = mapped_column(Text)
+    city: Mapped[str | None] = mapped_column(String(100))
+    state: Mapped[str | None] = mapped_column(String(100))
+    country: Mapped[str | None] = mapped_column(String(100))
+    latitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
+    longitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+    company: Mapped["Company | None"] = relationship()
+    branch: Mapped["Branch | None"] = relationship()
+
+
+class WorkCalendar(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Work calendars and shift patterns."""
+    __tablename__ = "work_calendars"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_work_calendars_tenant_name"),
+    )
+
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    calendar_type: Mapped[str] = mapped_column(String(30), default="standard")  # standard|shift|flexi
+    working_days: Mapped[list | None] = mapped_column(JSONB, default=list)  # ["Mon","Tue","Wed","Thu","Fri"]
+    shifts: Mapped[list | None] = mapped_column(JSONB, default=list)  # [{name, start_time, end_time}]
+    holidays: Mapped[list | None] = mapped_column(JSONB, default=list)  # [{date, name}]
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+    company: Mapped["Company | None"] = relationship()
+
+
+class Tag(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Tenant-level tags and labels for entity categorization."""
+    __tablename__ = "tags"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", "entity_type", name="uq_tags_tenant_name_entity"),
+    )
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(100), nullable=False, default="any")  # any|employee|customer|product
+    color: Mapped[str] = mapped_column(String(20), default="#6366f1")
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[EntityStatus] = mapped_column(
+        Enum(EntityStatus, name="entity_status", create_constraint=False),
+        default=EntityStatus.ACTIVE,
+    )
+
+
+# ─── System Settings ──────────────────────────────────────────────
+
+
+class SystemSetting(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Key-value tenant-scoped system settings."""
+    __tablename__ = "system_settings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", name="uq_system_settings_tenant_key"),
+    )
+
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    value: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(50), default="general")
+    description: Mapped[str | None] = mapped_column(Text)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+
+# ─── HRMS — Employee & Attendance Models ───────────────────────────
+
+class Employee(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "employees"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "employee_code", name="uq_employees_tenant_code"),
+        UniqueConstraint("tenant_id", "email", name="uq_employees_tenant_email"),
+        UniqueConstraint("tenant_id", "user_id", name="uq_employees_tenant_user"),
+    )
+
+    employee_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    email: Mapped[str] = mapped_column(String(150), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(50))
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
+    date_of_joining: Mapped[date] = mapped_column(Date, nullable=False)
+    employment_type: Mapped[str] = mapped_column(String(50), default="Full-Time")  # Full-Time|Part-Time|Contract|Internship
+    status: Mapped[str] = mapped_column(String(30), default="Active")  # Active|On Leave|Inactive
+    basic_salary: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="SET NULL"))
+    department_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("departments.id", ondelete="SET NULL"))
+    designation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("designations.id", ondelete="SET NULL"))
+    manager_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    company: Mapped["Company | None"] = relationship()
+    branch: Mapped["Branch | None"] = relationship()
+    department: Mapped["Department | None"] = relationship()
+    designation: Mapped["Designation | None"] = relationship()
+    user: Mapped["User | None"] = relationship()
+
+
+class EmployeeDocument(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "employee_documents"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    document_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    document_type: Mapped[str] = mapped_column(String(100), nullable=False)  # Contract|ID Proof|NDA|compliance
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    upload_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(30), default="Valid")  # Valid|Expired
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class AttendanceRecord(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "attendance_records"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "employee_id", "date", name="uq_attendance_employee_date"),
+    )
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    check_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    check_out: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    hours_worked: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    status: Mapped[str] = mapped_column(String(30), default="Present")  # Present|Absent|Late|Half Day|On Leave
+    method: Mapped[str] = mapped_column(String(30), default="Biometric")  # Biometric|GPS|Face|Manual
+    latitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
+    longitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class BiometricDevice(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "biometric_devices"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "device_code", name="uq_biometric_device_code"),
+    )
+
+    device_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    location: Mapped[str] = mapped_column(String(150), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    enrolled_employees: Mapped[int] = mapped_column(Integer, default=0)
+    last_sync: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="Online")  # Online|Offline
+
+
+class FaceRecognitionLog(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "face_recognition_logs"
+
+    employee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"))
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    confidence: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    location: Mapped[str] = mapped_column(String(150), nullable=False)
+    action: Mapped[str] = mapped_column(String(30), default="Check-In")  # Check-In|Check-Out
+    status: Mapped[str] = mapped_column(String(20), default="Verified")  # Verified|Failed
+
+    employee: Mapped["Employee | None"] = relationship()
+
+
+class AttendanceCorrection(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "attendance_corrections"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    original_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    original_check_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    original_check_out: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    corrected_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    corrected_check_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    corrected_check_out: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="Pending")  # Pending|Approved|Rejected
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    employee: Mapped["Employee"] = relationship()
+    reviewer: Mapped["User | None"] = relationship()
+
+class LeaveRequest(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "leave_requests"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    leave_type: Mapped[str] = mapped_column(String(50), nullable=False)  # Annual|Sick|Casual|Maternity|Unpaid
+    from_date: Mapped[date] = mapped_column(Date, nullable=False)
+    to_date: Mapped[date] = mapped_column(Date, nullable=False)
+    days_requested: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="Pending")  # Pending|Approved|Rejected
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    employee: Mapped["Employee"] = relationship()
+    approver: Mapped["User | None"] = relationship()
+
+
+class LeaveBalance(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "leave_balances"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "employee_id", "leave_type", name="uq_leave_balance_emp_type"),
+    )
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    leave_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    total_days: Mapped[int] = mapped_column(Integer, default=0)
+    used_days: Mapped[int] = mapped_column(Integer, default=0)
+    balance: Mapped[int] = mapped_column(Integer, default=0)
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class SalaryStructure(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "salary_structures"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "employee_id", name="uq_salary_structure_emp"),
+    )
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    basic_salary: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    hra: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    other_allowances: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    pf_deduction: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    esi_deduction: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    tds_deduction: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    other_deductions: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    net_salary: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class Payslip(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "payslips"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "employee_id", "month", "year", name="uq_payslip_emp_period"),
+    )
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    basic_salary: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    hra: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    other_allowances: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    pf_deduction: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    esi_deduction: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    tds_deduction: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    other_deductions: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0.0)
+    gross_salary: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    net_salary: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="Processing")  # Processing|Paid
+    pdf_url: Mapped[str | None] = mapped_column(String(500))
+
+    employee: Mapped["Employee"] = relationship()
+
+class LeavePolicy(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "leave_policies"
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    leave_type: Mapped[str] = mapped_column(String(50), nullable=False)  # Annual|Sick|Casual|Maternity|Unpaid
+    entitled_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    applicable_to: Mapped[str] = mapped_column(String(100), default="All")  # All | Department Name | Designation Name
+
+class PayGrade(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pay_grades"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "designation_id", name="uq_pay_grade_designation"),
+    )
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    designation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("designations.id", ondelete="CASCADE"), nullable=False)
+    basic_salary: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    hra: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    other_allowances: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    pf_deduction: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    esi_deduction: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    tds_deduction: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+
+    designation: Mapped["Designation"] = relationship()

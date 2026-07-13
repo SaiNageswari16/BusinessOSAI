@@ -12,7 +12,7 @@ interface RbacContextType {
 const RbacContext = createContext<RbacContextType | undefined>(undefined);
 
 export function RbacProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, selectRole } = useAuth();
   const [activeRole, setActiveRoleState] = useState<AuthRole | null>(null);
 
   // All available roles come directly from the authenticated user's real roles
@@ -39,9 +39,14 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, availableRoles]);
 
-  const setActiveRole = (role: AuthRole) => {
-    setActiveRoleState(role);
-    localStorage.setItem("bos-active-role", role.id);
+  const setActiveRole = async (role: AuthRole) => {
+    try {
+      await selectRole(role.id);
+    } catch (err) {
+      console.error("Failed to switch role active session", err);
+      setActiveRoleState(role);
+      localStorage.setItem("bos-active-role", role.id);
+    }
   };
 
   // hasPermission uses the flat permissions list on the user (aggregated across all roles by /auth/me)

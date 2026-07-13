@@ -125,3 +125,15 @@ def require_permission(permission: str):
         return ctx
 
     return _dependency
+
+def require_any_permission(*permissions: str):
+    async def _dependency(
+        ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    ) -> CurrentUserContext:
+        if not any(ctx.has_permission(p) for p in permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing any of required permissions: {', '.join(permissions)}",
+            )
+        return ctx
+    return _dependency
