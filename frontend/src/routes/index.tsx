@@ -102,29 +102,29 @@ function LoginPage() {
   const googleButtonLabel = mode === "login" ? "Continue with Google" : "Register with Google";
 
   return (
-    <div className="min-h-screen grid items-stretch lg:grid-cols-2 bg-background">
+    <div className="min-h-screen grid items-stretch lg:grid-cols-2 bg-slate-50/50">
       {/* Left — brand panel */}
-      <div className="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden bg-slate-950 text-white">
-        <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-indigo-600/40 blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[0%] right-[0%] w-[70%] h-[70%] rounded-full bg-emerald-600/20 blur-[120px] pointer-events-none" />
-        <div className="absolute top-[40%] right-[10%] w-[40%] h-[40%] rounded-full bg-violet-600/30 blur-[100px] pointer-events-none" />
+      <div className="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden bg-slate-100/80 text-slate-900">
+        <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-indigo-300/40 blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[0%] right-[0%] w-[70%] h-[70%] rounded-full bg-emerald-300/30 blur-[120px] pointer-events-none" />
+        <div className="absolute top-[40%] right-[10%] w-[40%] h-[40%] rounded-full bg-violet-300/40 blur-[100px] pointer-events-none" />
 
         <div className="relative z-10 flex items-center gap-3">
-          <div className="size-12 rounded-2xl bg-white/10 backdrop-blur-md grid place-items-center ring-1 ring-white/20 shadow-xl">
-            <Sparkles className="size-6 text-indigo-300" />
+          <div className="size-12 rounded-2xl bg-white backdrop-blur-md grid place-items-center ring-1 ring-slate-200 shadow-xl">
+            <Sparkles className="size-6 text-indigo-600" />
           </div>
           <div>
-            <div className="font-bold text-xl tracking-tight text-white">BusinessOS AI</div>
-            <div className="text-xs text-indigo-200/80 uppercase tracking-wider font-semibold mt-0.5">Enterprise Operating System</div>
+            <div className="font-bold text-xl tracking-tight text-slate-900">BusinessOS AI</div>
+            <div className="text-xs text-indigo-600 uppercase tracking-wider font-semibold mt-0.5">Enterprise Operating System</div>
           </div>
         </div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="relative z-10 max-w-lg">
           <h1 className="text-5xl font-bold leading-[1.1] tracking-tight">
             One platform.<br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 to-emerald-300">Every part of your business.</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-emerald-600">Every part of your business.</span>
           </h1>
-          <p className="mt-6 text-slate-300 text-lg leading-relaxed">
+          <p className="mt-6 text-slate-600 text-lg leading-relaxed">
             ERP, POS, Inventory, CRM, HRMS, IoT and Accounting — unified by an AI copilot that thinks across your entire operation.
           </p>
 
@@ -135,23 +135,23 @@ function LoginPage() {
               { icon: ShieldCheck, t: "SOC 2 Type II • ISO 27001 • GDPR" },
             ].map((f, i) => (
               <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.1 }}
-                className="flex items-center gap-4 rounded-xl bg-white/5 backdrop-blur-sm px-5 py-3.5 ring-1 ring-white/10 shadow-lg hover:bg-white/10 transition-colors">
-                <f.icon className="size-5 shrink-0 text-indigo-300" />
-                <span className="text-sm font-medium text-slate-200">{f.t}</span>
+                className="flex items-center gap-4 rounded-xl bg-white/60 backdrop-blur-sm px-5 py-3.5 ring-1 ring-slate-200/80 shadow-sm hover:bg-white/80 transition-colors">
+                <f.icon className="size-5 shrink-0 text-indigo-600" />
+                <span className="text-sm font-medium text-slate-700">{f.t}</span>
               </motion.div>
             ))}
           </div>
         </motion.div>
 
-        <div className="relative z-10 text-xs font-medium text-slate-400">
+        <div className="relative z-10 text-xs font-medium text-slate-500">
           Trusted by 8,200+ companies across 47 countries.
         </div>
       </div>
 
       {/* Right — form */}
-      <div className="flex items-center justify-center p-6 sm:p-10 relative">
+      <div className="flex items-center justify-center p-6 sm:p-10 relative bg-slate-50/50">
         {/* Subtle background glow for the right panel */}
-        <div className="absolute inset-0 bg-slate-50/50 dark:bg-slate-950/50 -z-10" />
+        <div className="absolute inset-0 bg-slate-50/80 -z-10" />
         
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md rounded-2xl bg-card p-8 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-border/60">
           <div className="lg:hidden flex items-center gap-3 mb-8">

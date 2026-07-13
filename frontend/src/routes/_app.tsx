@@ -1,7 +1,8 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { AppNavbar } from "@/components/layout/app-navbar";
 import { AppTopbar } from "@/components/layout/app-topbar";
+import { AppNavbar } from "@/components/layout/app-navbar";
+import { ModuleSidebar } from "@/components/layout/module-sidebar";
 import { useAuth } from "@/contexts/auth-context";
 import { TenantProvider } from "@/contexts/tenant-context";
 
@@ -41,11 +42,17 @@ function AppLayout() {
   return (
     <TenantProvider>
       <div className="h-screen overflow-hidden flex flex-col bg-background">
+        {/* Top bar */}
         <AppTopbar />
+        {/* Main module navigation bar — unchanged */}
         <AppNavbar />
-        <main className="flex-1 min-h-0 overflow-y-auto">
-          <Outlet />
-        </main>
+        {/* Body: sidebar + page content */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          <ModuleSidebar />
+          <main className="flex-1 min-h-0 overflow-y-auto">
+            <Outlet />
+          </main>
+        </div>
       </div>
     </TenantProvider>
   );

@@ -1,14 +1,13 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { motion, AnimatePresence } from "framer-motion";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { motion } from "framer-motion";
 import {
   LayoutDashboard, Sparkles, Boxes, Warehouse, ShoppingCart, ShoppingBag,
   Users, Store, Calculator, UserCog, Radio, BarChart3, Settings,
   ChevronLeft, ChevronRight, ChevronDown, Building2, Truck, ShieldCheck, MapPin, 
   Briefcase, Target, Network, CreditCard, Calendar, Laptop, History, Activity, Clock, FileCheck,
-  Package, FolderTree, Layers, Tags, Scale, SlidersHorizontal, Combine, PackagePlus, Blocks, Image, ArrowRightLeft, Sliders, RotateCw, RefreshCw, ClipboardCheck, Grid, Columns, Inbox, ArrowDownToLine, ListChecks, Hash, Barcode, CalendarX, CalendarClock, ScanBarcode, QrCode, AlertTriangle, TrendingUp, Snail, Rocket, Skull, PieChart, LineChart, BrainCircuit, Database, BookOpen
+  Package, FolderTree, Layers, Tags, Scale, SlidersHorizontal, Combine, PackagePlus, Blocks, Image, ArrowRightLeft, Sliders, RotateCw, RefreshCw, ClipboardCheck, Grid, Columns, Inbox, ArrowDownToLine, ListChecks, Hash, Barcode, CalendarX, CalendarClock, ScanBarcode, QrCode, AlertTriangle, TrendingUp, Snail, Rocket, Skull, PieChart, LineChart, BrainCircuit, Database, Banknote, Lock, Monitor
 } from "lucide-react";
-import { useState } from "react";
+
 import { useRbac } from "@/contexts/rbac-context";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -39,15 +38,15 @@ const nav: NavGroup[] = [
       label: "Organization", 
       icon: Building2,
       subItems: [
-        { to: "/erp?tab=companies", label: "Companies", icon: Building2, permission: "view:erp" },
-        { to: "/erp?tab=business_units", label: "Business Units", icon: Network, permission: "view:erp" },
-        { to: "/erp?tab=regions", label: "Regions", icon: MapPin, permission: "view:geography" },
-        { to: "/erp?tab=zones", label: "Zones", icon: MapPin, permission: "view:geography" },
-        { to: "/erp?tab=branches", label: "Branches", icon: MapPin, permission: "view:branches" },
-        { to: "/erp?tab=departments", label: "Departments", icon: Briefcase, permission: "view:departments" },
-        { to: "/erp?tab=designations", label: "Designations", icon: Target, permission: "view:designations" },
-        { to: "/erp?tab=teams", label: "Teams", icon: Users, permission: "view:teams" },
-        { to: "/erp?tab=org_structure", label: "Organization Structure", icon: Network, permission: "view:branches" },
+        { to: "/erp?tab=companies", label: "Companies", icon: Building2 },
+        { to: "/erp?tab=business_units", label: "Business Units", icon: Network },
+        { to: "/erp?tab=regions", label: "Regions", icon: MapPin },
+        { to: "/erp?tab=zones", label: "Zones", icon: MapPin },
+        { to: "/erp?tab=branches", label: "Branches", icon: MapPin },
+        { to: "/erp?tab=departments", label: "Departments", icon: Briefcase },
+        { to: "/erp?tab=designations", label: "Designations", icon: Target },
+        { to: "/erp?tab=teams", label: "Teams", icon: Users },
+        { to: "/erp?tab=org_structure", label: "Organization Structure", icon: Network },
       ]
     },
     { 
@@ -55,12 +54,12 @@ const nav: NavGroup[] = [
       label: "Financial Configuration", 
       icon: CreditCard,
       subItems: [
-        { to: "/erp?tab=fiscal_years", label: "Fiscal Years", icon: Calendar, permission: "view:fiscal_years" },
-        { to: "/erp?tab=cost_centers", label: "Cost Centers", icon: CreditCard, permission: "view:cost_centers" },
-        { to: "/erp?tab=currencies", label: "Currency Management", icon: Calculator, permission: "view:currencies" },
-        { to: "/erp?tab=taxes", label: "Tax Configuration", icon: Calculator, permission: "view:taxes" },
-        { to: "/erp?tab=payment_terms", label: "Payment Terms", icon: CreditCard, permission: "view:payment_terms" },
-        { to: "/erp?tab=number_series", label: "Number Series", icon: Calculator, permission: "view:number_series" },
+        { to: "/erp?tab=fiscal_years", label: "Fiscal Years", icon: Calendar },
+        { to: "/erp?tab=cost_centers", label: "Cost Centers", icon: CreditCard },
+        { to: "/erp?tab=currencies", label: "Currency Management", icon: Calculator },
+        { to: "/erp?tab=taxes", label: "Tax Configuration", icon: Calculator },
+        { to: "/erp?tab=payment_terms", label: "Payment Terms", icon: CreditCard },
+        { to: "/erp?tab=number_series", label: "Number Series", icon: Calculator },
       ]
     },
     { 
@@ -68,13 +67,13 @@ const nav: NavGroup[] = [
       label: "Access & Security", 
       icon: ShieldCheck,
       subItems: [
-        { to: "/erp?tab=users", label: "Users", icon: Users, permission: "view:users" },
-        { to: "/erp?tab=roles", label: "Roles", icon: ShieldCheck, permission: "view:roles" },
-        { to: "/erp?tab=permission_matrix", label: "Permission Matrix", icon: ShieldCheck, permission: "view:permission_matrix" },
-        { to: "/erp?tab=workspaces", label: "Workspaces", icon: Laptop, permission: "view:workspaces" },
-        { to: "/erp?tab=subscriptions", label: "Subscription & License", icon: ShieldCheck, permission: "view:subscription" },
-        { to: "/erp?tab=api_keys", label: "API Keys", icon: Network, permission: "view:api_keys" },
-        { to: "/erp?tab=mfa_policies", label: "MFA Policies", icon: ShieldCheck, permission: "view:mfa_policies" },
+        { to: "/erp?tab=users", label: "Users", icon: Users },
+        { to: "/erp?tab=roles", label: "Roles", icon: ShieldCheck },
+        { to: "/erp?tab=permission_matrix", label: "Permission Matrix", icon: ShieldCheck },
+        { to: "/erp?tab=workspaces", label: "Workspaces", icon: Laptop },
+        { to: "/erp?tab=subscriptions", label: "Subscription & License", icon: ShieldCheck },
+        { to: "/erp?tab=api_keys", label: "API Keys", icon: Network },
+        { to: "/erp?tab=mfa_policies", label: "MFA Policies", icon: ShieldCheck },
       ]
     },
     { 
@@ -82,11 +81,11 @@ const nav: NavGroup[] = [
       label: "Workflow Engine", 
       icon: Network,
       subItems: [
-        { to: "/erp?tab=approval_workflows", label: "Approval Workflows", icon: Network, permission: "view:workflows" },
-        { to: "/erp?tab=notification_templates", label: "Notification Templates", icon: Radio, permission: "view:notification_templates" },
-        { to: "/erp?tab=document_templates", label: "Document Templates", icon: Briefcase, permission: "view:document_templates" },
-        { to: "/erp?tab=custom_fields", label: "Custom Fields", icon: Target, permission: "view:settings" },
-        { to: "/erp?tab=automation_rules", label: "Automation Rules", icon: Settings, permission: "view:workflows" },
+        { to: "/erp?tab=approval_workflows", label: "Approval Workflows", icon: Network },
+        { to: "/erp?tab=notification_templates", label: "Notification Templates", icon: Radio },
+        { to: "/erp?tab=document_templates", label: "Document Templates", icon: Briefcase },
+        { to: "/erp?tab=custom_fields", label: "Custom Fields", icon: Target },
+        { to: "/erp?tab=automation_rules", label: "Automation Rules", icon: Settings },
       ]
     },
     { 
@@ -94,10 +93,10 @@ const nav: NavGroup[] = [
       label: "Master Data", 
       icon: MapPin,
       subItems: [
-        { to: "/erp?tab=geography", label: "Geography (Countries/States/Cities)", icon: MapPin, permission: "view:geography" },
-        { to: "/erp?tab=locations", label: "Locations", icon: MapPin, permission: "view:locations" },
-        { to: "/erp?tab=calendars_shifts", label: "Calendars & Shifts", icon: Calendar, permission: "view:erp" },
-        { to: "/erp?tab=tags_labels", label: "Tags & Labels", icon: Target, permission: "view:tags" },
+        { to: "/erp?tab=geography", label: "Geography (Countries/States/Cities)", icon: MapPin },
+        { to: "/erp?tab=locations", label: "Locations", icon: MapPin },
+        { to: "/erp?tab=calendars_shifts", label: "Calendars & Shifts", icon: Calendar },
+        { to: "/erp?tab=tags_labels", label: "Tags & Labels", icon: Target },
       ]
     },
     { 
@@ -105,13 +104,13 @@ const nav: NavGroup[] = [
       label: "System Administration", 
       icon: Settings,
       subItems: [
-        { to: "/erp?tab=global_users", label: "Global Users", icon: Users, permission: "manage:users" },
-        { to: "/erp?tab=audit_logs", label: "Audit Logs", icon: History, permission: "view:audit_logs" },
-        { to: "/erp?tab=activity_logs", label: "Activity Logs", icon: Activity, permission: "view:activity_logs" },
-        { to: "/erp?tab=error_logs", label: "Error Logs", icon: Activity, permission: "view:error_logs" },
-        { to: "/erp?tab=system_health", label: "System Health", icon: Activity, permission: "view:system_health" },
-        { to: "/erp?tab=backup_restore", label: "Backup & Restore", icon: History, permission: "view:backup" },
-        { to: "/erp?tab=global_settings", label: "Global Settings", icon: Settings, permission: "view:settings" },
+        { to: "/erp?tab=global_users", label: "Global Users", icon: Users },
+        { to: "/erp?tab=audit_logs", label: "Audit Logs", icon: History },
+        { to: "/erp?tab=activity_logs", label: "Activity Logs", icon: Activity },
+        { to: "/erp?tab=error_logs", label: "Error Logs", icon: Activity },
+        { to: "/erp?tab=system_health", label: "System Health", icon: Activity },
+        { to: "/erp?tab=backup_restore", label: "Backup & Restore", icon: History },
+        { to: "/erp?tab=global_settings", label: "Global Settings", icon: Settings },
       ]
     }
   ]},
@@ -248,35 +247,107 @@ const nav: NavGroup[] = [
         { to: "/procurement?tab=procurement_forecast", label: "Procurement Forecast", icon: TrendingUp },
       ]
     },
+  ]},
+  { group: "POS", permission: "view:pos", items: [
+    { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/pos?tab=terminal", label: "Terminal", icon: ShoppingCart },
     { 
-      to: "/pos?tab=terminal", 
-      label: "POS Operations", 
-      icon: ShoppingCart,
-      permission: "view:pos",
+      to: "/pos?tab=sales", 
+      label: "Sales", 
+      icon: TrendingUp,
       subItems: [
-        { to: "/pos?tab=terminal", label: "POS Terminal", icon: ShoppingCart },
-        { to: "/pos?tab=shift_management", label: "Shift Management", icon: Clock },
-        { to: "/pos?tab=sales_history", label: "Sales History", icon: History },
-        { to: "/pos?tab=returns_refunds", label: "Returns & Refunds", icon: ArrowRightLeft },
+        { to: "/pos?tab=sales", label: "All Orders", icon: ShoppingCart },
+        { to: "/pos?tab=sales&view=held", label: "Held Orders", icon: Clock },
+        { to: "/pos?tab=sales&view=completed", label: "Completed", icon: FileCheck },
+        { to: "/pos?tab=sales&view=cancelled", label: "Cancelled", icon: AlertTriangle },
+        { to: "/pos?tab=sales&view=today", label: "Today's Sales", icon: TrendingUp },
+        { to: "/pos?tab=sales&view=history", label: "Sales History", icon: History },
+        { to: "/pos?tab=sales&view=invoices", label: "Invoices", icon: FileCheck },
       ]
     },
     { 
       to: "/pos?tab=customers", 
-      label: "Customer & Loyalty", 
+      label: "Customers", 
       icon: Users,
       subItems: [
-        { to: "/pos?tab=customers", label: "Customers", icon: Users },
-        { to: "/pos?tab=loyalty_programs", label: "Loyalty Programs", icon: Tags },
+        { to: "/pos?tab=customers&view=walk_in", label: "Walk-in Customer", icon: UserCog },
+        { to: "/pos?tab=customers&view=search", label: "Customer Search", icon: Users },
+        { to: "/pos?tab=customers&view=loyalty", label: "Loyalty", icon: Tags },
+        { to: "/pos?tab=customers&view=membership", label: "Membership", icon: ShieldCheck },
+        { to: "/pos?tab=customers&view=wallet", label: "Wallet", icon: CreditCard },
+        { to: "/pos?tab=customers&view=gift_cards", label: "Gift Cards", icon: CreditCard },
+        { to: "/pos?tab=customers&view=history", label: "Purchase History", icon: History },
       ]
     },
     { 
-      to: "/pos?tab=store_settings", 
-      label: "Store Settings", 
-      icon: Settings,
+      to: "/pos?tab=payments", 
+      label: "Payments", 
+      icon: CreditCard,
       subItems: [
-        { to: "/pos?tab=store_settings", label: "Store Settings", icon: Settings },
-        { to: "/pos?tab=payment_methods", label: "Payment Methods", icon: CreditCard },
-        { to: "/pos?tab=receipt_templates", label: "Receipt Templates", icon: FileCheck },
+        { to: "/pos?tab=payments&view=cash", label: "Cash", icon: Banknote },
+        { to: "/pos?tab=payments&view=card", label: "Card", icon: CreditCard },
+        { to: "/pos?tab=payments&view=upi", label: "UPI", icon: QrCode },
+        { to: "/pos?tab=payments&view=split", label: "Split Payment", icon: Combine },
+        { to: "/pos?tab=payments&view=refunds", label: "Refund History", icon: History },
+      ]
+    },
+    { 
+      to: "/pos?tab=store_operations", 
+      label: "Store Operations", 
+      icon: Store,
+      subItems: [
+        { to: "/pos?tab=store_operations&view=shift", label: "Open/Close Shift", icon: Clock },
+        { to: "/pos?tab=store_operations&view=drawer", label: "Cash Drawer", icon: Store },
+        { to: "/pos?tab=store_operations&view=cash_io", label: "Cash In/Out", icon: ArrowRightLeft },
+        { to: "/pos?tab=store_operations&view=register", label: "Register Closing", icon: Lock },
+        { to: "/pos?tab=store_operations&view=eod", label: "End Of Day", icon: CalendarX },
+      ]
+    },
+    { 
+      to: "/pos?tab=returns", 
+      label: "Returns & Exchange", 
+      icon: ArrowRightLeft,
+      subItems: [
+        { to: "/pos?tab=returns&view=returns", label: "Returns", icon: ArrowRightLeft },
+        { to: "/pos?tab=returns&view=exchange", label: "Exchange", icon: RefreshCw },
+        { to: "/pos?tab=returns&view=refund", label: "Refund", icon: CreditCard },
+        { to: "/pos?tab=returns&view=store_credit", label: "Store Credit", icon: FileCheck },
+        { to: "/pos?tab=returns&view=damaged", label: "Damaged Products", icon: AlertTriangle },
+      ]
+    },
+    { 
+      to: "/pos?tab=devices", 
+      label: "Devices", 
+      icon: ScanBarcode,
+      subItems: [
+        { to: "/pos?tab=devices&view=barcode", label: "Barcode Scanner", icon: Barcode },
+        { to: "/pos?tab=devices&view=printer", label: "Receipt Printer", icon: FileCheck },
+        { to: "/pos?tab=devices&view=drawer", label: "Cash Drawer", icon: Store },
+        { to: "/pos?tab=devices&view=display", label: "Pole Display", icon: Monitor },
+        { to: "/pos?tab=devices&view=scale", label: "Weight Scale", icon: Scale },
+      ]
+    },
+    { 
+      to: "/pos?tab=reports", 
+      label: "Reports", 
+      icon: BarChart3,
+      subItems: [
+        { to: "/pos?tab=reports&view=sales", label: "Daily/Hourly Sales", icon: LineChart },
+        { to: "/pos?tab=reports&view=cash", label: "Cash Report", icon: PieChart },
+        { to: "/pos?tab=reports&view=payment", label: "Payment Report", icon: BarChart3 },
+        { to: "/pos?tab=reports&view=tax", label: "Tax Report", icon: Calculator },
+        { to: "/pos?tab=reports&view=shift", label: "Shift Report", icon: Clock },
+      ]
+    },
+    { 
+      to: "/pos?tab=ai_assistant", 
+      label: "AI Assistant", 
+      icon: Sparkles,
+      subItems: [
+        { to: "/pos?tab=ai_assistant&view=summary", label: "Sales Summary", icon: Sparkles },
+        { to: "/pos?tab=ai_assistant&view=peak", label: "Peak Hours Prediction", icon: TrendingUp },
+        { to: "/pos?tab=ai_assistant&view=fraud", label: "Fraud Detection", icon: ShieldCheck },
+        { to: "/pos?tab=ai_assistant&view=alerts", label: "Inventory Alerts", icon: AlertTriangle },
       ]
     },
   ]},
@@ -557,12 +628,12 @@ const nav: NavGroup[] = [
       label: "Employee Management", 
       icon: Users,
       subItems: [
-        { to: "/hrms?tab=employees", label: "Employees", icon: Users, permission: "view:hrms_employees" },
-        { to: "/hrms?tab=departments", label: "Departments", icon: Briefcase, permission: "view:hrms_departments" },
-        { to: "/hrms?tab=designations", label: "Designations", icon: Target, permission: "view:hrms_designations" },
-        { to: "/hrms?tab=teams", label: "Teams", icon: Users, permission: "view:hrms_teams" },
-        { to: "/hrms?tab=documents", label: "Documents", icon: FileCheck, permission: "view:hrms_documents" },
-        { to: "/hrms?tab=employee_profile", label: "Employee Profile", icon: UserCog, permission: "view:hrms_profiles" },
+        { to: "/hrms?tab=employees", label: "Employees", icon: Users },
+        { to: "/hrms?tab=departments", label: "Departments", icon: Briefcase },
+        { to: "/hrms?tab=designations", label: "Designations", icon: Target },
+        { to: "/hrms?tab=teams", label: "Teams", icon: Users },
+        { to: "/hrms?tab=documents", label: "Documents", icon: FileCheck },
+        { to: "/hrms?tab=employee_profile", label: "Employee Profile", icon: UserCog },
       ]
     },
     { 
@@ -570,12 +641,12 @@ const nav: NavGroup[] = [
       label: "Attendance", 
       icon: Clock,
       subItems: [
-        { to: "/hrms?tab=daily_attendance", label: "Daily Attendance", icon: Clock, permission: "view:hrms_attendance" },
-        { to: "/hrms?tab=biometric", label: "Biometric", icon: Radio, permission: "view:hrms_biometric" },
-        { to: "/hrms?tab=face_recognition", label: "Face Recognition", icon: ScanBarcode, permission: "view:hrms_face" },
-        { to: "/hrms?tab=gps_attendance", label: "GPS Attendance", icon: MapPin, permission: "view:hrms_gps" },
-        { to: "/hrms?tab=shift_attendance", label: "Shift Attendance", icon: Clock, permission: "view:hrms_shifts" },
-        { to: "/hrms?tab=attendance_corrections", label: "Attendance Corrections", icon: FileCheck, permission: "view:hrms_corrections" },
+        { to: "/hrms?tab=daily_attendance", label: "Daily Attendance", icon: Clock },
+        { to: "/hrms?tab=biometric", label: "Biometric", icon: Radio },
+        { to: "/hrms?tab=face_recognition", label: "Face Recognition", icon: ScanBarcode },
+        { to: "/hrms?tab=gps_attendance", label: "GPS Attendance", icon: MapPin },
+        { to: "/hrms?tab=shift_attendance", label: "Shift Attendance", icon: Clock },
+        { to: "/hrms?tab=attendance_corrections", label: "Attendance Corrections", icon: FileCheck },
       ]
     },
     { 
@@ -583,11 +654,10 @@ const nav: NavGroup[] = [
       label: "Leave", 
       icon: Calendar,
       subItems: [
-        { to: "/hrms?tab=leave_requests", label: "Leave Requests", icon: Calendar, permission: "view:hrms_leaves" },
-        { to: "/hrms?tab=leave_calendar", label: "Leave Calendar", icon: CalendarClock, permission: "view:hrms_leave_calendar" },
-        { to: "/hrms?tab=leave_balance", label: "Leave Balance", icon: Calculator, permission: "view:hrms_leave_balance" },
-        { to: "/hrms?tab=leave_policies", label: "Leave Schemes", icon: BookOpen, permission: "view:hrms_leave_policies" },
-        { to: "/hrms?tab=approvals", label: "Approvals", icon: ShieldCheck, permission: "view:hrms_leave_approvals" },
+        { to: "/hrms?tab=leave_requests", label: "Leave Requests", icon: Calendar },
+        { to: "/hrms?tab=leave_calendar", label: "Leave Calendar", icon: CalendarClock },
+        { to: "/hrms?tab=leave_balance", label: "Leave Balance", icon: Calculator },
+        { to: "/hrms?tab=approvals", label: "Approvals", icon: ShieldCheck },
       ]
     },
     { 
@@ -595,17 +665,16 @@ const nav: NavGroup[] = [
       label: "Payroll", 
       icon: CreditCard,
       subItems: [
-        { to: "/hrms?tab=salary_structure", label: "Salary Structure", icon: Calculator, permission: "view:hrms_salary_structure" },
-        { to: "/hrms?tab=pay_grades", label: "Pay Grades", icon: Briefcase, permission: "view:hrms_pay_grades" },
-        { to: "/hrms?tab=payroll_processing", label: "Payroll Processing", icon: Clock, permission: "view:hrms_payroll_processing" },
-        { to: "/hrms?tab=pf", label: "PF", icon: FileCheck, permission: "view:hrms_pf_esi" },
-        { to: "/hrms?tab=esi", label: "ESI", icon: FileCheck, permission: "view:hrms_pf_esi" },
-        { to: "/hrms?tab=tds", label: "TDS", icon: FileCheck, permission: "view:hrms_tds" },
-        { to: "/hrms?tab=payslips", label: "Payslips", icon: FileCheck, permission: "view:hrms_payslips" },
-        { to: "/hrms?tab=loans", label: "Loans", icon: CreditCard, permission: "view:hrms_loans_advances" },
-        { to: "/hrms?tab=advances", label: "Advances", icon: CreditCard, permission: "view:hrms_loans_advances" },
-        { to: "/hrms?tab=bonuses", label: "Bonuses", icon: Target, permission: "view:hrms_bonuses_commissions" },
-        { to: "/hrms?tab=commissions", label: "Commissions", icon: Calculator, permission: "view:hrms_bonuses_commissions" },
+        { to: "/hrms?tab=salary_structure", label: "Salary Structure", icon: Calculator },
+        { to: "/hrms?tab=payroll_processing", label: "Payroll Processing", icon: Clock },
+        { to: "/hrms?tab=pf", label: "PF", icon: FileCheck },
+        { to: "/hrms?tab=esi", label: "ESI", icon: FileCheck },
+        { to: "/hrms?tab=tds", label: "TDS", icon: FileCheck },
+        { to: "/hrms?tab=payslips", label: "Payslips", icon: FileCheck },
+        { to: "/hrms?tab=loans", label: "Loans", icon: CreditCard },
+        { to: "/hrms?tab=advances", label: "Advances", icon: CreditCard },
+        { to: "/hrms?tab=bonuses", label: "Bonuses", icon: Target },
+        { to: "/hrms?tab=commissions", label: "Commissions", icon: Calculator },
       ]
     },
     { 
@@ -613,11 +682,11 @@ const nav: NavGroup[] = [
       label: "Recruitment", 
       icon: Briefcase,
       subItems: [
-        { to: "/hrms?tab=job_openings", label: "Job Openings", icon: Briefcase, permission: "view:hrms_recruitment" },
-        { to: "/hrms?tab=applicants", label: "Applicants", icon: Users, permission: "view:hrms_recruitment" },
-        { to: "/hrms?tab=interviews", label: "Interviews", icon: Clock, permission: "view:hrms_recruitment" },
-        { to: "/hrms?tab=offer_letters", label: "Offer Letters", icon: FileCheck, permission: "view:hrms_onboarding" },
-        { to: "/hrms?tab=onboarding", label: "Onboarding", icon: Target, permission: "view:hrms_onboarding" },
+        { to: "/hrms?tab=job_openings", label: "Job Openings", icon: Briefcase },
+        { to: "/hrms?tab=applicants", label: "Applicants", icon: Users },
+        { to: "/hrms?tab=interviews", label: "Interviews", icon: Clock },
+        { to: "/hrms?tab=offer_letters", label: "Offer Letters", icon: FileCheck },
+        { to: "/hrms?tab=onboarding", label: "Onboarding", icon: Target },
       ]
     },
     { 
@@ -625,11 +694,11 @@ const nav: NavGroup[] = [
       label: "Performance", 
       icon: Target,
       subItems: [
-        { to: "/hrms?tab=goals", label: "Goals", icon: Target, permission: "view:hrms_performance" },
-        { to: "/hrms?tab=kpis", label: "KPIs", icon: BarChart3, permission: "view:hrms_performance" },
-        { to: "/hrms?tab=appraisals", label: "Appraisals", icon: Activity, permission: "view:hrms_performance" },
-        { to: "/hrms?tab=performance_reviews", label: "Performance Reviews", icon: FileCheck, permission: "view:hrms_performance" },
-        { to: "/hrms?tab=incentives", label: "Incentives", icon: CreditCard, permission: "view:hrms_performance" },
+        { to: "/hrms?tab=goals", label: "Goals", icon: Target },
+        { to: "/hrms?tab=kpis", label: "KPIs", icon: BarChart3 },
+        { to: "/hrms?tab=appraisals", label: "Appraisals", icon: Activity },
+        { to: "/hrms?tab=performance_reviews", label: "Performance Reviews", icon: FileCheck },
+        { to: "/hrms?tab=incentives", label: "Incentives", icon: CreditCard },
       ]
     },
     { 
@@ -637,10 +706,10 @@ const nav: NavGroup[] = [
       label: "Learning", 
       icon: BrainCircuit,
       subItems: [
-        { to: "/hrms?tab=training", label: "Training", icon: Target, permission: "view:hrms_learning" },
-        { to: "/hrms?tab=courses", label: "Courses", icon: FileCheck, permission: "view:hrms_learning" },
-        { to: "/hrms?tab=certificates", label: "Certificates", icon: ShieldCheck, permission: "view:hrms_learning" },
-        { to: "/hrms?tab=assessments", label: "Assessments", icon: FileCheck, permission: "view:hrms_learning" },
+        { to: "/hrms?tab=training", label: "Training", icon: Target },
+        { to: "/hrms?tab=courses", label: "Courses", icon: FileCheck },
+        { to: "/hrms?tab=certificates", label: "Certificates", icon: ShieldCheck },
+        { to: "/hrms?tab=assessments", label: "Assessments", icon: FileCheck },
       ]
     },
     { 
@@ -648,12 +717,12 @@ const nav: NavGroup[] = [
       label: "Employee Self Service", 
       icon: UserCog,
       subItems: [
-        { to: "/hrms?tab=ess_attendance", label: "Attendance", icon: Clock, permission: "view:ess_attendance" },
-        { to: "/hrms?tab=ess_leaves", label: "Leaves", icon: Calendar, permission: "view:ess_leaves" },
-        { to: "/hrms?tab=ess_payroll", label: "Payroll", icon: CreditCard, permission: "view:ess_payroll" },
-        { to: "/hrms?tab=ess_documents", label: "Documents", icon: FileCheck, permission: "view:ess_documents" },
-        { to: "/hrms?tab=ess_tasks", label: "Tasks", icon: Target, permission: "view:ess_tasks_announcements" },
-        { to: "/hrms?tab=ess_announcements", label: "Announcements", icon: Radio, permission: "view:ess_tasks_announcements" },
+        { to: "/hrms?tab=ess_attendance", label: "Attendance", icon: Clock },
+        { to: "/hrms?tab=ess_leaves", label: "Leaves", icon: Calendar },
+        { to: "/hrms?tab=ess_payroll", label: "Payroll", icon: CreditCard },
+        { to: "/hrms?tab=ess_documents", label: "Documents", icon: FileCheck },
+        { to: "/hrms?tab=ess_tasks", label: "Tasks", icon: Target },
+        { to: "/hrms?tab=ess_announcements", label: "Announcements", icon: Radio },
       ]
     },
     { 
@@ -661,10 +730,10 @@ const nav: NavGroup[] = [
       label: "Exit Management", 
       icon: ArrowRightLeft,
       subItems: [
-        { to: "/hrms?tab=resignation", label: "Resignation", icon: FileCheck, permission: "view:hrms_exit" },
-        { to: "/hrms?tab=clearance", label: "Clearance", icon: ShieldCheck, permission: "view:hrms_exit" },
-        { to: "/hrms?tab=final_settlement", label: "Final Settlement", icon: Calculator, permission: "view:hrms_exit" },
-        { to: "/hrms?tab=experience_letter", label: "Experience Letter", icon: FileCheck, permission: "view:hrms_exit" },
+        { to: "/hrms?tab=resignation", label: "Resignation", icon: FileCheck },
+        { to: "/hrms?tab=clearance", label: "Clearance", icon: ShieldCheck },
+        { to: "/hrms?tab=final_settlement", label: "Final Settlement", icon: Calculator },
+        { to: "/hrms?tab=experience_letter", label: "Experience Letter", icon: FileCheck },
       ]
     },
     { 
@@ -672,12 +741,12 @@ const nav: NavGroup[] = [
       label: "HR Intelligence", 
       icon: BrainCircuit,
       subItems: [
-        { to: "/hrms?tab=attendance_analytics", label: "Attendance Analytics", icon: PieChart, permission: "view:hrms_intelligence" },
-        { to: "/hrms?tab=payroll_analytics", label: "Payroll Analytics", icon: LineChart, permission: "view:hrms_intelligence" },
-        { to: "/hrms?tab=attrition_prediction", label: "Attrition Prediction", icon: Skull, permission: "view:hrms_intelligence" },
-        { to: "/hrms?tab=shift_optimization", label: "Shift Optimization", icon: TrendingUp, permission: "view:hrms_intelligence" },
-        { to: "/hrms?tab=productivity_score", label: "Productivity Score", icon: Activity, permission: "view:hrms_intelligence" },
-        { to: "/hrms?tab=training_recommendation", label: "Training Recommendation", icon: Sparkles, permission: "view:hrms_intelligence" },
+        { to: "/hrms?tab=attendance_analytics", label: "Attendance Analytics", icon: PieChart },
+        { to: "/hrms?tab=payroll_analytics", label: "Payroll Analytics", icon: LineChart },
+        { to: "/hrms?tab=attrition_prediction", label: "Attrition Prediction", icon: Skull },
+        { to: "/hrms?tab=shift_optimization", label: "Shift Optimization", icon: TrendingUp },
+        { to: "/hrms?tab=productivity_score", label: "Productivity Score", icon: Activity },
+        { to: "/hrms?tab=training_recommendation", label: "Training Recommendation", icon: Sparkles },
       ]
     },
   ]},
@@ -1024,7 +1093,7 @@ export function AppNavbar() {
     authorizedNav[0];
   return (
     <div className="flex flex-col shrink-0 bg-card border-b border-border z-10 shadow-sm relative w-full">
-      {/* Level 1: Main Modules */}
+      {/* Level 1: Main Modules — unchanged */}
       <nav className="flex items-center gap-1 px-6 overflow-x-auto scrollbar-none h-[80px]">
         {authorizedNav.map((g) => {
           const isActive = activeGroup?.group === g.group;
@@ -1050,85 +1119,6 @@ export function AppNavbar() {
           );
         })}
       </nav>
-
-      {/* Level 2: Categories (Secondary Bar) */}
-      <AnimatePresence mode="wait">
-        {activeGroup && activeGroup.items.length > 0 && (
-          <motion.div 
-            key={activeGroup.group}
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -5 }}
-            className="bg-muted/30 border-t border-border flex items-center px-6 h-11 overflow-x-auto scrollbar-none"
-          >
-            <nav className="flex items-center gap-1.5">
-              {activeGroup.items.map((item) => {
-                const isItemActive = currentPath === getBasePath(item.to) || item.subItems?.some((sub: any) => currentPath === getBasePath(sub.to));
-                const color = GROUP_COLORS[activeGroup.group] || GROUP_COLORS["Workspace"];
-                
-                if (item.subItems && item.subItems.length > 0) {
-                  // Render as a dropdown menu
-                  return (
-                    <DropdownMenu key={item.label}>
-                      <DropdownMenuTrigger className={cn(
-                        "flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] transition-all whitespace-nowrap outline-none group font-semibold",
-                        isItemActive
-                          ? cn("text-white shadow-sm", color.gradient, color.glow, "shadow-md")
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/70 hover:shadow-sm"
-                      )}>
-                        <item.icon className={cn("size-3.5 transition-transform group-hover:scale-110", isItemActive ? "text-white" : "")} />
-                        <span>{item.label}</span>
-                        <ChevronDown className="size-3 opacity-60 ml-0.5" />
-                        {item.badge && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-white/25 text-white ml-1">
-                            {item.badge}
-                          </span>
-                        )}
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-56 max-h-96 overflow-y-auto p-1.5">
-                        {item.subItems.map((sub: any) => {
-                          const isSubActive = currentPath === sub.to;
-                          return (
-                            <DropdownMenuItem key={sub.label} asChild className="focus:bg-muted/50 rounded-md cursor-pointer">
-                              <Link to={sub.to} className="flex items-center gap-3 w-full py-2 px-1">
-                                <div className={cn("p-1.5 rounded-md", isSubActive ? cn(color.gradient, "text-white shadow-sm") : "bg-muted text-muted-foreground")}>
-                                  <sub.icon className="size-3.5" />
-                                </div>
-                                <span className={cn("text-sm", isSubActive ? cn("font-bold", color.text) : "font-medium")}>{sub.label}</span>
-                              </Link>
-                            </DropdownMenuItem>
-                          );
-                        })}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  );
-                }
-
-                return (
-                  <Link
-                    key={item.label}
-                    to={item.to}
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] transition-all whitespace-nowrap group font-semibold",
-                      isItemActive
-                        ? cn("text-white shadow-sm", color.gradient, color.glow, "shadow-md")
-                        : "text-muted-foreground hover:text-foreground hover:bg-background/70 hover:shadow-sm"
-                    )}
-                  >
-                    <item.icon className={cn("size-3.5 transition-transform group-hover:scale-110", isItemActive ? "text-white" : "")} />
-                    <span>{item.label}</span>
-                    {item.badge && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-white/25 text-white ml-1">
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

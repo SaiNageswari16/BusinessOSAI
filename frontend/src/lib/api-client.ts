@@ -412,6 +412,10 @@ async function request<T>(
   });
 
   if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem("bos-auth");
+      window.location.href = "/login";
+    }
     const msg = await parseError(res);
     throw new Error(msg);
   }
