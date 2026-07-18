@@ -12,6 +12,11 @@ from src.api.v1.hrms.employees import router as hrms_employees_router
 from src.api.v1.hrms.attendance import router as hrms_attendance_router
 from src.api.v1.hrms.leaves import router as hrms_leaves_router
 from src.api.v1.hrms.payroll import router as hrms_payroll_router
+from src.api.v1.hrms.recruitment import router as hrms_recruitment_router
+from src.api.v1.hrms.performance import router as hrms_performance_router
+from src.api.v1.hrms.learning import router as hrms_learning_router
+from src.api.v1.hrms.exit_management import router as hrms_exit_router
+from src.api.v1.hrms.intelligence import router as hrms_intelligence_router
 from src.api.v1.system_admin import router as system_admin_router
 
 api_router = APIRouter()
@@ -27,4 +32,9 @@ api_router.include_router(hrms_employees_router)
 api_router.include_router(hrms_attendance_router)
 api_router.include_router(hrms_leaves_router)
 api_router.include_router(hrms_payroll_router)
+api_router.include_router(hrms_recruitment_router)
+api_router.include_router(hrms_performance_router, prefix="/hrms/performance", tags=["HRMS Performance"])
+api_router.include_router(hrms_learning_router, prefix="/hrms/learning", tags=["HRMS Learning"])
+api_router.include_router(hrms_intelligence_router, prefix="/hrms/intelligence", tags=["HRMS Intelligence"])
+api_router.include_router(hrms_exit_router)
 api_router.include_router(system_admin_router)

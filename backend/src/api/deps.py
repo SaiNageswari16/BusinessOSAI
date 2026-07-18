@@ -28,7 +28,13 @@ class CurrentUserContext:
         self.active_role_id = active_role_id
 
     def has_permission(self, permission: str) -> bool:
-        return permission in self.permissions
+        if permission in self.permissions:
+            return True
+        if permission == "view:hrms":
+            return any(p.startswith("view:hrms_") or p.startswith("manage:hrms_") for p in self.permissions)
+        if permission == "view:erp":
+            return any(p.startswith("view:") and p != "view:dashboard" for p in self.permissions)
+        return False
 
     def require_permission(self, permission: str) -> None:
         if not self.has_permission(permission):
@@ -116,7 +122,6 @@ async def get_current_user_context(
     return CurrentUserContext(user=user, tenant_id=resolved_tenant_id, permissions=permissions, active_role_id=active_role_id)
 
 
-
 def require_permission(permission: str):
     async def _dependency(
         ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
@@ -125,6 +130,7 @@ def require_permission(permission: str):
         return ctx
 
     return _dependency
+
 
 def require_any_permission(*permissions: str):
     async def _dependency(

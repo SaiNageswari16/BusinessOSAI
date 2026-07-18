@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     google_client_secret: str | None = Field(default=None, alias="GOOGLE_CLIENT_SECRET")
     google_redirect_uri: str | None = Field(default=None, alias="GOOGLE_REDIRECT_URI")
 
+    # AI / LLM
+    gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+
     # Frontend integration
     frontend_url: str = Field(default="http://localhost:8080", alias="FRONTEND_URL")
 

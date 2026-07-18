@@ -52,7 +52,14 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
   // hasPermission uses the flat permissions list on the user (aggregated across all roles by /auth/me)
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
-    return user.permissions.includes(permission);
+    if (user.permissions.includes(permission)) return true;
+    if (permission === "view:hrms") {
+      return user.permissions.some(p => p.startsWith("view:hrms_") || p.startsWith("manage:hrms_"));
+    }
+    if (permission === "view:erp") {
+      return user.permissions.some(p => p.startsWith("view:") && p !== "view:dashboard");
+    }
+    return false;
   };
 
   return (
