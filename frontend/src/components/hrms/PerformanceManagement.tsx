@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Target, TrendingUp, TrendingDown, Star, BarChart3, Gift, Calendar, CheckSquare, Sparkles, User, Award, XCircle, FileCheck, ChevronRight } from "lucide-react";
+import { Plus, Target, TrendingUp, TrendingDown, Star, BarChart3, Gift, Calendar, CheckSquare, Sparkles, User, Award, XCircle, FileCheck, ChevronRight, AlertTriangle } from "lucide-react";
 import { performanceApi, employeesApi, PerformanceGoal, PerformanceKpi, PerformanceAppraisal, PerformanceIncentive, Employee } from "../../lib/api-client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";

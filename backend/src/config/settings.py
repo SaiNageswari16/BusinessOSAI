@@ -65,6 +65,25 @@ class Settings(BaseSettings):
 
     # AI / LLM
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-1.5-flash", alias="GEMINI_MODEL")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o", alias="OPENAI_MODEL")
+    ai_provider: str = Field(default="gemini", alias="AI_PROVIDER") # gemini | openai
+
+    # Meta / Facebook App OAuth
+    facebook_app_id: str | None = Field(default=None, alias="FACEBOOK_APP_ID")
+    facebook_app_secret: str | None = Field(default=None, alias="FACEBOOK_APP_SECRET")
+    # Redirect URI registered in Meta Developer App -> Facebook Login settings
+    facebook_redirect_uri: str = Field(default="http://localhost:8000/api/v1/crm/facebook/oauth-callback", alias="FACEBOOK_REDIRECT_URI")
+
+    # LiveKit / Telephony
+    livekit_url: str | None = Field(default=None, alias="LIVEKIT_URL")
+    livekit_api_key: str | None = Field(default=None, alias="LIVEKIT_API_KEY")
+    livekit_api_secret: str | None = Field(default=None, alias="LIVEKIT_API_SECRET")
+    sip_trunk_id: str | None = Field(default=None, alias="SIP_TRUNK_ID")
+    plivo_termination_domain: str | None = Field(default=None, alias="PLIVO_TERMINATION_DOMAIN")
+    plivo_auth_id: str | None = Field(default=None, alias="PLIVO_AUTH_ID")
+    plivo_auth_token: str | None = Field(default=None, alias="PLIVO_AUTH_TOKEN")
 
     # Frontend integration
     frontend_url: str = Field(default="http://localhost:8080", alias="FRONTEND_URL")

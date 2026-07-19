@@ -18,6 +18,7 @@ from src.api.v1.hrms.learning import router as hrms_learning_router
 from src.api.v1.hrms.exit_management import router as hrms_exit_router
 from src.api.v1.hrms.intelligence import router as hrms_intelligence_router
 from src.api.v1.system_admin import router as system_admin_router
+from src.api.v1.crm import router as crm_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -38,3 +39,4 @@ api_router.include_router(hrms_learning_router, prefix="/hrms/learning", tags=["
 api_router.include_router(hrms_intelligence_router, prefix="/hrms/intelligence", tags=["HRMS Intelligence"])
 api_router.include_router(hrms_exit_router)
 api_router.include_router(system_admin_router)
+api_router.include_router(crm_router)

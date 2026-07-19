@@ -1,65 +1,91 @@
+import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/tenant-context";
-import * as baseData from "@/data/mockCrmData";
+import { crmOpportunitiesApi, crmLeadsApi, crmTicketsApi, crmQuotationsApi, type CrmOpportunity, type CrmLead, type CrmTicket, type CrmQuotation } from "@/lib/api-client";
 
-export function useCrmData() {
+export interface CrmData {
+  mockCrmStats: Record<string, unknown>;
+  mockCustomers: any[];
+  mockDeals: CrmOpportunity[];
+  mockLeads: CrmLead[];
+  mockTickets: CrmTicket[];
+  mockQuotations: CrmQuotation[];
+  // Customer-intelligence mock properties (empty arrays until real endpoints exist)
+  mockCustomerSegments: any[];
+  mockLoyaltyRewards: any[];
+  mockMembershipPlans: any[];
+  mockWalletTransactions: any[];
+  mockCustomerGroups: any[];
+  mockCustomerDocuments: any[];
+  mockAiRecommendations: any[];
+}
+
+export function useCrmData(): CrmData {
   const { tenant } = useTenant();
+  const [mockCrmStats, setMockCrmStats] = useState<Record<string, unknown>>({});
+  const [mockCustomers, setMockCustomers] = useState<any[]>([]);
+  const [mockDeals, setMockDeals] = useState<CrmOpportunity[]>([]);
+  const [mockLeads, setMockLeads] = useState<CrmLead[]>([]);
+  const [mockTickets, setMockTickets] = useState<CrmTicket[]>([]);
+  const [mockQuotations, setMockQuotations] = useState<CrmQuotation[]>([]);
 
-  if (tenant.id === "c2") {
-    // Atlas Manufacturing (c2)
-    return {
-      ...baseData,
-      mockCrmStats: {
-        ...baseData.mockCrmStats,
-        totalCustomers: 450,
-        activeCustomers: 380,
-        totalRevenue: 2100000,
-        churnRate: 1.5,
-      },
-      mockCustomers: baseData.mockCustomers.map(c => ({
-        ...c,
-        name: c.name.replace("Group", "Industries").replace("Corp", "Manufacturing"),
-        totalPurchases: Math.floor(c.totalPurchases * 1.5),
-      })),
-      mockDeals: baseData.mockDeals.map(d => ({
-        ...d,
-        amount: d.amount * 2,
-        title: d.title.replace("Enterprise Plan", "Bulk Order").replace("Pro Plan", "Custom Tooling"),
-      })),
-      mockLeads: baseData.mockLeads.map(l => ({
-        ...l,
-        source: l.source === "Website" ? "Trade Show" : "Referral",
-      })),
+  // Customer-intelligence stubs (no backend endpoints yet)
+  const mockCustomerSegments: any[] = [];
+  const mockLoyaltyRewards: any[] = [];
+  const mockMembershipPlans: any[] = [];
+  const mockWalletTransactions: any[] = [];
+  const mockCustomerGroups: any[] = [];
+  const mockCustomerDocuments: any[] = [];
+  const mockAiRecommendations: any[] = [];
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const [deals, leadsRes, tickets, quotations] = await Promise.all([
+          crmOpportunitiesApi.list(),
+          crmLeadsApi.list(),
+          crmTicketsApi.list(),
+          crmQuotationsApi.list(),
+        ]);
+
+        const dealsArr: CrmOpportunity[] = Array.isArray(deals) ? deals : [];
+        // crmLeadsApi.list() returns PaginatedResponse<CrmLead>
+        const leadsArr: CrmLead[] = Array.isArray(leadsRes)
+          ? leadsRes
+          : (leadsRes as any)?.items ?? [];
+        const ticketsArr: CrmTicket[] = Array.isArray(tickets) ? tickets : [];
+        const quotationsArr: CrmQuotation[] = Array.isArray(quotations)
+          ? quotations
+          : (quotations as any)?.items ?? [];
+
+        setMockDeals(dealsArr);
+        setMockLeads(leadsArr);
+        setMockTickets(ticketsArr);
+        setMockQuotations(quotationsArr);
+        setMockCrmStats({
+          totalCustomers: 0,
+          totalRevenue: dealsArr.reduce((sum, d) => sum + Number(d.amount), 0),
+        });
+        setMockCustomers([]);
+      } catch (err) {
+        console.error("Failed to load CRM data:", err);
+      }
     };
-  }
+    fetchAll();
+  }, [tenant.id]);
 
-  if (tenant.id === "c3") {
-    // Helios Logistics (c3)
-    return {
-      ...baseData,
-      mockCrmStats: {
-        ...baseData.mockCrmStats,
-        totalCustomers: 120,
-        activeCustomers: 110,
-        totalRevenue: 4500000,
-        churnRate: 0.8,
-      },
-      mockCustomers: baseData.mockCustomers.map(c => ({
-        ...c,
-        name: c.name.replace("Technologies", "Shipping Co").replace("Retail", "Distributors"),
-        totalPurchases: Math.floor(c.totalPurchases * 0.8),
-      })),
-      mockDeals: baseData.mockDeals.map(d => ({
-        ...d,
-        amount: d.amount * 0.5,
-        title: d.title.replace("Enterprise Plan", "Freight Contract").replace("Pro Plan", "Warehouse Lease"),
-      })),
-      mockLeads: baseData.mockLeads.map(l => ({
-        ...l,
-        source: "Inbound Logistics",
-      })),
-    };
-  }
-
-  // Default: Nimbus Retail Group (c1)
-  return baseData;
+  return {
+    mockCrmStats,
+    mockCustomers,
+    mockDeals,
+    mockLeads,
+    mockTickets,
+    mockQuotations,
+    mockCustomerSegments,
+    mockLoyaltyRewards,
+    mockMembershipPlans,
+    mockWalletTransactions,
+    mockCustomerGroups,
+    mockCustomerDocuments,
+    mockAiRecommendations,
+  };
 }

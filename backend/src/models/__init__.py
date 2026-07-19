@@ -60,6 +60,7 @@ class Tenant(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     subscription_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     max_users: Mapped[int] = mapped_column(Integer, default=50)
     max_branches: Mapped[int] = mapped_column(Integer, default=10)
+    settings: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
     companies: Mapped[list["Company"]] = relationship(back_populates="tenant")
     users: Mapped[list["User"]] = relationship(back_populates="tenant")
@@ -1301,4 +1302,105 @@ class ExitExperienceLetter(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, Timesta
     status: Mapped[str] = mapped_column(String(30), default="Pending")  # Pending|Issued
 
 
+# ─── CRM — Customers & Lead Management ──────────────────────────
+
+class Customer(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_customers"
+    __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_crm_customers_tenant_email"),)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), index=True)
+    phone: Mapped[str | None] = mapped_column(String(30))
+    company_name: Mapped[str | None] = mapped_column(String(255))
+    customer_type: Mapped[str] = mapped_column(String(50), default="Retail")
+    status: Mapped[str] = mapped_column(String(30), default="Active")
+    address: Mapped[str | None] = mapped_column(Text)
+    gst_number: Mapped[str | None] = mapped_column(String(50))
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="SET NULL"), unique=True)
+
+
+class Lead(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_leads"
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    email: Mapped[str | None] = mapped_column(String(255), index=True)
+    phone: Mapped[str | None] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), default="New", index=True)
+    source: Mapped[str | None] = mapped_column(String(100))
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    estimated_value: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+    lost_reason: Mapped[str | None] = mapped_column(String(255))
+    
+    external_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    external_source: Mapped[str | None] = mapped_column(String(50), index=True)
+    meta: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    ai_score: Mapped[int | None] = mapped_column(Integer)
+    ai_sentiment: Mapped[str | None] = mapped_column(String(50))
+
+
+class LeadActivity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_lead_activities"
+
+    lead_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="CASCADE"), nullable=False, index=True)
+    activity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    summary: Mapped[str] = mapped_column(String(500), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class CRMSupportTicket(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_support_tickets"
+
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="SET NULL"))
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    priority: Mapped[str] = mapped_column(String(30), default="Medium")  # Low|Medium|High
+    status: Mapped[str] = mapped_column(String(30), default="Open")  # Open|In Progress|Resolved|Closed
+    category: Mapped[str] = mapped_column(String(100), default="Support")
+    ai_summary: Mapped[str | None] = mapped_column(Text)
+
+
+class CRMQuotation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_quotations"
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False)
+    quote_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    items: Mapped[dict | None] = mapped_column(JSONB, default=dict)  # [{"product_id": ..., "qty": ..., "price": ...}]
+    subtotal: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    tax: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    total: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    status: Mapped[str] = mapped_column(String(30), default="Draft")  # Draft|Sent|Accepted|Declined|Expired
+
+
+class CRMSalesOrder(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_sales_orders"
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False)
+    order_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    items: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    total: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    status: Mapped[str] = mapped_column(String(30), default="Pending")  # Pending|Processing|Shipped|Delivered|Cancelled
+    payment_status: Mapped[str] = mapped_column(String(30), default="Unpaid")  # Unpaid|Partially Paid|Paid
+
+
+class CRMOpportunity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_opportunities"
+
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="SET NULL"), index=True)
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="SET NULL"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(50), nullable=False, default="Prospecting", index=True)
+    amount: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    probability: Mapped[int] = mapped_column(Integer, default=10)
+    expected_close_date: Mapped[date | None] = mapped_column(Date)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    next_step: Mapped[str | None] = mapped_column(String(500))
+    next_step_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    forecast_category: Mapped[str] = mapped_column(String(30), default="Pipeline")
+    lost_reason: Mapped[str | None] = mapped_column(String(255))
 

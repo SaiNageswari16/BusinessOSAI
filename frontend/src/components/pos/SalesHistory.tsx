@@ -1,5 +1,4 @@
-import { posSales } from "../../data/pos-mock";
-import { Card } from "../ui/card";
+import { posTransactions } from "../../data/pos-mock";
 import { Button } from "../ui/button";
 import { Search, Printer, RotateCcw, ReceiptText } from "lucide-react";
 
@@ -31,14 +30,14 @@ export function SalesHistory() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {posSales.map((sale) => (
+            {posTransactions.map((sale) => (
               <tr key={sale.id} className="hover:bg-muted/30 transition-colors">
-                <td className="px-6 py-4 font-mono font-bold text-primary flex items-center gap-2"><ReceiptText className="size-4" /> {sale.receiptNo}</td>
-                <td className="px-6 py-4 font-mono text-xs">{sale.time}</td>
-                <td className="px-6 py-4 font-bold">{sale.customer}</td>
-                <td className="px-6 py-4 font-mono">{sale.items}</td>
-                <td className="px-6 py-4 font-bold text-emerald-600">{sale.total}</td>
-                <td className="px-6 py-4 text-xs font-semibold bg-muted/50 rounded w-fit px-2 py-0.5">{sale.method}</td>
+                <td className="px-6 py-4 font-mono font-bold text-primary flex items-center gap-2"><ReceiptText className="size-4" /> {sale.id}</td>
+                <td className="px-6 py-4 font-mono text-xs">{new Date(sale.date).toLocaleTimeString()}</td>
+                <td className="px-6 py-4 font-bold">{sale.customerName}</td>
+                <td className="px-6 py-4 font-mono">{sale.items.length}</td>
+                <td className="px-6 py-4 font-bold text-emerald-600">₹{sale.total.toFixed(2)}</td>
+                <td className="px-6 py-4 text-xs font-semibold">{sale.paymentMethod}</td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex justify-end gap-1">
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-primary"><Printer className="size-4" /></Button>
