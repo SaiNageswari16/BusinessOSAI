@@ -68,7 +68,7 @@ export function MembershipPlans({ tab = "active_plans" }: Props) {
 
                 <div className="space-y-3 mb-6 flex-1">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Benefits</p>
-                  {plan.benefits.map((benefit, j) => (
+                  {(plan.benefits as string[] || []).map((benefit: string, j: number) => (
                     <div key={j} className="flex items-start gap-2 text-sm">
                       <Check className="size-4 text-emerald-500 shrink-0 mt-0.5" />
                       <span>{benefit}</span>

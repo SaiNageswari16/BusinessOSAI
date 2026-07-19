@@ -15,6 +15,7 @@ import { LoyaltyProgram } from "@/components/crm/LoyaltyProgram";
 import { CustomerDocuments } from "@/components/crm/CustomerDocuments";
 
 // Sales CRM
+import { AdGenerator } from "@/components/crm/AdGenerator";
 import { Leads } from "@/components/crm/Leads";
 import { Opportunities } from "@/components/crm/Opportunities";
 import { Deals } from "@/components/crm/Deals";
@@ -58,6 +59,7 @@ const componentMap: Record<string, React.ElementType> = {
   customer_documents: CustomerDocuments,
 
   // Sales CRM
+  ad_generator: AdGenerator,
   leads: Leads,
   opportunities: Opportunities,
   deals: Deals,

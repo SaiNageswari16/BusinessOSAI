@@ -135,6 +135,13 @@ const generateProducts = (count: number) => {
 };
 
 export const posProducts = generateProducts(300);
+export const posCustomers = [
+  { id: "walk-in", name: "Walk-in Customer", phone: "", points: 0, totalSpent: "₹0", lastVisit: "-" },
+  { id: "c1", name: "Rahul Verma", phone: "+91 98765 11111", points: 450, email: "rahul.v@example.com", tier: "Gold", totalSpent: "₹45,200", lastVisit: "2026-07-18" },
+  { id: "c2", name: "Sneha Patel", phone: "+91 98765 22222", points: 120, email: "sneha.p@example.com", tier: "Silver", totalSpent: "₹12,800", lastVisit: "2026-07-15" },
+  { id: "c3", name: "Amit Kumar", phone: "+91 98765 33333", points: 890, email: "amit.k@example.com", tier: "Platinum", totalSpent: "₹1,24,500", lastVisit: "2026-07-19" },
+  { id: "c4", name: "Priya Sharma", phone: "+91 98765 44444", points: 45, email: "priya.s@example.com", tier: "Bronze", totalSpent: "₹3,900", lastVisit: "2026-07-10" }
+];
 
 // --- CUSTOMERS ---
 const generateCustomers = (count: number) => {

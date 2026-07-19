@@ -1503,7 +1503,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                             <Sparkles className="size-4" /> {generatingAi ? "Generating JD Details..." : "Generate JD using AI"}
                           </Button>
 
-                          {(generatingAi || aiStreamingText) && (
+                          {generatingAi && (
                             <div className="space-y-2 border border-border/80 rounded-xl p-4 bg-muted/10">
                               <p className="text-xs text-indigo-500 font-bold flex items-center gap-1.5">
                                 <Sparkles className="size-3.5 text-indigo-500 animate-spin" /> {aiProgressText || "AI processing..."}
@@ -1515,6 +1515,64 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                                 {aiStreamingText || "Awaiting AI models output..."}
                               </div>
                             </div>
+                          )}
+
+                          {!generatingAi && aiStreamingText && (
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 border border-border/80 rounded-xl p-5 bg-muted/10 text-left">
+                              <div className="flex items-center gap-2 text-xs font-bold text-primary">
+                                <Sparkles className="size-4 text-primary" /> AI Generated Job Opening Details (Review & Edit)
+                              </div>
+                              
+                              <div className="grid grid-cols-2 gap-4 text-xs">
+                                <div>
+                                  <label className="block font-semibold text-muted-foreground mb-1.5">Job Title</label>
+                                  <Input
+                                    type="text"
+                                    value={jobForm.title}
+                                    onChange={(e) => setJobForm({ ...jobForm, title: e.target.value })}
+                                    className="bg-background"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block font-semibold text-muted-foreground mb-1.5">Department</label>
+                                  <select
+                                    value={jobForm.department}
+                                    onChange={(e) => setJobForm({ ...jobForm, department: e.target.value })}
+                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none"
+                                  >
+                                    <option value="Engineering">Engineering</option>
+                                    <option value="Sales">Sales</option>
+                                    <option value="Marketing">Marketing</option>
+                                    <option value="HR">HR</option>
+                                    <option value="Operations">Operations</option>
+                                    <option value="Finance">Finance</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Resume Match Criteria (Keywords)</label>
+                                <Input
+                                  type="text"
+                                  value={jobForm.criteria}
+                                  onChange={(e) => setJobForm({ ...jobForm, criteria: e.target.value })}
+                                  className="bg-background"
+                                  placeholder="e.g. React, Python, SQL"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Description Text</label>
+                                <Textarea
+                                  value={jobForm.description}
+                                  onChange={(e) => {
+                                    setJobForm({ ...jobForm, description: e.target.value });
+                                  }}
+                                  rows={12}
+                                  className="bg-background text-xs leading-relaxed font-mono"
+                                />
+                              </div>
+                            </motion.div>
                           )}
                         </motion.div>
                       )}
@@ -1584,7 +1642,6 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                         </label>
                         <div className="flex items-center gap-3">
                           <input
-                            type="gradient-brand"
                             type="range"
                             min="50"
                             max="95"

@@ -531,93 +531,172 @@ def generate_fallback_jd(prompt: str) -> dict:
     }
 
 
+def parse_jd_response_text(text: str) -> GenerateJdResponse:
+    import json
+    import re
+    
+    cleaned_text = text.strip()
+    # Remove markdown code block markers if any
+    if cleaned_text.startswith("```"):
+        cleaned_text = re.sub(r"^```[a-zA-Z]*\n", "", cleaned_text)
+        cleaned_text = re.sub(r"\n```$", "", cleaned_text)
+        cleaned_text = cleaned_text.strip()
+
+    # 1. Attempt JSON parsing
+    try:
+        data = json.loads(cleaned_text)
+        if isinstance(data, dict):
+            title = data.get("title") or data.get("TITLE")
+            dept = data.get("department") or data.get("DEPARTMENT")
+            crit = data.get("criteria") or data.get("CRITERIA")
+            desc = data.get("description") or data.get("DESCRIPTION")
+            
+            if isinstance(crit, list):
+                crit = ", ".join(crit)
+                
+            if title and desc:
+                return GenerateJdResponse(
+                    title=str(title).strip(),
+                    department=str(dept or "Engineering").strip(),
+                    criteria=str(crit or "").strip(),
+                    description=str(desc).strip(),
+                    threshold_score=80
+                )
+    except Exception:
+        pass
+
+    # 2. Heuristic Line-by-Line / Regex Parser fallback
+    title = "Enterprise Systems Developer"
+    department = "Engineering"
+    criteria = "Python, REST APIs, Git"
+    description = text
+    
+    # Try regex matching (case-insensitive, multi-line)
+    title_match = re.search(r"(?i)^TITLE:\s*(.*)", text, re.MULTILINE)
+    dept_match = re.search(r"(?i)^DEPARTMENT:\s*(.*)", text, re.MULTILINE)
+    crit_match = re.search(r"(?i)^CRITERIA:\s*(.*)", text, re.MULTILINE)
+    
+    if title_match:
+        title = title_match.group(1).strip()
+    if dept_match:
+        department = dept_match.group(1).strip()
+    if crit_match:
+        criteria = crit_match.group(1).strip()
+
+    # Extract description
+    desc_match = re.search(r"(?i)DESCRIPTION:\s*(.*)", text, re.DOTALL)
+    if desc_match:
+        description = desc_match.group(1).strip()
+    else:
+        # Clean tags to get description body
+        clean_desc = text
+        clean_desc = re.sub(r"(?i)^TITLE:.*?\n", "", clean_desc, flags=re.MULTILINE)
+        clean_desc = re.sub(r"(?i)^DEPARTMENT:.*?\n", "", clean_desc, flags=re.MULTILINE)
+        clean_desc = re.sub(r"(?i)^CRITERIA:.*?\n", "", clean_desc, flags=re.MULTILINE)
+        clean_desc = re.sub(r"(?i)^DESCRIPTION:.*?\n", "", clean_desc, flags=re.MULTILINE)
+        clean_desc = re.sub(r"-{3,}", "", clean_desc)
+        description = clean_desc.strip()
+
+    # Strip formatting artifacts
+    title = re.sub(r"^[-#\s*]+", "", title).strip()
+    department = re.sub(r"^[-#\s*]+", "", department).strip()
+    criteria = re.sub(r"^[-#\s*]+", "", criteria).strip()
+
+    return GenerateJdResponse(
+        title=title,
+        department=department,
+        criteria=criteria,
+        description=description,
+        threshold_score=80
+    )
+
+
 @router.post("/jobs/generate-jd", response_model=GenerateJdResponse)
 async def generate_job_description(
     payload: GenerateJdRequest,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
 ):
-    api_key = settings.gemini_api_key
-    if not api_key:
-        res = generate_fallback_jd(payload.prompt)
-        return GenerateJdResponse(**res)
-
-    import requests
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    headers = {"Content-Type": "application/json"}
+    provider = settings.ai_provider or "gemini"
     
+    # ─── Dynamic Fallback Checks ───────────────────────────────────
+    if provider == "openai" and not settings.openai_api_key:
+        if settings.gemini_api_key:
+            provider = "gemini"
+        else:
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+            
+    if provider == "gemini" and not settings.gemini_api_key:
+        if settings.openai_api_key:
+            provider = "openai"
+        else:
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+
     instruction = (
-        "You are an expert HR Specialist and Recruiter. Based on this prompt: "
-        f"'{payload.prompt}', generate a highly detailed, professional, enterprise-level Job Description (JD).\n"
-        "Format your entire response EXACTLY as a string conforming to the following structure:\n"
-        "---\n"
-        "TITLE: [Suggest a job title, e.g. Senior Frontend Engineer]\n"
-        "DEPARTMENT: [Suggest a department, e.g. Engineering, Sales, Marketing, HR, Finance, Operations]\n"
-        "CRITERIA: [Provide 3-5 comma-separated keywords/technologies for resume criteria matching]\n"
-        "DESCRIPTION:\n"
-        "[Detailed multi-paragraph description, responsibilities, requirements, and evaluation metrics with threshold scores]\n"
-        "---"
+        "You are an elite enterprise HR Director and technical recruiter. Based on this prompt: "
+        f"'{payload.prompt}', generate a comprehensive, highly detailed, production-grade Job Description (JD).\n"
+        "The generated description must be formatted beautifully in markdown and include standard corporate headings: "
+        "# Job Profile: [Title], ## Executive Summary, ## Key Responsibilities, ## Required Technical Skills & Stack, "
+        "## Preferred Qualifications & Experience, ## Behavioral Competencies, and ## Structured Evaluation Criteria (detailing specific threshold scores, e.g. Technical Assignment Score >= 80%).\n"
+        "Return your response EXACTLY as a JSON object matching this schema:\n"
+        "{\n"
+        '  "title": "[Suggest a professional job title]",\n'
+        '  "department": "[Suggest the exact organizational department, e.g. Engineering, Sales, Marketing, HR, Finance, Operations]",\n'
+        '  "criteria": "[3-5 specific, comma-separated keywords/technologies for resume keyword matching]",\n'
+        '  "description": "[The complete, detailed markdown JD containing all headings and paragraphs mentioned above. Ensure proper markdown formatting and escape quotes properly.]"\n'
+        "}"
     )
     
-    body = {
-        "contents": [{
-            "parts": [{
-                "text": instruction
-            }]
-        }]
-    }
+    import requests
     
-    try:
-        response = requests.post(url, json=body, headers=headers, timeout=15)
-        response.raise_for_status()
-        res_json = response.json()
-        text = res_json["candidates"][0]["content"]["parts"][0]["text"]
-        
-        # Parse output
-        title = "Enterprise Systems Developer"
-        department = "Engineering"
-        criteria = "Python, REST APIs, Git"
-        description = text
-        
-        if "---" in text:
-            parts = text.split("---")
-            content_part = parts[1] if len(parts) > 1 else text
-            
-            lines = content_part.strip().split("\n")
-            desc_lines = []
-            is_desc = False
-            
-            for line in lines:
-                if line.startswith("TITLE:"):
-                    title = line.replace("TITLE:", "").strip()
-                elif line.startswith("DEPARTMENT:"):
-                    department = line.replace("DEPARTMENT:", "").strip()
-                elif line.startswith("CRITERIA:"):
-                    criteria = line.replace("CRITERIA:", "").strip()
-                elif line.startswith("DESCRIPTION:"):
-                    is_desc = True
-                elif is_desc:
-                    desc_lines.append(line)
-                    
-            if desc_lines:
-                description = "\n".join(desc_lines).strip()
-                
-        return GenerateJdResponse(
-            title=title,
-            department=department,
-            criteria=criteria,
-            description=description,
-            threshold_score=80
-        )
-    except Exception as e:
-        print(f"Gemini API request failed, falling back. Error: {e}")
+    # ─── OpenAI Provider execution ────────────────────────────────
+    if provider == "openai":
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {settings.openai_api_key}"
+        }
+        body = {
+            "model": settings.openai_model or "gpt-4o",
+            "messages": [
+                {"role": "user", "content": instruction}
+            ]
+        }
         try:
-            diag_res = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}", timeout=5)
-            print(f"DIAGNOSTIC - GET /models Status: {diag_res.status_code}")
-            print(f"DIAGNOSTIC - GET /models Response: {diag_res.text[:1000]}")
-        except Exception as diag_err:
-            print(f"DIAGNOSTIC - Failed to query models endpoint: {diag_err}")
-        res = generate_fallback_jd(payload.prompt)
-        return GenerateJdResponse(**res)
+            response = requests.post(url, json=body, headers=headers, timeout=20)
+            response.raise_for_status()
+            res_json = response.json()
+            text = res_json["choices"][0]["message"]["content"]
+            return parse_jd_response_text(text)
+        except Exception as e:
+            print(f"OpenAI API request failed, falling back. Error: {e}")
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+            
+    # ─── Gemini Provider execution ────────────────────────────────
+    else:
+        api_key = settings.gemini_api_key
+        model = settings.gemini_model or "gemini-1.5-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        body = {
+            "contents": [{
+                "parts": [{
+                    "text": instruction
+                }]
+            }]
+        }
+        try:
+            response = requests.post(url, json=body, headers=headers, timeout=15)
+            response.raise_for_status()
+            res_json = response.json()
+            text = res_json["candidates"][0]["content"]["parts"][0]["text"]
+            return parse_jd_response_text(text)
+        except Exception as e:
+            print(f"Gemini API request failed, falling back. Error: {e}")
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
 
 
 @router.patch("/jobs/{id}", response_model=JobOpeningResponse)

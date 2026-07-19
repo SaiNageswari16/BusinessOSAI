@@ -1568,7 +1568,353 @@ export const workCalendarsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/work-calendars/${id}`),
 };
 
-// ─── Extended HRMS Types ───────────────────────────────────────────────────────
+export const tagsApi = {
+  list: (page = 1, pageSize = 50, search?: string, entityType?: string) =>
+    request<PaginatedResponse<Tag>>("GET", "/erp/tags", undefined, {
+      page, page_size: pageSize, search, entity_type: entityType,
+    }),
+  get: (id: string) => request<Tag>("GET", `/erp/tags/${id}`),
+  create: (data: Record<string, unknown>) =>
+    request<Tag>("POST", "/erp/tags", data),
+  update: (id: string, data: Record<string, unknown>) =>
+    request<Tag>("PATCH", `/erp/tags/${id}`, data),
+  delete: (id: string) => request<void>("DELETE", `/erp/tags/${id}`),
+};
+
+// ─── System Administration API ────────────────────────────────────────────────
+
+export const systemSettingsApi = {
+  list: (category?: string) =>
+    request<SystemSetting[]>("GET", "/erp/system-settings", undefined, { category }),
+  batchUpdate: (settings: { key: string; value: string | null; category?: string; description?: string; is_public?: boolean }[]) =>
+    request<SystemSetting[]>("PATCH", "/erp/system-settings", { settings }),
+  upsert: (key: string, data: { value: string | null; category?: string; description?: string; is_public?: boolean }) =>
+    request<SystemSetting>("PUT", `/erp/system-settings/${key}`, { key, ...data }),
+};
+
+export const systemHealthApi = {
+  get: () => request<SystemHealth>("GET", "/erp/system-health"),
+};
+
+export const errorLogsApi = {
+  list: (page = 1, pageSize = 20, module?: string) =>
+    request<PaginatedResponse<Record<string, unknown>>>("GET", "/erp/error-logs", undefined, {
+      page, page_size: pageSize, module,
+    }),
+};
+
+export const backupApi = {
+  getStatus: () => request<Record<string, unknown>>("GET", "/erp/backup-status"),
+};
+
+// ─── CRM & Sales — Customers and Leads ──────────────────────────────────────
+
+export interface CrmCustomer {
+  id: string;
+  tenant_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  company_name: string | null;
+  customer_type: string;
+  status: string;
+  address: string | null;
+  gst_number: string | null;
+  owner_user_id: string | null;
+  lead_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmLead {
+  id: string;
+  tenant_id: string;
+  name: string;
+  company_name: string | null;
+  email: string | null;
+  phone: string | null;
+  status: "New" | "Contacted" | "Qualified" | "Proposal" | "Won" | "Lost";
+  source: string | null;
+  owner_user_id: string | null;
+  estimated_value: number;
+  last_contact_at: string | null;
+  next_follow_up_at: string | null;
+  notes: string | null;
+  lost_reason: string | null;
+  ai_score: number | null;
+  ai_sentiment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmLeadActivity {
+  id: string;
+  lead_id: string;
+  activity_type: string;
+  summary: string;
+  occurred_at: string;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const crmCustomersApi = {
+  list: (page = 1, pageSize = 20, search?: string, customerType?: string) =>
+    request<PaginatedResponse<CrmCustomer>>("GET", "/crm/customers", undefined, { page, page_size: pageSize, search, customer_type: customerType }),
+  create: (data: Record<string, unknown>) => request<CrmCustomer>("POST", "/crm/customers", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmCustomer>("PATCH", `/crm/customers/${id}`, data),
+};
+
+export const crmLeadsApi = {
+  list: (page = 1, pageSize = 100, search?: string, status?: string) =>
+    request<PaginatedResponse<CrmLead>>("GET", "/crm/leads", undefined, { page, page_size: pageSize, search, status }),
+  create: (data: Record<string, unknown>) => request<CrmLead>("POST", "/crm/leads", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmLead>("PATCH", `/crm/leads/${id}`, data),
+  listActivities: (id: string) => request<CrmLeadActivity[]>("GET", `/crm/leads/${id}/activities`),
+  addActivity: (id: string, data: Record<string, unknown>) => request<CrmLeadActivity>("POST", `/crm/leads/${id}/activities`, data),
+  convert: (id: string) => request<CrmCustomer>("POST", `/crm/leads/${id}/convert`),
+  
+  // ── Facebook OAuth page connection (proper flow) ─────────────────────────────
+  /** Get this tenant's Meta App configuration status */
+  getFbAppConfig: () =>
+    request<{ configured: boolean; app_id?: string; redirect_uri?: string }>("GET", "/crm/facebook/app-config"),
+  /** Save this tenant's Meta App credentials */
+  saveFbAppConfig: (data: { app_id: string; app_secret: string; redirect_uri?: string }) =>
+    request<{ success: boolean; message: string }>("POST", "/crm/facebook/app-config", data),
+  /** Delete this tenant's Meta App credentials */
+  deleteFbAppConfig: () =>
+    request<{ success: boolean }>("DELETE", "/crm/facebook/app-config"),
+  /** Connect a Page or Lead Form directly by pasting both Page ID and Access Token */
+  connectFbDirect: (data: { page_id: string; access_token: string }) =>
+    request<{ success: boolean; page_name: string; page_id: string; message: string }>("POST", "/crm/facebook/connect-direct", data),
+  /** Returns whether the Meta App is configured and which page (if any) is connected. */
+  getFbStatus: () =>
+    request<{ app_configured: boolean; page_connected: boolean; page_name?: string; page_id?: string }>("GET", "/crm/facebook/status"),
+  /**
+   * Verify a pasted User Token or Page Token from the Meta Graph API Explorer.
+   * No OAuth login required — token is introspected against /me/accounts and
+   * the discovered pages are returned for the user to pick one.
+   */
+  verifyFbToken: (access_token: string) =>
+    request<{ pages: { id: string; name: string; category: string }[]; count: number }>("POST", "/crm/facebook/verify-token", { access_token }),
+  /** Returns the Meta OAuth URL to open in a popup (optional if user prefers OAuth login). */
+  getFbAuthUrl: () =>
+    request<{ auth_url: string }>("GET", "/crm/facebook/auth-url"),
+  /** Returns pages retrieved during OAuth or verify-token flow. */
+  getFbAvailablePages: () =>
+    request<{ pages: { id: string; name: string; category: string }[] }>("GET", "/crm/facebook/available-pages"),
+  /** Saves the selected page permanently (page token stored server-side). */
+  selectFbPage: (data: { page_id: string; page_name: string; page_access_token: string }) =>
+    request<{ success: boolean; page_name: string; page_id: string; message: string }>("POST", "/crm/facebook/select-page", data),
+  /** Disconnects the connected FB page. */
+  disconnectFbPage: () =>
+    request<{ success: boolean }>("DELETE", "/crm/facebook/disconnect"),
+
+  // ── Legacy credential endpoints (for lead import form backward-compat) ───────
+  saveFacebookCredentials: (data: { fb_access_token: string; fb_page_or_form_id: string; fb_api_version?: string }) =>
+    request<any>("POST", "/crm/facebook/credentials", data),
+  deleteFacebookCredentials: () =>
+    request<any>("DELETE", "/crm/facebook/credentials"),
+  getFacebookCredentials: () =>
+    request<{ configured: boolean; fb_page_or_form_id?: string; fb_api_version?: string; has_token?: boolean }>("GET", "/crm/facebook/credentials"),
+  importFacebookLeads: () =>
+    request<{ imported: number; skipped: number; total: number; message: string }>("POST", "/crm/facebook/import"),
+    
+  // AI scoring
+  analyzeLeadAi: (id: string) =>
+    request<{ id: string; ai_score: number; ai_sentiment: string }>("POST", `/crm/leads/${id}/analyze-ai`),
+
+  // AI outbound call via LiveKit
+  initiateCall: (id: string, data: { sip_number: string; custom_prompt?: string }) =>
+    request<{ status: string; room_name?: string; participant_id?: string; sip_call_id?: string; message: string }>("POST", `/crm/leads/${id}/initiate-call`, data),
+};
+
+export interface CrmOpportunity {
+  id: string;
+  tenant_id: string;
+  customer_id: string | null;
+  lead_id: string | null;
+  name: string;
+  stage: string;
+  amount: number;
+  probability: number;
+  expected_close_date: string | null;
+  owner_user_id: string | null;
+  next_step: string | null;
+  next_step_at: string | null;
+  forecast_category: string;
+  lost_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const crmOpportunitiesApi = {
+  list: async () => {
+    const res = await request<any>("GET", "/crm/opportunities");
+    return Array.isArray(res) ? res : res?.items ?? [];
+  },
+  create: (data: Record<string, unknown>) => request<CrmOpportunity>("POST", "/crm/opportunities", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmOpportunity>("PATCH", `/crm/opportunities/${id}`, data),
+};
+
+export const crmCampaignsApi = {
+  generateCopy: (data: { prompt: string; channel: string; provider?: string; reference_image?: string }) =>
+    request<{ copy: string }>("POST", "/crm/campaigns/generate-copy", data),
+  generatePoster: (data: { prompt: string; style?: string; aspect_ratio?: string; provider?: string }) =>
+    request<{ image_url: string; enhanced_prompt: string; aspect_ratio: string }>("POST", "/crm/campaigns/generate-poster", data),
+  publishFacebook: (data: { image_url: string; caption: string }) =>
+    request<{ status: string; post_id?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
+};
+
+export interface CrmTicket {
+  id: string;
+  customer_id: string | null;
+  subject: string;
+  description: string;
+  priority: string;
+  status: string;
+  category: string;
+  ai_summary: string | null;
+  created_at: string;
+}
+
+export const crmTicketsApi = {
+  list: (category?: string, status?: string) => request<CrmTicket[]>("GET", "/crm/tickets", undefined, { category, status }),
+  create: (data: Record<string, unknown>) => request<CrmTicket>("POST", "/crm/tickets", data),
+  summarize: (id: string) => request<{ id: string; ai_summary: string }>("POST", `/crm/tickets/${id}/summarize-ai`),
+};
+
+export interface CrmQuotation {
+  id: string;
+  customer_id: string;
+  quote_number: string;
+  items: Record<string, any>;
+  subtotal: number;
+  tax: number;
+  total: number;
+  status: string;
+  created_at: string;
+}
+
+export const crmQuotationsApi = {
+  list: () => request<CrmQuotation[]>("GET", "/crm/quotations"),
+  create: (data: Record<string, unknown>) => request<CrmQuotation>("POST", "/crm/quotations", data),
+};
+
+export interface CrmSalesOrder {
+  id: string;
+  customer_id: string;
+  order_number: string;
+  items: Record<string, any>;
+  total: number;
+  status: string;
+  payment_status: string;
+  created_at: string;
+}
+
+export const crmSalesOrdersApi = {
+  list: () => request<CrmSalesOrder[]>("GET", "/crm/sales-orders"),
+  create: (data: Record<string, unknown>) => request<CrmSalesOrder>("POST", "/crm/sales-orders", data),
+};
+
+// ─── Customer Intelligence API ────────────────────────────────────────────────
+
+export interface IntelAnalytics {
+  total_customers: number;
+  active_customers: number;
+  new_customers_this_month: number;
+  total_revenue: number;
+  total_orders: number;
+  avg_order_value: number;
+  repeat_rate: number;
+  monthly_data: { month: string; revenue: number; orders: number; new_customers: number }[];
+  segments: { name: string; count: number }[];
+}
+
+export interface IntelChurnCustomer {
+  customer_id: string;
+  customer: string;
+  company: string | null;
+  risk: number;
+  tier: string;
+  last_purchase: string;
+  order_count: number;
+  open_tickets: number;
+  reason: string;
+}
+
+export interface IntelChurn {
+  summary: { high_risk: number; at_risk: number; watch: number; total: number };
+  customers: IntelChurnCustomer[];
+}
+
+export interface IntelLtvCustomer {
+  customer_id: string;
+  customer: string;
+  company: string | null;
+  ltv: number;
+  revenue: number;
+  profit: number;
+  orders: number;
+  years: number;
+}
+
+export interface IntelLtv {
+  summary: { avg_ltv: number; total_customer_value: number; avg_orders_per_customer: number; total_customers: number };
+  customers: IntelLtvCustomer[];
+}
+
+export interface IntelPurchaseBehaviour {
+  summary: { avg_frequency: number; avg_order_value: number; peak_hour: string; top_category: string };
+  categories: { name: string; pct: number; revenue: number; orders: number }[];
+  top_buyers: { name: string; score: number }[];
+  purchase_times: { hour: string; orders: number }[];
+}
+
+export interface IntelRfmSegment {
+  label: string;
+  count: number;
+  revenue: number;
+  r: number;
+  f: number;
+  description: string;
+  color: string;
+}
+
+export interface IntelRfm {
+  segments: IntelRfmSegment[];
+  total_customers_analysed: number;
+}
+
+export interface IntelRecommendation {
+  id: string;
+  type: string;
+  customer: string;
+  customer_seg: string;
+  title: string;
+  description: string;
+  confidence: number;
+  action: string;
+  priority: string;
+  icon_type: string;
+}
+
+export interface IntelRecommendations {
+  summary: { total_recommendations: number; avg_confidence: number; customers_analysed: number; transactions_analysed: number; support_interactions: number };
+  recommendations: IntelRecommendation[];
+}
+
+export const crmIntelligenceApi = {
+  getAnalytics: () => request<IntelAnalytics>("GET", "/crm/intelligence/analytics"),
+  getChurn: () => request<IntelChurn>("GET", "/crm/intelligence/churn"),
+  getLifetimeValue: () => request<IntelLtv>("GET", "/crm/intelligence/lifetime-value"),
+  getPurchaseBehaviour: () => request<IntelPurchaseBehaviour>("GET", "/crm/intelligence/purchase-behaviour"),
+  getRfm: () => request<IntelRfm>("GET", "/crm/intelligence/rfm"),
+  getRecommendations: () => request<IntelRecommendations>("GET", "/crm/intelligence/recommendations"),
+};
+
+
+// ─── Extended HRMS Types ──────────────────────────────────────────────────────
 
 export interface EmployeeDocument {
   id: string;

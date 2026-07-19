@@ -49,6 +49,13 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Ensure backend/images folder exists
+os.makedirs("images", exist_ok=True)
+app.mount("/images", StaticFiles(directory="images"), name="images")
+
 
 @app.get("/health")
 async def health_check():
