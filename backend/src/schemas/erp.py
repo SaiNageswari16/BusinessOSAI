@@ -1547,3 +1547,201 @@ class PayGradeResponse(ORMModel):
     tds_deduction: float
     created_at: datetime
     updated_at: datetime
+
+# -------------------------------------------------------------------------
+# POS MODULE SCHEMAS
+# -------------------------------------------------------------------------
+
+# --- Categories ---
+class POSCategoryCreate(BaseModel):
+    name: str
+    description: str | None = None
+    color: str | None = None
+    icon: str | None = None
+    is_active: bool = True
+
+class POSCategoryResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    color: str | None
+    icon: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Products ---
+class POSProductCreate(BaseModel):
+    name: str
+    brand: str | None = None
+    sku: str | None = None
+    barcode: str | None = None
+    description: str | None = None
+    image_url: str | None = None
+    category_id: uuid.UUID | None = None
+    purchase_price: float = 0.0
+    mrp: float = 0.0
+    selling_price: float
+    tax_percent: float = 5.0
+    discount: float = 0.0
+    stock: int = 0
+    reorder_level: int = 10
+    is_active: bool = True
+
+class POSProductUpdate(BaseModel):
+    name: str | None = None
+    brand: str | None = None
+    sku: str | None = None
+    barcode: str | None = None
+    description: str | None = None
+    image_url: str | None = None
+    category_id: uuid.UUID | None = None
+    purchase_price: float | None = None
+    mrp: float | None = None
+    selling_price: float | None = None
+    tax_percent: float | None = None
+    discount: float | None = None
+    stock: int | None = None
+    reorder_level: int | None = None
+    is_active: bool | None = None
+
+class POSProductResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    brand: str | None
+    sku: str | None
+    barcode: str | None
+    description: str | None
+    image_url: str | None
+    category_id: uuid.UUID | None
+    category_name: str | None = None
+    purchase_price: float
+    mrp: float
+    selling_price: float
+    tax_percent: float
+    discount: float
+    stock: int
+    reorder_level: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class POSProductBulkCreate(BaseModel):
+    products: list[POSProductCreate]
+
+class POSProductBulkResponse(BaseModel):
+    created_count: int
+    skipped_count: int
+    errors: list[str]
+
+
+
+class POSTransactionItemBase(BaseModel):
+    product_id: uuid.UUID
+    quantity: int
+    unit_price: float
+    discount: float = 0.0
+
+class POSTransactionItemCreate(POSTransactionItemBase):
+    pass
+
+class POSTransactionItemResponse(POSTransactionItemBase):
+    id: uuid.UUID
+    transaction_id: uuid.UUID
+    subtotal: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class POSPaymentBase(BaseModel):
+    payment_method: str
+    amount: float
+    reference_number: str | None = None
+
+class POSPaymentCreate(POSPaymentBase):
+    pass
+
+class POSPaymentResponse(POSPaymentBase):
+    id: uuid.UUID
+    transaction_id: uuid.UUID
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class POSTransactionBase(BaseModel):
+    customer_id: uuid.UUID | None = None
+    subtotal: float
+    tax_amount: float = 0.0
+    discount_amount: float = 0.0
+    total_amount: float
+
+class POSTransactionCreate(POSTransactionBase):
+    items: list[POSTransactionItemCreate]
+    payments: list[POSPaymentCreate]
+
+class POSTransactionResponse(POSTransactionBase):
+    id: uuid.UUID
+    cashier_id: uuid.UUID
+    receipt_number: str
+    status: str
+    
+    parent_transaction_id: uuid.UUID | None = None
+    delivery_status: str | None = None
+    delivery_address: str | None = None
+    driver_name: str | None = None
+
+    created_at: datetime
+    updated_at: datetime
+    items: list[POSTransactionItemResponse] = []
+    payments: list[POSPaymentResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+class POSCheckoutPayload(BaseModel):
+    """
+    Combined payload received from the frontend POSTerminal cart.
+    """
+    session_id: uuid.UUID
+    customer_id: uuid.UUID | None = None
+    
+    # Support for Hold/Resume, Refunds, Delivery
+    status: str = "completed"
+    parent_transaction_id: uuid.UUID | None = None
+    delivery_status: str | None = None
+    delivery_address: str | None = None
+    driver_name: str | None = None
+
+    items: list[POSTransactionItemCreate]
+    payments: list[POSPaymentCreate]
+    subtotal: float
+    tax_amount: float = 0.0
+    discount_amount: float = 0.0
+    total_amount: float
+
+
+class POSSessionCreate(BaseModel):
+    starting_cash: float = 0.0
+
+
+class POSSessionClose(BaseModel):
+    expected_cash: float
+    actual_cash: float
+    discrepancy_reason: str | None = None
+
+
+class POSSessionResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    user_id: uuid.UUID
+    starting_cash: float
+    status: str
+    closing_time: datetime | None = None
+    expected_cash: float | None = None
+    actual_cash: float | None = None
+    discrepancy_reason: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)

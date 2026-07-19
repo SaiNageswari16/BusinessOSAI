@@ -6,7 +6,7 @@ import { Unauthorized } from "@/components/unauthorized";
 import { PosDashboard } from "../components/pos/PosDashboard";
 import { PosTerminal } from "../components/pos/POSTerminal";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
-import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../data/pos-mock";
+import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
 
 export const Route = createFileRoute("/_app/pos")({ component: PosModule });
 
@@ -20,12 +20,12 @@ function PosSales() {
   let title = "All Orders";
   let color = "text-indigo-600";
 
-  if (view === "completed")  { rows = posTransactions.filter(t => t.status === "Completed"); title = "Completed Orders"; color = "text-emerald-600"; }
-  if (view === "cancelled")  { rows = posTransactions.filter(t => t.status === "Refunded");  title = "Cancelled / Refunded"; color = "text-rose-600"; }
-  if (view === "today")      { rows = posTransactions.filter(t => new Date(t.date).toDateString() === new Date().toDateString()); title = "Today's Sales"; }
-  if (view === "history")    { rows = posTransactions.filter(t => new Date(t.date) < new Date(Date.now() - 86400000)); title = "Sales History (Past 30 Days)"; }
-  if (view === "held")       { rows = []; title = "Held Orders"; }
-  if (view === "invoices")   { title = "Sales Invoices"; }
+  if (view === "completed") { rows = posTransactions.filter(t => t.status === "Completed"); title = "Completed Orders"; color = "text-emerald-600"; }
+  if (view === "cancelled") { rows = posTransactions.filter(t => t.status === "Refunded"); title = "Cancelled / Refunded"; color = "text-rose-600"; }
+  if (view === "today") { rows = posTransactions.filter(t => new Date(t.date).toDateString() === new Date().toDateString()); title = "Today's Sales"; }
+  if (view === "history") { rows = posTransactions.filter(t => new Date(t.date) < new Date(Date.now() - 86400000)); title = "Sales History (Past 30 Days)"; }
+  if (view === "held") { rows = []; title = "Held Orders"; }
+  if (view === "invoices") { title = "Sales Invoices"; }
 
   const totalVal = rows.reduce((s, t) => s + t.total, 0);
 
@@ -147,7 +147,7 @@ function PosCustomersPlaceholder() {
           {posCustomers.filter(c => c.id !== "walk-in").map((c: any, i) => (
             <div key={c.id} className="flex items-center justify-between p-4 rounded-lg bg-slate-50 border border-slate-100">
               <div className="flex items-center gap-4">
-                <div className="w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-black text-sm">#{i+1}</div>
+                <div className="w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-black text-sm">#{i + 1}</div>
                 <div><p className="font-bold">{c.name}</p><p className="text-sm text-slate-500">{c.phone}</p></div>
               </div>
               <div className="text-right">
@@ -239,7 +239,7 @@ function PosCustomersPlaceholder() {
         <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">+ Issue New Gift Card</button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {[{v:100,code:"1234",exp:"06/26",s:"Active"},{v:250,code:"5678",exp:"12/26",s:"Active"},{v:50,code:"9012",exp:"03/26",s:"Redeemed"},{v:500,code:"3456",exp:"09/26",s:"Active"},{v:100,code:"7890",exp:"11/26",s:"Active"},{v:75,code:"2345",exp:"01/26",s:"Expired"}].map((gc, i) => (
+        {[{ v: 100, code: "1234", exp: "06/26", s: "Active" }, { v: 250, code: "5678", exp: "12/26", s: "Active" }, { v: 50, code: "9012", exp: "03/26", s: "Redeemed" }, { v: 500, code: "3456", exp: "09/26", s: "Active" }, { v: 100, code: "7890", exp: "11/26", s: "Active" }, { v: 75, code: "2345", exp: "01/26", s: "Expired" }].map((gc, i) => (
           <div key={i} className={`p-6 rounded-xl shadow-lg text-white relative overflow-hidden ${gc.s === "Active" ? "bg-gradient-to-br from-slate-900 to-indigo-900" : gc.s === "Redeemed" ? "bg-gradient-to-br from-slate-600 to-slate-700" : "bg-gradient-to-br from-slate-500 to-slate-600"}`}>
             <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full" />
             <div className="flex justify-between items-start mb-6">
@@ -330,12 +330,12 @@ function PosPayments() {
         <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <h3 className="font-bold text-lg mb-6 border-b pb-4">Current Float Count</h3>
           <div className="space-y-3">
-            {[{bill:"$100",count:12},{bill:"$50",count:25},{bill:"$20",count:84},{bill:"$10",count:45},{bill:"$5",count:32},{bill:"$1",count:120},{bill:"50¢",count:60},{bill:"25¢",count:120}].map(d => (
+            {[{ bill: "$100", count: 12 }, { bill: "$50", count: 25 }, { bill: "$20", count: 84 }, { bill: "$10", count: 45 }, { bill: "$5", count: 32 }, { bill: "$1", count: 120 }, { bill: "50¢", count: 60 }, { bill: "25¢", count: 120 }].map(d => (
               <div key={d.bill} className="flex items-center gap-4 border-b border-slate-50 pb-3">
                 <div className="w-14 h-8 bg-green-50 border border-green-200 rounded flex items-center justify-center text-sm font-black text-green-800">{d.bill}</div>
                 <span className="text-slate-500 flex-1">Denomination</span>
                 <span className="font-mono bg-slate-100 px-3 py-1 rounded text-sm">× {d.count}</span>
-                <span className="font-bold w-24 text-right">{fmt(parseFloat(d.bill.replace(/[$¢]/g,"")) * (d.bill.includes("¢") ? 0.01 : 1) * d.count)}</span>
+                <span className="font-bold w-24 text-right">{fmt(parseFloat(d.bill.replace(/[$¢]/g, "")) * (d.bill.includes("¢") ? 0.01 : 1) * d.count)}</span>
               </div>
             ))}
           </div>
@@ -368,10 +368,10 @@ function PosPayments() {
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <h3 className="font-bold mb-4">Card Type Breakdown</h3>
           <div className="space-y-3">
-            {[{type:"Visa",pct:45,amt:3802},{type:"Mastercard",pct:32,amt:2704},{type:"Amex",pct:15,amt:1267},{type:"RuPay",pct:8,amt:677}].map(c => (
+            {[{ type: "Visa", pct: 45, amt: 3802 }, { type: "Mastercard", pct: 32, amt: 2704 }, { type: "Amex", pct: 15, amt: 1267 }, { type: "RuPay", pct: 8, amt: 677 }].map(c => (
               <div key={c.type}>
                 <div className="flex justify-between text-sm mb-1"><span className="font-medium">{c.type}</span><span className="font-bold">{fmt(c.amt)}</span></div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-2 bg-indigo-500 rounded-full" style={{width:`${c.pct}%`}} /></div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-2 bg-indigo-500 rounded-full" style={{ width: `${c.pct}%` }} /></div>
               </div>
             ))}
           </div>
@@ -379,7 +379,7 @@ function PosPayments() {
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <h3 className="font-bold mb-4">Terminal Status</h3>
           <div className="space-y-3">
-            {[{name:"EDC Terminal #1 (Counter 1)",status:"Online",tid:"TID-001"},{name:"EDC Terminal #2 (Counter 2)",status:"Online",tid:"TID-002"},{name:"Mobile EDC (Manager)",status:"Standby",tid:"TID-003"}].map(t => (
+            {[{ name: "EDC Terminal #1 (Counter 1)", status: "Online", tid: "TID-001" }, { name: "EDC Terminal #2 (Counter 2)", status: "Online", tid: "TID-002" }, { name: "Mobile EDC (Manager)", status: "Standby", tid: "TID-003" }].map(t => (
               <div key={t.tid} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
                 <div><p className="font-medium text-sm">{t.name}</p><p className="text-xs text-slate-400">{t.tid}</p></div>
                 <span className={`px-2 py-1 rounded text-xs font-bold ${t.status === "Online" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{t.status}</span>
@@ -400,13 +400,13 @@ function PosPayments() {
           <div className="w-48 h-48 border-4 border-indigo-600 p-3 rounded-xl mb-6 relative bg-white shadow-lg">
             <div className="absolute -top-2 -right-2 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center"><div className="w-2 h-2 bg-white rounded-full animate-pulse" /></div>
             <div className="w-full h-full bg-slate-100 grid grid-cols-7 grid-rows-7 gap-0.5 p-2 rounded">
-              {Array.from({length:49}).map((_,i)=><div key={i} className={`rounded-sm ${[0,1,2,7,8,14,35,41,42,48,47,46,6,13,34].includes(i)||Math.random()>0.6?"bg-indigo-900":"bg-white"}`}/>)}
+              {Array.from({ length: 49 }).map((_, i) => <div key={i} className={`rounded-sm ${[0, 1, 2, 7, 8, 14, 35, 41, 42, 48, 47, 46, 6, 13, 34].includes(i) || Math.random() > 0.6 ? "bg-indigo-900" : "bg-white"}`} />)}
             </div>
           </div>
           <h3 className="font-bold text-lg mb-1">Ready to Accept Payment</h3>
           <p className="text-slate-500 text-sm mb-6">VPA: sunrise@upi</p>
           <div className="flex gap-2 flex-wrap justify-center">
-            {["Google Pay","PhonePe","Paytm","BHIM","Amazon Pay"].map(a=><span key={a} className="px-3 py-1 bg-slate-100 rounded-full text-xs font-bold text-slate-600">{a}</span>)}
+            {["Google Pay", "PhonePe", "Paytm", "BHIM", "Amazon Pay"].map(a => <span key={a} className="px-3 py-1 bg-slate-100 rounded-full text-xs font-bold text-slate-600">{a}</span>)}
           </div>
         </div>
         <div className="col-span-2 space-y-6">
@@ -422,7 +422,7 @@ function PosPayments() {
                 <tr><th className="px-4 py-3 text-left">UPI Ref</th><th className="px-4 py-3 text-left">Customer VPA</th><th className="px-4 py-3 text-left">Time</th><th className="px-4 py-3 text-right">Amount</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {posTransactions.filter(t=>t.paymentMethod==="upi").slice(0,8).map((t:any)=>(
+                {posTransactions.filter(t => t.paymentMethod === "upi").slice(0, 8).map((t: any) => (
                   <tr key={t.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs text-indigo-600">UPI{t.id.slice(-8)}</td>
                     <td className="px-4 py-3 text-slate-500">{t.customerName.split(" ")[0].toLowerCase()}@oksbi</td>
@@ -448,7 +448,7 @@ function PosPayments() {
           <span className="text-2xl font-black text-indigo-600">{fmt(342.50)}</span>
         </div>
         <div className="space-y-4 mb-6">
-          {[{method:"Cash",amount:100},{method:"Card",amount:200}].map((s,i)=>(
+          {[{ method: "Cash", amount: 100 }, { method: "Card", amount: 200 }].map((s, i) => (
             <div key={i} className="flex items-center gap-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
               <span className="font-bold text-sm w-24">{s.method}</span>
               <input type="number" className="flex-1 border border-slate-200 rounded-lg p-2 text-sm focus:border-indigo-500 focus:outline-none" defaultValue={s.amount} />
@@ -469,8 +469,8 @@ function PosPayments() {
       <h2 className="text-2xl font-bold mb-6">Refund History</h2>
       <div className="grid grid-cols-3 gap-6 mb-8">
         <div className="bg-white p-6 rounded-xl border-l-4 border-l-rose-500 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Total Refunded Today</p><h3 className="text-2xl font-black mt-1 text-rose-600">{fmt(posDashboardStats.refunds)}</h3></div>
-        <div className="bg-white p-6 rounded-xl border-l-4 border-l-amber-500 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Refund Count</p><h3 className="text-2xl font-black mt-1">{posDashboardStats.returns}</h3></div>
-        <div className="bg-white p-6 rounded-xl border-l-4 border-l-slate-400 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Avg. Refund Value</p><h3 className="text-2xl font-black mt-1">{fmt(posDashboardStats.returns > 0 ? posDashboardStats.refunds / posDashboardStats.returns : 0)}</h3></div>
+        <div className="bg-white p-6 rounded-xl border-l-4 border-l-amber-500 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Refund Count</p><h3 className="text-2xl font-black mt-1">{posDashboardStats.refundCount}</h3></div>
+        <div className="bg-white p-6 rounded-xl border-l-4 border-l-slate-400 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Avg. Refund Value</p><h3 className="text-2xl font-black mt-1">{fmt(posDashboardStats.refundCount > 0 ? posDashboardStats.refunds / posDashboardStats.refundCount : 0)}</h3></div>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-sm text-left">
@@ -478,7 +478,7 @@ function PosPayments() {
             <tr><th className="px-6 py-3">Refund ID</th><th className="px-6 py-3">Original Receipt</th><th className="px-6 py-3">Customer</th><th className="px-6 py-3">Date</th><th className="px-6 py-3">Method</th><th className="px-6 py-3 text-right">Refunded</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {posTransactions.filter(t=>t.status==="Refunded").slice(0,15).map((t:any)=>(
+            {posTransactions.filter(t => t.status === "Refunded").slice(0, 15).map((t: any) => (
               <tr key={t.id} className="hover:bg-slate-50">
                 <td className="px-6 py-3 font-mono text-rose-600 text-xs">REF-{t.id.slice(-6)}</td>
                 <td className="px-6 py-3 font-mono text-slate-400 text-xs">{t.id}</td>
@@ -504,7 +504,7 @@ function PosPayments() {
           return (
             <div key={p.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition">
               <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-2xl">{["💵","💳","📱","👛","🎁"][i]}</div>
+                <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-2xl">{["💵", "💳", "📱", "👛", "🎁"][i]}</div>
                 <span className="text-[10px] font-black px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">ACTIVE</span>
               </div>
               <h3 className="font-bold text-slate-900 text-lg mb-1">{p.label}</h3>
@@ -575,11 +575,11 @@ function PosStoreOperations() {
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <h3 className="font-bold mb-4">Drawer Activity Log</h3>
           <div className="space-y-3">
-            {[{time:"08:00",action:"Shift Opened",amount:350,type:"in"},{time:"10:15",action:"Cash Sale",amount:89.50,type:"in"},{time:"11:42",action:"Safe Drop",amount:-200,type:"out"},{time:"13:30",action:"Cash Sale",amount:245,type:"in"},{time:"14:05",action:"Vendor Payment",amount:-50,type:"out"}].map((a,i)=>(
+            {[{ time: "08:00", action: "Shift Opened", amount: 350, type: "in" }, { time: "10:15", action: "Cash Sale", amount: 89.50, type: "in" }, { time: "11:42", action: "Safe Drop", amount: -200, type: "out" }, { time: "13:30", action: "Cash Sale", amount: 245, type: "in" }, { time: "14:05", action: "Vendor Payment", amount: -50, type: "out" }].map((a, i) => (
               <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg text-sm">
                 <span className="text-slate-400 font-mono w-12">{a.time}</span>
                 <span className="flex-1 mx-3 font-medium">{a.action}</span>
-                <span className={`font-bold ${a.type==="in"?"text-emerald-600":"text-rose-600"}`}>{a.type==="in"?"+":""}{fmt(a.amount)}</span>
+                <span className={`font-bold ${a.type === "in" ? "text-emerald-600" : "text-rose-600"}`}>{a.type === "in" ? "+" : ""}{fmt(a.amount)}</span>
               </div>
             ))}
           </div>
@@ -631,10 +631,10 @@ function PosStoreOperations() {
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="font-bold mb-5 text-lg border-b pb-3">Closing Summary</h3>
           <div className="space-y-3 text-sm">
-            {[{label:"Opening Float",val:fmt(posSession.openingFloat)},{label:"Cash Sales",val:fmt(4510)},{label:"Card Sales",val:fmt(8450)},{label:"UPI Sales",val:fmt(3240)},{label:"Total Revenue",val:fmt(posDashboardStats.todayRevenue),bold:true},{label:"Total Refunds",val:`-${fmt(posDashboardStats.refunds)}`,red:true},{label:"Expected Cash",val:fmt(posSession.openingFloat+4510),bold:true}].map(r=>(
+            {[{ label: "Opening Float", val: fmt(posSession.openingFloat) }, { label: "Cash Sales", val: fmt(4510) }, { label: "Card Sales", val: fmt(8450) }, { label: "UPI Sales", val: fmt(3240) }, { label: "Total Revenue", val: fmt(posDashboardStats.todayRevenue), bold: true }, { label: "Total Refunds", val: `-${fmt(posDashboardStats.refunds)}`, red: true }, { label: "Expected Cash", val: fmt(posSession.openingFloat + 4510), bold: true }].map(r => (
               <div key={r.label} className={`flex justify-between py-2 ${r.bold ? "border-t border-slate-200 pt-3" : "border-b border-slate-50"}`}>
                 <span className="text-slate-500">{r.label}</span>
-                <span className={`${r.bold?"font-black text-lg":"font-medium"} ${r.red?"text-rose-600":""}`}>{r.val}</span>
+                <span className={`${r.bold ? "font-black text-lg" : "font-medium"} ${r.red ? "text-rose-600" : ""}`}>{r.val}</span>
               </div>
             ))}
           </div>
@@ -664,7 +664,7 @@ function PosStoreOperations() {
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6">
         <h3 className="font-bold mb-4">Payment Method Breakup</h3>
         <div className="grid grid-cols-3 gap-4">
-          {[{m:"Cash",v:4860},{m:"Card",v:8450},{m:"UPI",v:3240}].map(p=>(
+          {[{ m: "Cash", v: 4860 }, { m: "Card", v: 8450 }, { m: "UPI", v: 3240 }].map(p => (
             <div key={p.m} className="p-4 bg-slate-50 rounded-lg"><p className="font-bold text-sm">{p.m}</p><p className="text-xl font-black mt-1 text-indigo-600">{fmt(p.v)}</p></div>
           ))}
         </div>
@@ -692,7 +692,7 @@ function PosStoreOperations() {
           </div>
         </div>
         <div className="grid grid-rows-3 gap-4">
-          {[{icon:"⏱",label:"Open/Close Shift",desc:"Manage shift timings"},{ icon:"💰",label:"Cash In/Out",desc:"Record cash movements"},{icon:"🔒",label:"End of Day",desc:"Process Z-report"}].map(a=>(
+          {[{ icon: "⏱", label: "Open/Close Shift", desc: "Manage shift timings" }, { icon: "💰", label: "Cash In/Out", desc: "Record cash movements" }, { icon: "🔒", label: "End of Day", desc: "Process Z-report" }].map(a => (
             <div key={a.label} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 cursor-pointer hover:border-indigo-200">
               <div className="text-3xl">{a.icon}</div>
               <div><p className="font-bold">{a.label}</p><p className="text-sm text-slate-500">{a.desc}</p></div>
@@ -752,13 +752,13 @@ function PosReturns() {
             <tr><th className="px-6 py-3 text-left">Customer</th><th className="px-6 py-3 text-left">Credit Note ID</th><th className="px-6 py-3 text-left">Issued On</th><th className="px-6 py-3 text-left">Expires</th><th className="px-6 py-3 text-right">Amount</th><th className="px-6 py-3 text-left">Status</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {posCustomers.filter(c=>c.id!=="walk-in").map((c:any,i)=>(
+            {posCustomers.filter(c => c.id !== "walk-in").map((c: any, i) => (
               <tr key={c.id} className="hover:bg-slate-50">
                 <td className="px-6 py-4 font-medium">{c.name}</td>
-                <td className="px-6 py-4 font-mono text-slate-500">CN-2024-{1000+i}</td>
+                <td className="px-6 py-4 font-mono text-slate-500">CN-2024-{1000 + i}</td>
                 <td className="px-6 py-4 text-slate-500">May 15, 2026</td>
                 <td className="px-6 py-4 text-slate-500">Nov 15, 2026</td>
-                <td className="px-6 py-4 text-right font-bold text-indigo-600">{fmt([150,75,320,45][i]||100)}</td>
+                <td className="px-6 py-4 text-right font-bold text-indigo-600">{fmt([150, 75, 320, 45][i] || 100)}</td>
                 <td className="px-6 py-4"><span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-xs font-bold">Valid</span></td>
               </tr>
             ))}
@@ -777,14 +777,14 @@ function PosReturns() {
             <tr><th className="px-6 py-3 text-left">Product</th><th className="px-6 py-3 text-left">SKU</th><th className="px-6 py-3 text-left">Reported By</th><th className="px-6 py-3 text-left">Date</th><th className="px-6 py-3 text-left">Damage Type</th><th className="px-6 py-3 text-right">Est. Loss</th><th className="px-6 py-3">Action</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {posProducts.slice(0,8).map((p:any,i)=>(
+            {posProducts.slice(0, 8).map((p: any, i) => (
               <tr key={p.id} className="hover:bg-slate-50">
                 <td className="px-6 py-4 font-medium">{p.name}</td>
                 <td className="px-6 py-4 font-mono text-slate-400 text-xs">{p.sku}</td>
                 <td className="px-6 py-4 text-slate-500">{posSession.cashier}</td>
-                <td className="px-6 py-4 text-slate-500">Jul {10+i}, 2026</td>
-                <td className="px-6 py-4"><span className="bg-rose-100 text-rose-700 px-2 py-1 rounded text-xs font-bold">{["Physical Damage","Expiry","Transit Damage","Theft"][i%4]}</span></td>
-                <td className="px-6 py-4 text-right font-bold text-rose-600">{fmt(p.price * (i%3+1))}</td>
+                <td className="px-6 py-4 text-slate-500">Jul {10 + i}, 2026</td>
+                <td className="px-6 py-4"><span className="bg-rose-100 text-rose-700 px-2 py-1 rounded text-xs font-bold">{["Physical Damage", "Expiry", "Transit Damage", "Theft"][i % 4]}</span></td>
+                <td className="px-6 py-4 text-right font-bold text-rose-600">{fmt(p.price * (i % 3 + 1))}</td>
                 <td className="px-6 py-4"><button className="text-xs font-bold text-indigo-600 border border-indigo-200 bg-indigo-50 px-3 py-1 rounded">Write Off</button></td>
               </tr>
             ))}
@@ -829,11 +829,11 @@ function PosReturns() {
 
 /* ─────────────────── DEVICES ─────────────────── */
 const allDevices = [
-  { id:"printer", name:"Epson TM-T88V", model:"TM-T88V Receipt Printer", type:"Receipt Printer", status:"Online", ip:"192.168.1.45", port:"9100", driver:"Epson OPOS", lastPrint:"2 mins ago" },
-  { id:"barcode", name:"Zebra DS2208", model:"DS2208 USB Barcode Scanner", type:"Barcode Scanner", status:"Online", ip:"USB HID", port:"—", driver:"HID Keyboard", lastPrint:"Active" },
-  { id:"drawer",  name:"APG Vasario", model:"Vasario 1515 Cash Drawer", type:"Cash Drawer", status:"Online", ip:"Driven by Printer", port:"—", driver:"APG OpenPort", lastPrint:"8 mins ago" },
-  { id:"display", name:"Posiflex PD-300", model:"PD-300 Customer Display", type:"Pole Display", status:"Offline", ip:"192.168.1.46", port:"4999", driver:"VFD Display", lastPrint:"N/A" },
-  { id:"scale",   name:"Avery Berkel FX120", model:"FX120 Retail Scale", type:"Weight Scale", status:"Online", ip:"COM4", port:"—", driver:"OHAUS Serial", lastPrint:"Active" },
+  { id: "printer", name: "Epson TM-T88V", model: "TM-T88V Receipt Printer", type: "Receipt Printer", status: "Online", ip: "192.168.1.45", port: "9100", driver: "Epson OPOS", lastPrint: "2 mins ago" },
+  { id: "barcode", name: "Zebra DS2208", model: "DS2208 USB Barcode Scanner", type: "Barcode Scanner", status: "Online", ip: "USB HID", port: "—", driver: "HID Keyboard", lastPrint: "Active" },
+  { id: "drawer", name: "APG Vasario", model: "Vasario 1515 Cash Drawer", type: "Cash Drawer", status: "Online", ip: "Driven by Printer", port: "—", driver: "APG OpenPort", lastPrint: "8 mins ago" },
+  { id: "display", name: "Posiflex PD-300", model: "PD-300 Customer Display", type: "Pole Display", status: "Offline", ip: "192.168.1.46", port: "4999", driver: "VFD Display", lastPrint: "N/A" },
+  { id: "scale", name: "Avery Berkel FX120", model: "FX120 Retail Scale", type: "Weight Scale", status: "Online", ip: "COM4", port: "—", driver: "OHAUS Serial", lastPrint: "Active" },
 ];
 
 function PosDevices() {
@@ -892,11 +892,11 @@ function PosReports() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <h3 className="font-bold mb-4">Hourly Sales Breakdown</h3>
         <div className="flex items-end gap-3 h-40">
-          {[8,10,14,22,18,30,42,38,25,16,12,8].map((h,i)=>(
+          {[8, 10, 14, 22, 18, 30, 42, 38, 25, 16, 12, 8].map((h, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-xs font-bold text-slate-400">{fmt(h*50).replace("$","")}</span>
-              <div className="w-full bg-indigo-500 rounded-t-md" style={{height:`${h/42*100}%`}} />
-              <span className="text-[10px] text-slate-400">{8+i}h</span>
+              <span className="text-xs font-bold text-slate-400">{fmt(h * 50).replace("$", "")}</span>
+              <div className="w-full bg-indigo-500 rounded-t-md" style={{ height: `${h / 42 * 100}%` }} />
+              <span className="text-[10px] text-slate-400">{8 + i}h</span>
             </div>
           ))}
         </div>
@@ -910,7 +910,7 @@ function PosReports() {
       <div className="grid grid-cols-2 gap-6 mb-8">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <h3 className="font-bold mb-4 border-b pb-3">Cash Flow Summary</h3>
-          {[{label:"Opening Float",val:posSession.openingFloat,color:""},{label:"Cash Sales",val:4510,color:"text-emerald-600"},{label:"Cash Refunds",val:-320,color:"text-rose-600"},{label:"Safe Drop",val:-2000,color:"text-amber-600"},{label:"Cash In (Other)",val:150,color:"text-emerald-600"}].map(r=>(
+          {[{ label: "Opening Float", val: posSession.openingFloat, color: "" }, { label: "Cash Sales", val: 4510, color: "text-emerald-600" }, { label: "Cash Refunds", val: -320, color: "text-rose-600" }, { label: "Safe Drop", val: -2000, color: "text-amber-600" }, { label: "Cash In (Other)", val: 150, color: "text-emerald-600" }].map(r => (
             <div key={r.label} className="flex justify-between py-2 border-b border-slate-50 text-sm">
               <span className="text-slate-500">{r.label}</span><span className={`font-bold ${r.color}`}>{fmt(r.val)}</span>
             </div>
@@ -920,7 +920,7 @@ function PosReports() {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <h3 className="font-bold mb-4 border-b pb-3">Safe Drop Log</h3>
           <div className="space-y-3">
-            {[{time:"10:30",amount:500,by:"Manager"},{time:"13:15",amount:800,by:"Manager"},{time:"16:00",amount:700,by:"Sr. Cashier"}].map((s,i)=>(
+            {[{ time: "10:30", amount: 500, by: "Manager" }, { time: "13:15", amount: 800, by: "Manager" }, { time: "16:00", amount: 700, by: "Sr. Cashier" }].map((s, i) => (
               <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg text-sm">
                 <span className="text-slate-500">{s.time}</span>
                 <span className="font-medium">Drop by {s.by}</span>
@@ -942,7 +942,7 @@ function PosReports() {
             <tr><th className="px-6 py-3 text-left">Payment Method</th><th className="px-6 py-3 text-right">Transactions</th><th className="px-6 py-3 text-right">Total Amount</th><th className="px-6 py-3 text-right">Refunds</th><th className="px-6 py-3 text-right">Net</th><th className="px-6 py-3 text-right">% of Total</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {[{m:"Cash",txn:52,total:4860,ref:320,pct:28},{m:"Credit/Debit Card",txn:64,total:8450,ref:180,pct:49},{m:"UPI (QR)",txn:47,total:3240,ref:0,pct:19},{m:"Store Wallet",txn:8,total:420,ref:0,pct:2},{m:"Gift Card",txn:3,total:180,ref:0,pct:1}].map(p=>(
+            {[{ m: "Cash", txn: 52, total: 4860, ref: 320, pct: 28 }, { m: "Credit/Debit Card", txn: 64, total: 8450, ref: 180, pct: 49 }, { m: "UPI (QR)", txn: 47, total: 3240, ref: 0, pct: 19 }, { m: "Store Wallet", txn: 8, total: 420, ref: 0, pct: 2 }, { m: "Gift Card", txn: 3, total: 180, ref: 0, pct: 1 }].map(p => (
               <tr key={p.m} className="hover:bg-slate-50">
                 <td className="px-6 py-4 font-medium">{p.m}</td>
                 <td className="px-6 py-4 text-right">{p.txn}</td>
@@ -950,7 +950,7 @@ function PosReports() {
                 <td className="px-6 py-4 text-right text-rose-600">-{fmt(p.ref)}</td>
                 <td className="px-6 py-4 text-right font-bold text-indigo-600">{fmt(p.total - p.ref)}</td>
                 <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2"><div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-2 bg-indigo-500 rounded-full" style={{width:`${p.pct}%`}}/></div><span className="text-xs font-bold">{p.pct}%</span></div>
+                  <div className="flex items-center justify-end gap-2"><div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-2 bg-indigo-500 rounded-full" style={{ width: `${p.pct}%` }} /></div><span className="text-xs font-bold">{p.pct}%</span></div>
                 </td>
               </tr>
             ))}
@@ -974,7 +974,7 @@ function PosReports() {
             <tr><th className="px-6 py-3 text-left">Tax Category</th><th className="px-6 py-3 text-left">Rate</th><th className="px-6 py-3 text-right">Taxable Amount</th><th className="px-6 py-3 text-right">Tax Collected</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {[{cat:"Electronics (GST)",rate:"18%",base:9000,tax:1620},{cat:"Groceries (GST)",rate:"0%",base:3200,tax:0},{cat:"Apparel (GST)",rate:"12%",base:2500,tax:300},{cat:"Health & Beauty (GST)",rate:"12%",base:1800,tax:216}].map(r=>(
+            {[{ cat: "Electronics (GST)", rate: "18%", base: 9000, tax: 1620 }, { cat: "Groceries (GST)", rate: "0%", base: 3200, tax: 0 }, { cat: "Apparel (GST)", rate: "12%", base: 2500, tax: 300 }, { cat: "Health & Beauty (GST)", rate: "12%", base: 1800, tax: 216 }].map(r => (
               <tr key={r.cat} className="hover:bg-slate-50">
                 <td className="px-6 py-4 font-medium">{r.cat}</td>
                 <td className="px-6 py-4"><span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-xs font-bold">{r.rate}</span></td>
@@ -1005,7 +1005,7 @@ function PosReports() {
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="font-bold mb-4 border-b pb-3">Shift Performance</h3>
           <div className="space-y-3 text-sm">
-            {[{label:"Orders Processed",val:posDashboardStats.todayOrders,fmt:false},{label:"Revenue Generated",val:posDashboardStats.todayRevenue,fmt:true},{label:"Refunds Issued",val:posDashboardStats.returns,fmt:false},{label:"Avg. Transaction Value",val:posDashboardStats.avgBill,fmt:true},{label:"Customers Served",val:posDashboardStats.todayCustomers,fmt:false}].map(m=>(
+            {[{ label: "Orders Processed", val: posDashboardStats.todayOrders, fmt: false }, { label: "Revenue Generated", val: posDashboardStats.todayRevenue, fmt: true }, { label: "Refunds Issued", val: posDashboardStats.refundCount, fmt: false }, { label: "Avg. Transaction Value", val: posDashboardStats.avgBill, fmt: true }, { label: "Customers Served", val: posDashboardStats.todayCustomers, fmt: false }].map(m => (
               <div key={m.label} className="flex justify-between py-2 border-b border-slate-50">
                 <span className="text-slate-500">{m.label}</span>
                 <span className="font-black text-indigo-700">{m.fmt ? fmt(m.val as number) : m.val}</span>
@@ -1022,15 +1022,15 @@ function PosReports() {
     <div className="p-8">
       <h2 className="text-2xl font-bold mb-6">POS Analytics & Reports</h2>
       <div className="grid grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl border-t-4 border-t-indigo-600 border border-slate-200 shadow-sm"><TrendingUp className="w-6 h-6 text-indigo-600 mb-2"/><p className="text-slate-500 text-sm">Today's Revenue</p><h3 className="text-2xl font-black mt-1">{fmt(posDashboardStats.todayRevenue)}</h3></div>
-        <div className="bg-white p-6 rounded-xl border-t-4 border-t-emerald-600 border border-slate-200 shadow-sm"><BarChart3 className="w-6 h-6 text-emerald-600 mb-2"/><p className="text-slate-500 text-sm">Orders</p><h3 className="text-2xl font-black mt-1">{posDashboardStats.todayOrders}</h3></div>
-        <div className="bg-white p-6 rounded-xl border-t-4 border-t-amber-500 border border-slate-200 shadow-sm"><Users className="w-6 h-6 text-amber-500 mb-2"/><p className="text-slate-500 text-sm">Customers</p><h3 className="text-2xl font-black mt-1">{posDashboardStats.todayCustomers}</h3></div>
-        <div className="bg-white p-6 rounded-xl border-t-4 border-t-rose-500 border border-slate-200 shadow-sm"><ArrowRightLeft className="w-6 h-6 text-rose-500 mb-2"/><p className="text-slate-500 text-sm">Refunds</p><h3 className="text-2xl font-black mt-1 text-rose-600">{fmt(posDashboardStats.refunds)}</h3></div>
+        <div className="bg-white p-6 rounded-xl border-t-4 border-t-indigo-600 border border-slate-200 shadow-sm"><TrendingUp className="w-6 h-6 text-indigo-600 mb-2" /><p className="text-slate-500 text-sm">Today's Revenue</p><h3 className="text-2xl font-black mt-1">{fmt(posDashboardStats.todayRevenue)}</h3></div>
+        <div className="bg-white p-6 rounded-xl border-t-4 border-t-emerald-600 border border-slate-200 shadow-sm"><BarChart3 className="w-6 h-6 text-emerald-600 mb-2" /><p className="text-slate-500 text-sm">Orders</p><h3 className="text-2xl font-black mt-1">{posDashboardStats.todayOrders}</h3></div>
+        <div className="bg-white p-6 rounded-xl border-t-4 border-t-amber-500 border border-slate-200 shadow-sm"><Users className="w-6 h-6 text-amber-500 mb-2" /><p className="text-slate-500 text-sm">Customers</p><h3 className="text-2xl font-black mt-1">{posDashboardStats.todayCustomers}</h3></div>
+        <div className="bg-white p-6 rounded-xl border-t-4 border-t-rose-500 border border-slate-200 shadow-sm"><ArrowRightLeft className="w-6 h-6 text-rose-500 mb-2" /><p className="text-slate-500 text-sm">Refunds</p><h3 className="text-2xl font-black mt-1 text-rose-600">{fmt(posDashboardStats.refunds)}</h3></div>
       </div>
       <div className="grid grid-cols-3 gap-6">
-        {["Daily/Hourly Sales","Cash Report","Payment Report","Tax Report","Shift Report"].map(r=>(
+        {["Daily/Hourly Sales", "Cash Report", "Payment Report", "Tax Report", "Shift Report"].map(r => (
           <div key={r} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-200 cursor-pointer transition-colors">
-            <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center mb-3"><BarChart3 className="w-5 h-5 text-indigo-600"/></div>
+            <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center mb-3"><BarChart3 className="w-5 h-5 text-indigo-600" /></div>
             <h3 className="font-bold">{r}</h3>
             <p className="text-sm text-slate-500 mt-1">View detailed {r.toLowerCase()}</p>
           </div>
@@ -1044,7 +1044,7 @@ function PosReports() {
 function PosAiAssistant() {
   const view = useView();
 
-  const panels: Record<string, { title: string; icon: React.ReactNode; messages: string[]; insights: {label:string;val:string;color:string}[] }> = {
+  const panels: Record<string, { title: string; icon: React.ReactNode; messages: string[]; insights: { label: string; val: string; color: string }[] }> = {
     summary: {
       title: "AI Sales Summary",
       icon: <TrendingUp className="w-5 h-5" />,
@@ -1053,7 +1053,7 @@ function PosAiAssistant() {
         `Top performing category today is Electronics — contributing 48% of total revenue. UPI adoption is up 8% week-on-week.`,
         `Recommend cross-selling Accessories to customers purchasing Electronics — potential uplift of $320 per day.`,
       ],
-      insights: [{label:"Revenue",val:fmt(posDashboardStats.todayRevenue),color:"text-indigo-600"},{label:"Orders",val:`${posDashboardStats.todayOrders}`,color:"text-emerald-600"},{label:"Avg. Bill",val:fmt(posDashboardStats.avgBill),color:"text-amber-600"}],
+      insights: [{ label: "Revenue", val: fmt(posDashboardStats.todayRevenue), color: "text-indigo-600" }, { label: "Orders", val: `${posDashboardStats.todayOrders}`, color: "text-emerald-600" }, { label: "Avg. Bill", val: fmt(posDashboardStats.avgBill), color: "text-amber-600" }],
     },
     peak: {
       title: "Peak Hours Prediction",
@@ -1063,7 +1063,7 @@ function PosAiAssistant() {
         "Prediction confidence: 91%. Staff accordingly — at least 3 cashiers active during peak windows.",
         "Saturday peak traffic is typically 18% higher than weekdays. Ensure all 3 registers are open by 11:30 AM.",
       ],
-      insights: [{label:"Morning Peak",val:"11am–1pm",color:"text-amber-600"},{label:"Evening Peak",val:"5pm–7pm",color:"text-rose-600"},{label:"Confidence",val:"91%",color:"text-emerald-600"}],
+      insights: [{ label: "Morning Peak", val: "11am–1pm", color: "text-amber-600" }, { label: "Evening Peak", val: "5pm–7pm", color: "text-rose-600" }, { label: "Confidence", val: "91%", color: "text-emerald-600" }],
     },
     fraud: {
       title: "AI Fraud Detection",
@@ -1073,7 +1073,7 @@ function PosAiAssistant() {
         "⚠️ 2 void transactions noted at 11:23 AM and 2:47 PM — both authorized by the floor manager. Logged.",
         "Monitoring active: checking for duplicate card swipes, excessive voids, and unusual refund activity in real-time.",
       ],
-      insights: [{label:"Alerts",val:"0 Critical",color:"text-emerald-600"},{label:"Voids Today",val:"2",color:"text-amber-600"},{label:"Risk Score",val:"Low",color:"text-emerald-600"}],
+      insights: [{ label: "Alerts", val: "0 Critical", color: "text-emerald-600" }, { label: "Voids Today", val: "2", color: "text-amber-600" }, { label: "Risk Score", val: "Low", color: "text-emerald-600" }],
     },
     alerts: {
       title: "Inventory Alerts (POS Level)",
@@ -1083,7 +1083,7 @@ function PosAiAssistant() {
         `🟡 Low: "${posProducts[2].name}" — ${posProducts[2].stock} units remaining. Recommend pull from warehouse stock.`,
         `Automatically notified warehouse manager at 2:15 PM for emergency restock of top-10 fast-moving items.`,
       ],
-      insights: [{label:"Critical",val:`${posProducts.filter((p:any)=>p.stock<15).length} SKUs`,color:"text-rose-600"},{label:"Low Stock",val:`${posProducts.filter((p:any)=>p.stock<30).length} SKUs`,color:"text-amber-600"},{label:"Healthy",val:`${posProducts.filter((p:any)=>p.stock>=30).length} SKUs`,color:"text-emerald-600"}],
+      insights: [{ label: "Critical", val: `${posProducts.filter((p: any) => p.stock < 15).length} SKUs`, color: "text-rose-600" }, { label: "Low Stock", val: `${posProducts.filter((p: any) => p.stock < 30).length} SKUs`, color: "text-amber-600" }, { label: "Healthy", val: `${posProducts.filter((p: any) => p.stock >= 30).length} SKUs`, color: "text-emerald-600" }],
     },
   };
 
@@ -1094,7 +1094,7 @@ function PosAiAssistant() {
     "Peak hours prediction: 5:00–7:00 PM. No fraud alerts in the current shift.",
   ];
   const messages = view && panels[view] ? panel.messages : defaultMessages;
-  const insights = view && panels[view] ? panel.insights : [{label:"Revenue",val:fmt(posDashboardStats.todayRevenue),color:"text-indigo-600"},{label:"Orders",val:`${posDashboardStats.todayOrders}`,color:"text-emerald-600"},{label:"Status",val:"All OK",color:"text-emerald-600"}];
+  const insights = view && panels[view] ? panel.insights : [{ label: "Revenue", val: fmt(posDashboardStats.todayRevenue), color: "text-indigo-600" }, { label: "Orders", val: `${posDashboardStats.todayOrders}`, color: "text-emerald-600" }, { label: "Status", val: "All OK", color: "text-emerald-600" }];
 
   return (
     <div className="p-8 flex flex-col h-[calc(100vh-100px)]">
@@ -1164,7 +1164,7 @@ function PosModule() {
       <div className={`flex-1 relative ${isTerminal ? "" : "bg-background/50"}`}>
         <AnimatePresence mode="wait">
           <motion.div
-            key={activeTab + searchStr}
+            key={activeTab}
             initial={{ opacity: 0, y: isTerminal ? 0 : 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: isTerminal ? 0 : -10 }}

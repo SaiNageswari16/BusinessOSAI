@@ -1,8 +1,7 @@
-import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { AppTopbar } from "@/components/layout/app-topbar";
-import { AppNavbar } from "@/components/layout/app-navbar";
-import { ModuleSidebar } from "@/components/layout/module-sidebar";
+import { RibbonNavigation } from "@/components/layout/ribbon-navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { TenantProvider } from "@/contexts/tenant-context";
 
@@ -13,6 +12,10 @@ export const Route = createFileRoute("/_app")({
 function AppLayout() {
   const { isAuthed, authReady, user } = useAuth();
   const navigate = useNavigate();
+  const routerState = useRouterState();
+  
+  const searchParams = new URLSearchParams(routerState.location.searchStr);
+  const isPosTerminal = routerState.location.pathname.startsWith("/pos") && searchParams.get("tab") === "terminal";
 
   useEffect(() => {
     if (!authReady) return;
@@ -42,17 +45,20 @@ function AppLayout() {
   return (
     <TenantProvider>
       <div className="h-screen overflow-hidden flex flex-col bg-background">
-        {/* Top bar */}
-        <AppTopbar />
-        {/* Main module navigation bar — unchanged */}
-        <AppNavbar />
-        {/* Body: sidebar + page content */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          <ModuleSidebar />
-          <main className="flex-1 min-h-0 overflow-y-auto">
-            <Outlet />
-          </main>
-        </div>
+        {!isPosTerminal && (
+          <>
+            {/* Top bar */}
+            <AppTopbar />
+            
+            {/* 3-Tier Ribbon Navigation */}
+            <RibbonNavigation />
+          </>
+        )}
+
+        {/* Main Content */}
+        <main className="flex-1 min-h-0 overflow-y-auto bg-slate-50 dark:bg-background">
+          <Outlet />
+        </main>
       </div>
     </TenantProvider>
   );

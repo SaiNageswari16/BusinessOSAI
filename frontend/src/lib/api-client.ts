@@ -1,12 +1,10 @@
 /**
- * BusinessOS AI — Central API Client
+ * BusinessOS AI â€” Central API Client
  * All backend API calls go through this module.
  * Auth token is injected from localStorage (set by AuthProvider).
  */
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000/api/v1";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -21,7 +19,6 @@ export interface ApiError {
   status: number;
 }
 
-// ─── Org Entity Types ─────────────────────────────────────────────────────────
 
 export interface Company {
   id: string;
@@ -148,7 +145,7 @@ export interface BusinessUnit {
   updated_at: string;
 }
 
-// ─── Financial Types ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Financial Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface FiscalYear {
   id: string;
@@ -226,7 +223,7 @@ export interface NumberSeries {
   updated_at: string;
 }
 
-// ─── Audit Types ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Audit Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface AuditLog {
   id: string;
@@ -246,7 +243,7 @@ export interface AuditLog {
   user_email?: string | null;
 }
 
-// ─── HRMS Types ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Employee {
   id: string;
@@ -342,7 +339,7 @@ export interface Payslip {
   updated_at: string;
 }
 
-// ─── HTTP Core ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ HTTP Core â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function getToken(): string | null {
   try {
@@ -417,14 +414,16 @@ async function request<T>(
       window.location.href = "/login";
     }
     const msg = await parseError(res);
-    throw new Error(msg);
+    const error: any = new Error(msg);
+    error.status = res.status;
+    throw error;
   }
 
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
-// ─── ERP — Companies ──────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Companies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const companiesApi = {
   list: (page = 1, pageSize = 20, search?: string) =>
@@ -441,7 +440,7 @@ export const companiesApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/companies/${id}`),
 };
 
-// ─── ERP — Branches ───────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Branches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const branchesApi = {
   list: (page = 1, pageSize = 20, search?: string, companyId?: string) =>
@@ -459,7 +458,7 @@ export const branchesApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/branches/${id}`),
 };
 
-// ─── ERP — Departments ────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Departments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const departmentsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -476,7 +475,7 @@ export const departmentsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/departments/${id}`),
 };
 
-// ─── ERP — Designations ───────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Designations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const designationsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -493,7 +492,7 @@ export const designationsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/designations/${id}`),
 };
 
-// ─── ERP — Regions ────────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Regions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const regionsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -510,7 +509,7 @@ export const regionsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/regions/${id}`),
 };
 
-// ─── ERP — Zones ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Zones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const zonesApi = {
   list: (page = 1, pageSize = 50, regionId?: string) =>
@@ -527,7 +526,7 @@ export const zonesApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/zones/${id}`),
 };
 
-// ─── ERP — Teams ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Teams â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const teamsApi = {
   list: (page = 1, pageSize = 50, departmentId?: string) =>
@@ -544,7 +543,7 @@ export const teamsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/teams/${id}`),
 };
 
-// ─── ERP — Business Units ─────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Business Units â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const businessUnitsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -561,7 +560,7 @@ export const businessUnitsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/business-units/${id}`),
 };
 
-// ─── Financial — Fiscal Years ─────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Fiscal Years â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const fiscalYearsApi = {
   list: (page = 1, pageSize = 20, companyId?: string) =>
@@ -578,7 +577,7 @@ export const fiscalYearsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/fiscal-years/${id}`),
 };
 
-// ─── Financial — Currencies ───────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Currencies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const currenciesApi = {
   list: (page = 1, pageSize = 50) =>
@@ -594,7 +593,7 @@ export const currenciesApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/currencies/${id}`),
 };
 
-// ─── Financial — Tax Configurations ──────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Tax Configurations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const taxConfigurationsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -611,7 +610,7 @@ export const taxConfigurationsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/tax-configurations/${id}`),
 };
 
-// ─── Financial — Payment Terms ────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Payment Terms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const paymentTermsApi = {
   list: (page = 1, pageSize = 50) =>
@@ -627,7 +626,7 @@ export const paymentTermsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/payment-terms/${id}`),
 };
 
-// ─── Financial — Cost Centers ─────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Cost Centers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const costCentersApi = {
   list: (page = 1, pageSize = 50, departmentId?: string) =>
@@ -644,7 +643,7 @@ export const costCentersApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/cost-centers/${id}`),
 };
 
-// ─── Financial — Number Series ────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Number Series â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const numberSeriesApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -660,7 +659,7 @@ export const numberSeriesApi = {
     request<NumberSeries>("PATCH", `/erp/number-series/${id}`, data),
 };
 
-// ─── Audit Logs ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Audit Logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const auditLogsApi = {
   list: (
@@ -680,7 +679,7 @@ export const auditLogsApi = {
     }),
 };
 
-// ─── HRMS — Employees ─────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS â€” Employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const employeesApi = {
   list: (page = 1, pageSize = 20, search?: string, companyId?: string, departmentId?: string, status?: string) =>
@@ -707,7 +706,7 @@ export const employeesApi = {
     request<EmployeeDocument>("POST", `/hrms/employees/${empId}/documents`, data),
 };
 
-// ─── HRMS — Attendance ────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS â€” Attendance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const attendanceApi = {
   list: (page = 1, pageSize = 50, employeeId?: string, dateFrom?: string, dateTo?: string) =>
@@ -746,7 +745,7 @@ export const attendanceApi = {
     request<AttendanceCorrection>("PATCH", `/hrms/attendance/corrections/${id}/review`, { status }),
 };
 
-// ─── HRMS — Leaves ────────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS â€” Leaves â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const leavesApi = {
   list: (page = 1, pageSize = 20, employeeId?: string, status?: string) =>
@@ -770,7 +769,7 @@ export const leavesApi = {
     request<LeaveRequest>("PATCH", `/hrms/leaves/${id}/review`, { status: "Rejected" }),
 };
 
-// ─── HRMS — Payroll ───────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS â€” Payroll â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const payrollApi = {
   listPayslips: (employeeId?: string) =>
@@ -789,7 +788,7 @@ export const payrollApi = {
     request<Payslip[]>("POST", "/hrms/payslips/process", data),
 };
 
-// ─── Workflow Engine Types ────────────────────────────────────────────────────
+// â”€â”€â”€ Workflow Engine Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ApprovalWorkflow {
   id: string;
@@ -867,7 +866,7 @@ export interface CustomField {
   updated_at: string;
 }
 
-// ─── Master Data Types ────────────────────────────────────────────────────────
+// ─── Master Data Types ───────────────────────────────────────────────────────
 
 export interface GeographyCountry {
   id: string;
@@ -928,7 +927,7 @@ export interface Tag {
   updated_at: string;
 }
 
-// ─── System Types ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ System Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface SystemSetting {
   id: string;
@@ -957,7 +956,7 @@ export interface SystemHealth {
   services: SystemHealthService[];
 }
 
-// ─── Workflow Engine API ──────────────────────────────────────────────────────
+// â”€â”€â”€ Workflow Engine API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const approvalWorkflowsApi = {
   list: (page = 1, pageSize = 20, search?: string, module?: string) =>
@@ -1024,7 +1023,7 @@ export const customFieldsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/custom-fields/${id}`),
 };
 
-// ─── Master Data API ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Master Data API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const geographyApi = {
   list: (page = 1, pageSize = 50, search?: string) =>
@@ -1058,53 +1057,12 @@ export const workCalendarsApi = {
       page, page_size: pageSize, search, company_id: companyId,
     }),
   get: (id: string) => request<WorkCalendar>("GET", `/erp/work-calendars/${id}`),
-  create: (data: Record<string, unknown>) =>
-    request<WorkCalendar>("POST", "/erp/work-calendars", data),
-  update: (id: string, data: Record<string, unknown>) =>
-    request<WorkCalendar>("PATCH", `/erp/work-calendars/${id}`, data),
+  create: (data: Record<string, unknown>) => request<WorkCalendar>("POST", "/erp/work-calendars", data),
+  update: (id: string, data: Record<string, unknown>) => request<WorkCalendar>("PATCH", `/erp/work-calendars/${id}`, data),
   delete: (id: string) => request<void>("DELETE", `/erp/work-calendars/${id}`),
 };
 
-export const tagsApi = {
-  list: (page = 1, pageSize = 50, search?: string, entityType?: string) =>
-    request<PaginatedResponse<Tag>>("GET", "/erp/tags", undefined, {
-      page, page_size: pageSize, search, entity_type: entityType,
-    }),
-  get: (id: string) => request<Tag>("GET", `/erp/tags/${id}`),
-  create: (data: Record<string, unknown>) =>
-    request<Tag>("POST", "/erp/tags", data),
-  update: (id: string, data: Record<string, unknown>) =>
-    request<Tag>("PATCH", `/erp/tags/${id}`, data),
-  delete: (id: string) => request<void>("DELETE", `/erp/tags/${id}`),
-};
-
-// ─── System Administration API ────────────────────────────────────────────────
-
-export const systemSettingsApi = {
-  list: (category?: string) =>
-    request<SystemSetting[]>("GET", "/erp/system-settings", undefined, { category }),
-  batchUpdate: (settings: { key: string; value: string | null; category?: string; description?: string; is_public?: boolean }[]) =>
-    request<SystemSetting[]>("PATCH", "/erp/system-settings", { settings }),
-  upsert: (key: string, data: { value: string | null; category?: string; description?: string; is_public?: boolean }) =>
-    request<SystemSetting>("PUT", `/erp/system-settings/${key}`, { key, ...data }),
-};
-
-export const systemHealthApi = {
-  get: () => request<SystemHealth>("GET", "/erp/system-health"),
-};
-
-export const errorLogsApi = {
-  list: (page = 1, pageSize = 20, module?: string) =>
-    request<PaginatedResponse<Record<string, unknown>>>("GET", "/erp/error-logs", undefined, {
-      page, page_size: pageSize, module,
-    }),
-};
-
-export const backupApi = {
-  getStatus: () => request<Record<string, unknown>>("GET", "/erp/backup-status"),
-};
-
-// ─── Extended HRMS Types ──────────────────────────────────────────────────────
+// ─── Extended HRMS Types ───────────────────────────────────────────────────────
 
 export interface EmployeeDocument {
   id: string;
@@ -1231,3 +1189,95 @@ export interface SalaryStructure {
   created_at?: string;
   updated_at?: string;
 }
+
+// ─── System Administration APIs ───────────────────────────────────────────────
+
+export const tagsApi = {
+  list: (page = 1, pageSize = 50, search?: string, entityType?: string) =>
+    request<PaginatedResponse<Tag>>("GET", "/erp/tags", undefined, {
+      page, page_size: pageSize, search, entity_type: entityType,
+    }),
+  get: (id: string) => request<Tag>("GET", `/erp/tags/${id}`),
+  create: (data: Record<string, unknown>) => request<Tag>("POST", "/erp/tags", data),
+  update: (id: string, data: Record<string, unknown>) => request<Tag>("PATCH", `/erp/tags/${id}`, data),
+  delete: (id: string) => request<void>("DELETE", `/erp/tags/${id}`),
+};
+
+export const systemSettingsApi = {
+  list: (category?: string) =>
+    request<SystemSetting[]>("GET", "/erp/system-settings", undefined, { category }),
+  batchUpdate: (settings: { key: string; value: string | null; category?: string; description?: string; is_public?: boolean }[]) =>
+    request<SystemSetting[]>("PATCH", "/erp/system-settings", { settings }),
+  upsert: (key: string, data: { value: string | null; category?: string; description?: string; is_public?: boolean }) =>
+    request<SystemSetting>("PUT", `/erp/system-settings/${key}`, { key, ...data }),
+};
+
+export const systemHealthApi = {
+  get: () => request<SystemHealth>("GET", "/erp/system-health"),
+};
+
+export const errorLogsApi = {
+  list: (page = 1, pageSize = 20, module?: string) =>
+    request<PaginatedResponse<Record<string, unknown>>>("GET", "/erp/error-logs", undefined, {
+      page, page_size: pageSize, module,
+    }),
+};
+
+export const backupApi = {
+  getStatus: () => request<Record<string, unknown>>("GET", "/erp/backup-status"),
+};
+
+// --- POS Types & API ------------------------------------------------
+
+export interface POSCategory {
+  id: string; name: string; description: string | null;
+  color: string | null; icon: string | null; is_active: boolean;
+  created_at: string; updated_at: string;
+}
+
+export interface POSProduct {
+  id: string; name: string; brand: string | null; sku: string | null;
+  barcode: string | null; description: string | null; image_url: string | null;
+  category_id: string | null; category_name: string | null;
+  purchase_price: number; mrp: number; selling_price: number;
+  tax_percent: number; discount: number; stock: number;
+  reorder_level: number; is_active: boolean;
+  created_at: string; updated_at: string;
+}
+
+export interface POSTransactionHistory {
+  id: string; session_id: string; cashier_id: string; customer_id: string | null;
+  receipt_number: string; status: string;
+  parent_transaction_id: string | null;
+  delivery_status: string | null;
+  delivery_address: string | null;
+  driver_name: string | null;
+  subtotal: number; tax_amount: number; discount_amount: number; total_amount: number;
+  created_at: string; updated_at: string;
+  items: { id: string; product_id: string; quantity: number; unit_price: number; discount: number; subtotal: number }[];
+  payments: { id: string; payment_method: string; amount: number; reference_number: string | null }[];
+}
+
+export const posApi = {
+  // Sessions
+  openSession: (data: Record<string, unknown>) => request<any>("POST", "/pos/sessions/open", data),
+  closeSession: (sessionId: string, data: Record<string, unknown>) => request<any>("POST", `/pos/sessions/${sessionId}/close`, data),
+  getCurrentSession: () => request<any>("GET", "/pos/sessions/current"),
+  // Transactions
+  checkout: (data: Record<string, unknown>) => request<any>("POST", "/pos/transactions/checkout", data),
+  getHistory: (params?: { limit?: number; status_filter?: string; search?: string }) => 
+    request<POSTransactionHistory[]>("GET", "/pos/transactions/history", undefined, params as Record<string, string | number | boolean | null | undefined>),
+  getDailySummary: (params?: { session_id?: string }) => 
+    request<any>("GET", "/pos/transactions/reports/daily-summary", undefined, params as Record<string, string | number | boolean | null | undefined>),
+  deleteTransaction: (id: string) => request<void>("DELETE", `/pos/transactions/${id}`),
+  // Products & Categories
+  getCategories: () => request<POSCategory[]>("GET", "/pos/categories"),
+  getProducts: (params?: { category_id?: string; search?: string }) =>
+    request<POSProduct[]>("GET", "/pos/products", undefined, params as Record<string, string | number | boolean | null | undefined>),
+  createProduct: (data: Record<string, unknown>) => request<POSProduct>("POST", "/pos/products", data),
+  bulkCreateProducts: (products: Record<string, unknown>[]) => 
+    request<{ created_count: number; skipped_count: number; errors: string[] }>("POST", "/pos/products/bulk", { products }),
+  updateProduct: (id: string, data: Record<string, unknown>) => request<POSProduct>("PATCH", `/pos/products/${id}`, data),
+  deleteProduct: (id: string) => request<void>("DELETE", `/pos/products/${id}`),
+  createCategory: (data: Record<string, unknown>) => request<POSCategory>("POST", "/pos/categories", data),
+};

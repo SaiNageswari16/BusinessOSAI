@@ -1065,3 +1065,124 @@ class PayGrade(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     tds_deduction: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
 
     designation: Mapped["Designation"] = relationship()
+
+# -------------------------------------------------------------------------
+# POS MODULE MODELS
+# -------------------------------------------------------------------------
+
+class POSCategory(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_categories"
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    color: Mapped[str | None] = mapped_column(String(80))   # e.g. "bg-blue-100 text-blue-700"
+    icon: Mapped[str | None] = mapped_column(String(80))    # lucide icon name
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    products: Mapped[list["POSProduct"]] = relationship(back_populates="category")
+
+
+class POSProduct(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_products"
+
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pos_categories.id", ondelete="SET NULL")
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    brand: Mapped[str | None] = mapped_column(String(100))
+    sku: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
+    barcode: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(String(500))
+
+    purchase_price: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    mrp: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    selling_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    tax_percent: Mapped[float] = mapped_column(Numeric(5, 2), default=5.0)
+    discount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+
+    stock: Mapped[int] = mapped_column(Integer, default=0)
+    reorder_level: Mapped[int] = mapped_column(Integer, default=10)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    category: Mapped["POSCategory | None"] = relationship(back_populates="products")
+
+
+class POSTransactionStatus(str, enum.Enum):
+    COMPLETED = "completed"
+    REFUNDED = "refunded"
+    ON_HOLD = "on_hold"
+
+class POSTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_transactions"
+
+    cashier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_sessions.id", ondelete="RESTRICT"), nullable=False)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    
+    receipt_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    status: Mapped[POSTransactionStatus] = mapped_column(Enum(POSTransactionStatus, name="pos_transaction_status"), default=POSTransactionStatus.COMPLETED)
+    
+    parent_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_transactions.id", ondelete="SET NULL"))
+    delivery_status: Mapped[str | None] = mapped_column(String(50))
+    delivery_address: Mapped[str | None] = mapped_column(String(255))
+    driver_name: Mapped[str | None] = mapped_column(String(100))
+    
+    subtotal: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    tax_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    discount_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    total_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+
+    cashier: Mapped["User"] = relationship()
+    items: Mapped[list["POSTransactionItem"]] = relationship(back_populates="transaction", cascade="all, delete-orphan")
+    payments: Mapped[list["POSPayment"]] = relationship(back_populates="transaction", cascade="all, delete-orphan")
+
+
+class POSTransactionItem(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_transaction_items"
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_transactions.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    discount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    subtotal: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+
+    transaction: Mapped["POSTransaction"] = relationship(back_populates="items")
+
+
+class POSPaymentMethod(str, enum.Enum):
+    CASH = "cash"
+    CARD = "card"
+    ONLINE = "online"
+    GIFT_CARD = "gift_card"
+
+class POSPayment(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_payments"
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_transactions.id", ondelete="CASCADE"), nullable=False)
+    payment_method: Mapped[POSPaymentMethod] = mapped_column(Enum(POSPaymentMethod, name="pos_payment_method"), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    reference_number: Mapped[str | None] = mapped_column(String(100))  # For card/online transactions
+
+    transaction: Mapped["POSTransaction"] = relationship(back_populates="payments")
+
+
+class POSSessionStatus(str, enum.Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class POSSession(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_sessions"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    starting_cash: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    status: Mapped[POSSessionStatus] = mapped_column(Enum(POSSessionStatus, name="pos_session_status"), default=POSSessionStatus.OPEN)
+    closing_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expected_cash: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    actual_cash: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    discrepancy_reason: Mapped[str | None] = mapped_column(String(500))
+
+    user: Mapped["User"] = relationship()

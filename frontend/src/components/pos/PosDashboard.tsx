@@ -1,12 +1,12 @@
 import React from "react";
-import { 
-  CreditCard, DollarSign, Package, ShoppingCart, 
+import {
+  CreditCard, DollarSign, Package, ShoppingCart,
   TrendingUp, Users, AlertTriangle, ArrowRightLeft,
   Clock, Zap, CheckCircle2, ChevronRight, Store, RotateCcw
 } from "lucide-react";
-import { posDashboardStats, posTransactions, posSession, posStore } from "../../data/pos-mock";
+import { posDashboardStats, posTransactions, posSession, posStore } from "../../lib/pos-fallback";
 
-const formatCurrency = (val: number) => 
+const formatCurrency = (val: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
 
 export class ErrorBoundary extends React.Component<any, any> {
@@ -61,7 +61,7 @@ function PosDashboardInner() {
                 AI Business Score: <span className="text-emerald-600">94/100</span>
               </h3>
               <p className="text-sm text-slate-600 mt-1 max-w-xl">
-                Store performance is <strong>14% higher</strong> than usual for a weekday morning. 
+                Store performance is <strong>14% higher</strong> than usual for a weekday morning.
                 AI predicts a surge in walk-ins between 1:00 PM and 3:00 PM. Make sure 2 registers are active.
               </p>
             </div>
@@ -74,34 +74,34 @@ function PosDashboardInner() {
 
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <StatCard 
-          title="Today's Revenue" 
+        <StatCard
+          title="Today's Revenue"
           value={formatCurrency(posDashboardStats.todayRevenue)}
-          trend="+12.5%" 
+          trend="+12.5%"
           isPositive={true}
           icon={DollarSign}
           color="bg-emerald-100 text-emerald-600"
         />
-        <StatCard 
-          title="Total Orders" 
+        <StatCard
+          title="Total Orders"
           value={posDashboardStats.todayOrders.toString()}
-          trend="+5.2%" 
+          trend="+5.2%"
           isPositive={true}
           icon={ShoppingCart}
           color="bg-blue-100 text-blue-600"
         />
-        <StatCard 
-          title="Average Bill" 
+        <StatCard
+          title="Average Bill"
           value={formatCurrency(posDashboardStats.avgBill)}
-          trend="-1.4%" 
+          trend="-1.4%"
           isPositive={false}
           icon={CreditCard}
           color="bg-purple-100 text-purple-600"
         />
-        <StatCard 
-          title="Returns & Refunds" 
+        <StatCard
+          title="Returns & Refunds"
           value={formatCurrency(posDashboardStats.refunds)}
-          trend={posDashboardStats.returns.toString() + " items"} 
+          trend={posDashboardStats.refundCount.toString() + " items"}
           isPositive={false}
           icon={RotateCcw}
           color="bg-orange-100 text-orange-600"
@@ -110,7 +110,7 @@ function PosDashboardInner() {
 
       {/* Quick Actions & Recent Transactions */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        
+
         {/* Quick Actions Panel */}
         <div className="xl:col-span-1 space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
