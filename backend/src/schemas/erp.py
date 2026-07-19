@@ -1547,8 +1547,6 @@ class PayGradeResponse(ORMModel):
     tds_deduction: float
     created_at: datetime
     updated_at: datetime
-
-<<<<<<< HEAD
 # -------------------------------------------------------------------------
 # POS MODULE SCHEMAS
 # -------------------------------------------------------------------------

@@ -2042,42 +2042,7 @@ export interface SalaryStructure {
   updated_at?: string;
 }
 
-// ─── System Administration APIs ───────────────────────────────────────────────
 
-export const tagsApi = {
-  list: (page = 1, pageSize = 50, search?: string, entityType?: string) =>
-    request<PaginatedResponse<Tag>>("GET", "/erp/tags", undefined, {
-      page, page_size: pageSize, search, entity_type: entityType,
-    }),
-  get: (id: string) => request<Tag>("GET", `/erp/tags/${id}`),
-  create: (data: Record<string, unknown>) => request<Tag>("POST", "/erp/tags", data),
-  update: (id: string, data: Record<string, unknown>) => request<Tag>("PATCH", `/erp/tags/${id}`, data),
-  delete: (id: string) => request<void>("DELETE", `/erp/tags/${id}`),
-};
-
-export const systemSettingsApi = {
-  list: (category?: string) =>
-    request<SystemSetting[]>("GET", "/erp/system-settings", undefined, { category }),
-  batchUpdate: (settings: { key: string; value: string | null; category?: string; description?: string; is_public?: boolean }[]) =>
-    request<SystemSetting[]>("PATCH", "/erp/system-settings", { settings }),
-  upsert: (key: string, data: { value: string | null; category?: string; description?: string; is_public?: boolean }) =>
-    request<SystemSetting>("PUT", `/erp/system-settings/${key}`, { key, ...data }),
-};
-
-export const systemHealthApi = {
-  get: () => request<SystemHealth>("GET", "/erp/system-health"),
-};
-
-export const errorLogsApi = {
-  list: (page = 1, pageSize = 20, module?: string) =>
-    request<PaginatedResponse<Record<string, unknown>>>("GET", "/erp/error-logs", undefined, {
-      page, page_size: pageSize, module,
-    }),
-};
-
-export const backupApi = {
-  getStatus: () => request<Record<string, unknown>>("GET", "/erp/backup-status"),
-};
 
 // --- POS Types & API ------------------------------------------------
 
