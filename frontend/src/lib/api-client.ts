@@ -789,6 +789,512 @@ export const payrollApi = {
 };
 
 // â”€â”€â”€ Workflow Engine Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── HRMS — Recruitment ──────────────────────────────────────────────────────
+
+export interface JobOpening {
+  id: string;
+  tenant_id: string;
+  title: string;
+  department: string;
+  location: string;
+  type: string;
+  experience: string;
+  openings: number;
+  applicants_count: number;
+  posted_date: string;
+  status: string;
+  description: string;
+  threshold_score: number;
+  portals: string[];
+  criteria: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Applicant {
+  id: string;
+  tenant_id: string;
+  name: string;
+  email: string;
+  job_id: string;
+  job_title: string;
+  applied_date: string;
+  experience: string;
+  rating: number;
+  stage: "Applied" | "Screening" | "Interview" | "Offer" | "Hired" | "Rejected";
+  source: string;
+  match_score: number;
+  resume_text: string | null;
+  expected_salary?: number;
+  proposed_salary?: number;
+  notes_json?: { author: string; date: string; text: string }[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Interview {
+  id: string;
+  tenant_id: string;
+  applicant_id: string;
+  candidate: string;
+  job_title: string;
+  interviewer_name: string;
+  date: string;
+  time: string;
+  duration: number;
+  type: string;
+  mode: string;
+  meeting_link: string | null;
+  status: "Scheduled" | "Completed" | "Cancelled";
+  feedback: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Offer {
+  id: string;
+  tenant_id: string;
+  applicant_id: string;
+  candidate: string;
+  role: string;
+  ctc: number;
+  offer_date: string;
+  expiry_date: string;
+  joining_date: string;
+  signer_name: string;
+  status: "Awaiting Acceptance" | "Accepted" | "Declined";
+  email_sent: boolean;
+  custom_template: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OnboardingTask {
+  task: string;
+  assignedTo: string;
+  status: "Pending" | "In Progress" | "Done";
+}
+
+export interface Onboarding {
+  id: string;
+  tenant_id: string;
+  applicant_id: string;
+  new_hire: string;
+  role: string;
+  start_date: string;
+  progress: number;
+  tasks_json: OnboardingTask[];
+  created_at: string;
+  updated_at: string;
+}
+
+export const recruitmentApi = {
+  // Job Openings
+  listJobs: (status?: string, search?: string, page = 1, pageSize = 50) =>
+    request<PaginatedResponse<JobOpening>>("GET", "/hrms/recruitment/jobs", undefined, {
+      status, search, page, page_size: pageSize
+    }),
+  createJob: (data: Record<string, unknown>) =>
+    request<JobOpening>("POST", "/hrms/recruitment/jobs", data),
+  generateJd: (prompt: string) =>
+    request<{ title: string; department: string; criteria: string; description: string; threshold_score: number }>(
+      "POST",
+      "/hrms/recruitment/jobs/generate-jd",
+      { prompt }
+    ),
+  updateJob: (id: string, data: Record<string, unknown>) =>
+    request<JobOpening>("PATCH", `/hrms/recruitment/jobs/${id}`, data),
+  deleteJob: (id: string) =>
+    request<void>("DELETE", `/hrms/recruitment/jobs/${id}`),
+
+  // Applicants
+  listApplicants: (jobId?: string, stage?: string, source?: string, search?: string, page = 1, pageSize = 50) =>
+    request<PaginatedResponse<Applicant>>("GET", "/hrms/recruitment/applicants", undefined, {
+      job_id: jobId, stage, source, search, page, page_size: pageSize
+    }),
+  applyJob: (jobId: string, data: Record<string, unknown>) =>
+    request<Applicant>("POST", `/hrms/recruitment/jobs/${jobId}/apply`, data),
+  updateApplicant: (id: string, data: Record<string, unknown>) =>
+    request<Applicant>("PATCH", `/hrms/recruitment/applicants/${id}`, data),
+  addApplicantNote: (id: string, text: string) =>
+    request<Applicant>("POST", `/hrms/recruitment/applicants/${id}/notes`, { text }),
+
+  // Interviews
+  listInterviews: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<Interview>>("GET", "/hrms/recruitment/interviews", undefined, {
+      page, page_size: pageSize
+    }),
+  checkOverlap: (interviewer: string, date: string, time: string, duration: number) =>
+    request<{ conflict: boolean; candidate?: string; time?: string; duration?: number; detail?: string }>(
+      "GET",
+      "/hrms/recruitment/interviews/check-overlap",
+      undefined,
+      { interviewer, date, time, duration }
+    ),
+  scheduleInterview: (data: Record<string, unknown>) =>
+    request<Interview>("POST", "/hrms/recruitment/interviews", data),
+  updateInterview: (id: string, data: Record<string, unknown>) =>
+    request<Interview>("PATCH", `/hrms/recruitment/interviews/${id}`, data),
+
+  // Offers
+  listOffers: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<Offer>>("GET", "/hrms/recruitment/offers", undefined, {
+      page, page_size: pageSize
+    }),
+  createOffer: (data: Record<string, unknown>) =>
+    request<Offer>("POST", "/hrms/recruitment/offers", data),
+  sendOfferEmail: (id: string) =>
+    request<{ status: string; message: string }>("POST", `/hrms/recruitment/offers/${id}/send-email`),
+  updateOfferStatus: (id: string, data: Record<string, unknown>) =>
+    request<Offer>("PATCH", `/hrms/recruitment/offers/${id}`, data),
+
+  // Onboardings
+  listOnboardings: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<Onboarding>>("GET", "/hrms/recruitment/onboarding", undefined, {
+      page, page_size: pageSize
+    }),
+  createOnboarding: (data: Record<string, unknown>) =>
+    request<Onboarding>("POST", "/hrms/recruitment/onboarding", data),
+  updateOnboarding: (id: string, data: Record<string, unknown>) =>
+    request<Onboarding>("PATCH", `/hrms/recruitment/onboarding/${id}`, data),
+  deleteOnboarding: (id: string) =>
+    request<void>("DELETE", `/hrms/recruitment/onboarding/${id}`),
+};
+
+
+export interface PerformanceGoal {
+  id: string;
+  tenant_id: string;
+  employee_id: string | null;
+  employee_name: string;
+  title: string;
+  description: string | null;
+  target_date: string;
+  status: "Not Started" | "On Track" | "At Risk" | "Completed";
+  weight: number;
+  progress: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PerformanceKpi {
+  id: string;
+  tenant_id: string;
+  metric: string;
+  target: string;
+  current: string;
+  unit: string;
+  achievement: number;
+}
+
+export interface PerformanceAppraisal {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  department: string;
+  period: string;
+  self_score: number;
+  manager_score: number;
+  final_score: number;
+  rating: string;
+  reviewer: string;
+  status: "Pending" | "In Progress" | "Completed";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PerformanceIncentive {
+  id: string;
+  tenant_id: string;
+  employee_name: string;
+  department: string;
+  type: string;
+  basis: string;
+  amount: number;
+  status: "Pending" | "Approved" | "Paid";
+}
+
+export interface LearningCourse {
+  id: string;
+  tenant_id: string;
+  title: string;
+  category: string;
+  instructor: string;
+  duration: string;
+  enrolled: number;
+  completion: number;
+  status: string;
+}
+
+export interface LearningCertificate {
+  id: string;
+  tenant_id: string;
+  employee_name: string;
+  cert_name: string;
+  issuer: string;
+  issued_date: string;
+  expiry_date: string;
+  status: string;
+}
+
+export interface LearningAssessment {
+  id: string;
+  tenant_id: string;
+  title: string;
+  course_name: string;
+  due_date: string;
+  participants: number;
+  avg_score: number;
+  status: string;
+}
+
+
+export const performanceApi = {
+  listGoals: (employeeId?: string, status?: string, page = 1, pageSize = 50) =>
+    request<PaginatedResponse<PerformanceGoal>>("GET", "/hrms/performance/goals", undefined, {
+      employee_id: employeeId, status, page, page_size: pageSize
+    }),
+  createGoal: (data: Record<string, unknown>) =>
+    request<PerformanceGoal>("POST", "/hrms/performance/goals", data),
+  updateGoal: (id: string, data: Record<string, unknown>) =>
+    request<PerformanceGoal>("PATCH", `/hrms/performance/goals/${id}`, data),
+
+  listKpis: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<PerformanceKpi>>("GET", "/hrms/performance/kpis", undefined, {
+      page, page_size: pageSize
+    }),
+  createKpi: (data: Record<string, unknown>) =>
+    request<PerformanceKpi>("POST", "/hrms/performance/kpis", data),
+
+  listAppraisals: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<PerformanceAppraisal>>("GET", "/hrms/performance/appraisals", undefined, {
+      page, page_size: pageSize
+    }),
+  createAppraisal: (data: Record<string, unknown>) =>
+    request<PerformanceAppraisal>("POST", "/hrms/performance/appraisals", data),
+  updateAppraisal: (id: string, data: Record<string, unknown>) =>
+    request<PerformanceAppraisal>("PATCH", `/hrms/performance/appraisals/${id}`, data),
+
+  listIncentives: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<PerformanceIncentive>>("GET", "/hrms/performance/incentives", undefined, {
+      page, page_size: pageSize
+    }),
+  createIncentive: (data: Record<string, unknown>) =>
+    request<PerformanceIncentive>("POST", "/hrms/performance/incentives", data),
+};
+
+export const learningApi = {
+  listCourses: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<LearningCourse>>("GET", "/hrms/learning/courses", undefined, {
+      page, page_size: pageSize
+    }),
+  createCourse: (data: Record<string, unknown>) =>
+    request<LearningCourse>("POST", "/hrms/learning/courses", data),
+
+  listCertificates: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<LearningCertificate>>("GET", "/hrms/learning/certificates", undefined, {
+      page, page_size: pageSize
+    }),
+  createCertificate: (data: Record<string, unknown>) =>
+    request<LearningCertificate>("POST", "/hrms/learning/certificates", data),
+
+  listAssessments: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<LearningAssessment>>("GET", "/hrms/learning/assessments", undefined, {
+      page, page_size: pageSize
+    }),
+  createAssessment: (data: Record<string, unknown>) =>
+    request<LearningAssessment>("POST", "/hrms/learning/assessments", data),
+};
+
+export interface AttendanceDeptStats {
+  dept: string;
+  rate: number;
+}
+
+export interface AttendanceMethodStats {
+  method: string;
+  count: number;
+  pct: number;
+  color: string;
+}
+
+export interface AttendanceAnalytics {
+  avg_attendance: number;
+  today_presence: number;
+  chronic_absentees: number;
+  late_arrivals: number;
+  dept_rates: AttendanceDeptStats[];
+  method_rates: AttendanceMethodStats[];
+}
+
+export interface DeptPayrollCost {
+  dept: string;
+  headcount: number;
+  totalPayroll: number;
+  avgSalary: number;
+  yoyChange: number;
+}
+
+export interface PayrollAnalytics {
+  monthly_payroll: number;
+  highest_dept: string;
+  growth_yoy: string;
+  dept_costs: DeptPayrollCost[];
+}
+
+export interface AtRiskEmployee {
+  name: string;
+  dept: string;
+  riskScore: number;
+  factors: string[];
+  risk: "High" | "Medium";
+}
+
+export interface AttritionPrediction {
+  at_risk: AtRiskEmployee[];
+}
+
+export interface ShiftOptimizationItem {
+  shift: string;
+  employees: number;
+  optimal: number;
+  coverage: number;
+  efficiency: number;
+}
+
+export interface ShiftOptimization {
+  shifts: ShiftOptimizationItem[];
+}
+
+export interface ProductivityItem {
+  name: string;
+  dept: string;
+  score: number;
+  trend: "up" | "down" | "stable";
+  tasks: number;
+  output: string;
+}
+
+export interface ProductivityScore {
+  scores: ProductivityItem[];
+}
+
+export interface TrainingRecommendationItem {
+  employee: string;
+  dept: string;
+  skill: string;
+  reason: string;
+  priority: "High" | "Medium";
+}
+
+export interface TrainingRecommendation {
+  recommendations: TrainingRecommendationItem[];
+}
+
+export const intelligenceApi = {
+  getAttendanceAnalytics: () =>
+    request<AttendanceAnalytics>("GET", "/hrms/intelligence/attendance-analytics"),
+  getPayrollAnalytics: () =>
+    request<PayrollAnalytics>("GET", "/hrms/intelligence/payroll-analytics"),
+  getAttritionPrediction: () =>
+    request<AttritionPrediction>("GET", "/hrms/intelligence/attrition-risk"),
+  getShiftOptimization: () =>
+    request<ShiftOptimization>("GET", "/hrms/intelligence/shift-optimization"),
+  getProductivityScore: () =>
+    request<ProductivityScore>("GET", "/hrms/intelligence/productivity-score"),
+  getTrainingRecommendation: () =>
+    request<TrainingRecommendation>("GET", "/hrms/intelligence/training-recommendation"),
+};
+
+
+export interface ExitResignation {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  department: string;
+  designation: string;
+  resign_date: string;
+  last_working_day: string;
+  reason: string;
+  status: "Pending" | "Accepted" | "Rejected" | "Completed";
+}
+
+export interface ExitClearanceTask {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  department: string;
+  task: string;
+  status: "Pending" | "In Progress" | "Done";
+  assigned_to: string;
+}
+
+export interface ExitFinalSettlement {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  last_working_day: string;
+  components_json: { item: string; amount: number }[];
+}
+
+export interface ExitExperienceLetter {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  designation: string;
+  from_date: string;
+  to_date: string;
+  issued_on: string;
+  status: "Pending" | "Issued";
+}
+
+export const exitApi = {
+  listResignations: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<ExitResignation>>("GET", "/hrms/exit/resignations", undefined, {
+      page, page_size: pageSize
+    }),
+  createResignation: (data: Record<string, unknown>) =>
+    request<ExitResignation>("POST", "/hrms/exit/resignations", data),
+  updateResignation: (id: string, data: Record<string, unknown>) =>
+    request<ExitResignation>("PATCH", `/hrms/exit/resignations/${id}`, data),
+
+  listClearance: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<ExitClearanceTask>>("GET", "/hrms/exit/clearance", undefined, {
+      page, page_size: pageSize
+    }),
+  createClearance: (data: Record<string, unknown>) =>
+    request<ExitClearanceTask>("POST", "/hrms/exit/clearance", data),
+  updateClearance: (id: string, data: Record<string, unknown>) =>
+    request<ExitClearanceTask>("PATCH", `/hrms/exit/clearance/${id}`, data),
+
+  listSettlements: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<ExitFinalSettlement>>("GET", "/hrms/exit/settlements", undefined, {
+      page, page_size: pageSize
+    }),
+  createSettlement: (data: Record<string, unknown>) =>
+    request<ExitFinalSettlement>("POST", "/hrms/exit/settlements", data),
+
+  listExperienceLetters: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<ExitExperienceLetter>>("GET", "/hrms/exit/experience-letters", undefined, {
+      page, page_size: pageSize
+    }),
+  createExperienceLetter: (data: Record<string, unknown>) =>
+    request<ExitExperienceLetter>("POST", "/hrms/exit/experience-letters", data),
+  updateExperienceLetter: (id: string, data: Record<string, unknown>) =>
+    request<ExitExperienceLetter>("PATCH", `/hrms/exit/experience-letters/${id}`, data),
+};
+
+
+// ─── Workflow Engine Types ────────────────────────────────────────────────────
+
+
+
+// ─── Workflow Engine Types ────────────────────────────────────────────────────
 
 export interface ApprovalWorkflow {
   id: string;

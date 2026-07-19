@@ -134,6 +134,8 @@ async def bootstrap_defaults(db: AsyncSession) -> None:
         )
         logger.info("Seeded demo tenant: admin@businessos.ai / Admin@123456")
 
+    await seed_hrms_features(db)
+
 
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
@@ -168,3 +170,534 @@ async def write_audit_log(
             user_agent=user_agent,
         )
     )
+
+
+async def seed_hrms_features(db: AsyncSession) -> None:
+    from datetime import date, timedelta
+    from src.models import (
+        Tenant, Employee, JobOpening, Applicant, Interview, OfferLetter, OnboardingRecord,
+        PerformanceGoal, PerformanceKpi, PerformanceAppraisal, PerformanceIncentive,
+        LearningCourse, LearningCertificate, LearningAssessment,
+        ExitResignation, ExitClearanceTask, ExitFinalSettlement, ExitExperienceLetter
+    )
+
+    # Get the default tenant
+    tenant_id = await db.scalar(select(Tenant.id))
+    if not tenant_id:
+        return
+
+    # 0. Seed Employees if none exist
+    emp_count = await db.scalar(select(func.count()).select_from(Employee).where(Employee.tenant_id == tenant_id))
+    if emp_count == 0:
+        from src.models import Company, Branch
+        comp_id = await db.scalar(select(Company.id).where(Company.tenant_id == tenant_id))
+        br_id = await db.scalar(select(Branch.id).where(Branch.tenant_id == tenant_id))
+        
+        employees_to_seed = [
+            Employee(
+                tenant_id=tenant_id,
+                company_id=comp_id,
+                branch_id=br_id,
+                employee_code="EMP-1001",
+                full_name="Alex Rivera",
+                email="alex@nimbus.com",
+                employment_type="Full-Time",
+                status="Active",
+                date_of_joining=date.today() - timedelta(days=365)
+            ),
+            Employee(
+                tenant_id=tenant_id,
+                company_id=comp_id,
+                branch_id=br_id,
+                employee_code="EMP-1002",
+                full_name="James Thompson",
+                email="james@nimbus.com",
+                employment_type="Full-Time",
+                status="Active",
+                date_of_joining=date.today() - timedelta(days=300)
+            ),
+            Employee(
+                tenant_id=tenant_id,
+                company_id=comp_id,
+                branch_id=br_id,
+                employee_code="EMP-1003",
+                full_name="Sarah Mitchell",
+                email="sarah@nimbus.com",
+                employment_type="Full-Time",
+                status="Active",
+                date_of_joining=date.today() - timedelta(days=200)
+            ),
+            Employee(
+                tenant_id=tenant_id,
+                company_id=comp_id,
+                branch_id=br_id,
+                employee_code="EMP-1004",
+                full_name="Aisha Patel",
+                email="aisha@nimbus.com",
+                employment_type="Full-Time",
+                status="Active",
+                date_of_joining=date.today() - timedelta(days=150)
+            )
+        ]
+        for emp in employees_to_seed:
+            db.add(emp)
+        await db.commit()
+        logger.info("HRMS Employee seeds created successfully.")
+
+    # 1. Seed Recruitment
+    job_count = await db.scalar(select(func.count()).select_from(JobOpening).where(JobOpening.tenant_id == tenant_id))
+    if job_count == 0:
+        jobs_to_seed = [
+            JobOpening(
+                tenant_id=tenant_id,
+                title="Senior Backend Engineer",
+                department="Engineering",
+                location="Remote",
+                type="Full-Time",
+                experience="4-6 years",
+                openings=2,
+                applicants_count=2,
+                posted_date=date.today() - timedelta(days=30),
+                status="Open",
+                threshold_score=75,
+                portals=["Careers Page", "LinkedIn", "Naukri.com", "Zoho Careers"],
+                criteria="Python, FastAPI, PostgreSQL, AWS, Docker, Microservices",
+                description="We are looking for a Senior Backend Engineer to build scalable APIs and design microservices in a Python/FastAPI backend framework. You will work on optimizing database queries in PostgreSQL, deploying serverless workloads on AWS, and setting up CI/CD workflows."
+            ),
+            JobOpening(
+                tenant_id=tenant_id,
+                title="Sales Account Executive",
+                department="Sales",
+                location="San Francisco, CA",
+                type="Full-Time",
+                experience="2-4 years",
+                openings=3,
+                applicants_count=2,
+                posted_date=date.today() - timedelta(days=25),
+                status="Open",
+                threshold_score=70,
+                portals=["Careers Page", "LinkedIn", "Indeed"],
+                criteria="SaaS Sales, CRM, Lead Generation, Presentation, Communication",
+                description="Identify and close sales opportunities in mid-market accounts. Deliver exceptional product demonstrations, handle pricing discussions, and coordinate closely with customer success to drive user adoption."
+            ),
+            JobOpening(
+                tenant_id=tenant_id,
+                title="UX / Product Designer",
+                department="Engineering",
+                location="Remote",
+                type="Full-Time",
+                experience="3-5 years",
+                openings=1,
+                applicants_count=1,
+                posted_date=date.today() - timedelta(days=15),
+                status="Open",
+                threshold_score=80,
+                portals=["Careers Page", "Glassdoor"],
+                criteria="Figma, User Research, Wireframes, Prototyping, Design System",
+                description="Design intuitive user flows and pixel-perfect UI screens for our core platform modules. Conduct user interviews, create low and high fidelity wireframes in Figma, and manage our brand design system."
+            )
+        ]
+        for j in jobs_to_seed:
+            db.add(j)
+        await db.flush()
+
+        app1 = Applicant(
+            tenant_id=tenant_id,
+            name="Nikhil Mehta",
+            email="nikhil@mail.com",
+            job_id=jobs_to_seed[0].id,
+            job_title=jobs_to_seed[0].title,
+            applied_date=date.today() - timedelta(days=28),
+            experience="5 years",
+            rating=4,
+            stage="Interview",
+            source="LinkedIn",
+            match_score=85,
+            expected_salary=95000.0,
+            proposed_salary=90000.0,
+            notes_json=[
+                {"author": "Priya Sharma", "date": (date.today() - timedelta(days=5)).isoformat() + "T10:00:00", "text": "Called Nikhil. He was positive about our Tech Stack and remote working setup. Scheduled technical screening round."},
+                {"author": "Alex Rivera", "date": (date.today() - timedelta(days=3)).isoformat() + "T11:00:00", "text": "Technical interview completed. Strong knowledge of databases and FastAPI. Suggested target CTC offer of $90,000."}
+            ],
+            resume_text="Experienced backend engineer with 5 years building REST APIs using Python, FastAPI, and Flask. Strong knowledge of PostgreSQL databases, query optimizations, Docker containers, and deploying microservices on AWS EC2/ECS."
+        )
+        app2 = Applicant(
+            tenant_id=tenant_id,
+            name="Claire Dubois",
+            email="claire@mail.com",
+            job_id=jobs_to_seed[0].id,
+            job_title=jobs_to_seed[0].title,
+            applied_date=date.today() - timedelta(days=27),
+            experience="4 years",
+            rating=3,
+            stage="Screening",
+            source="Naukri.com",
+            match_score=72,
+            resume_text="4 years of software engineering experience. Experienced with Django and MySQL. Familiar with git, unit testing, and Docker. Looking to transition into FastAPI and AWS architecture."
+        )
+        app3 = Applicant(
+            tenant_id=tenant_id,
+            name="Tom Wilson",
+            email="tom@mail.com",
+            job_id=jobs_to_seed[1].id,
+            job_title=jobs_to_seed[1].title,
+            applied_date=date.today() - timedelta(days=22),
+            experience="3 years",
+            rating=5,
+            stage="Offer",
+            source="Indeed",
+            match_score=92,
+            resume_text="Account Executive with 3 years SaaS sales experience. Exceeded quota by 120% in consecutive quarters. Expert in lead generation, HubSpot CRM, sales calls, online product demos, and contract negotiations."
+        )
+        app4 = Applicant(
+            tenant_id=tenant_id,
+            name="Jason Bourne",
+            email="jason@mail.com",
+            job_id=jobs_to_seed[1].id,
+            job_title=jobs_to_seed[1].title,
+            applied_date=date.today() - timedelta(days=20),
+            experience="2 years",
+            rating=3,
+            stage="Applied",
+            source="LinkedIn",
+            match_score=68,
+            resume_text="Sales associate focused on enterprise communications. Experience in outbound calling, lead qualification, Salesforce entries, and client relations."
+        )
+        app5 = Applicant(
+            tenant_id=tenant_id,
+            name="Anjali Singh",
+            email="anjali@mail.com",
+            job_id=jobs_to_seed[2].id,
+            job_title=jobs_to_seed[2].title,
+            applied_date=date.today() - timedelta(days=12),
+            experience="4 years",
+            rating=5,
+            stage="Hired",
+            source="Careers Page",
+            match_score=88,
+            resume_text="Product designer with 4 years creating responsive websites and mobile interfaces. Figma power user. Deep understanding of design systems, responsive typography, user testing, wireframing, and interactive developer handoffs."
+        )
+        db.add_all([app1, app2, app3, app4, app5])
+        await db.flush()
+
+        # Seed Interview
+        int1 = Interview(
+            tenant_id=tenant_id,
+            applicant_id=app1.id,
+            candidate=app1.name,
+            job_title=app1.job_title,
+            interviewer_name="Alex Rivera",
+            date=(date.today() + timedelta(days=2)).isoformat(),
+            time="10:00",
+            duration=60,
+            type="Technical",
+            mode="Video Call",
+            meeting_link="https://meet.google.com/abc-defg-hij",
+            status="Scheduled"
+        )
+        db.add(int1)
+
+        # Seed Offer
+        ofr1 = OfferLetter(
+            tenant_id=tenant_id,
+            applicant_id=app3.id,
+            candidate=app3.name,
+            role=app3.job_title,
+            ctc=85000.0,
+            offer_date=date.today() - timedelta(days=2),
+            expiry_date=date.today() + timedelta(days=5),
+            joining_date=date.today() + timedelta(days=20),
+            signer_name="Priya Sharma",
+            status="Awaiting Acceptance",
+            email_sent=True
+        )
+        db.add(ofr1)
+
+        # Seed Onboarding
+        onb1 = OnboardingRecord(
+            tenant_id=tenant_id,
+            applicant_id=app5.id,
+            new_hire=app5.name,
+            role=app5.job_title,
+            start_date=date.today() + timedelta(days=10),
+            progress=67,
+            tasks_json=[
+                {"task": "Email & System Access Created", "assignedTo": "IT", "status": "Done"},
+                {"task": "Offer Letter Signed", "assignedTo": "HR", "status": "Done"},
+                {"task": "Background Verification", "assignedTo": "HR", "status": "Done"},
+                {"task": "Workstation Setup", "assignedTo": "IT", "status": "In Progress"},
+                {"task": "Department Orientation", "assignedTo": "Manager", "status": "Pending"},
+                {"task": "Policy Training", "assignedTo": "HR", "status": "Pending"}
+            ]
+        )
+        db.add(onb1)
+        await db.commit()
+        logger.info("HRMS Recruitment seeds created successfully.")
+
+    # 2. Seed Performance
+    goal_count = await db.scalar(select(func.count()).select_from(PerformanceGoal).where(PerformanceGoal.tenant_id == tenant_id))
+    if goal_count == 0:
+        emp_list = await db.execute(select(Employee).where(Employee.tenant_id == tenant_id).limit(3))
+        employees = emp_list.scalars().all()
+        emp_id = employees[0].id if employees else None
+        emp_name = employees[0].full_name if employees else "John Doe"
+
+        goals_to_seed = [
+            PerformanceGoal(
+                tenant_id=tenant_id,
+                employee_id=emp_id,
+                employee_name=emp_name,
+                title="Optimize Platform Core API Latencies",
+                description="Reduce average latency for critical read/write endpoints from 250ms to less than 100ms using caching and indexing.",
+                target_date=date.today() + timedelta(days=75),
+                status="On Track",
+                weight=30,
+                progress=65
+            ),
+            PerformanceGoal(
+                tenant_id=tenant_id,
+                employee_id=emp_id,
+                employee_name=emp_name,
+                title="Launch CRM V2 Dashboard UI",
+                description="Draft wireframes, complete user research, code client views in React, and deploy the new CRM customer panel.",
+                target_date=date.today() + timedelta(days=45),
+                status="Completed",
+                weight=40,
+                progress=100
+            ),
+            PerformanceGoal(
+                tenant_id=tenant_id,
+                employee_id=emp_id,
+                employee_name=emp_name,
+                title="Increase B2B Sales Conversion Rate",
+                description="Improve target conversion rate from 8.5% to 12.0% through active demo follow-ups and custom onboarding templates.",
+                target_date=date.today() + timedelta(days=90),
+                status="At Risk",
+                weight=30,
+                progress=25
+            )
+        ]
+        for g in goals_to_seed:
+            db.add(g)
+
+        kpis_to_seed = [
+            PerformanceKpi(tenant_id=tenant_id, metric="Monthly Revenue per Sales Rep", target="$110K", current="$98K", unit="Sales", achievement=89),
+            PerformanceKpi(tenant_id=tenant_id, metric="Customer Satisfaction (CSAT)", target="4.5 / 5", current="4.3 / 5", unit="CX", achievement=96),
+            PerformanceKpi(tenant_id=tenant_id, metric="Ticket Resolution Rate", target="95%", current="92%", unit="Support", achievement=97),
+            PerformanceKpi(tenant_id=tenant_id, metric="Sprint Velocity", target="48 pts", current="51 pts", unit="Engineering", achievement=106),
+            PerformanceKpi(tenant_id=tenant_id, metric="Lead Conversion Rate", target="12%", current="9.8%", unit="Sales", achievement=82),
+            PerformanceKpi(tenant_id=tenant_id, metric="Warehouse Dispatch Accuracy", target="99%", current="98.5%", unit="Operations", achievement=99),
+        ]
+        for k in kpis_to_seed:
+            db.add(k)
+
+        appraisals_to_seed = [
+            PerformanceAppraisal(
+                tenant_id=tenant_id,
+                employee_id=emp_id or uuid.uuid4(),
+                employee_name=emp_name,
+                department="Engineering",
+                period="H1 2026",
+                self_score=85,
+                manager_score=90,
+                final_score=88,
+                rating="Exceeds Expectations",
+                reviewer="Alex Rivera",
+                status="Completed"
+            ),
+            PerformanceAppraisal(
+                tenant_id=tenant_id,
+                employee_id=employees[1].id if len(employees) > 1 else uuid.uuid4(),
+                employee_name=employees[1].full_name if len(employees) > 1 else "Sarah Jenkins",
+                department="Sales",
+                period="H1 2026",
+                self_score=75,
+                manager_score=80,
+                final_score=78,
+                rating="Meets Expectations",
+                reviewer="James Thompson",
+                status="Completed"
+            ),
+            PerformanceAppraisal(
+                tenant_id=tenant_id,
+                employee_id=employees[2].id if len(employees) > 2 else uuid.uuid4(),
+                employee_name=employees[2].full_name if len(employees) > 2 else "David Miller",
+                department="Support",
+                period="H1 2026",
+                self_score=90,
+                manager_score=95,
+                final_score=93,
+                rating="Outstanding",
+                reviewer="Priya Sharma",
+                status="Completed"
+            )
+        ]
+        for a in appraisals_to_seed:
+            db.add(a)
+
+        incentives_to_seed = [
+            PerformanceIncentive(tenant_id=tenant_id, employee_name="James Thompson", department="Sales", type="Q2 Incentive", basis="120% of quota achieved", amount=18000.0, status="Approved"),
+            PerformanceIncentive(tenant_id=tenant_id, employee_name="Daniel Roberts", department="Operations", type="Excellence Award", basis="Cycle time reduced by 20%", amount=5000.0, status="Paid"),
+            PerformanceIncentive(tenant_id=tenant_id, employee_name="Sarah Mitchell", department="Marketing", type="Campaign Bonus", basis="3 campaigns launched on time", amount=12000.0, status="Pending"),
+        ]
+        for inc in incentives_to_seed:
+            db.add(inc)
+
+        await db.commit()
+        logger.info("HRMS Performance seeds created successfully.")
+
+    # 3. Seed Learning
+    course_count = await db.scalar(select(func.count()).select_from(LearningCourse).where(LearningCourse.tenant_id == tenant_id))
+    if course_count == 0:
+        courses_to_seed = [
+            LearningCourse(tenant_id=tenant_id, title="Leadership Essentials", category="Soft Skills", instructor="External – Coursera", duration="8 hrs", enrolled=32, completion=75, status="Active"),
+            LearningCourse(tenant_id=tenant_id, title="AWS Cloud Practitioner", category="Technical", instructor="AWS Training", duration="12 hrs", enrolled=10, completion=60, status="Active"),
+            LearningCourse(tenant_id=tenant_id, title="Data Privacy & GDPR", category="Compliance", instructor="Internal – Legal", duration="2 hrs", enrolled=124, completion=92, status="Mandatory"),
+            LearningCourse(tenant_id=tenant_id, title="Advanced Excel for Finance", category="Technical", instructor="Internal – Finance", duration="5 hrs", enrolled=18, completion=44, status="Active"),
+        ]
+        for c in courses_to_seed:
+            db.add(c)
+
+        certs_to_seed = [
+            LearningCertificate(tenant_id=tenant_id, employee_name="Kevin Park", cert_name="AWS Certified Developer", issuer="Amazon Web Services", issued_date="2026-05-20", expiry_date="2029-05-20", status="Valid"),
+            LearningCertificate(tenant_id=tenant_id, employee_name="Priya Sharma", cert_name="SHRM-CP", issuer="SHRM", issued_date="2025-08-10", expiry_date="2028-08-10", status="Valid"),
+            LearningCertificate(tenant_id=tenant_id, employee_name="Aisha Patel", cert_name="Google UX Design", issuer="Google / Coursera", issued_date="2024-03-15", expiry_date="N/A", status="Valid"),
+            LearningCertificate(tenant_id=tenant_id, employee_name="Marcus Johnson", cert_name="CPA Exam Part 1", issuer="AICPA", issued_date="2023-11-01", expiry_date="N/A", status="Valid"),
+        ]
+        for cert in certs_to_seed:
+            db.add(cert)
+
+        assessments_to_seed = [
+            LearningAssessment(tenant_id=tenant_id, title="Q2 Compliance Quiz", course_name="Data Privacy & GDPR", due_date="2026-07-15", participants=124, avg_score=88, status="Active"),
+            LearningAssessment(tenant_id=tenant_id, title="Leadership Self Assessment", course_name="Leadership Essentials", due_date="2026-07-30", participants=32, avg_score=0, status="Not Started"),
+            LearningAssessment(tenant_id=tenant_id, title="Cloud Basics Assessment", course_name="AWS Cloud Practitioner", due_date="2026-06-30", participants=10, avg_score=79, status="Closed"),
+        ]
+        for ass in assessments_to_seed:
+            db.add(ass)
+
+        await db.commit()
+        logger.info("HRMS Learning seeds created successfully.")
+
+    # 4. Seed Exit Management
+    exit_count = await db.scalar(select(func.count()).select_from(ExitResignation).where(ExitResignation.tenant_id == tenant_id))
+    if exit_count == 0:
+        import uuid
+        emp_list = await db.execute(select(Employee).where(Employee.tenant_id == tenant_id))
+        employees = emp_list.scalars().all()
+        
+        # Resignations
+        res_list = [
+            ExitResignation(
+                tenant_id=tenant_id,
+                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_name="Aisha Patel",
+                department="Engineering",
+                designation="UX Designer",
+                last_working_day=date.today() + timedelta(days=15),
+                reason="Personal relocation to another country",
+                status="Accepted"
+            ),
+            ExitResignation(
+                tenant_id=tenant_id,
+                employee_id=employees[2].id if len(employees) > 2 else uuid.uuid4(),
+                employee_name="Sarah Mitchell",
+                department="Marketing",
+                designation="Marketing Director",
+                last_working_day=date.today() - timedelta(days=5),
+                reason="Higher learning opportunities and MBA",
+                status="Completed"
+            )
+        ]
+        for r in res_list:
+            db.add(r)
+            
+        # Clearance Tasks
+        clearances = [
+            ExitClearanceTask(
+                tenant_id=tenant_id,
+                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_name="Aisha Patel",
+                department="IT",
+                task="Laptop & Access Card returned",
+                status="Pending",
+                assigned_to="IT Team"
+            ),
+            ExitClearanceTask(
+                tenant_id=tenant_id,
+                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_name="Aisha Patel",
+                department="Finance",
+                task="Expense settlements cleared",
+                status="Done",
+                assigned_to="Finance"
+            ),
+            ExitClearanceTask(
+                tenant_id=tenant_id,
+                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_name="Aisha Patel",
+                department="HR",
+                task="Exit interview completed",
+                status="Done",
+                assigned_to="Priya Sharma"
+            ),
+            ExitClearanceTask(
+                tenant_id=tenant_id,
+                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_name="Aisha Patel",
+                department="Manager",
+                task="KT (Knowledge Transfer) signed off",
+                status="In Progress",
+                assigned_to="Alex Rivera"
+            )
+        ]
+        for c in clearances:
+            db.add(c)
+            
+        # Settlements
+        settlements = [
+            ExitFinalSettlement(
+                tenant_id=tenant_id,
+                employee_id=employees[2].id if len(employees) > 2 else uuid.uuid4(),
+                employee_name="Sarah Mitchell",
+                last_working_day=date.today() - timedelta(days=5),
+                components_json=[
+                    {"item": "Salary for June (30 days)", "amount": 3500},
+                    {"item": "Leave Encashment (3 days unused)", "amount": 485},
+                    {"item": "Gratuity", "amount": 2800},
+                    {"item": "Bonus (pro-rated)", "amount": 1500},
+                    {"item": "PF Settlement", "amount": 8400},
+                    {"item": "TDS Deduction (Final)", "amount": -1200}
+                ]
+            )
+        ]
+        for s in settlements:
+            db.add(s)
+            
+        # Experience Letters
+        letters = [
+            ExitExperienceLetter(
+                tenant_id=tenant_id,
+                employee_id=employees[2].id if len(employees) > 2 else uuid.uuid4(),
+                employee_name="Sarah Mitchell",
+                designation="Marketing Director",
+                from_date=date.today() - timedelta(days=730),
+                to_date=date.today() - timedelta(days=5),
+                issued_on=str(date.today() - timedelta(days=4)),
+                status="Issued"
+            ),
+            ExitExperienceLetter(
+                tenant_id=tenant_id,
+                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_name="Aisha Patel",
+                designation="UX Designer",
+                from_date=date.today() - timedelta(days=365),
+                to_date=date.today() + timedelta(days=15),
+                issued_on="—",
+                status="Pending"
+            )
+        ]
+        for l in letters:
+            db.add(l)
+            
+        await db.commit()
+        logger.info("HRMS Exit Management seeds created successfully.")

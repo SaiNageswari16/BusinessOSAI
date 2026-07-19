@@ -1,161 +1,592 @@
-import React from "react";
-import { motion } from "framer-motion";
-import { Plus, FileText, Shield, Calculator, Award } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus, FileText, Shield, Calculator, Award, Trash2, CheckCircle, Clock, XCircle, AlertTriangle } from "lucide-react";
+import { exitApi, employeesApi, ExitResignation, ExitClearanceTask, ExitFinalSettlement, ExitExperienceLetter, Employee } from "../../lib/api-client";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
 interface Props { tab?: string; }
 
-const resignations = [
-  { id: "RES-001", employee: "Aisha Patel", department: "Engineering", designation: "UX Designer", resignDate: "2026-07-01", lastWorkingDay: "2026-07-15", reason: "Personal relocation", status: "Accepted" },
-  { id: "RES-002", employee: "Linda Torres", department: "Sales", designation: "Sales Representative", resignDate: "2026-06-15", lastWorkingDay: "2026-06-30", reason: "Higher opportunity", status: "Completed" },
-];
-
 export function ExitManagement({ tab = "resignation" }: Props) {
+  const [resignations, setResignations] = useState<ExitResignation[]>([]);
+  const [clearanceTasks, setClearanceTasks] = useState<ExitClearanceTask[]>([]);
+  const [settlements, setSettlements] = useState<ExitFinalSettlement[]>([]);
+  const [letters, setLetters] = useState<ExitExperienceLetter[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
 
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // Modals state
+  const [resignOpen, setResignOpen] = useState(false);
+  const [settlementOpen, setSettlementOpen] = useState(false);
+
+  // Forms state
+  const [resignForm, setResignForm] = useState({
+    employeeId: "",
+    lastWorkingDay: "",
+    reason: "",
+    status: "Pending"
+  });
+
+  const [settlementForm, setSettlementForm] = useState({
+    employeeId: "",
+    lastWorkingDay: "",
+    salaryAmount: 3500,
+    leaveEncashment: 485,
+    gratuity: 2800,
+    bonus: 1500,
+    pf: 8400,
+    tax: -1200
+  });
+
+  const showNotification = (message: string, type: "success" | "error" = "success") => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  const loadData = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [rRes, cRes, sRes, lRes, eRes] = await Promise.all([
+        exitApi.listResignations(),
+        exitApi.listClearance(),
+        exitApi.listSettlements(),
+        exitApi.listExperienceLetters(),
+        employeesApi.list(1, 100)
+      ]);
+      setResignations(rRes.items);
+      setClearanceTasks(cRes.items);
+      setSettlements(sRes.items);
+      setLetters(lRes.items);
+      setEmployees(eRes.items);
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || "Failed to load exit pipeline records.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [tab]);
+
+  // Handle Resignation Request Filing
+  const handleFileResignation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resignForm.employeeId || !resignForm.lastWorkingDay || !resignForm.reason) {
+      showNotification("Please select employee and provide resignation details.", "error");
+      return;
+    }
+    const emp = employees.find(x => x.id === resignForm.employeeId);
+    try {
+      await exitApi.createResignation({
+        employee_id: resignForm.employeeId,
+        employee_name: emp ? emp.full_name : "Employee",
+        department: emp?.department_id ? "Engineering" : "Operations",
+        designation: emp?.designation_id ? "Staff" : "UX Designer",
+        last_working_day: resignForm.lastWorkingDay,
+        reason: resignForm.reason,
+        status: resignForm.status
+      });
+
+      // Automatically create clearance tasks for the employee
+      const tasks = [
+        { task: "Laptop & Access Card returned", dept: "IT", assigned: "IT Team" },
+        { task: "Expense settlements cleared", dept: "Finance", assigned: "Finance" },
+        { task: "Exit interview completed", dept: "HR", assigned: "HR Partner" },
+        { task: "KT (Knowledge Transfer) signed off", dept: "Manager", assigned: "Reporting Mgr" }
+      ];
+
+      await Promise.all(
+        tasks.map(t =>
+          exitApi.createClearance({
+            employee_id: resignForm.employeeId,
+            employee_name: emp ? emp.full_name : "Employee",
+            department: t.dept,
+            task: t.task,
+            status: "Pending",
+            assigned_to: t.assigned
+          })
+        )
+      );
+
+      showNotification("Resignation request filed and clearance checklist generated.");
+      setResignOpen(false);
+      setResignForm({ employeeId: "", lastWorkingDay: "", reason: "", status: "Pending" });
+      await loadData();
+    } catch (err: any) {
+      showNotification(err.message || "Failed to submit resignation request.", "error");
+    }
+  };
+
+  // Process Resignation Status
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    try {
+      const res = await exitApi.updateResignation(id, { status: newStatus });
+      
+      // If accepted/completed, create experience letter record automatically
+      if (newStatus === "Accepted") {
+        await exitApi.createExperienceLetter({
+          employee_id: res.employee_id,
+          employee_name: res.employee_name,
+          designation: res.designation,
+          from_date: new Date(Date.now() - 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
+          to_date: res.last_working_day,
+          issued_on: "—",
+          status: "Pending"
+        });
+      }
+      
+      showNotification(`Resignation updated to ${newStatus}`);
+      await loadData();
+    } catch (err: any) {
+      showNotification(err.message || "Failed to update resignation status.", "error");
+    }
+  };
+
+  // Mark Clearance Task Complete
+  const handleToggleClearance = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === "Done" ? "Pending" : "Done";
+    try {
+      await exitApi.updateClearance(id, { status: newStatus });
+      showNotification("Clearance task status updated.");
+      await loadData();
+    } catch (err: any) {
+      showNotification(err.message || "Failed to update task.", "error");
+    }
+  };
+
+  // Generate Full & Final Settlement calculation
+  const handleCreateSettlement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settlementForm.employeeId || !settlementForm.lastWorkingDay) {
+      showNotification("Please select employee and last working day.", "error");
+      return;
+    }
+    const emp = employees.find(x => x.id === settlementForm.employeeId);
+    try {
+      await exitApi.createSettlement({
+        employee_id: settlementForm.employeeId,
+        employee_name: emp ? emp.full_name : "Employee",
+        last_working_day: settlementForm.lastWorkingDay,
+        components_json: [
+          { item: "Salary for Final Month", amount: Number(settlementForm.salaryAmount) },
+          { item: "Leave Encashment (unused leaves)", amount: Number(settlementForm.leaveEncashment) },
+          { item: "Gratuity Payout", amount: Number(settlementForm.gratuity) },
+          { item: "Pro-rated Annual Bonus", amount: Number(settlementForm.bonus) },
+          { item: "Provident Fund Settlement", amount: Number(settlementForm.pf) },
+          { item: "TDS Deduction (Final adjustment)", amount: Number(settlementForm.tax) }
+        ]
+      });
+      showNotification("Full & Final (F&F) settlement calculated successfully.");
+      setSettlementOpen(false);
+      await loadData();
+    } catch (err: any) {
+      showNotification(err.message || "Failed to save settlement.", "error");
+    }
+  };
+
+  // Issue Experience Letters
+  const handleIssueLetter = async (id: string) => {
+    try {
+      await exitApi.updateExperienceLetter(id, {
+        status: "Issued",
+        issued_on: new Date().toISOString().split('T')[0]
+      });
+      showNotification("Experience & Relieving letter issued.");
+      await loadData();
+    } catch (err: any) {
+      showNotification(err.message || "Failed to issue letter.", "error");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+        <div className="size-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-muted-foreground font-sans">Querying database exit pipeline...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 text-center space-y-4 font-sans">
+        <AlertTriangle className="size-12 text-red-500 mx-auto" />
+        <p className="text-red-500 font-medium">{error}</p>
+        <Button onClick={loadData}>Retry Connection</Button>
+      </div>
+    );
+  }
+
+  // Clearance sub-tab
   if (tab === "clearance") {
-    const clearanceTasks = [
-      { dept: "IT", task: "Laptop & Access Card returned", status: "Pending", assignedTo: "IT Team" },
-      { dept: "Finance", task: "Expense settlements cleared", status: "Done", assignedTo: "Finance" },
-      { dept: "HR", task: "Exit interview completed", status: "Done", assignedTo: "Priya Sharma" },
-      { dept: "Admin", task: "Office ID deactivated", status: "Pending", assignedTo: "Admin" },
-      { dept: "Manager", task: "KT (Knowledge Transfer) signed off", status: "In Progress", assignedTo: "Alex Rivera" },
-    ];
+    const uniqueEmployees = Array.from(new Set(clearanceTasks.map(t => t.employee_name)));
+
     return (
       <div className="p-6 space-y-6">
-        <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Clearance</h1><p className="text-sm text-muted-foreground">Exit clearance checklist for departing employees.</p></div>
+        {notification && (
+          <div className="fixed bottom-4 right-4 px-4 py-2.5 bg-emerald-600 text-white font-sans text-xs shadow-lg z-50 rounded-lg">
+            {notification.message}
+          </div>
+        )}
+
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Clearance Checklists</h1>
+          <p className="text-sm text-muted-foreground font-sans">Verify asset recovery and departmental approvals for outgoing staff.</p>
         </div>
-        <div className="glass-panel p-6 rounded-xl border border-border/50">
-          <div className="flex justify-between items-center mb-4">
-            <div><h3 className="font-semibold text-foreground">Aisha Patel — UX Designer</h3><p className="text-sm text-muted-foreground">Last working day: July 15, 2026</p></div>
-            <div className="text-right"><p className="text-3xl font-bold text-primary">40%</p><p className="text-xs text-muted-foreground">Cleared</p></div>
+
+        {uniqueEmployees.length === 0 ? (
+          <div className="text-center p-12 glass-panel border border-border/50 rounded-xl">
+            <Shield className="size-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground text-sm font-semibold">No employees currently in exit clearance state.</p>
           </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden mb-6">
-            <div className="h-full bg-primary rounded-full" style={{ width: "40%" }} />
-          </div>
-          <div className="space-y-3">
-            {clearanceTasks.map((t, i) => (
-              <div key={t.task} className="flex items-center gap-3 text-sm">
-                <div className={`size-5 rounded-full flex items-center justify-center flex-shrink-0 ${t.status === "Done" ? "bg-emerald-500" : t.status === "In Progress" ? "bg-amber-500" : "border-2 border-muted"}`}>
-                  {t.status === "Done" && <svg className="size-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+        ) : (
+          <div className="space-y-6">
+            {uniqueEmployees.map(empName => {
+              const tasks = clearanceTasks.filter(t => t.employee_name === empName);
+              const doneCount = tasks.filter(t => t.status === "Done").length;
+              const percent = tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
+
+              return (
+                <div key={empName} className="glass-panel p-6 rounded-xl border border-border/50 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="font-bold text-foreground text-lg">{empName}</h3>
+                      <p className="text-xs text-muted-foreground">Department: {tasks[0]?.department || "Engineering"}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-lg font-bold text-primary">{percent}%</span>
+                      <p className="text-[10px] text-muted-foreground font-semibold uppercase">Cleared</p>
+                    </div>
+                  </div>
+
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${percent}%` }} />
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    {tasks.map(t => (
+                      <div key={t.id} className="flex items-center justify-between text-sm py-1 border-b border-border/20 last:border-0">
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => handleToggleClearance(t.id, t.status)} 
+                            className={`size-5 rounded-full flex items-center justify-center border transition-all ${t.status === "Done" ? "bg-emerald-500 border-emerald-500" : "border-border hover:bg-muted"}`}>
+                            {t.status === "Done" && <svg className="size-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                          </button>
+                          <span className={`${t.status === "Done" ? "text-muted-foreground line-through" : "text-foreground font-semibold"}`}>{t.task}</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-xs text-muted-foreground font-bold">{t.department} Unit · Admin: {t.assigned_to}</span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${t.status === "Done" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>{t.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <span className={`flex-1 ${t.status === "Done" ? "text-muted-foreground line-through" : "text-foreground"}`}>{t.task}</span>
-                <span className="text-xs text-muted-foreground">{t.dept} · {t.assignedTo}</span>
-                <span className={`px-2 py-0.5 rounded-full text-xs ${t.status === "Done" ? "bg-emerald-500/10 text-emerald-500" : t.status === "In Progress" ? "bg-amber-500/10 text-amber-500" : "bg-muted text-muted-foreground"}`}>{t.status}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
+        )}
       </div>
     );
   }
 
+  // Final Settlement sub-tab
   if (tab === "final_settlement") {
-    const settlement = {
-      employee: "Linda Torres", lastWorkingDay: "2026-06-30",
-      components: [
-        { item: "Salary for June (30 days)", amount: 3500 },
-        { item: "Leave Encashment (3 days unused)", amount: 485 },
-        { item: "Gratuity", amount: 2800 },
-        { item: "Bonus (pro-rated)", amount: 1500 },
-        { item: "PF Settlement", amount: 8400 },
-        { item: "TDS Deduction (Final)", amount: -1200 },
-        { item: "Notice Period Recovery (waived)", amount: 0 },
-      ]
-    };
-    const total = settlement.components.reduce((s, c) => s + c.amount, 0);
     return (
       <div className="p-6 space-y-6">
+        {notification && (
+          <div className="fixed bottom-4 right-4 px-4 py-2.5 bg-emerald-600 text-white font-sans text-xs shadow-lg z-50 rounded-lg">
+            {notification.message}
+          </div>
+        )}
+
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Final Settlement</h1><p className="text-sm text-muted-foreground">Full & final settlement calculation for departing employees.</p></div>
-          <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><Calculator className="size-4" /> Generate F&F</button>
-        </div>
-        <div className="glass-panel p-6 rounded-xl border border-border/50">
-          <div className="flex justify-between items-center mb-6">
-            <div><h3 className="font-semibold text-foreground text-lg">{settlement.employee}</h3><p className="text-sm text-muted-foreground">Last Working Day: {settlement.lastWorkingDay}</p></div>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Final Settlements (Full & Final)</h1>
+            <p className="text-sm text-muted-foreground font-sans">Full and Final (F&F) audit computations for released personnel.</p>
           </div>
-          <div className="divide-y divide-border/40">
-            {settlement.components.map((comp, i) => (
-              <div key={comp.item} className="flex justify-between py-3 text-sm">
-                <span className="text-muted-foreground">{comp.item}</span>
-                <span className={`font-medium ${comp.amount < 0 ? "text-red-400" : "text-foreground"}`}>
-                  {comp.amount !== 0 ? (comp.amount < 0 ? `-$${Math.abs(comp.amount).toLocaleString()}` : `$${comp.amount.toLocaleString()}`) : "—"}
-                </span>
+          <button onClick={() => setSettlementOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+            <Calculator className="size-4" /> Compute F&F
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {settlements.map(set => {
+            const total = set.components_json.reduce((sum, c) => sum + c.amount, 0);
+            return (
+              <div key={set.id} className="glass-panel p-6 rounded-xl border border-border/50 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="font-bold text-foreground text-lg">{set.employee_name}</h3>
+                      <p className="text-xs text-muted-foreground">Release Date: {new Date(set.last_working_day).toLocaleDateString()}</p>
+                    </div>
+                    <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-500 rounded text-xs font-bold">Audited</span>
+                  </div>
+
+                  <div className="space-y-2 border-t border-b border-border/40 py-3 mb-4">
+                    {set.components_json.map((c, i) => (
+                      <div key={i} className="flex justify-between text-xs font-medium">
+                        <span className="text-muted-foreground">{c.item}</span>
+                        <span className={c.amount < 0 ? "text-red-500 font-bold" : "text-foreground font-bold"}>
+                          ${c.amount.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-foreground text-sm">F&F Settlement Payout:</span>
+                  <span className="text-2xl font-bold text-emerald-500">${total.toLocaleString()}</span>
+                </div>
               </div>
-            ))}
-          </div>
-          <div className="flex justify-between items-center pt-4 mt-2 border-t-2 border-primary/30">
-            <span className="font-bold text-foreground text-lg">Total Settlement</span>
-            <span className="text-2xl font-bold text-primary">${total.toLocaleString()}</span>
-          </div>
+            );
+          })}
         </div>
+
+        {/* Compute F&F Modal */}
+        <AnimatePresence>
+          {settlementOpen && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
+                <div className="flex justify-between items-center pb-2 border-b border-border">
+                  <h3 className="text-base font-bold text-foreground">Calculate Full & Final Settlement</h3>
+                  <button onClick={() => setSettlementOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
+                </div>
+                <form onSubmit={handleCreateSettlement} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Select Employee</label>
+                    <select value={settlementForm.employeeId} onChange={(e) => setSettlementForm({...settlementForm, employeeId: e.target.value})}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none">
+                      <option value="">Choose employee...</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Last Working Day</label>
+                      <Input type="date" value={settlementForm.lastWorkingDay} onChange={(e) => setSettlementForm({...settlementForm, lastWorkingDay: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Final Month Salary ($)</label>
+                      <Input type="number" value={settlementForm.salaryAmount} onChange={(e) => setSettlementForm({...settlementForm, salaryAmount: Number(e.target.value)})} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Leave Encashment ($)</label>
+                      <Input type="number" value={settlementForm.leaveEncashment} onChange={(e) => setSettlementForm({...settlementForm, leaveEncashment: Number(e.target.value)})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Gratuity Benefit ($)</label>
+                      <Input type="number" value={settlementForm.gratuity} onChange={(e) => setSettlementForm({...settlementForm, gratuity: Number(e.target.value)})} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Annual Performance Bonus ($)</label>
+                      <Input type="number" value={settlementForm.bonus} onChange={(e) => setSettlementForm({...settlementForm, bonus: Number(e.target.value)})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">TDS Tax Deductions ($)</label>
+                      <Input type="number" value={settlementForm.tax} onChange={(e) => setSettlementForm({...settlementForm, tax: Number(e.target.value)})} />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button type="button" variant="outline" onClick={() => setSettlementOpen(false)}>Cancel</Button>
+                    <Button type="submit">Verify & Save F&F</Button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
 
+  // Experience Letter sub-tab
   if (tab === "experience_letter") {
-    const letters = [
-      { employee: "Linda Torres", designation: "Sales Representative", from: "2023-09-01", to: "2026-06-30", issuedOn: "2026-07-01", status: "Issued" },
-      { employee: "Aisha Patel", designation: "UX Designer", from: "2024-01-15", to: "2026-07-15", issuedOn: "—", status: "Pending" },
-    ];
     return (
       <div className="p-6 space-y-6">
-        <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Experience Letters</h1><p className="text-sm text-muted-foreground">Issue and track experience and relieving letters.</p></div>
-          <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><Award className="size-4" /> Issue Letter</button>
+        {notification && (
+          <div className="fixed bottom-4 right-4 px-4 py-2.5 bg-emerald-600 text-white font-sans text-xs shadow-lg z-50 rounded-lg">
+            {notification.message}
+          </div>
+        )}
+
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Relieving & Experience Letters</h1>
+          <p className="text-sm text-muted-foreground font-sans">Generate and issue official work certificates for departing corporate members.</p>
         </div>
-        <div className="space-y-4">
-          {letters.map((l, i) => (
-            <motion.div key={l.employee} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
-              className="glass-panel p-6 rounded-xl border border-border/50 flex justify-between items-center">
-              <div>
-                <p className="font-semibold text-foreground text-lg">{l.employee}</p>
-                <p className="text-sm text-muted-foreground">{l.designation}</p>
-                <p className="text-sm text-muted-foreground">Tenure: {l.from} to {l.to}</p>
-                {l.issuedOn !== "—" && <p className="text-xs text-muted-foreground">Issued: {l.issuedOn}</p>}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${l.status === "Issued" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>{l.status}</span>
-                {l.status === "Issued" && <button className="text-primary text-sm hover:underline">Download PDF</button>}
-              </div>
-            </motion.div>
-          ))}
+
+        <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left font-sans">
+              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <tr>
+                  <th className="px-6 py-4 font-semibold">Employee</th>
+                  <th className="px-6 py-4 font-semibold">Designation</th>
+                  <th className="px-6 py-4 font-semibold">Tenure</th>
+                  <th className="px-6 py-4 font-semibold">Issued Date</th>
+                  <th className="px-6 py-4 font-semibold">Status</th>
+                  <th className="px-6 py-4 text-center font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {letters.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground font-semibold">
+                      No relieving or experience letters generated yet. 
+                      Mark active resignation requests as "Completed" (Relieved) to automatically generate them.
+                    </td>
+                  </tr>
+                ) : (
+                  letters.map((letObj, i) => (
+                    <motion.tr key={letObj.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.08 }}
+                      className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-foreground">{letObj.employee_name}</td>
+                      <td className="px-6 py-4 text-muted-foreground font-semibold">{letObj.designation}</td>
+                      <td className="px-6 py-4 text-muted-foreground font-semibold">{new Date(letObj.from_date).toLocaleDateString()} to {new Date(letObj.to_date).toLocaleDateString()}</td>
+                      <td className="px-6 py-4 text-muted-foreground font-semibold">{letObj.issued_on}</td>
+                      <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-xs font-bold ${letObj.status === "Issued" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>{letObj.status}</span></td>
+                      <td className="px-6 py-4 text-center">
+                        {letObj.status !== "Issued" ? (
+                          <Button size="sm" onClick={() => handleIssueLetter(letObj.id)} className="h-8 text-xs font-bold">
+                            Approve & Issue Email
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground font-semibold">Dispatched</span>
+                        )}
+                      </td>
+                    </motion.tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Default: resignation
+  // Default: resignation requests
   return (
     <div className="p-6 space-y-6">
+      {notification && (
+        <div className="fixed bottom-4 right-4 px-4 py-2.5 bg-emerald-600 text-white font-sans text-xs shadow-lg z-50 rounded-lg">
+          {notification.message}
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold text-foreground">Resignations</h1><p className="text-sm text-muted-foreground">Employee resignation requests and exit management.</p></div>
-        <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> Record Resignation</button>
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Resignation Requests</h1>
+          <p className="text-sm text-muted-foreground font-sans">Process formal resignation applications and set last working days.</p>
+        </div>
+        <button onClick={() => setResignOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+          <Plus className="size-4" /> File Resignation
+        </button>
       </div>
-      <div className="space-y-4">
-        {resignations.map((res, i) => (
-          <motion.div key={res.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
-            className="glass-panel p-6 rounded-xl border border-border/50">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="font-mono text-sm text-primary">{res.id}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${res.status === "Completed" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>{res.status}</span>
-                </div>
-                <p className="font-semibold text-foreground text-lg">{res.employee}</p>
-                <p className="text-sm text-muted-foreground">{res.designation} · {res.department}</p>
-                <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
-                  <div><p className="text-muted-foreground text-xs">Resignation Date</p><p className="font-medium">{res.resignDate}</p></div>
-                  <div><p className="text-muted-foreground text-xs">Last Working Day</p><p className="font-medium">{res.lastWorkingDay}</p></div>
-                  <div><p className="text-muted-foreground text-xs">Reason</p><p className="font-medium">{res.reason}</p></div>
-                </div>
-              </div>
-              <div className="flex gap-2 ml-4">
-                <button className="px-3 py-1.5 bg-muted text-muted-foreground rounded-lg text-xs">View Details</button>
-              </div>
-            </div>
-          </motion.div>
-        ))}
+
+      <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left font-sans">
+            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <tr>
+                <th className="px-6 py-4 font-semibold">Employee</th>
+                <th className="px-6 py-4 font-semibold">Resign Date</th>
+                <th className="px-6 py-4 font-semibold">Last Working Day</th>
+                <th className="px-6 py-4 font-semibold">Reason</th>
+                <th className="px-6 py-4 text-center font-semibold">Status</th>
+                <th className="px-6 py-4 text-center font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {resignations.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground font-semibold">
+                    No resignation requests registered. 
+                    Click "File Resignation" to submit a new resignation request.
+                  </td>
+                </tr>
+              ) : (
+                resignations.map((res, i) => (
+                  <motion.tr key={res.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.08 }}
+                    className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                    <td className="px-6 py-4"><p className="font-semibold text-foreground">{res.employee_name}</p><p className="text-xs text-muted-foreground font-semibold">{res.department} · {res.designation}</p></td>
+                    <td className="px-6 py-4 text-muted-foreground font-medium">{new Date(res.resign_date).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-muted-foreground font-medium">{new Date(res.last_working_day).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-xs text-muted-foreground font-semibold max-w-[200px] truncate">{res.reason}</td>
+                    <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${res.status === "Completed" ? "bg-emerald-500/10 text-emerald-500" : res.status === "Accepted" ? "bg-blue-500/10 text-blue-500" : "bg-amber-500/10 text-amber-500"}`}>{res.status}</span></td>
+                    <td className="px-6 py-4 text-center">
+                      {res.status === "Pending" ? (
+                        <div className="flex gap-2 justify-center">
+                          <Button size="sm" variant="outline" className="border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10 h-8 text-xs font-bold" onClick={() => handleUpdateStatus(res.id, "Accepted")}>Accept</Button>
+                          <Button size="sm" variant="destructive" className="h-8 text-xs font-bold" onClick={() => handleUpdateStatus(res.id, "Rejected")}>Reject</Button>
+                        </div>
+                      ) : res.status === "Accepted" ? (
+                        <Button size="sm" className="h-8 text-xs font-bold" onClick={() => handleUpdateStatus(res.id, "Completed")}>Mark Relieved</Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground font-semibold">Processed</span>
+                      )}
+                    </td>
+                  </motion.tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* File Resignation Modal */}
+      <AnimatePresence>
+        {resignOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-6 space-y-4 font-sans text-sm">
+              <div className="flex justify-between items-center pb-2 border-b border-border">
+                <h3 className="text-base font-bold text-foreground">File Employee Resignation</h3>
+                <button onClick={() => setResignOpen(false)}><XCircle className="size-5 text-muted-foreground" /></button>
+              </div>
+              <form onSubmit={handleFileResignation} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Select Employee</label>
+                  <select value={resignForm.employeeId} onChange={(e) => setResignForm({...resignForm, employeeId: e.target.value})}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none">
+                    <option value="">Choose employee...</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Requested Last Working Day</label>
+                  <Input type="date" value={resignForm.lastWorkingDay} onChange={(e) => setResignForm({...resignForm, lastWorkingDay: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Reason for Leaving</label>
+                  <Textarea value={resignForm.reason} onChange={(e) => setResignForm({...resignForm, reason: e.target.value})} placeholder="Provide resignation context..." rows={3} />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setResignOpen(false)}>Cancel</Button>
+                  <Button type="submit">Submit Resignation</Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
