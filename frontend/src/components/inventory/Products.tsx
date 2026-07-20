@@ -4,8 +4,6 @@ import { Button } from "../ui/button";
 import { Search, Filter, Plus, Package, Edit2, MoreHorizontal, Download, Upload, Copy, Archive, X } from "lucide-react";
 import { posApi, POSProduct, POSCategory } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
-// @ts-ignore
-import * as XLSX from "xlsx/xlsx.mjs";
 
 export function Products() {
   const [search, setSearch] = useState("");
@@ -208,25 +206,16 @@ export function Products() {
     setIsImporting(true);
     try {
       let jsonData: any[] = [];
-      try {
-        const data = await file.arrayBuffer();
-        const workbook = XLSX.read(data);
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        jsonData = XLSX.utils.sheet_to_json(worksheet);
-      } catch {
-        // Fallback CSV parser
-        const text = await file.text();
-        const lines = text.split(/\r?\n/).filter(Boolean);
-        if (lines.length > 1) {
-          const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
-          jsonData = lines.slice(1).map(line => {
-            const values = line.split(",").map(v => v.trim().replace(/^"|"$/g, ""));
-            const obj: any = {};
-            headers.forEach((h, i) => { obj[h] = values[i] || ""; });
-            return obj;
-          });
-        }
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length > 1) {
+        const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+        jsonData = lines.slice(1).map(line => {
+          const values = line.split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+          const obj: any = {};
+          headers.forEach((h, i) => { obj[h] = values[i] || ""; });
+          return obj;
+        });
       }
 
       if (!jsonData || jsonData.length === 0) {

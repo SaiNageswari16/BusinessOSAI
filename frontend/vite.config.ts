@@ -15,9 +15,6 @@ export default defineConfig({
     },
     resolve: {
       tsconfigPaths: true,
-      alias: {
-        xlsx: "xlsx/xlsx.mjs",
-      },
     },
   },
 });
