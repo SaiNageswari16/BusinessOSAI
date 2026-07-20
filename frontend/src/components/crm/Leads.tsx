@@ -93,16 +93,27 @@ export function Leads() {
 
   const saveFbCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!fbForm.access_token.trim()) {
+      toast.error("Page Access Token is required.");
+      return;
+    }
     try {
-      await crmLeadsApi.saveFacebookCredentials({
-        fb_access_token: fbForm.access_token,
-        fb_page_or_form_id: fbForm.page_or_form_id,
+      const res = await crmLeadsApi.saveFacebookCredentials({
+        fb_access_token: fbForm.access_token.trim(),
+        fb_page_or_form_id: fbForm.page_or_form_id.trim() || undefined,
         fb_api_version: fbForm.api_version,
       });
       setFbConfigured(true);
       setShowFbSettings(false);
+      setFbForm({
+        access_token: "",
+        page_or_form_id: res.fb_page_or_form_id || fbForm.page_or_form_id,
+        api_version: res.fb_api_version || fbForm.api_version,
+      });
       toast.success("Facebook credentials saved successfully");
-    } catch { toast.error("Failed to save credentials"); }
+    } catch (err: any) {
+      toast.error(err?.detail || "Failed to save credentials");
+    }
   };
 
   const deleteFbCredentials = async () => {
@@ -512,13 +523,17 @@ export function Leads() {
               </div>
               <form onSubmit={saveFbCredentials} className="p-5 space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Page / Form ID</label>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5 flex items-center justify-between">
+                    <span>Facebook Page ID <span className="text-[10px] text-muted-foreground font-normal">(Optional)</span></span>
+                  </label>
                   <input
-                    required type="text" placeholder="Enter Facebook Page ID or Form ID"
+                    type="text"
+                    placeholder="Enter Page ID (Auto-resolved if left empty)"
                     value={fbForm.page_or_form_id}
                     onChange={(e) => setFbForm({ ...fbForm, page_or_form_id: e.target.value })}
                     className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none"
                   />
+                  <p className="text-[10px] text-muted-foreground mt-1">If left blank, the system automatically fetches your Page ID and Name from the token.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Page Access Token</label>

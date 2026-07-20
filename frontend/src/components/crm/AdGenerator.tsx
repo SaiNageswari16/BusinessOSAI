@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Loader2, Image as ImageIcon, Send, FileText, CheckCircle, AlertCircle, Copy, Upload, ArrowRight, BrainCircuit, Facebook, X, RefreshCw, Unlink, ExternalLink, ChevronRight } from "lucide-react";
+import { Sparkles, Loader2, Image as ImageIcon, Send, FileText, CheckCircle, AlertCircle, Copy, Upload, ArrowRight, BrainCircuit, Facebook, X, RefreshCw, Unlink, ExternalLink, ChevronRight, AlertTriangle, Shield } from "lucide-react";
 import { crmCampaignsApi, crmLeadsApi } from "@/lib/api-client";
 import { toast } from "sonner";
 
@@ -38,6 +38,33 @@ export function AdGenerator() {
 
   useEffect(() => { void refreshFbStatus(); }, [refreshFbStatus]);
 
+  // ── Token Expiry Health State ──────────────────────────────────────────────
+  type TokenInfo = {
+    is_valid: boolean;
+    expires_at?: number | null;
+    token_type?: string;
+    error?: string | null;
+  };
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
+
+  useEffect(() => {
+    if (!fbStatus.page_connected) return;
+    crmLeadsApi.getFbTokenInfo()
+      .then(info => setTokenInfo(info))
+      .catch(() => {/* silent */});
+  }, [fbStatus.page_connected]);
+
+  // Helper: days until token expiry
+  const daysUntilExpiry = (): number | null => {
+    if (!tokenInfo?.expires_at) return null;
+    const now = Math.floor(Date.now() / 1000);
+    return Math.ceil((tokenInfo.expires_at - now) / 86400);
+  };
+
+  const tokenDays = daysUntilExpiry();
+  const tokenExpired = tokenInfo && (!tokenInfo.is_valid || (tokenDays !== null && tokenDays <= 0));
+  const tokenWarning = !tokenExpired && tokenDays !== null && tokenDays <= 7;
+
   // Listen for OAuth popup completion (postMessage from callback page)
   useEffect(() => {
     const handler = async (event: MessageEvent) => {
@@ -59,14 +86,14 @@ export function AdGenerator() {
   /** NEW Direct connection: paste Token AND Page ID directly */
   const handleDirectConnect = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pastedToken.trim() || !pastedPageId.trim()) {
-      toast.error("Page ID and Access Token are required.");
+    if (!pastedToken.trim()) {
+      toast.error("Access Token is required.");
       return;
     }
     setFbStep("saving");
     try {
       const res = await crmLeadsApi.connectFbDirect({
-        page_id: pastedPageId.trim(),
+        page_id: pastedPageId.trim() || undefined,
         access_token: pastedToken.trim()
       });
       await refreshFbStatus();
@@ -174,7 +201,7 @@ export function AdGenerator() {
       setFbStep("idle");
     } catch (err: any) {
       toast.error(err?.detail || "Failed to save configuration.");
-      setFbStep("appConfig");
+      setFbStep("idle");
     }
   };
 
@@ -323,6 +350,43 @@ export function AdGenerator() {
             <Facebook className="size-3.5 text-blue-600" />
             {fbStatus.page_connected ? `FB: ${fbStatus.page_name || "Connected"}` : "Connect FB Page"}
           </button>
+
+          {/* Token Expiry Warning Chip — shown only when connected */}
+          {fbStatus.page_connected && tokenInfo && (
+            <>
+              {tokenExpired ? (
+                <a
+                  href="https://developers.facebook.com/tools/explorer/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-red-500/10 border border-red-500/25 text-red-600 dark:text-red-400 hover:bg-red-500/15 transition-colors h-9 cursor-pointer"
+                  title="Token expired — click to refresh in Meta Explorer"
+                >
+                  <AlertCircle className="size-3.5" />
+                  Token Expired — Refresh
+                </a>
+              ) : tokenWarning ? (
+                <a
+                  href="https://developers.facebook.com/tools/explorer/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15 transition-colors h-9 cursor-pointer"
+                  title={`Token expires in ${tokenDays} day${tokenDays === 1 ? "" : "s"}`}
+                >
+                  <AlertTriangle className="size-3.5" />
+                  Expires in {tokenDays}d
+                </a>
+              ) : (
+                <div
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-background border border-border text-muted-foreground h-9"
+                  title={tokenInfo.token_type === "page" ? "Page Token (never expires)" : "Token valid"}
+                >
+                  <Shield className="size-3.5 text-emerald-500" />
+                  {tokenInfo.token_type === "page" ? "Non-expiring" : "Token OK"}
+                </div>
+              )}
+            </>
+          )}
 
           {/* Model Switcher Tabs */}
           <div className="flex bg-muted p-1 rounded-xl border border-border w-fit h-9 items-center">
@@ -660,17 +724,17 @@ export function AdGenerator() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                        Facebook Page / Form ID <span className="text-red-500">*</span>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1.5 flex items-center justify-between">
+                        <span>Facebook Page ID <span className="text-[10px] text-muted-foreground font-normal">(Optional)</span></span>
                       </label>
                       <input
-                        required
                         type="text"
-                        placeholder="e.g. 10294857201948"
+                        placeholder="e.g. 10294857201948 (Auto-resolved if left empty)"
                         value={pastedPageId}
                         onChange={(e) => setPastedPageId(e.target.value)}
                         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none"
                       />
+                      <p className="text-[10px] text-muted-foreground mt-1">If left blank, the system automatically fetches your Page ID and Name from the token.</p>
                     </div>
 
                     <div>

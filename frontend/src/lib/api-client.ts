@@ -1687,7 +1687,7 @@ export const crmLeadsApi = {
   deleteFbAppConfig: () =>
     request<{ success: boolean }>("DELETE", "/crm/facebook/app-config"),
   /** Connect a Page or Lead Form directly by pasting both Page ID and Access Token */
-  connectFbDirect: (data: { page_id: string; access_token: string }) =>
+  connectFbDirect: (data: { page_id?: string; access_token: string }) =>
     request<{ success: boolean; page_name: string; page_id: string; message: string }>("POST", "/crm/facebook/connect-direct", data),
   /** Returns whether the Meta App is configured and which page (if any) is connected. */
   getFbStatus: () =>
@@ -1713,7 +1713,7 @@ export const crmLeadsApi = {
     request<{ success: boolean }>("DELETE", "/crm/facebook/disconnect"),
 
   // ── Legacy credential endpoints (for lead import form backward-compat) ───────
-  saveFacebookCredentials: (data: { fb_access_token: string; fb_page_or_form_id: string; fb_api_version?: string }) =>
+  saveFacebookCredentials: (data: { fb_access_token: string; fb_page_or_form_id?: string; fb_api_version?: string }) =>
     request<any>("POST", "/crm/facebook/credentials", data),
   deleteFacebookCredentials: () =>
     request<any>("DELETE", "/crm/facebook/credentials"),
@@ -1729,6 +1729,43 @@ export const crmLeadsApi = {
   // AI outbound call via LiveKit
   initiateCall: (id: string, data: { sip_number: string; custom_prompt?: string }) =>
     request<{ status: string; room_name?: string; participant_id?: string; sip_call_id?: string; message: string }>("POST", `/crm/leads/${id}/initiate-call`, data),
+
+  // ── Facebook Token Health & Ad History ───────────────────────────────────────
+  /** Check health/expiry of the stored Facebook access token for this org. */
+  getFbTokenInfo: () =>
+    request<{
+      connected: boolean;
+      is_valid: boolean;
+      page_id?: string;
+      page_name?: string;
+      token_type?: string;
+      expires_at?: number | null;
+      scopes?: string[];
+      error?: string | null;
+    }>("GET", "/crm/campaigns/fb-token-info"),
+
+  /** Fetch paginated list of all Facebook ads published by this org. */
+  getAdHistory: (page = 1, pageSize = 20) =>
+    request<{
+      total: number;
+      page: number;
+      page_size: number;
+      items: Array<{
+        id: string;
+        post_id?: string;
+        page_id?: string;
+        page_name?: string;
+        caption?: string;
+        image_url?: string;
+        fb_post_url?: string;
+        published_at?: string;
+        published_by_user_id?: string;
+      }>;
+    }>("GET", `/crm/campaigns/ad-history?page=${page}&page_size=${pageSize}`),
+
+  /** Publish a generated ad poster to the connected Facebook Page. */
+  publishToFacebook: (data: { image_url: string; caption: string; aspect_ratio?: string }) =>
+    request<{ status: string; post_id?: string; page_id?: string; fb_post_url?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
 };
 
 export interface CrmOpportunity {

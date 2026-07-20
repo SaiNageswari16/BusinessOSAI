@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import Customer, Lead, LeadActivity, Tenant, CRMSupportTicket, CRMQuotation, CRMSalesOrder, CRMOpportunity
+from src.models import AuditLog, Customer, Lead, LeadActivity, Tenant, CRMSupportTicket, CRMQuotation, CRMSalesOrder, CRMOpportunity
 from src.schemas.crm import CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate
 from src.utils.pagination import PaginatedResponse, paginate
 
@@ -184,14 +184,15 @@ class SelectFacebookPageRequest(BaseModel):
     page_access_token: str = ""
 
 class FacebookConnectDirectRequest(BaseModel):
-    page_id: str
+    page_id: str | None = None
     access_token: str
 
 class FacebookCredentialsRequest(BaseModel):
     """Legacy model kept for backward-compat with the lead-import form."""
     fb_access_token: str
-    fb_page_or_form_id: str
+    fb_page_or_form_id: str | None = None
     fb_api_version: str = "v25.0"
+
 
 
 # ── Helper: get tenant safely ────────────────────────────────────────────────
@@ -201,6 +202,85 @@ async def _get_tenant_or_404(db: AsyncSession, tenant_id) -> "Tenant":
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return tenant
+
+
+def resolve_facebook_credentials(token: str, page_id: str | None = None) -> tuple[str, str, str]:
+    """
+    Introspects the provided token and optional page_id.
+    Returns: (resolved_page_id, page_name, resolved_token)
+    """
+    import requests as _req
+    
+    token = token.strip()
+    page_id = page_id.strip() if page_id else None
+    
+    if not token:
+        raise ValueError("Access Token is required.")
+        
+    page_name = "Facebook Page/Form"
+    resolved_page_id = page_id
+    resolved_token = token
+    
+    try:
+        # First, try to fetch Page details directly assuming the token is a Page Access Token
+        resp_me = _req.get(
+            "https://graph.facebook.com/v25.0/me",
+            params={"access_token": token, "fields": "id,name,category"},
+            timeout=15
+        )
+        me_data = resp_me.json()
+        
+        # If 'category' is in me_data, it's a Facebook Page Token!
+        if "error" not in me_data and "category" in me_data:
+            resolved_page_id = me_data["id"]
+            page_name = me_data["name"]
+        else:
+            # Try to get accounts (this works if it's a User Access Token)
+            resp_accounts = _req.get(
+                "https://graph.facebook.com/v25.0/me/accounts",
+                params={"access_token": token, "fields": "id,name,access_token", "limit": 100},
+                timeout=15
+            )
+            accounts_data = resp_accounts.json()
+            if "error" not in accounts_data and accounts_data.get("data"):
+                # If page_id is provided, try to match it
+                matched = None
+                if page_id:
+                    matched = next((p for p in accounts_data["data"] if p["id"] == page_id), None)
+                # If no match or page_id not provided, default to the first available page
+                if not matched:
+                    matched = accounts_data["data"][0]
+                
+                resolved_page_id = matched["id"]
+                page_name = matched["name"]
+                resolved_token = matched.get("access_token", token)
+            else:
+                # If both failed, and page_id was provided, try direct call to page_id endpoint
+                if page_id:
+                    resp_direct = _req.get(
+                        f"https://graph.facebook.com/v25.0/{page_id}",
+                        params={"access_token": token, "fields": "name,id"},
+                        timeout=15
+                    )
+                    direct_data = resp_direct.json()
+                    if "error" in direct_data:
+                        err_msg = direct_data["error"].get("message", "Validation failed")
+                        raise ValueError(f"Meta API Validation failed: {err_msg}")
+                    page_name = direct_data.get("name", page_name)
+                    resolved_page_id = page_id
+                else:
+                    # No page_id and token introspection failed
+                    err_msg = me_data.get("error", {}).get("message") or accounts_data.get("error", {}).get("message") or "Invalid Access Token"
+                    raise ValueError(f"Could not resolve Facebook Page: {err_msg}")
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"Could not connect to Facebook API: {str(e)}")
+
+    if not resolved_page_id:
+        raise ValueError("Could not resolve Page ID from the provided Access Token. Please provide it manually.")
+        
+    return resolved_page_id, page_name, resolved_token
 
 
 @router.post("/facebook/connect-direct")
@@ -216,44 +296,13 @@ async def connect_fb_direct(
     2. Saves the credentials directly to tenant settings.
     3. Works for both ad publishing and lead import services immediately.
     """
-    import requests as _req
-
-    page_id = payload.page_id.strip()
     token = payload.access_token.strip()
+    page_id = payload.page_id.strip() if payload.page_id else None
 
-    if not page_id or not token:
-        raise HTTPException(status_code=400, detail="Page/Form ID and Access Token are required.")
-
-    # Validate against Meta Graph API
-    page_name = "Facebook Page/Form"
     try:
-        # Check /me/accounts to see if we can get a matching page name
-        resp = _req.get(
-            "https://graph.facebook.com/v25.0/me/accounts",
-            params={"access_token": token, "fields": "id,name", "limit": 100},
-            timeout=15,
-        )
-        data = resp.json()
-        if "error" not in data:
-            matched = next((p for p in data.get("data", []) if p["id"] == page_id), None)
-            if matched:
-                page_name = matched["name"]
-        else:
-            # Fallback direct call to page_id endpoint
-            resp2 = _req.get(
-                f"https://graph.facebook.com/v25.0/{page_id}",
-                params={"access_token": token, "fields": "name,id"},
-                timeout=15,
-            )
-            data2 = resp2.json()
-            if "error" in data2:
-                err_msg = data2["error"].get("message", "Validation failed")
-                raise HTTPException(status_code=400, detail=f"Meta API Validation failed: {err_msg}")
-            page_name = data2.get("name", page_name)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not connect to Facebook API: {str(e)}")
+        resolved_page_id, page_name, resolved_token = resolve_facebook_credentials(token, page_id)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
 
     # Save to organization (tenant) settings
     tenant = await _get_tenant_or_404(db, ctx.tenant_id)
@@ -261,15 +310,15 @@ async def connect_fb_direct(
     
     # Save for ad campaign publisher
     settings_dict["facebook_page"] = {
-        "page_id": page_id,
+        "page_id": resolved_page_id,
         "page_name": page_name,
-        "page_access_token": token,
+        "page_access_token": resolved_token,
         "api_version": "v25.0",
     }
     # Save for lead import service compatibility
     settings_dict["facebook"] = {
-        "fb_access_token": token,
-        "fb_page_or_form_id": page_id,
+        "fb_access_token": resolved_token,
+        "fb_page_or_form_id": resolved_page_id,
         "fb_api_version": "v25.0",
     }
     
@@ -279,7 +328,7 @@ async def connect_fb_direct(
     return {
         "success": True,
         "page_name": page_name,
-        "page_id": page_id,
+        "page_id": resolved_page_id,
         "message": f"Successfully connected '{page_name}' for your organization."
     }
 
@@ -687,14 +736,38 @@ async def save_fb_credentials(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.services.facebook_lead_import_service import FacebookLeadImportService
+    
+    token = payload.fb_access_token.strip()
+    page_id = payload.fb_page_or_form_id.strip() if payload.fb_page_or_form_id else None
+    
+    try:
+        resolved_page_id, page_name, resolved_token = resolve_facebook_credentials(token, page_id)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+        
     svc = FacebookLeadImportService(db)
     try:
-        return await svc.save_credentials(
+        # Save legacy settings format
+        res = await svc.save_credentials(
             tenant_id=ctx.tenant_id,
-            fb_access_token=payload.fb_access_token,
-            fb_page_or_form_id=payload.fb_page_or_form_id,
+            fb_access_token=resolved_token,
+            fb_page_or_form_id=resolved_page_id,
             fb_api_version=payload.fb_api_version,
         )
+        
+        # Also sync to new facebook_page setting format for ad publishing
+        tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+        settings_dict = dict(tenant.settings or {})
+        settings_dict["facebook_page"] = {
+            "page_id": resolved_page_id,
+            "page_name": page_name,
+            "page_access_token": resolved_token,
+            "api_version": payload.fb_api_version,
+        }
+        tenant.settings = settings_dict
+        await db.commit()
+        
+        return res
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1464,6 +1537,10 @@ async def publish_to_facebook(
         res.raise_for_status()
         post_data = res.json()
         
+        resolved_post_id = post_data.get("post_id") or post_data.get("id")
+        page_name = fb_page_cfg.get("page_name") or fb_legacy_cfg.get("page_name") or ""
+        fb_post_url = f"https://www.facebook.com/{page_id}_{resolved_post_id}" if page_id and resolved_post_id else ""
+
         await write_audit_log(
             db,
             tenant_id=ctx.tenant_id,
@@ -1472,12 +1549,21 @@ async def publish_to_facebook(
             action="facebook_ad_published",
             entity_type="campaign",
             entity_id=None,
-            new_values={"post_id": post_data.get("post_id") or post_data.get("id"), "caption": payload.caption}
+            new_values={
+                "post_id": resolved_post_id,
+                "page_id": page_id,
+                "page_name": page_name,
+                "caption": payload.caption,
+                "image_url": payload.image_url,
+                "fb_post_url": fb_post_url,
+            }
         )
         
         return {
             "status": "success",
-            "post_id": post_data.get("post_id") or post_data.get("id"),
+            "post_id": resolved_post_id,
+            "page_id": page_id,
+            "fb_post_url": fb_post_url,
             "message": "Campaign ad published successfully to your Facebook Page!"
         }
     except Exception as e:
@@ -1485,6 +1571,152 @@ async def publish_to_facebook(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to publish to Facebook feed: {str(e)}"
         )
+
+
+# ─── Ad History & Token Health Endpoints ─────────────────────────────────────
+
+@router.get("/campaigns/fb-token-info")
+async def get_fb_token_info(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Check the health and expiry of the stored Facebook access token for this org."""
+    import requests as req_lib
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    tenant_settings = tenant.settings or {}
+    fb_page_cfg = tenant_settings.get("facebook_page", {})
+    fb_legacy_cfg = tenant_settings.get("facebook", {})
+
+    # Prefer page token (non-expiring), fall back to user token
+    fb_token = fb_page_cfg.get("page_access_token") or fb_legacy_cfg.get("fb_access_token") or fb_legacy_cfg.get("access_token")
+    page_id = fb_page_cfg.get("page_id") or fb_legacy_cfg.get("fb_page_or_form_id") or fb_legacy_cfg.get("page_id")
+    page_name = fb_page_cfg.get("page_name") or fb_legacy_cfg.get("page_name")
+
+    if not fb_token:
+        return {"connected": False, "is_valid": False, "error": "No token stored for this organization."}
+
+    try:
+        # Use /me endpoint to validate token — works for both page and user tokens
+        me_resp = req_lib.get(
+            "https://graph.facebook.com/v25.0/me",
+            params={"access_token": fb_token, "fields": "id,name"},
+            timeout=10
+        )
+        me_data = me_resp.json()
+
+        if "error" in me_data:
+            return {
+                "connected": True,
+                "is_valid": False,
+                "page_id": page_id,
+                "page_name": page_name,
+                "error": me_data["error"].get("message", "Token is invalid or expired."),
+                "expires_at": None,
+                "token_type": "unknown",
+            }
+
+        # For page tokens, Meta does not expose expiry via /me — check via debug_token if App ID/Secret available
+        fb_app_cfg = tenant_settings.get("facebook_app", {})
+        app_id = fb_app_cfg.get("app_id")
+        app_secret = fb_app_cfg.get("app_secret")
+
+        expires_at = None
+        scopes = []
+        token_type = "page"  # Page tokens never expire by default
+
+        if app_id and app_secret:
+            app_token = f"{app_id}|{app_secret}"
+            debug_resp = req_lib.get(
+                "https://graph.facebook.com/v25.0/debug_token",
+                params={"input_token": fb_token, "access_token": app_token},
+                timeout=10
+            )
+            debug_data = debug_resp.json().get("data", {})
+            expires_at = debug_data.get("expires_at")  # Unix timestamp or 0 (never)
+            scopes = debug_data.get("scopes", [])
+            token_type = debug_data.get("type", "page").lower()
+            if expires_at == 0:
+                expires_at = None  # 0 means never expires (page token)
+
+        return {
+            "connected": True,
+            "is_valid": True,
+            "page_id": page_id,
+            "page_name": page_name or me_data.get("name"),
+            "token_type": token_type,
+            "expires_at": expires_at,
+            "scopes": scopes,
+            "error": None,
+        }
+    except Exception as e:
+        return {
+            "connected": True,
+            "is_valid": False,
+            "page_id": page_id,
+            "page_name": page_name,
+            "error": str(e),
+            "expires_at": None,
+            "token_type": "unknown",
+        }
+
+
+@router.get("/campaigns/ad-history")
+async def get_ad_history(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    """Return paginated list of all Facebook ads published by this organization."""
+    from sqlalchemy import desc
+
+    total = await db.scalar(
+        select(func.count())
+        .select_from(AuditLog)
+        .where(
+            AuditLog.tenant_id == ctx.tenant_id,
+            AuditLog.module == "crm",
+            AuditLog.action == "facebook_ad_published",
+        )
+    )
+
+    rows = await db.scalars(
+        select(AuditLog)
+        .where(
+            AuditLog.tenant_id == ctx.tenant_id,
+            AuditLog.module == "crm",
+            AuditLog.action == "facebook_ad_published",
+        )
+        .order_by(desc(AuditLog.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    items = []
+    for row in rows:
+        nv = row.new_values or {}
+        items.append({
+            "id": str(row.id),
+            "post_id": nv.get("post_id"),
+            "page_id": nv.get("page_id"),
+            "page_name": nv.get("page_name"),
+            "caption": nv.get("caption"),
+            "image_url": nv.get("image_url"),
+            "fb_post_url": nv.get("fb_post_url"),
+            "published_at": row.created_at.isoformat() if row.created_at else None,
+            "published_by_user_id": str(row.user_id) if row.user_id else None,
+        })
+
+    return {
+        "total": total or 0,
+        "page": page,
+        "page_size": page_size,
+        "items": items,
+    }
 
 
 # ─── Customer Intelligence Endpoints ─────────────────────────────────────────

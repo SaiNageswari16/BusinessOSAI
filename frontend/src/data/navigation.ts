@@ -374,10 +374,11 @@ export const nav: NavGroup[] = [
       },
       {
         to: "/crm?tab=ad_generator",
-        label: "Sales CRM",
+        label: "Marketing & Sales",
         icon: TrendingUp,
         subItems: [
-          { to: "/crm?tab=ad_generator", label: "Ad Generator", icon: Sparkles },
+          { to: "/crm?tab=ad_generator", label: "Marketing Ad Generator", icon: Sparkles },
+          { to: "/crm?tab=ad_history", label: "Ad Post History", icon: History },
           { to: "/crm?tab=leads", label: "Leads", icon: UserCog },
           { to: "/crm?tab=opportunities", label: "Opportunities", icon: Rocket },
           { to: "/crm?tab=deals", label: "Deals", icon: Target },
