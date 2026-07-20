@@ -1,4 +1,4 @@
-import { posCustomers } from "../../data/pos-mock";
+import { posCustomers } from "../../lib/pos-fallback";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Plus, Search, Users, Trophy, Mail, Phone } from "lucide-react";
@@ -34,9 +34,8 @@ export function PosCustomers() {
                   <div className="text-xs font-mono flex items-center gap-1.5 mt-1"><Mail className="size-3 text-muted-foreground" /> {cust.email}</div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    cust.tier === 'Gold' ? 'bg-amber-500/10 text-amber-600' : cust.tier === 'Silver' ? 'bg-slate-400/10 text-slate-500' : 'bg-orange-700/10 text-orange-800'
-                  }`}>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${cust.tier === 'Gold' ? 'bg-amber-500/10 text-amber-600' : cust.tier === 'Silver' ? 'bg-slate-400/10 text-slate-500' : 'bg-orange-700/10 text-orange-800'
+                    }`}>
                     <Trophy className="size-3" /> {cust.tier} ({cust.points} pts)
                   </span>
                 </td>

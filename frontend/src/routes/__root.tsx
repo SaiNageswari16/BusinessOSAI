@@ -84,14 +84,15 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          This page didn't load
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+      <div className="max-w-md mx-auto text-center py-20 px-4">
+        <h1 className="text-2xl font-bold mb-4">This page didn't load</h1>
+        <p className="text-muted-foreground">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
+        <div className="my-4 p-4 bg-red-50 text-red-700 rounded-md text-sm text-left overflow-auto">
+          {error instanceof Error ? error.message : JSON.stringify(error)}
+        </div>
+        <div className="mt-6 flex gap-4 justify-center">
           <button
             onClick={() => {
               router.invalidate();
