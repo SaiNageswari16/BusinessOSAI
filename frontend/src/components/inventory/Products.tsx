@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import { Search, Filter, Plus, Package, Edit2, MoreHorizontal, Download, Upload, Copy, Archive, X } from "lucide-react";
 import { posApi, POSProduct, POSCategory } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
+// @ts-ignore
 import * as XLSX from "xlsx";
 
 export function Products() {
