@@ -4,6 +4,8 @@ import { Button } from "../ui/button";
 import { Search, Filter, Plus, Package, Edit2, MoreHorizontal, Download, Upload, Copy, Archive, X } from "lucide-react";
 import { posApi, POSProduct, POSCategory } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
+// @ts-ignore
+import * as XLSX from "xlsx/xlsx.mjs";
 
 export function Products() {
   const [search, setSearch] = useState("");
@@ -207,8 +209,6 @@ export function Products() {
     try {
       let jsonData: any[] = [];
       try {
-        // @ts-ignore
-        const XLSX = await import("xlsx");
         const data = await file.arrayBuffer();
         const workbook = XLSX.read(data);
         const firstSheetName = workbook.SheetNames[0];
