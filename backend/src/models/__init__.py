@@ -1072,43 +1072,6 @@ class PayGrade(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 # POS MODULE MODELS
 # -------------------------------------------------------------------------
 
-class POSCategory(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
-    __tablename__ = "pos_categories"
-
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text)
-    color: Mapped[str | None] = mapped_column(String(80))   # e.g. "bg-blue-100 text-blue-700"
-    icon: Mapped[str | None] = mapped_column(String(80))    # lucide icon name
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-    products: Mapped[list["POSProduct"]] = relationship(back_populates="category")
-
-
-class POSProduct(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
-    __tablename__ = "pos_products"
-
-    category_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("pos_categories.id", ondelete="SET NULL")
-    )
-    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    brand: Mapped[str | None] = mapped_column(String(100))
-    sku: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
-    barcode: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
-    description: Mapped[str | None] = mapped_column(Text)
-    image_url: Mapped[str | None] = mapped_column(String(500))
-
-    purchase_price: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
-    mrp: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
-    selling_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    tax_percent: Mapped[float] = mapped_column(Numeric(5, 2), default=5.0)
-    discount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
-
-    stock: Mapped[int] = mapped_column(Integer, default=0)
-    reorder_level: Mapped[int] = mapped_column(Integer, default=10)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-    category: Mapped["POSCategory | None"] = relationship(back_populates="products")
-
 
 class POSTransactionStatus(str, enum.Enum):
     COMPLETED = "completed"
@@ -1525,3 +1488,4 @@ class CRMOpportunity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     forecast_category: Mapped[str] = mapped_column(String(30), default="Pipeline")
     lost_reason: Mapped[str | None] = mapped_column(String(255))
 
+from .inventory import *

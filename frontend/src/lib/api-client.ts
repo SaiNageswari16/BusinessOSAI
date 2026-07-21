@@ -145,7 +145,41 @@ export interface BusinessUnit {
   updated_at: string;
 }
 
-// â”€â”€â”€ Financial Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+export interface InventoryUOM {
+  id: string;
+  name: string;
+  abbreviation: string;
+  description: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface Warehouse {
+  id: string;
+  name: string;
+  warehouse_type: string;
+  capacity: string | null;
+  manager_name: string | null;
+  employees: number;
+  temperature_control: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface StorageLocation {
+  id: string;
+  warehouse_id: string;
+  zone: string | null;
+  aisle: string | null;
+  rack: string | null;
+  shelf: string | null;
+  bin: string | null;
+  barcode: string;
+  status: string;
+  created_at: string;
+}
+
+// â”€â”€â”€ CRM Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface FiscalYear {
   id: string;
@@ -2134,4 +2168,232 @@ export const posApi = {
   updateProduct: (id: string, data: Record<string, unknown>) => request<POSProduct>("PATCH", `/pos/products/${id}`, data),
   deleteProduct: (id: string) => request<void>("DELETE", `/pos/products/${id}`),
   createCategory: (data: Record<string, unknown>) => request<POSCategory>("POST", "/pos/categories", data),
+};
+
+// --- Inventory (ERP Product Master) ------------------------------------------------
+
+export interface InventoryCategory {
+  id: string; name: string; category_code: string | null; description: string | null;
+  parent_id: string | null; status: string;
+  created_at: string; updated_at: string;
+}
+
+export interface InventoryBrand {
+  id: string; name: string; description: string | null;
+  manufacturer: string | null; status: string;
+  created_at: string; updated_at: string;
+}
+
+export interface InventoryUOM {
+  id: string;
+  name: string;
+  abbreviation: string;
+  description?: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductAttribute {
+  id: string;
+  name: string;
+  module: string;
+  options: string[];
+}
+
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  variant_name: string;
+  sku: string;
+  barcode?: string;
+  attributes: Record<string, string>;
+  additional_price: number;
+  stock_override?: number;
+}
+
+export interface ProductBundle {
+  id: string;
+  name: string;
+  sku: string;
+  description?: string;
+  price: number;
+  items: { id: string; product_id: string; quantity: number }[];
+}
+
+export interface ProductKit {
+  id: string;
+  name: string;
+  sku: string;
+  kit_type: string;
+  description?: string;
+  items: { id: string; component_name: string; quantity: number }[];
+}
+
+export interface ProductImage {
+  id: string;
+  product_id: string;
+  image_url: string;
+  is_primary: boolean;
+  display_order: number;
+}
+
+export interface InventoryProduct {
+  id: string; name: string; sku: string; barcode: string | null;
+  category_id: string | null; brand_id: string | null; uom_id: string | null;
+  category_name: string | null; brand_name: string | null; uom_name: string | null;
+  short_description: string | null; long_description: string | null;
+  image_url: string | null;
+  purchase_price: number; mrp: number; selling_price: number;
+  tax_percent: number; discount_limit: number;
+  initial_stock: number; stock?: number; reorder_level: number; safety_stock: number;
+  supplier: string | null; warehouse: string | null;
+  status: string; created_at: string; updated_at: string;
+}
+
+// --- Inventory Operations ---
+export interface GoodsReceipt {
+  id: string;
+  receipt_number: string;
+  supplier: string | null;
+  reference_number: string | null;
+  notes: string | null;
+  status: string;
+  items: any[];
+}
+
+export interface GoodsIssue {
+  id: string;
+  issue_number: string;
+  recipient: string | null;
+  reference_number: string | null;
+  notes: string | null;
+  status: string;
+  items: any[];
+}
+
+export interface StockMovement {
+  id: string;
+  movement_number: string;
+  product_id: string;
+  source_location: string;
+  destination_location: string;
+  quantity: number;
+  notes: string | null;
+  status: string;
+}
+
+export interface StockAdjustment {
+  id: string;
+  adjustment_number: string;
+  product_id: string;
+  adjustment_type: string;
+  quantity_changed: number;
+  reason: string | null;
+  status: string;
+}
+
+export interface CycleCount {
+  id: string;
+  count_number: string;
+  location: string | null;
+  auditor: string | null;
+  status: string;
+  notes: string | null;
+  items: any[];
+}
+
+export const inventoryApi = {
+  // Products
+  getProducts: (params?: { category_id?: string; brand_id?: string; search?: string; page?: number; page_size?: number }) =>
+    request<PaginatedResponse<InventoryProduct>>("GET", "/inventory/products", undefined, params as Record<string, any>),
+  createProduct: (data: Record<string, unknown>) => request<InventoryProduct>("POST", "/inventory/products", data),
+  masterImportProducts: (items: Record<string, unknown>[]) => 
+    request<{ products_created: number; brands_created: number; categories_created: number; skipped_count: number; errors: string[] }>("POST", "/inventory/products/master-import", { items }),
+  updateProduct: (id: string, data: Record<string, unknown>) => request<InventoryProduct>("PATCH", `/inventory/products/${id}`, data),
+  deleteProduct: (id: string) => request<void>("DELETE", `/inventory/products/${id}`),
+  
+  // Categories
+  getCategories: (params?: { search?: string; page?: number; page_size?: number }) =>
+    request<PaginatedResponse<InventoryCategory>>("GET", "/inventory/categories", undefined, params as Record<string, any>),
+  createCategory: (data: Record<string, unknown>) => request<InventoryCategory>("POST", "/inventory/categories", data),
+  bulkCreateCategories: (categories: Record<string, unknown>[]) => 
+    request<{ created_count: number; skipped_count: number; errors: string[] }>("POST", "/inventory/categories/bulk", { categories }),
+  updateCategory: (id: string, data: Record<string, unknown>) => request<InventoryCategory>("PATCH", `/inventory/categories/${id}`, data),
+  deleteCategory: (id: string) => request<void>("DELETE", `/inventory/categories/${id}`),
+  
+  // Brands
+  getBrands: (params?: { search?: string; page?: number; page_size?: number }) =>
+    request<PaginatedResponse<InventoryBrand>>("GET", "/inventory/brands", undefined, params as Record<string, any>),
+  createBrand: (data: Record<string, unknown>) => request<InventoryBrand>("POST", "/inventory/brands", data),
+  updateBrand: (id: string, data: Record<string, unknown>) => request<InventoryBrand>("PATCH", `/inventory/brands/${id}`, data),
+  deleteBrand: (id: string) => request<void>("DELETE", `/inventory/brands/${id}`),
+  
+  // UOMs
+  getUOMs: (params?: { search?: string; page?: number; page_size?: number }) =>
+    request<PaginatedResponse<InventoryUOM>>("GET", "/inventory/uoms", undefined, params as Record<string, any>),
+  createUOM: (data: Record<string, unknown>) => request<InventoryUOM>("POST", "/inventory/uoms", data),
+  deleteUOM: (id: string) => request<void>("DELETE", `/inventory/uoms/${id}`),
+
+  // Attributes
+  getProductAttributes: () => request<ProductAttribute[]>("GET", "/inventory/product-attributes"),
+  createProductAttribute: (data: Record<string, unknown>) => request<ProductAttribute>("POST", "/inventory/product-attributes", data),
+  deleteProductAttribute: (id: string) => request<void>("DELETE", `/inventory/product-attributes/${id}`),
+
+  // Variants
+  getProductVariants: () => request<ProductVariant[]>("GET", "/inventory/product-variants"),
+  createProductVariant: (data: Record<string, unknown>) => request<ProductVariant>("POST", "/inventory/product-variants", data),
+  deleteProductVariant: (id: string) => request<void>("DELETE", `/inventory/product-variants/${id}`),
+
+  // Bundles
+  getProductBundles: () => request<ProductBundle[]>("GET", "/inventory/product-bundles"),
+  createProductBundle: (data: Record<string, unknown>) => request<ProductBundle>("POST", "/inventory/product-bundles", data),
+  deleteProductBundle: (id: string) => request<void>("DELETE", `/inventory/product-bundles/${id}`),
+
+  // Kits
+  getProductKits: () => request<ProductKit[]>("GET", "/inventory/product-kits"),
+  createProductKit: (data: Record<string, unknown>) => request<ProductKit>("POST", "/inventory/product-kits", data),
+  deleteProductKit: (id: string) => request<void>("DELETE", `/inventory/product-kits/${id}`),
+
+  // Images
+  getProductImages: () => request<ProductImage[]>("GET", "/inventory/product-images"),
+  createProductImage: (data: Record<string, unknown>) => request<ProductImage>("POST", "/inventory/product-images", data),
+  deleteProductImage: (id: string) => request<void>("DELETE", `/inventory/product-images/${id}`),
+
+  // Operations - Overview
+  getOperationsOverview: () => request<any>("GET", "/inventory/operations/overview"),
+
+  // Operations - GRN
+  getGoodsReceipts: () => request<GoodsReceipt[]>("GET", "/inventory/grn"),
+  createGoodsReceipt: (data: Record<string, unknown>) => request<GoodsReceipt>("POST", "/inventory/grn", data),
+  deleteGoodsReceipt: (id: string) => request<void>("DELETE", `/inventory/grn/${id}`),
+
+  // Operations - Goods Issue
+  getGoodsIssues: () => request<GoodsIssue[]>("GET", "/inventory/goods-issue"),
+  createGoodsIssue: (data: Record<string, unknown>) => request<GoodsIssue>("POST", "/inventory/goods-issue", data),
+  deleteGoodsIssue: (id: string) => request<void>("DELETE", `/inventory/goods-issue/${id}`),
+
+  // Operations - Stock Movement
+  getStockMovements: () => request<StockMovement[]>("GET", "/inventory/movements"),
+  createStockMovement: (data: Record<string, unknown>) => request<StockMovement>("POST", "/inventory/movements", data),
+  deleteStockMovement: (id: string) => request<void>("DELETE", `/inventory/movements/${id}`),
+
+  // Operations - Stock Adjustment
+  getStockAdjustments: () => request<StockAdjustment[]>("GET", "/inventory/adjustments"),
+  createStockAdjustment: (data: Record<string, unknown>) => request<StockAdjustment>("POST", "/inventory/adjustments", data),
+  deleteStockAdjustment: (id: string) => request<void>("DELETE", `/inventory/adjustments/${id}`),
+
+  // Operations - Cycle Counting
+  getCycleCounts: () => request<CycleCount[]>("GET", "/inventory/cycle-counts"),
+  createCycleCount: (data: Record<string, unknown>) => request<CycleCount>("POST", "/inventory/cycle-counts", data),
+  deleteCycleCount: (id: string) => request<void>("DELETE", `/inventory/cycle-counts/${id}`),
+
+  // Warehouse Management
+  getWarehouses: () => request<Warehouse[]>("GET", "/inventory/warehouses"),
+  createWarehouse: (data: Record<string, unknown>) => request<Warehouse>("POST", "/inventory/warehouses", data),
+  deleteWarehouse: (id: string) => request<void>("DELETE", `/inventory/warehouses/${id}`),
+  
+  getStorageLocations: () => request<StorageLocation[]>("GET", "/inventory/locations"),
+  createStorageLocation: (warehouseId: string, data: Record<string, unknown>) => request<StorageLocation>("POST", `/inventory/warehouses/${warehouseId}/locations`, data),
+  deleteStorageLocation: (id: string) => request<void>("DELETE", `/inventory/locations/${id}`),
 };

@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 // Product Master
 import { Products } from "../components/inventory/Products";
 import { Categories } from "../components/inventory/Categories";
-import { SubCategories } from "../components/inventory/SubCategories";
 import { Brands } from "../components/inventory/Brands";
 import { UnitsOfMeasure } from "../components/inventory/UnitsOfMeasure";
 import { ProductAttributes } from "../components/inventory/ProductAttributes";
@@ -15,6 +14,8 @@ import { ProductImages } from "../components/inventory/ProductImages";
 
 // Inventory Operations
 import { StockOverview } from "../components/inventory/StockOverview";
+import { GoodsReceipt } from "../components/inventory/GoodsReceipt";
+import { GoodsIssue } from "../components/inventory/GoodsIssue";
 import { StockMovement } from "../components/inventory/StockMovement";
 import { StockAdjustment } from "../components/inventory/StockAdjustment";
 import { StockTransfer } from "../components/inventory/StockTransfer";
@@ -40,6 +41,7 @@ import { QrCodeManagement } from "../components/inventory/QrCodeManagement";
 import { RfidManagement } from "../components/inventory/RfidManagement";
 
 // Inventory Intelligence
+import { AiInventoryHealth } from "../components/inventory/AiInventoryHealth";
 import { LowStockAlerts } from "../components/inventory/LowStockAlerts";
 import { ReorderPlanning } from "../components/inventory/ReorderPlanning";
 import { SlowMoving } from "../components/inventory/SlowMoving";
@@ -57,7 +59,6 @@ const componentMap: Record<string, React.ElementType> = {
   // Product Master
   products: Products,
   categories: Categories,
-  subcategories: SubCategories,
   brands: Brands,
   units: UnitsOfMeasure,
   attributes: ProductAttributes,
@@ -68,6 +69,8 @@ const componentMap: Record<string, React.ElementType> = {
 
   // Operations
   stock_overview: StockOverview,
+  goods_receipt: GoodsReceipt,
+  goods_issue: GoodsIssue,
   stock_movement: StockMovement,
   stock_adjustment: StockAdjustment,
   stock_transfer: StockTransfer,
@@ -93,6 +96,7 @@ const componentMap: Record<string, React.ElementType> = {
   rfid: RfidManagement,
 
   // Intelligence
+  ai_health: AiInventoryHealth,
   low_stock: LowStockAlerts,
   reorder_planning: ReorderPlanning,
   slow_moving: SlowMoving,

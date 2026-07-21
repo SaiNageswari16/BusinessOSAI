@@ -123,7 +123,6 @@ export const nav: NavGroup[] = [
         subItems: [
           { to: "/inventory?tab=products", label: "Products", icon: Package },
           { to: "/inventory?tab=categories", label: "Categories", icon: FolderTree },
-          { to: "/inventory?tab=subcategories", label: "Sub Categories", icon: Layers },
           { to: "/inventory?tab=brands", label: "Brands", icon: Tags },
           { to: "/inventory?tab=units", label: "Units of Measure", icon: Scale },
           { to: "/inventory?tab=attributes", label: "Product Attributes", icon: SlidersHorizontal },
@@ -139,6 +138,8 @@ export const nav: NavGroup[] = [
         icon: Activity,
         subItems: [
           { to: "/inventory?tab=stock_overview", label: "Stock Overview", icon: BarChart3 },
+          { to: "/inventory?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: Boxes },
+          { to: "/inventory?tab=goods_issue", label: "Goods Issue", icon: Truck },
           { to: "/inventory?tab=stock_movement", label: "Stock Movement", icon: ArrowRightLeft },
           { to: "/inventory?tab=stock_adjustment", label: "Stock Adjustment", icon: Sliders },
           { to: "/inventory?tab=stock_transfer", label: "Stock Transfer", icon: Truck },
@@ -180,6 +181,7 @@ export const nav: NavGroup[] = [
         label: "Inventory Intelligence",
         icon: BrainCircuit,
         subItems: [
+          { to: "/inventory?tab=ai_health", label: "AI Inventory Health", icon: Sparkles },
           { to: "/inventory?tab=low_stock", label: "Low Stock Alerts", icon: AlertTriangle },
           { to: "/inventory?tab=reorder_planning", label: "Reorder Planning", icon: TrendingUp },
           { to: "/inventory?tab=slow_moving", label: "Slow Moving Inventory", icon: Snail },

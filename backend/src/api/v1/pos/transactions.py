@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
-from src.models import POSTransaction, POSTransactionItem, POSPayment, POSProduct
+from src.models import POSTransaction, POSTransactionItem, POSPayment, Product
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
 
 router = APIRouter(prefix="/transactions", tags=["POS - Transactions"])
@@ -77,15 +77,17 @@ async def checkout(
         # Deduct stock (Enterprise-level with row locking)
         # Skip stock deduction if transaction is just being parked (ON_HOLD)
         if payload.status != "on_hold":
-            prod_stmt = select(POSProduct).where(
-                POSProduct.id == item.product_id,
-                POSProduct.tenant_id == ctx.user.tenant_id
+            prod_stmt = select(Product).where(
+                Product.id == item.product_id,
+                Product.tenant_id == ctx.user.tenant_id
             ).with_for_update()
             prod_res = await db.execute(prod_stmt)
             product = prod_res.scalar_one_or_none()
             if product:
                 # Allow stock to go negative to flag discrepancies for reconciliation
-                product.stock -= item.quantity
+                if product.initial_stock is None:
+                    product.initial_stock = 0
+                product.initial_stock -= item.quantity
 
     # 4. Create Payments
     for payment in payload.payments:

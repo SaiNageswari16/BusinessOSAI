@@ -1,7 +1,7 @@
 import { inventoryLowStock } from "../../data/inventory-mock";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { AlertTriangle, TrendingUp, Search, Plus, ShoppingCart } from "lucide-react";
+import { AlertTriangle, TrendingUp, Search, Plus, ShoppingCart, Sparkles } from "lucide-react";
 
 export function LowStockAlerts() {
   return (
@@ -12,6 +12,21 @@ export function LowStockAlerts() {
           <p className="text-sm text-muted-foreground">AI-driven reorder points to prevent stockouts.</p>
         </div>
         <Button className="gradient-brand text-white border-0"><ShoppingCart className="size-4 mr-2" /> Auto-Generate PO</Button>
+      </div>
+
+      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5"><Sparkles className="size-5 text-indigo-600" /></div>
+          <div>
+            <h3 className="text-sm font-bold text-indigo-900">AI Purchasing Recommendation</h3>
+            <p className="text-sm text-indigo-700 mt-1">
+              Bundle reorders for <span className="font-bold">Apple Suppliers</span> (iPhone 16 Pro, AirPods Pro 2) to save 12% on bulk shipping. Minimum PO value met.
+            </p>
+          </div>
+        </div>
+        <Button size="sm" className="bg-indigo-600 text-white hover:bg-indigo-700 shrink-0">
+          Create Bundled PO
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
