@@ -164,6 +164,7 @@ export interface Warehouse {
   temperature_control: string | null;
   status: string;
   created_at: string;
+  address?: string | null;
 }
 
 export interface StorageLocation {
@@ -1798,6 +1799,51 @@ export const crmLeadsApi = {
   /** Publish a generated ad poster to the connected Facebook Page. */
   publishToFacebook: (data: { image_url: string; caption: string; aspect_ratio?: string }) =>
     request<{ status: string; post_id?: string; page_id?: string; fb_post_url?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
+
+  // ── Master Catalog & AI RAG Search ─────────────────────────────────────────
+  searchMasterCatalog: (query: string, searchWeb = false, provider = "gemini") =>
+    request<Array<{
+      id?: string;
+      name: string;
+      barcode?: string;
+      brand_name?: string;
+      category_name?: string;
+      sub_category_name?: string;
+      model_number?: string;
+      hsn_code?: string;
+      mrp?: number;
+      selling_price?: number;
+      purchase_price?: number;
+      image_url?: string;
+      short_description?: string;
+      specifications?: string;
+      source?: "MASTER_DB" | "AI_WEB_SEARCH" | "EXCEL_IMPORT";
+    }>>("GET", `/inventory/master-catalog/search?query=${encodeURIComponent(query)}&search_web=${searchWeb}&provider=${provider}`),
+
+  saveToMasterCatalog: (item: any) =>
+    request<any>("POST", "/inventory/master-catalog/save", item),
+
+  importExcelMasterCatalog: (items: any[]) =>
+    request<{ message: string; count: number }>("POST", "/inventory/master-catalog/import-excel", { items }),
+
+  importToLocalInventory: (data: {
+    name: string;
+    sku?: string;
+    barcode?: string;
+    brand_name?: string;
+    category_name?: string;
+    sub_category_name?: string;
+    short_description?: string;
+    image_url?: string;
+    purchase_price?: number;
+    mrp?: number;
+    selling_price?: number;
+    tax_percent?: number;
+    initial_stock?: number;
+    supplier?: string;
+    warehouse?: string;
+  }) =>
+    request<any>("POST", "/inventory/master-catalog/import-to-local-inventory", data),
 };
 
 export interface CrmOpportunity {
@@ -2188,7 +2234,7 @@ export interface InventoryUOM {
   id: string;
   name: string;
   abbreviation: string;
-  description?: string;
+  description: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -2309,9 +2355,38 @@ export const inventoryApi = {
     request<PaginatedResponse<InventoryProduct>>("GET", "/inventory/products", undefined, params as Record<string, any>),
   createProduct: (data: Record<string, unknown>) => request<InventoryProduct>("POST", "/inventory/products", data),
   masterImportProducts: (items: Record<string, unknown>[]) => 
-    request<{ products_created: number; brands_created: number; categories_created: number; skipped_count: number; errors: string[] }>("POST", "/inventory/products/master-import", { items }),
+    request<{ products_created: number; brands_created: number; categories_created: number; uoms_created: number; skipped_count: number; errors: string[] }>("POST", "/inventory/products/master-import", { items }),
   updateProduct: (id: string, data: Record<string, unknown>) => request<InventoryProduct>("PATCH", `/inventory/products/${id}`, data),
   deleteProduct: (id: string) => request<void>("DELETE", `/inventory/products/${id}`),
+
+  // Master Catalog & AI Search
+  searchMasterCatalog: (query: string, searchWeb = false, provider = "gemini") =>
+    request<Array<{
+      id?: string;
+      name: string;
+      barcode?: string;
+      brand_name?: string;
+      category_name?: string;
+      sub_category_name?: string;
+      model_number?: string;
+      hsn_code?: string;
+      mrp?: number;
+      selling_price?: number;
+      purchase_price?: number;
+      image_url?: string;
+      short_description?: string;
+      specifications?: string;
+      source?: "MASTER_DB" | "AI_WEB_SEARCH" | "EXCEL_IMPORT";
+    }>>("GET", `/inventory/master-catalog/search?query=${encodeURIComponent(query)}&search_web=${searchWeb}&provider=${provider}`),
+
+  saveToMasterCatalog: (item: any) =>
+    request<any>("POST", "/inventory/master-catalog/save", item),
+
+  importExcelMasterCatalog: (items: any[]) =>
+    request<{ message: string; count: number }>("POST", "/inventory/master-catalog/import-excel", { items }),
+
+  importToLocalInventory: (data: Record<string, unknown>) =>
+    request<any>("POST", "/inventory/master-catalog/import-to-local-inventory", data),
   
   // Categories
   getCategories: (params?: { search?: string; page?: number; page_size?: number }) =>

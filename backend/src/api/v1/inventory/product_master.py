@@ -10,7 +10,7 @@ from src.api.deps import CurrentUserContext, require_any_permission, require_per
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import EntityStatus
-from src.models.inventory import ProductCategory, Brand, UnitOfMeasure, Product
+from src.models.inventory import ProductCategory, Brand, UnitOfMeasure, Product, MasterCatalogProduct
 from src.schemas.inventory import (
     ProductCategoryCreate, ProductCategoryResponse, ProductCategoryUpdate,
     ProductCategoryBulkCreate, ProductCategoryBulkResponse,
@@ -344,10 +344,16 @@ async def list_products(
     )
     
     if search:
-        like = f"%{search}%"
-        query = query.where(
-            Product.name.ilike(like) | Product.sku.ilike(like) | Product.barcode.ilike(like)
-        )
+        words = [w.strip() for w in search.strip().split() if w.strip()]
+        if words:
+            conditions = []
+            for w in words:
+                like = f"%{w}%"
+                conditions.append(
+                    Product.name.ilike(like) | Product.sku.ilike(like) | Product.barcode.ilike(like)
+                )
+            from sqlalchemy import and_
+            query = query.where(and_(*conditions))
     if category_id:
         query = query.where(Product.category_id == category_id)
     if brand_id:
@@ -588,6 +594,36 @@ async def master_import_products(
         db.add(new_product)
         products_created += 1
         existing_skus.add(item.sku)
+
+        # Cache in global master catalog if it has a barcode and doesn't exist yet
+        if item.barcode and item.barcode.strip():
+            clean_barcode = item.barcode.strip()
+            existing_mc_res = await db.execute(
+                select(MasterCatalogProduct).where(MasterCatalogProduct.barcode == clean_barcode)
+            )
+            if not existing_mc_res.scalars().first():
+                new_mc = MasterCatalogProduct(
+                    id=uuid.uuid4(),
+                    tenant_id=None,
+                    name=item.name,
+                    brand=item.brand_name.strip() if item.brand_name else "General",
+                    barcode=clean_barcode,
+                    sku_code=item.sku,
+                    hsn_code="150990",  # General default
+                    cost_price=item.purchase_price or 0.0,
+                    mrp=item.mrp or 0.0,
+                    sale_price=item.selling_price or 0.0,
+                    weight=item.uom_name or "Standard",
+                    quantity=1.0,
+                    tax=item.tax_percent or 18.0,
+                    type="CGST + SGST",
+                    category=item.category_name.strip() if item.category_name else "General",
+                    sub_category=item.sub_category_name.strip() if item.sub_category_name else "General",
+                    short_description=item.short_description or "",
+                    specifications="Imported from tenant inventory creation",
+                    source="AI_WEB_SEARCH"
+                )
+                db.add(new_mc)
 
     await db.commit()
 

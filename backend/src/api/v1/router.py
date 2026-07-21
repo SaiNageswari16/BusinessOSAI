@@ -24,6 +24,7 @@ from src.api.v1.system_admin import router as system_admin_router
 from src.api.v1.crm import router as crm_router
 
 from src.api.v1.inventory.product_master import router as inventory_product_master_router
+from src.api.v1.inventory.master_catalog import router as inventory_master_catalog_router
 from src.api.v1.inventory.product_attributes import router as inventory_attributes_router
 from src.api.v1.inventory.product_variants import router as inventory_variants_router
 from src.api.v1.inventory.product_bundles import router as inventory_bundles_router
@@ -69,6 +70,7 @@ api_router.include_router(system_admin_router)
 api_router.include_router(crm_router)
 
 # Inventory Module
+api_router.include_router(inventory_master_catalog_router)
 api_router.include_router(inventory_product_master_router, prefix="/inventory", tags=["Inventory - Product Master"])
 api_router.include_router(inventory_attributes_router, prefix="/inventory")
 api_router.include_router(inventory_variants_router, prefix="/inventory")

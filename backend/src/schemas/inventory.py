@@ -308,3 +308,73 @@ class ProductImageResponse(ProductImageBase, TimestampSchema):
     tenant_id: uuid.UUID
     class Config:
         from_attributes = True
+
+# -- Master Data Catalog & AI Search --
+class MasterCatalogItem(BaseModel):
+    id: Optional[uuid.UUID] = None
+    name: str
+    brand: Optional[str] = None
+    barcode: Optional[str] = None
+    sku_code: Optional[str] = None
+    product_code: Optional[str] = None
+    hsn_code: Optional[str] = None
+    plu_no: Optional[str] = None
+    
+    cost_price: Optional[float] = 0.0
+    mrp: Optional[float] = 0.0
+    sale_price: Optional[float] = 0.0
+    wholesale_price: Optional[float] = 0.0
+    special_price: Optional[float] = 0.0
+    online_price: Optional[float] = 0.0
+    
+    weight: Optional[str] = None
+    quantity: Optional[float] = 0.0
+    expired_quantity: Optional[float] = 0.0
+    near_expiry_quantity: Optional[float] = 0.0
+    
+    tax: Optional[float] = 0.0
+    type: Optional[str] = None
+    cess: Optional[float] = 0.0
+    cess_on: Optional[float] = 0.0
+    cess_type: Optional[str] = None
+    tax_amount: Optional[float] = 0.0
+    taxable_value: Optional[float] = 0.0
+    cess_tax_amount: Optional[float] = 0.0
+    additional_cess_tax_amount: Optional[float] = 0.0
+    
+    supplier: Optional[str] = None
+    discount_rs: Optional[float] = 0.0
+    discount_percent: Optional[float] = 0.0
+    actual_margin_rs: Optional[float] = 0.0
+    margin_on_cp: Optional[float] = 0.0
+    margin_on_sp: Optional[float] = 0.0
+    category: Optional[str] = None
+    sub_category: Optional[str] = None
+    instock_value: Optional[float] = 0.0
+
+    # UI / AI fields
+    image_url: Optional[str] = None
+    short_description: Optional[str] = None
+    specifications: Optional[str] = None
+    source: Optional[str] = "MASTER_DB" # "MASTER_DB" | "AI_WEB_SEARCH"
+
+class MasterCatalogImportRequest(BaseModel):
+    items: List[MasterCatalogItem]
+
+class MasterCatalogSaveToLocalRequest(BaseModel):
+    name: str
+    sku: Optional[str] = None
+    barcode: Optional[str] = None
+    brand_name: Optional[str] = None
+    category_name: Optional[str] = None
+    sub_category_name: Optional[str] = None
+    short_description: Optional[str] = None
+    image_url: Optional[str] = None
+    purchase_price: Optional[float] = 0.0
+    mrp: Optional[float] = 0.0
+    selling_price: Optional[float] = 0.0
+    tax_percent: Optional[float] = 0.0
+    initial_stock: Optional[int] = 0
+    supplier: Optional[str] = None
+    warehouse: Optional[str] = None
+

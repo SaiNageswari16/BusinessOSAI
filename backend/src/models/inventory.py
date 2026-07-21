@@ -1,6 +1,7 @@
+import uuid
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from datetime import datetime
 
 from src.database.base import Base, TenantScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
@@ -286,3 +287,60 @@ class CycleCountItem(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     variance: Mapped[int | None] = mapped_column(Integer, nullable=True)
     
     cycle_count: Mapped["CycleCount"] = relationship(back_populates="items")
+
+
+class MasterCatalogProduct(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "erp_master_catalog"
+    
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    brand: Mapped[str | None] = mapped_column(String(150), index=True)
+    barcode: Mapped[str | None] = mapped_column(String(100), index=True)
+    sku_code: Mapped[str | None] = mapped_column(String(100), index=True)
+    product_code: Mapped[str | None] = mapped_column(String(100), index=True)
+    hsn_code: Mapped[str | None] = mapped_column(String(100), index=True)
+    plu_no: Mapped[str | None] = mapped_column(String(100), index=True)
+    
+    cost_price: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    mrp: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    sale_price: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    wholesale_price: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    special_price: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    online_price: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    
+    weight: Mapped[str | None] = mapped_column(String(100))
+    quantity: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    expired_quantity: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    near_expiry_quantity: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    
+    tax: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    type: Mapped[str | None] = mapped_column(String(100))
+    cess: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    cess_on: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    cess_type: Mapped[str | None] = mapped_column(String(100))
+    tax_amount: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    taxable_value: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    cess_tax_amount: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    additional_cess_tax_amount: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    
+    supplier: Mapped[str | None] = mapped_column(String(255))
+    discount_rs: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    discount_percent: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    actual_margin_rs: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    margin_on_cp: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    margin_on_sp: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    category: Mapped[str | None] = mapped_column(String(150), index=True)
+    sub_category: Mapped[str | None] = mapped_column(String(150))
+    instock_value: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+
+    # UI / AI fields
+    image_url: Mapped[str | None] = mapped_column(String(1024))
+    short_description: Mapped[str | None] = mapped_column(Text)
+    specifications: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(50), default="EXCEL_IMPORT")
+

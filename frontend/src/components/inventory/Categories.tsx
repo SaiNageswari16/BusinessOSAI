@@ -149,9 +149,9 @@ export function Categories() {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        transformHeader: (h) => h.trim().replace(/^[\u200B\u200C\u200D\u20FE\uFEFF]/, ""),
-        complete: (results) => processData(results.data),
-        error: (error) => {
+        transformHeader: (h: string) => h.trim().replace(/^[\u200B\u200C\u200D\u20FE\uFEFF]/, ""),
+        complete: (results: any) => processData(results.data),
+        error: (error: any) => {
           setIsImporting(false);
           alert("Failed to parse CSV: " + error.message);
           if (fileInputRef.current) fileInputRef.current.value = "";

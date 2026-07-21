@@ -81,7 +81,7 @@ export function ProductKits() {
                 <div className="flex-1">
                   <div className="flex justify-between items-start">
                     <h3 className="font-bold text-lg leading-tight">{kit.name}</h3>
-                    <span className="text-[10px] bg-muted px-2 py-0.5 rounded font-bold uppercase">{kit.type || kit.kit_type}</span>
+                    <span className="text-[10px] bg-muted px-2 py-0.5 rounded font-bold uppercase">{kit.kit_type}</span>
                   </div>
                   <div className="text-xs text-muted-foreground font-mono mt-1">{kit.sku}</div>
                 </div>

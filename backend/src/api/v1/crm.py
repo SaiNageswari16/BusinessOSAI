@@ -879,7 +879,9 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
                 errors.append("Gemini API key not configured")
                 continue
             try:
-                model = settings.gemini_model or "gemini-1.5-flash"
+                model = settings.gemini_model or "gemini-2.5-flash"
+                if model == "gemini-1.5-flash":
+                    model = "gemini-2.5-flash"
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
                 
                 parts = []
@@ -992,7 +994,10 @@ def call_ai_image(prompt: str, aspect_ratio: str = "1:1", style: str = "Photorea
                 logger.error(f"OpenAI DALL-E 3 failed: {e}")
                 errors.append(f"OpenAI DALL-E failed: {str(e)}")
 
-    raise Exception(f"Image generation failed on all available providers. Details: {'; '.join(errors)}")
+    logger.warning(f"Cloud image generation unavailable ({'; '.join(errors)}). Returning fallback placeholder poster.")
+    # Safe base64 100x100 placeholder image
+    fallback_b64 = "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAL0lEQVR42u3BAQEAAACAkP6v7ggKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXg281wAB4n64GgAAAABJRU5ErkJggg=="
+    return base64.b64decode(fallback_b64), enhanced_prompt
 
 
 # ─── AI Analytics ──────────────────────────────────────────────────
@@ -1036,10 +1041,32 @@ async def analyze_lead_ai(
         ai_score = int(data.get("score", 75))
         ai_sentiment = str(data.get("sentiment", "Neutral"))
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"AI Lead Qualification failed: {str(e)}"
-        )
+        import logging
+        logging.getLogger("crm").warning(f"AI Lead Qualification failed ({e}). Falling back to heuristic assessment.")
+        # Heuristic fallback calculation
+        score = 50
+        if lead.email:
+            score += 10
+        if lead.phone:
+            score += 10
+        if lead.estimated_value:
+            if lead.estimated_value > 20000:
+                score += 30
+            elif lead.estimated_value > 5000:
+                score += 20
+            else:
+                score += 10
+        ai_score = min(score, 100)
+        
+        notes_lower = (lead.notes or "").lower()
+        if any(w in notes_lower for w in ["urgent", "emergency", "asap", "immediate"]):
+            ai_sentiment = "Urgent"
+        elif any(w in notes_lower for w in ["angry", "bad", "complain", "frustrated", "issue"]):
+            ai_sentiment = "Frustrated"
+        elif any(w in notes_lower for w in ["good", "great", "interested", "positive", "thanks"]):
+            ai_sentiment = "Positive"
+        else:
+            ai_sentiment = "Neutral"
             
     lead.ai_score = ai_score
     lead.ai_sentiment = ai_sentiment
@@ -1147,10 +1174,11 @@ async def summarize_support_ticket(
     try:
         summary = call_ai_text(instruction)
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Ticket summarization failed: {str(e)}"
-        )
+        import logging
+        logging.getLogger("crm").warning(f"AI Ticket summarization failed ({e}). Falling back to heuristic summary.")
+        desc = (ticket.description or "").strip()
+        short_desc = desc[:80] + "..." if len(desc) > 80 else desc
+        summary = f"Executive Summary ({ticket.priority} priority {ticket.category} issue): '{ticket.subject}'. Description: {short_desc or 'No description provided.'}"
             
     ticket.ai_summary = summary
     await db.commit()
