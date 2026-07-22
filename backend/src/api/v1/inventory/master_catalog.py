@@ -114,7 +114,7 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                 "contents": [{"parts": [{"text": prompt}]}],
                 "tools": [{"googleSearch": {}}]
             }
-            res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=25)
+            res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
             if res.status_code == 429:
                 error_msg = "Gemini API daily/rate limit exceeded (429 Quota Exhausted). Please configure a paid Gemini key."
                 try:
@@ -226,7 +226,7 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"}
             }
-            res = requests.post(url, json=body, headers=headers, timeout=25)
+            res = requests.post(url, json=body, headers=headers, timeout=60)
             if res.status_code == 429:
                 raise HTTPException(status_code=429, detail="OpenAI API rate limit exceeded (429).")
             if res.status_code != 200:
