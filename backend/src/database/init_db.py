@@ -586,11 +586,15 @@ async def seed_hrms_features(db: AsyncSession) -> None:
         emp_list = await db.execute(select(Employee).where(Employee.tenant_id == tenant_id))
         employees = emp_list.scalars().all()
         
+        if not employees:
+            logger.info("No employees found. Skipping Exit Management seed.")
+            return
+            
         # Resignations
         res_list = [
             ExitResignation(
                 tenant_id=tenant_id,
-                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_id=employees[3].id if len(employees) > 3 else employees[0].id,
                 employee_name="Aisha Patel",
                 department="Engineering",
                 designation="UX Designer",
@@ -600,7 +604,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             ),
             ExitResignation(
                 tenant_id=tenant_id,
-                employee_id=employees[2].id if len(employees) > 2 else uuid.uuid4(),
+                employee_id=employees[2].id if len(employees) > 2 else employees[0].id,
                 employee_name="Sarah Mitchell",
                 department="Marketing",
                 designation="Marketing Director",
@@ -616,7 +620,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
         clearances = [
             ExitClearanceTask(
                 tenant_id=tenant_id,
-                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_id=employees[3].id if len(employees) > 3 else employees[0].id,
                 employee_name="Aisha Patel",
                 department="IT",
                 task="Laptop & Access Card returned",
@@ -625,7 +629,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             ),
             ExitClearanceTask(
                 tenant_id=tenant_id,
-                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_id=employees[3].id if len(employees) > 3 else employees[0].id,
                 employee_name="Aisha Patel",
                 department="Finance",
                 task="Expense settlements cleared",
@@ -634,7 +638,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             ),
             ExitClearanceTask(
                 tenant_id=tenant_id,
-                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_id=employees[3].id if len(employees) > 3 else employees[0].id,
                 employee_name="Aisha Patel",
                 department="HR",
                 task="Exit interview completed",
@@ -643,7 +647,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             ),
             ExitClearanceTask(
                 tenant_id=tenant_id,
-                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_id=employees[3].id if len(employees) > 3 else employees[0].id,
                 employee_name="Aisha Patel",
                 department="Manager",
                 task="KT (Knowledge Transfer) signed off",
@@ -658,7 +662,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
         settlements = [
             ExitFinalSettlement(
                 tenant_id=tenant_id,
-                employee_id=employees[2].id if len(employees) > 2 else uuid.uuid4(),
+                employee_id=employees[2].id if len(employees) > 2 else employees[0].id,
                 employee_name="Sarah Mitchell",
                 last_working_day=date.today() - timedelta(days=5),
                 components_json=[
@@ -678,7 +682,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
         letters = [
             ExitExperienceLetter(
                 tenant_id=tenant_id,
-                employee_id=employees[2].id if len(employees) > 2 else uuid.uuid4(),
+                employee_id=employees[2].id if len(employees) > 2 else employees[0].id,
                 employee_name="Sarah Mitchell",
                 designation="Marketing Director",
                 from_date=date.today() - timedelta(days=730),
@@ -688,7 +692,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             ),
             ExitExperienceLetter(
                 tenant_id=tenant_id,
-                employee_id=employees[3].id if len(employees) > 3 else (employees[0].id if employees else uuid.uuid4()),
+                employee_id=employees[3].id if len(employees) > 3 else employees[0].id,
                 employee_name="Aisha Patel",
                 designation="UX Designer",
                 from_date=date.today() - timedelta(days=365),
@@ -778,132 +782,134 @@ async def seed_crm_features(db: AsyncSession) -> None:
         await db.flush()
         
         # 2. Seed Customers
-        logger.info("Seeding CRM Customers...")
-        customers = [
-            Customer(
-                tenant_id=tenant_id,
-                name="Acme Corporation",
-                email="procurement@acme.com",
-                phone="+91 9887766554",
-                company_name="Acme Corp",
-                customer_type="Corporate",
-                status="Active",
-                address="456 Acme Industrial Boulevard, Mumbai",
-                gst_number="27ACME1234A1Z1"
-            ),
-            Customer(
-                tenant_id=tenant_id,
-                name="Global Trade LLC",
-                email="info@globaltrade.net",
-                phone="+91 9887766555",
-                company_name="Global Trade LLC",
-                customer_type="Corporate",
-                status="Active",
-                address="789 Trade Tower, BKC, Mumbai",
-                gst_number="27GLOBE1234A1Z2"
-            )
-        ]
-        for c in customers:
-            db.add(c)
-        await db.flush()
-        
-        # 3. Seed Support Tickets
-        logger.info("Seeding CRM Support Tickets...")
-        tickets = [
-            CRMSupportTicket(
-                tenant_id=tenant_id,
-                customer_id=customers[0].id,
-                subject="API Integration Timeout Error",
-                description="Our checkout pipeline keeps receiving HTTP 504 timeouts when sync is initiated at peak hours.",
-                priority="High",
-                status="Open",
-                category="Technical",
-                ai_summary="Client Acme Corp experiencing HTTP 504 timeouts during peak hours Checkout sync."
-            ),
-            CRMSupportTicket(
-                tenant_id=tenant_id,
-                customer_id=customers[1].id,
-                subject="Invoice billing mismatch",
-                description="The Q2 invoice lists tax component as 18% instead of the 12% promotional rate promised.",
-                priority="Medium",
-                status="In Progress",
-                category="Billing",
-                ai_summary="Billing mismatch on Q2 invoice - tax charged at 18% instead of promotional 12%."
-            )
-        ]
-        for t in tickets:
-            db.add(t)
+        customer_count = await db.scalar(select(func.count()).select_from(Customer).where(Customer.tenant_id == tenant_id))
+        if customer_count == 0:
+            logger.info("Seeding CRM Customers...")
+            customers = [
+                Customer(
+                    tenant_id=tenant_id,
+                    name="Acme Corporation",
+                    email="procurement@acme.com",
+                    phone="+91 9887766554",
+                    company_name="Acme Corp",
+                    customer_type="Corporate",
+                    status="Active",
+                    address="456 Acme Industrial Boulevard, Mumbai",
+                    gst_number="27ACME1234A1Z1"
+                ),
+                Customer(
+                    tenant_id=tenant_id,
+                    name="Global Trade LLC",
+                    email="info@globaltrade.net",
+                    phone="+91 9887766555",
+                    company_name="Global Trade LLC",
+                    customer_type="Corporate",
+                    status="Active",
+                    address="789 Trade Tower, BKC, Mumbai",
+                    gst_number="27GLOBE1234A1Z2"
+                )
+            ]
+            for c in customers:
+                db.add(c)
+            await db.flush()
             
-        # 4. Seed Quotations
-        logger.info("Seeding CRM Quotations...")
-        quotes = [
-            CRMQuotation(
-                tenant_id=tenant_id,
-                customer_id=customers[0].id,
-                quote_number="QT-2026-001",
-                items={"items": [{"name": "Enterprise POS Subscription", "qty": 10, "price": 1200}]},
-                subtotal=12000.0,
-                tax=2160.0,
-                total=14160.0,
-                status="Sent"
-            ),
-            CRMQuotation(
-                tenant_id=tenant_id,
-                customer_id=customers[1].id,
-                quote_number="QT-2026-002",
-                items={"items": [{"name": "Hardware Terminal Pro", "qty": 5, "price": 450}]},
-                subtotal=2250.0,
-                tax=405.0,
-                total=2655.0,
-                status="Draft"
-            )
-        ]
-        for q in quotes:
-            db.add(q)
-            
-        # 5. Seed Sales Orders
-        logger.info("Seeding CRM Sales Orders...")
-        orders = [
-            CRMSalesOrder(
-                tenant_id=tenant_id,
-                customer_id=customers[0].id,
-                order_number="SO-2026-101",
-                items={"items": [{"name": "Enterprise Subscription", "qty": 1, "price": 8500}]},
-                total=8500.0,
-                status="Processing",
-                payment_status="Paid"
-            )
-        ]
-        for o in orders:
-            db.add(o)
-            
-        # 6. Seed Opportunities
-        logger.info("Seeding CRM Opportunities...")
-        from src.models import CRMOpportunity
-        from datetime import date
-        opportunities = [
-            CRMOpportunity(
-                tenant_id=tenant_id,
-                customer_id=customers[0].id,
-                name="Nimbus Retail POS Expansion",
-                stage="Value Proposition",
-                amount=45000.0,
-                probability=70,
-                expected_close_date=date(2026, 9, 30)
-            ),
-            CRMOpportunity(
-                tenant_id=tenant_id,
-                lead_id=leads[2].id,
-                name="Johnson & Co Q3 Enterprise Rollout",
-                stage="Needs Analysis",
-                amount=85000.0,
-                probability=40,
-                expected_close_date=date(2026, 11, 15)
-            )
-        ]
-        for opp in opportunities:
-            db.add(opp)
-            
+            # 3. Seed Support Tickets
+            logger.info("Seeding CRM Support Tickets...")
+            tickets = [
+                CRMSupportTicket(
+                    tenant_id=tenant_id,
+                    customer_id=customers[0].id,
+                    subject="API Integration Timeout Error",
+                    description="Our checkout pipeline keeps receiving HTTP 504 timeouts when sync is initiated at peak hours.",
+                    priority="High",
+                    status="Open",
+                    category="Technical",
+                    ai_summary="Client Acme Corp experiencing HTTP 504 timeouts during peak hours Checkout sync."
+                ),
+                CRMSupportTicket(
+                    tenant_id=tenant_id,
+                    customer_id=customers[1].id,
+                    subject="Invoice billing mismatch",
+                    description="The Q2 invoice lists tax component as 18% instead of the 12% promotional rate promised.",
+                    priority="Medium",
+                    status="In Progress",
+                    category="Billing",
+                    ai_summary="Billing mismatch on Q2 invoice - tax charged at 18% instead of promotional 12%."
+                )
+            ]
+            for t in tickets:
+                db.add(t)
+                
+            # 4. Seed Quotations
+            logger.info("Seeding CRM Quotations...")
+            quotes = [
+                CRMQuotation(
+                    tenant_id=tenant_id,
+                    customer_id=customers[0].id,
+                    quote_number="QT-2026-001",
+                    items={"items": [{"name": "Enterprise POS Subscription", "qty": 10, "price": 1200}]},
+                    subtotal=12000.0,
+                    tax=2160.0,
+                    total=14160.0,
+                    status="Sent"
+                ),
+                CRMQuotation(
+                    tenant_id=tenant_id,
+                    customer_id=customers[1].id,
+                    quote_number="QT-2026-002",
+                    items={"items": [{"name": "Hardware Terminal Pro", "qty": 5, "price": 450}]},
+                    subtotal=2250.0,
+                    tax=405.0,
+                    total=2655.0,
+                    status="Draft"
+                )
+            ]
+            for q in quotes:
+                db.add(q)
+                
+            # 5. Seed Sales Orders
+            logger.info("Seeding CRM Sales Orders...")
+            orders = [
+                CRMSalesOrder(
+                    tenant_id=tenant_id,
+                    customer_id=customers[0].id,
+                    order_number="SO-2026-101",
+                    items={"items": [{"name": "Enterprise Subscription", "qty": 1, "price": 8500}]},
+                    total=8500.0,
+                    status="Processing",
+                    payment_status="Paid"
+                )
+            ]
+            for o in orders:
+                db.add(o)
+                
+            # 6. Seed Opportunities
+            logger.info("Seeding CRM Opportunities...")
+            from src.models import CRMOpportunity
+            from datetime import date
+            opportunities = [
+                CRMOpportunity(
+                    tenant_id=tenant_id,
+                    customer_id=customers[0].id,
+                    name="Nimbus Retail POS Expansion",
+                    stage="Value Proposition",
+                    amount=45000.0,
+                    probability=70,
+                    expected_close_date=date(2026, 9, 30)
+                ),
+                CRMOpportunity(
+                    tenant_id=tenant_id,
+                    lead_id=leads[2].id,
+                    name="Johnson & Co Q3 Enterprise Rollout",
+                    stage="Needs Analysis",
+                    amount=85000.0,
+                    probability=40,
+                    expected_close_date=date(2026, 11, 15)
+                )
+            ]
+            for opp in opportunities:
+                db.add(opp)
+                
         await db.commit()
         logger.info("CRM & Sales seeds created successfully.")
 

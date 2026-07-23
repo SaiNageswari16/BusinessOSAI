@@ -5,7 +5,7 @@ import requests
 import logging
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, BackgroundTasks
 from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,63 +53,247 @@ def _extract_json_from_text(text: str) -> dict | list:
     raise ValueError(f"Could not parse valid JSON from AI response text: {text[:200]}")
 
 
+def _is_meaningless_product_name(name: Optional[str], query: str) -> bool:
+    """Helper to detect if a product name returned by the AI is empty, placeholder, or failure message."""
+    if not name or not name.strip():
+        return True
+    nl = name.lower()
+    placeholders = [
+        "null", "none", "unknown", "placeholder", "n/a", "na", "nil", "empty",
+        f"product {query}", f"barcode {query}", "product not identified",
+        "product query", "not identified"
+    ]
+    if nl in placeholders:
+        return True
+    # If the name is a sentence explaining that the barcode is not recognized or not found
+    indicators = ["not identified", "does not match", "requires database", "not found", "no information"]
+    for ind in indicators:
+        if ind in nl:
+            return True
+    return False
+
+
+def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Optional[str]:
+    """Downloads an external image URL and saves it locally in the 'images' static directory."""
+    if not image_url or not image_url.startswith("http"):
+        return image_url
+        
+    try:
+        import os
+        os.makedirs("images", exist_ok=True)
+        
+        # Generate a safe filename
+        ext = ".jpg"
+        if ".png" in image_url.lower():
+            ext = ".png"
+        elif ".gif" in image_url.lower():
+            ext = ".gif"
+            
+        filename = f"{barcode}{ext}" if barcode else f"{uuid.uuid4()}{ext}"
+        local_path = os.path.join("images", filename)
+        
+        # Download the image bytes
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        }
+        res = requests.get(image_url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            with open(local_path, "wb") as f:
+                f.write(res.content)
+            logger.info(f"Downloaded and cached product image locally: /images/{filename}")
+            return f"/images/{filename}"
+        else:
+            logger.warning(f"Failed to download image {image_url}, status code: {res.status_code}")
+    except Exception as e:
+        logger.error(f"Error caching product image: {e}")
+        
+    return image_url
+
+
+def _fetch_web_search_context(query: str) -> str:
+    """Fetches search snippets from Yahoo Search (falling back to Bing) to provide RAG context."""
+    # 1. Try Yahoo first
+    try:
+        import urllib.parse
+        url = f"https://search.yahoo.com/search?p={urllib.parse.quote(query)}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5"
+        }
+        res = requests.get(url, headers=headers, timeout=10)
+        logger.info(f"Yahoo Search status code: {res.status_code}")
+        if res.status_code == 200:
+            import re
+            snippets = re.findall(r'<p class="[^"]*fc-spry[^"]*">([\s\S]*?)</p>|<div class="compText[^"]*">([\s\S]*?)</div>', res.text)
+            logger.info(f"Yahoo Search found {len(snippets)} snippets.")
+            clean_snippets = []
+            for match in snippets[:8]:
+                val = match[0] or match[1]
+                clean = re.sub(r'<[^>]+>', '', val).strip()
+                clean = re.sub(r'\s+', ' ', clean)
+                if len(clean) > 20:
+                    clean_snippets.append(clean)
+            if clean_snippets:
+                return "\n".join(clean_snippets)
+    except Exception as e:
+        logger.warning(f"Yahoo Search RAG scraper failed: {e}")
+        
+    # 2. Fallback to Bing
+    try:
+        import urllib.parse
+        url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0"
+        }
+        res = requests.get(url, headers=headers, timeout=10)
+        logger.info(f"Bing Search status code: {res.status_code}")
+        if res.status_code == 200:
+            import re
+            snippets = re.findall(r'<p>([\s\S]*?)</p>|<div class="b_caption">([\s\S]*?)</div>', res.text)
+            logger.info(f"Bing Search found {len(snippets)} snippets.")
+            clean_snippets = []
+            for match in snippets[:8]:
+                val = match[0] or match[1]
+                clean = re.sub(r'<[^>]+>', '', val).strip()
+                clean = re.sub(r'\s+', ' ', clean)
+                if len(clean) > 20 and not "cookie" in clean.lower():
+                    clean_snippets.append(clean)
+            if clean_snippets:
+                return "\n".join(clean_snippets)
+    except Exception as e:
+        logger.warning(f"Bing Search RAG scraper failed: {e}")
+        
+    return ""
+
+
 async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -> List[MasterCatalogItem]:
-    """Uses Gemini 2.5 Google Search Grounding or OpenAI to fetch live real-time product details from the web."""
+    """Uses Gemini 2.5 Google Search Grounding, OpenAI, or Claude to fetch live real-time product details from the web."""
     ai_results: List[MasterCatalogItem] = []
     
-    if provider == "gemini" and settings.gemini_api_key:
+    active_provider = provider
+    if provider == "gemini" and settings.ai_provider in ["openai", "claude"]:
+        active_provider = settings.ai_provider
+        
+    search_context = ""
+    if active_provider in ["openai", "claude"] and query_str:
+        logger.info(f"Retrieving search grounding context for '{query_str}'...")
+        search_context = _fetch_web_search_context(query_str)
+        
+    if active_provider == "gemini" and settings.gemini_api_key:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
-            prompt = (
-                f"You are an expert product sourcing assistant. Perform a deep, thorough live Google search for the product query or barcode: '{query_str}'.\n"
-                "You MUST search across reliable online retail and e-commerce sources (such as Amazon, BigBasket, Blinkit, JioMart, Nykaa, or direct manufacturer listings) to extract the actual real-time product name, brand, MRP, online sale prices, weight, specifications, and brand.\n"
-                "CRITICAL: The 'name' and 'brand' fields must NEVER be generic placeholders (like 'Generic Product', 'Product Query', or 'Unknown Brand'). You MUST extract the actual official product title (e.g. 'Lakmé Peach Milk 2% Pro-Ceramide Gel Moisturiser') and the actual brand (e.g. 'Lakmé') from the search grounding results. If you cannot identify the product name and brand, do not generate a fake object.\n"
-                "For any numeric/operational fields you cannot find directly on the internet (such as cost_price, tax, hsn_code, or specifications), you may use standard defaults (e.g. cost_price can be estimated at 70% of the actual found MRP, tax can be 18.0, sub_category can be 'General') rather than leaving them out or failing! Always prioritize actual found retail prices over generic estimates for mrp and sale_price.\n"
-                "Return your findings as a JSON ARRAY of 1 to 3 matching product objects with this EXACT structure for each item:\n"
-                "[\n"
-                "  {\n"
-                '    "name": "Full official product title",\n'
-                '    "brand": "Brand Name",\n'
-                '    "barcode": "EAN / UPC / GTIN barcode if available, or null",\n'
-                '    "sku_code": "SKU code if available, or null",\n'
-                '    "product_code": "Product code if available, or null",\n'
-                '    "hsn_code": "Standard HSN / SAC code if applicable",\n'
-                '    "plu_no": "PLU No if applicable, or null",\n'
-                '    "cost_price": 0.00,\n'
-                '    "mrp": 0.00,\n'
-                '    "sale_price": 0.00,\n'
-                '    "wholesale_price": 0.00,\n'
-                '    "special_price": 0.00,\n'
-                '    "online_price": 0.00,\n'
-                '    "weight": "e.g. 10g or 1kg or null",\n'
-                '    "quantity": 1.0,\n'
-                '    "expired_quantity": 0.0,\n'
-                '    "near_expiry_quantity": 0.0,\n'
-                '    "tax": 0.0,\n'
-                '    "type": "e.g. CGST + SGST or null",\n'
-                '    "cess": 0.0,\n'
-                '    "cess_on": 0.0,\n'
-                '    "cess_type": null,\n'
-                '    "tax_amount": 0.0,\n'
-                '    "taxable_value": 0.0,\n'
-                '    "cess_tax_amount": 0.0,\n'
-                '    "additional_cess_tax_amount": 0.0,\n'
-                '    "supplier": null,\n'
-                '    "discount_rs": 0.0,\n'
-                '    "discount_percent": 0.0,\n'
-                '    "actual_margin_rs": 0.0,\n'
-                '    "margin_on_cp": 0.0,\n'
-                '    "margin_on_sp": 0.0,\n'
-                '    "category": "Product Category (e.g. Snacks, Electronics, Oral Care)",\n'
-                '    "sub_category": "Sub Category",\n'
-                '    "instock_value": 0.0,\n'
-                '    "image_url": "Direct image URL if found or placeholder",\n'
-                '    "short_description": "2-3 sentence overview of features",\n'
-                '    "specifications": "Key specs (e.g. Capacity, Dimensions, Weight, Power)"\n'
-                "  }\n"
-                "]\n"
-                "Respond strictly with the valid JSON ARRAY, with no markdown conversation around it."
-            )
+            
+            clean_query = query_str.strip()
+            is_barcode = clean_query.isdigit() and len(clean_query) in [8, 12, 13, 14]
+            
+            if is_barcode:
+                prompt = (
+                    f"You are an expert product sourcing assistant. Perform a deep, thorough live Google search for the EXACT product barcode number: '{clean_query}'.\n"
+                    f"Your search query MUST contain the barcode number in double quotes (e.g. \"{clean_query}\") to find the exact official matching product name.\n"
+                    "You MUST search across reliable online retail, pharmacy, and e-commerce listings (such as Amazon, BigBasket, Blinkit, Netmeds, Tata 1mg, Apollo Pharmacy, JioMart) to find the correct product name corresponding to this exact barcode.\n"
+                    "CRITICAL RULES:\n"
+                    "1. Do NOT return an unrelated product. Double check the search grounding snippets to ensure the product title matches the barcode identifier. For example, Sun Pharma products (like Volini) have the barcode prefix 8901296.\n"
+                    "2. If search grounding contains conflicting products (e.g., one hobby site listing it as an aquarium item, while major pharmacy sites list it as a pain relief spray), you MUST prioritize the major authoritative sites (Amazon, Netmeds, Tata 1mg, BigBasket) and return the pharmacy product.\n"
+                    "For any numeric/operational fields you cannot find directly on the internet (such as cost_price, tax, hsn_code, or specifications), you may use standard defaults (e.g. cost_price can be estimated at 70% of the actual found MRP, tax can be 18.0, sub_category can be 'General') rather than leaving them out or failing! Always prioritize actual found retail prices over generic estimates for mrp and sale_price.\n"
+                    "Return your findings as a JSON ARRAY of 1 matching product object with this EXACT structure:\n"
+                    "[\n"
+                    "  {\n"
+                    '    "name": "Full official product title",\n'
+                    '    "brand": "Brand Name",\n'
+                    f'    "barcode": "{clean_query}",\n'
+                    '    "sku_code": null,\n'
+                    '    "product_code": "Product code if available, or null",\n'
+                    '    "hsn_code": "Standard HSN / SAC code if applicable",\n'
+                    '    "plu_no": null,\n'
+                    '    "cost_price": 0.00,\n'
+                    '    "mrp": 0.00,\n'
+                    '    "sale_price": 0.00,\n'
+                    '    "wholesale_price": 0.00,\n'
+                    '    "special_price": 0.00,\n'
+                    '    "online_price": 0.00,\n'
+                    '    "weight": "e.g. 10g or 1kg or null",\n'
+                    '    "quantity": 1.0,\n'
+                    '    "expired_quantity": 0.0,\n'
+                    '    "near_expiry_quantity": 0.0,\n'
+                    '    "tax": 0.0,\n'
+                    '    "type": "e.g. CGST + SGST or null",\n'
+                    '    "cess": 0.0,\n'
+                    '    "cess_on": 0.0,\n'
+                    '    "cess_type": null,\n'
+                    '    "tax_amount": 0.0,\n'
+                    '    "taxable_value": 0.0,\n'
+                    '    "cess_tax_amount": 0.0,\n'
+                    '    "additional_cess_tax_amount": 0.0,\n'
+                    '    "supplier": null,\n'
+                    '    "discount_rs": 0.0,\n'
+                    '    "discount_percent": 0.0,\n'
+                    '    "actual_margin_rs": 0.0,\n'
+                    '    "margin_on_cp": 0.0,\n'
+                    '    "margin_on_sp": 0.0,\n'
+                    '    "category": "Product Category",\n'
+                    '    "sub_category": "Sub Category",\n'
+                    '    "instock_value": 0.0,\n'
+                    '    "image_url": "Real-world product image URL from the retail website grounding sources (e.g. ending in .jpg, .png, or from e-commerce CDNs). Do NOT return placeholders, example.com domains, or dummy text. If not found, return null.",\n'
+                    '    "short_description": "2-3 sentence overview of features",\n'
+                    '    "specifications": "Key specs (e.g. Capacity, Dimensions, Weight, Power)"\n'
+                    "  }\n"
+                    "]\n"
+                    "Respond strictly with the valid JSON ARRAY, with no markdown conversation around it."
+                )
+            else:
+                prompt = (
+                    f"You are an expert product sourcing assistant. Perform a deep, thorough live Google search for the product query or barcode: '{query_str}'.\n"
+                    "You MUST search across reliable online retail and e-commerce sources (such as Amazon, BigBasket, Blinkit, JioMart, Nykaa, or direct manufacturer listings) to extract the actual real-time product name, brand, MRP, online sale prices, weight, specifications, and brand.\n"
+                    "CRITICAL: The 'name' and 'brand' fields must NEVER be generic placeholders (like 'Generic Product', 'Product Query', or 'Unknown Brand'). You MUST extract the actual official product title (e.g. 'Lakmé Peach Milk 2% Pro-Ceramide Gel Moisturiser') and the actual brand (e.g. 'Lakmé') from the search grounding results. If you cannot identify the product name and brand, do not generate a fake object.\n"
+                    "CRITICAL BARCODE RULE: You MUST locate and extract the actual official EAN, UPC, or GTIN barcode number of the product (for example, for 'Noise Master Buds Max' search for its EAN barcode which is '8906174626478'). If a numeric barcode is found in the search results (especially 8 to 14 digit numbers), you MUST populate the 'barcode' field with it. Do NOT put the barcode number in the 'sku_code' field while leaving 'barcode' empty or null.\n"
+                    "For any numeric/operational fields you cannot find directly on the internet (such as cost_price, tax, hsn_code, or specifications), you may use standard defaults (e.g. cost_price can be estimated at 70% of the actual found MRP, tax can be 18.0, sub_category can be 'General') rather than leaving them out or failing! Always prioritize actual found retail prices over generic estimates for mrp and sale_price.\n"
+                    "Return your findings as a JSON ARRAY of 1 to 3 matching product objects with this EXACT structure for each item:\n"
+                    "[\n"
+                    "  {\n"
+                    '    "name": "Full official product title",\n'
+                    '    "brand": "Brand Name",\n'
+                    '    "barcode": "Numeric EAN / UPC / GTIN barcode number (e.g. 8906174626478), or null",\n'
+                    '    "sku_code": "SKU code if available, or null (do not put the barcode here)",\n'
+                    '    "product_code": "Product code if available, or null",\n'
+                    '    "hsn_code": "Standard HSN / SAC code if applicable",\n'
+                    '    "plu_no": "PLU No if applicable, or null",\n'
+                    '    "cost_price": 0.00,\n'
+                    '    "mrp": 0.00,\n'
+                    '    "sale_price": 0.00,\n'
+                    '    "wholesale_price": 0.00,\n'
+                    '    "special_price": 0.00,\n'
+                    '    "online_price": 0.00,\n'
+                    '    "weight": "e.g. 10g or 1kg or null",\n'
+                    '    "quantity": 1.0,\n'
+                    '    "expired_quantity": 0.0,\n'
+                    '    "near_expiry_quantity": 0.0,\n'
+                    '    "tax": 0.0,\n'
+                    '    "type": "e.g. CGST + SGST or null",\n'
+                    '    "cess": 0.0,\n'
+                    '    "cess_on": 0.0,\n'
+                    '    "cess_type": null,\n'
+                    '    "tax_amount": 0.0,\n'
+                    '    "taxable_value": 0.0,\n'
+                    '    "cess_tax_amount": 0.0,\n'
+                    '    "additional_cess_tax_amount": 0.0,\n'
+                    '    "supplier": null,\n'
+                    '    "discount_rs": 0.0,\n'
+                    '    "discount_percent": 0.0,\n'
+                    '    "actual_margin_rs": 0.0,\n'
+                    '    "margin_on_cp": 0.0,\n'
+                    '    "margin_on_sp": 0.0,\n'
+                    '    "category": "Product Category (e.g. Snacks, Electronics, Oral Care)",\n'
+                    '    "sub_category": "Sub Category",\n'
+                    '    "instock_value": 0.0,\n'
+                    '    "image_url": "Real-world product image URL from the retail website grounding sources (e.g. ending in .jpg, .png, or from e-commerce CDNs). Do NOT return placeholders, example.com domains, or dummy text. If not found, return null.",\n'
+                    '    "short_description": "2-3 sentence overview of features",\n'
+                    '    "specifications": "Key specs (e.g. Capacity, Dimensions, Weight, Power)"\n'
+                    "  }\n"
+                    "]\n"
+                    "Respond strictly with the valid JSON ARRAY, with no markdown conversation around it."
+                )
+            
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
                 "tools": [{"googleSearch": {}}]
@@ -161,8 +345,11 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                 parsed_data = [parsed_data]
                 
             for item in parsed_data:
+                name = item.get("name")
+                if _is_meaningless_product_name(name, query_str):
+                    continue
                 ai_results.append(MasterCatalogItem(
-                    name=item.get("name", query_str),
+                    name=name,
                     brand=item.get("brand"),
                     barcode=item.get("barcode"),
                     sku_code=item.get("sku_code"),
@@ -197,20 +384,26 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                     category=item.get("category"),
                     sub_category=item.get("sub_category"),
                     instock_value=float(item.get("instock_value") or 0.0),
-                    image_url=item.get("image_url"),
+                    image_url=_download_and_cache_product_image(item.get("image_url"), item.get("barcode")),
                     short_description=item.get("short_description"),
                     specifications=item.get("specifications"),
                     source="AI_WEB_SEARCH"
                 ))
             return ai_results
         except HTTPException as he:
-            raise he
+            if settings.openai_api_key or settings.anthropic_api_key:
+                logger.warning(f"Gemini RAG search failed: {he.detail}. Falling back to next available provider...")
+            else:
+                raise he
         except Exception as e:
-            logger.error(f"Gemini Web RAG search failed: {e}")
-            raise HTTPException(status_code=502, detail=f"Gemini API connection error: {e}")
+            if settings.openai_api_key or settings.anthropic_api_key:
+                logger.warning(f"Gemini RAG search failed: {e}. Falling back to next available provider...")
+            else:
+                logger.error(f"Gemini Web RAG search failed: {e}")
+                raise HTTPException(status_code=502, detail=f"Gemini API connection error: {e}")
 
     # Fallback to OpenAI if configured or provider is openai
-    if (provider == "openai" or not ai_results) and settings.openai_api_key:
+    if (active_provider == "openai" or not ai_results) and settings.openai_api_key:
         try:
             url = "https://api.openai.com/v1/chat/completions"
             headers = {"Content-Type": "application/json", "Authorization": f"Bearer {settings.openai_api_key}"}
@@ -221,6 +414,8 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                 "tax, type, cess, cess_on, cess_type, tax_amount, taxable_value, cess_tax_amount, additional_cess_tax_amount, "
                 "supplier, discount_rs, discount_percent, actual_margin_rs, margin_on_cp, margin_on_sp, category, sub_category, instock_value."
             )
+            if search_context:
+                prompt += f"\n\nHere is the live web search context for this product/barcode:\n{search_context}\n"
             body = {
                 "model": settings.openai_model or "gpt-4o",
                 "messages": [{"role": "user", "content": prompt}],
@@ -240,8 +435,11 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                 parsed_data = [parsed_data]
                 
             for item in parsed_data:
+                name = item.get("name")
+                if _is_meaningless_product_name(name, query_str):
+                    continue
                 ai_results.append(MasterCatalogItem(
-                    name=item.get("name", query_str),
+                    name=name,
                     brand=item.get("brand"),
                     barcode=item.get("barcode"),
                     sku_code=item.get("sku_code"),
@@ -276,17 +474,163 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                     category=item.get("category"),
                     sub_category=item.get("sub_category"),
                     instock_value=float(item.get("instock_value") or 0.0),
-                    image_url=item.get("image_url"),
+                    image_url=_download_and_cache_product_image(item.get("image_url"), item.get("barcode")),
                     short_description=item.get("short_description"),
                     specifications=item.get("specifications"),
                     source="AI_WEB_SEARCH"
                 ))
             return ai_results
         except HTTPException as he:
-            raise he
+            if settings.anthropic_api_key:
+                logger.warning(f"OpenAI RAG search failed: {he.detail}. Falling back to Claude...")
+            else:
+                raise he
         except Exception as e:
-            logger.error(f"OpenAI Web RAG search failed: {e}")
-            raise HTTPException(status_code=502, detail=f"OpenAI API connection error: {e}")
+            if settings.anthropic_api_key:
+                logger.warning(f"OpenAI RAG search failed: {e}. Falling back to Claude...")
+            else:
+                logger.error(f"OpenAI Web RAG search failed: {e}")
+                raise HTTPException(status_code=502, detail=f"OpenAI API connection error: {e}")
+
+    # Fallback to Anthropic Claude if configured or provider is claude
+    if (active_provider == "claude" or not ai_results) and settings.anthropic_api_key:
+        try:
+            logger.info("Executing Anthropic Claude product catalog sourcing...")
+            url = f"{settings.anthropic_base_url.rstrip('/')}/v1/messages"
+            headers = {
+                "x-api-key": settings.anthropic_api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            prompt = (
+                f"Identify real-world product specifications, real-time MRP, sales price, specifications, weight, and correct brand for the query/barcode: '{query_str}'.\n"
+                "CRITICAL: Do NOT attempt to call any tools or output tool calls (such as <tool_call> or web_search). Answer directly using your internal knowledge.\n"
+                "Return the findings as a JSON ARRAY of 1 to 3 matching product objects. Do NOT output any conversational text or markdown codeblocks, only valid JSON.\n"
+                "Structure structure for each product item:\n"
+                "[\n"
+                "  {\n"
+                '    "name": "Full official product title",\n'
+                '    "brand": "Brand Name",\n'
+                '    "barcode": "Numeric barcode (EAN/UPC/GTIN) or null",\n'
+                '    "sku_code": null,\n'
+                '    "product_code": "Product code if available, or null",\n'
+                '    "hsn_code": "HSN Code",\n'
+                '    "plu_no": null,\n'
+                '    "cost_price": 0.00,\n'
+                '    "mrp": 0.00,\n'
+                '    "sale_price": 0.00,\n'
+                '    "wholesale_price": 0.00,\n'
+                '    "special_price": 0.00,\n'
+                '    "online_price": 0.00,\n'
+                '    "weight": "e.g. 10g or 1kg or null",\n'
+                '    "quantity": 1.0,\n'
+                '    "expired_quantity": 0.0,\n'
+                '    "near_expiry_quantity": 0.0,\n'
+                '    "tax": 18.0,\n'
+                '    "type": "CGST + SGST",\n'
+                '    "cess": 0.0,\n'
+                '    "cess_on": 0.0,\n'
+                '    "cess_type": null,\n'
+                '    "tax_amount": 0.0,\n'
+                '    "taxable_value": 0.0,\n'
+                '    "cess_tax_amount": 0.0,\n'
+                '    "additional_cess_tax_amount": 0.0,\n'
+                '    "supplier": null,\n'
+                '    "discount_rs": 0.0,\n'
+                '    "discount_percent": 0.0,\n'
+                '    "actual_margin_rs": 0.0,\n'
+                '    "margin_on_cp": 0.0,\n'
+                '    "margin_on_sp": 0.0,\n'
+                '    "category": "Category",\n'
+                '    "sub_category": "Sub Category",\n'
+                '    "instock_value": 0.0,\n'
+                '    "image_url": "Direct product image URL from retail CDNs if known, else null (strictly do NOT use example.com placeholders)",\n'
+                '    "short_description": "2-3 sentence overview of features",\n'
+                '    "specifications": "Key specs (e.g. Dimensions, Weight, Power)"\n'
+                "  }\n"
+                "]"
+            )
+            if search_context:
+                prompt += f"\n\nHere is the live web search context for this product/barcode:\n{search_context}\n"
+            body = {
+                "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
+                "max_tokens": 4096,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            res = requests.post(url, json=body, headers=headers, timeout=60)
+            if res.status_code == 429:
+                raise HTTPException(status_code=429, detail="Anthropic API rate limit exceeded (429).")
+            if res.status_code != 200:
+                raise HTTPException(status_code=res.status_code, detail=f"Anthropic API returned error: {res.text[:500]}")
+            
+            content_blocks = res.json().get("content", [])
+            text = ""
+            for block in content_blocks:
+                if block.get("type") == "text":
+                    text = block.get("text", "")
+                    break
+            if not text and content_blocks:
+                text = content_blocks[0].get("text", "")
+            
+            parsed_data = _extract_json_from_text(text)
+            if isinstance(parsed_data, dict):
+                if "products" in parsed_data:
+                    parsed_data = parsed_data["products"]
+                else:
+                    parsed_data = [parsed_data]
+            elif not isinstance(parsed_data, list):
+                parsed_data = [parsed_data]
+                
+            for item in parsed_data:
+                name = item.get("name")
+                if _is_meaningless_product_name(name, query_str):
+                    continue
+                ai_results.append(MasterCatalogItem(
+                    name=name,
+                    brand=item.get("brand"),
+                    barcode=item.get("barcode"),
+                    sku_code=item.get("sku_code"),
+                    product_code=item.get("product_code"),
+                    hsn_code=item.get("hsn_code"),
+                    plu_no=item.get("plu_no"),
+                    cost_price=float(item.get("cost_price") or 0.0),
+                    mrp=float(item.get("mrp") or 0.0),
+                    sale_price=float(item.get("sale_price") or 0.0),
+                    wholesale_price=float(item.get("wholesale_price") or 0.0),
+                    special_price=float(item.get("special_price") or 0.0),
+                    online_price=float(item.get("online_price") or 0.0),
+                    weight=item.get("weight"),
+                    quantity=float(item.get("quantity") or 0.0),
+                    expired_quantity=float(item.get("expired_quantity") or 0.0),
+                    near_expiry_quantity=float(item.get("near_expiry_quantity") or 0.0),
+                    tax=float(item.get("tax") or 0.0),
+                    type=item.get("type"),
+                    cess=float(item.get("cess") or 0.0),
+                    cess_on=float(item.get("cess_on") or 0.0),
+                    cess_type=item.get("cess_type"),
+                    tax_amount=float(item.get("tax_amount") or 0.0),
+                    taxable_value=float(item.get("taxable_value") or 0.0),
+                    cess_tax_amount=float(item.get("cess_tax_amount") or 0.0),
+                    additional_cess_tax_amount=float(item.get("additional_cess_tax_amount") or 0.0),
+                    supplier=item.get("supplier"),
+                    discount_rs=float(item.get("discount_rs") or 0.0),
+                    discount_percent=float(item.get("discount_percent") or 0.0),
+                    actual_margin_rs=float(item.get("actual_margin_rs") or 0.0),
+                    margin_on_cp=float(item.get("margin_on_cp") or 0.0),
+                    margin_on_sp=float(item.get("margin_on_sp") or 0.0),
+                    category=item.get("category"),
+                    sub_category=item.get("sub_category"),
+                    instock_value=float(item.get("instock_value") or 0.0),
+                    image_url=_download_and_cache_product_image(item.get("image_url"), item.get("barcode")),
+                    short_description=item.get("short_description"),
+                    specifications=item.get("specifications"),
+                    source="AI_WEB_SEARCH"
+                ))
+            return ai_results
+        except Exception as e:
+            logger.error(f"Anthropic Claude RAG search failed: {e}")
+            if active_provider == "claude":
+                raise HTTPException(status_code=502, detail=f"Anthropic API connection error: {e}")
 
     # Final fallback: if query is a numeric barcode and no results were fetched, query Open Food Facts API!
     clean_query = query_str.strip()
@@ -343,7 +687,7 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                         category=category_name,
                         sub_category="General",
                         instock_value=0.0,
-                        image_url=image_url,
+                        image_url=_download_and_cache_product_image(image_url, clean_query),
                         short_description=p.get("generic_name") or f"Automatically imported from public barcode registry: {clean_query}",
                         specifications=f"Brands: {p.get('brands')}\nCategories: {p.get('categories')}",
                         source="AI_WEB_SEARCH"
@@ -370,6 +714,7 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
 
 @router.get("/search", response_model=List[MasterCatalogItem])
 async def search_master_catalog(
+    request: Request,
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     query: str = Query(..., min_length=1),
@@ -400,6 +745,61 @@ async def search_master_catalog(
     db_res = await db.execute(db_query)
     db_products = db_res.scalars().all()
     
+    # 2. Enrich limited products inline if search_web is requested and keys are configured
+    if search_web and (settings.gemini_api_key or settings.openai_api_key):
+        for p in db_products:
+            # We define limited data if it has no pricing (mrp is 0 or None), or no image, or no specifications
+            has_limited_data = (
+                not p.mrp or p.mrp == 0.0 or
+                not p.image_url or p.image_url.strip() == "" or p.image_url.startswith("http://placeholder") or
+                not p.specifications or p.specifications.strip() == ""
+            )
+            if has_limited_data:
+                try:
+                    logger.info(f"Product '{p.name}' (barcode: {p.barcode}) has limited data. Sourcing real-time details inline...")
+                    search_term = p.barcode if (p.barcode and p.barcode.strip()) else p.name
+                    ai_items = await _perform_ai_rag_web_search(search_term, provider=provider)
+                    
+                    if ai_items:
+                        ai_item = ai_items[0]
+                        # Update master product
+                        p.brand = ai_item.brand or p.brand
+                        p.image_url = ai_item.image_url or p.image_url
+                        p.short_description = ai_item.short_description or p.short_description
+                        p.specifications = ai_item.specifications or p.specifications
+                        p.cost_price = ai_item.cost_price or p.cost_price
+                        p.mrp = ai_item.mrp or p.mrp
+                        p.sale_price = ai_item.sale_price or p.sale_price
+                        p.weight = ai_item.weight or p.weight
+                        p.tax = ai_item.tax or p.tax
+                        p.category = ai_item.category or p.category
+                        p.sub_category = ai_item.sub_category or p.sub_category
+                        p.hsn_code = ai_item.hsn_code or p.hsn_code
+                        p.source = "AI_WEB_SEARCH"
+                        
+                        # Find and update matching local products inside tenant databases
+                        local_query = select(Product).where(Product.tenant_id == ctx.tenant_id)
+                        if p.barcode:
+                            local_query = local_query.where(Product.barcode == p.barcode)
+                        else:
+                            local_query = local_query.where(Product.name == p.name)
+                        local_res = await db.execute(local_query)
+                        local_products = local_res.scalars().all()
+                        for lp in local_products:
+                            lp.purchase_price = ai_item.cost_price or lp.purchase_price
+                            lp.mrp = ai_item.mrp or lp.mrp
+                            lp.selling_price = ai_item.sale_price or lp.selling_price
+                            lp.tax_percent = ai_item.tax or lp.tax_percent
+                            lp.image_url = ai_item.image_url or lp.image_url
+                            lp.short_description = ai_item.short_description or lp.short_description
+                            lp.long_description = ai_item.specifications or lp.long_description
+                        
+                        await db.commit()
+                        await db.refresh(p)
+                        logger.info(f"Successfully enriched product '{p.name}' inline.")
+                except Exception as e:
+                    logger.error(f"Failed inline auto-enrichment for '{p.name}': {e}")
+                    
     for p in db_products:
         results.append(MasterCatalogItem(
             id=p.id,
@@ -449,6 +849,12 @@ async def search_master_catalog(
         ai_items = await _perform_ai_rag_web_search(query, provider=provider)
         results.extend(ai_items)
         
+    # Prepend request base URL to static image paths so they load on localhost/production
+    base_url = str(request.base_url).rstrip("/")
+    for item in results:
+        if item.image_url and item.image_url.startswith("/images/"):
+            item.image_url = f"{base_url}{item.image_url}"
+            
     return results
 
 
@@ -626,16 +1032,22 @@ async def import_to_local_inventory(
         import string, random
         sku = f"{sku}-{''.join(random.choices(string.ascii_uppercase, k=3))}"
 
-    # 4. Create Product in erp_products
+    # 4. Determine Barcode (fallback to SKU if SKU is a numeric barcode)
+    product_barcode = payload.barcode
+    if not product_barcode and sku and sku.strip().isdigit() and len(sku.strip()) in [8, 12, 13, 14]:
+        product_barcode = sku.strip()
+
+    # 5. Create Product in erp_products
     new_product = Product(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
         name=payload.name,
         sku=sku,
-        barcode=payload.barcode,
+        barcode=product_barcode,
         brand_id=brand_id,
         category_id=category_id,
         short_description=payload.short_description,
+        long_description=payload.specifications,
         image_url=payload.image_url,
         purchase_price=payload.purchase_price or 0.0,
         mrp=payload.mrp or 0.0,
@@ -648,9 +1060,9 @@ async def import_to_local_inventory(
     )
     db.add(new_product)
     
-    # Cache in global master catalog if it has a barcode and doesn't exist yet
-    if payload.barcode and payload.barcode.strip():
-        clean_barcode = payload.barcode.strip()
+    # Cache in global master catalog if we have a valid barcode and doesn't exist yet
+    if product_barcode and product_barcode.strip():
+        clean_barcode = product_barcode.strip()
         existing_mc_res = await db.execute(
             select(MasterCatalogProduct).where(MasterCatalogProduct.barcode == clean_barcode)
         )
@@ -673,12 +1085,12 @@ async def import_to_local_inventory(
                 category=payload.category_name.strip() if payload.category_name else "General",
                 sub_category=payload.sub_category_name.strip() if payload.sub_category_name else "General",
                 short_description=payload.short_description or "",
-                specifications="Imported from tenant inventory creation",
+                specifications=payload.specifications or "Imported from tenant inventory creation",
                 source="AI_WEB_SEARCH"
             )
             db.add(new_mc)
             
     await db.commit()
-    await db.refresh(new_product)
+    await db.refresh(new_product, ["category", "brand", "uom"])
     
     return new_product

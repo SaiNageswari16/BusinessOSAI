@@ -13,6 +13,8 @@ from src.database.session import get_db
 from src.models import AuditLog, Customer, Lead, LeadActivity, Tenant, CRMSupportTicket, CRMQuotation, CRMSalesOrder, CRMOpportunity
 from src.schemas.crm import CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate
 from src.utils.pagination import PaginatedResponse, paginate
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/crm", tags=["CRM & Sales"])
 LEAD_STATUSES = {"New", "Contacted", "Qualified", "Proposal", "Won", "Lost"}
@@ -186,6 +188,10 @@ class SelectFacebookPageRequest(BaseModel):
 class FacebookConnectDirectRequest(BaseModel):
     page_id: str | None = None
     access_token: str
+    ad_account_id: str | None = None
+
+class SelectFacebookAdAccountRequest(BaseModel):
+    ad_account_id: str
 
 class FacebookCredentialsRequest(BaseModel):
     """Legacy model kept for backward-compat with the lead-import form."""
@@ -222,6 +228,7 @@ def resolve_facebook_credentials(token: str, page_id: str | None = None) -> tupl
     resolved_token = token
     
     try:
+        logger.info(f"Introspecting Facebook credentials - Page ID Input: {page_id}")
         # First, try to fetch Page details directly assuming the token is a Page Access Token
         resp_me = _req.get(
             "https://graph.facebook.com/v25.0/me",
@@ -229,11 +236,13 @@ def resolve_facebook_credentials(token: str, page_id: str | None = None) -> tupl
             timeout=15
         )
         me_data = resp_me.json()
+        logger.info(f"Facebook /me response status: {resp_me.status_code}, body: {me_data}")
         
         # If 'category' is in me_data, it's a Facebook Page Token!
         if "error" not in me_data and "category" in me_data:
             resolved_page_id = me_data["id"]
             page_name = me_data["name"]
+            logger.info(f"Resolved directly from Page Access Token: Page Name: '{page_name}', Page ID: '{resolved_page_id}'")
         else:
             # Try to get accounts (this works if it's a User Access Token)
             resp_accounts = _req.get(
@@ -242,6 +251,8 @@ def resolve_facebook_credentials(token: str, page_id: str | None = None) -> tupl
                 timeout=15
             )
             accounts_data = resp_accounts.json()
+            logger.info(f"Facebook /me/accounts response status: {resp_accounts.status_code}, body: {accounts_data}")
+            
             if "error" not in accounts_data and accounts_data.get("data"):
                 # If page_id is provided, try to match it
                 matched = None
@@ -254,15 +265,18 @@ def resolve_facebook_credentials(token: str, page_id: str | None = None) -> tupl
                 resolved_page_id = matched["id"]
                 page_name = matched["name"]
                 resolved_token = matched.get("access_token", token)
+                logger.info(f"Resolved from User accounts list: Page Name: '{page_name}', Page ID: '{resolved_page_id}'")
             else:
                 # If both failed, and page_id was provided, try direct call to page_id endpoint
                 if page_id:
+                    logger.info(f"Attempting direct GET request to Graph API for page_id: {page_id}")
                     resp_direct = _req.get(
                         f"https://graph.facebook.com/v25.0/{page_id}",
                         params={"access_token": token, "fields": "name,id"},
                         timeout=15
                     )
                     direct_data = resp_direct.json()
+                    logger.info(f"Facebook direct page_id endpoint response status: {resp_direct.status_code}, body: {direct_data}")
                     if "error" in direct_data:
                         err_msg = direct_data["error"].get("message", "Validation failed")
                         raise ValueError(f"Meta API Validation failed: {err_msg}")
@@ -275,6 +289,7 @@ def resolve_facebook_credentials(token: str, page_id: str | None = None) -> tupl
     except ValueError:
         raise
     except Exception as e:
+        logger.error(f"Error introspecting Facebook credentials: {e}")
         raise ValueError(f"Could not connect to Facebook API: {str(e)}")
 
     if not resolved_page_id:
@@ -314,12 +329,14 @@ async def connect_fb_direct(
         "page_name": page_name,
         "page_access_token": resolved_token,
         "api_version": "v25.0",
+        "ad_account_id": payload.ad_account_id.strip() if payload.ad_account_id else settings_dict.get("facebook_page", {}).get("ad_account_id"),
     }
     # Save for lead import service compatibility
     settings_dict["facebook"] = {
         "fb_access_token": resolved_token,
         "fb_page_or_form_id": resolved_page_id,
         "fb_api_version": "v25.0",
+        "fb_ad_account_id": payload.ad_account_id.strip() if payload.ad_account_id else settings_dict.get("facebook", {}).get("fb_ad_account_id"),
     }
     
     tenant.settings = settings_dict
@@ -491,6 +508,7 @@ async def verify_fb_token(
     tenant = await _get_tenant_or_404(db, ctx.tenant_id)
     settings_dict = dict(tenant.settings or {})
     settings_dict["facebook_oauth_pending"] = {
+        "user_access_token": token,
         "pages": [
             {
                 "id": p["id"],
@@ -620,6 +638,7 @@ async def fb_oauth_callback(
     # Store temporarily per-tenant
     settings_dict = dict(tenant.settings or {})
     settings_dict["facebook_oauth_pending"] = {
+        "user_access_token": long_token,
         "pages": [
             {"id": p["id"], "name": p["name"], "access_token": p["access_token"], "category": p.get("category", "")}
             for p in pages
@@ -681,6 +700,7 @@ async def select_fb_page(
         )
 
     page_token = matched["access_token"]
+    user_token = (tenant.settings or {}).get("facebook_oauth_pending", {}).get("user_access_token")
     settings_dict = dict(tenant.settings or {})
 
     # Primary page config (used for publishing ads)
@@ -688,6 +708,7 @@ async def select_fb_page(
         "page_id": payload.page_id,
         "page_name": matched["name"],
         "page_access_token": page_token,
+        "user_access_token": user_token or page_token,
         "api_version": "v25.0",
     }
     # Backward-compat key used by lead import service
@@ -762,6 +783,7 @@ async def save_fb_credentials(
             "page_id": resolved_page_id,
             "page_name": page_name,
             "page_access_token": resolved_token,
+            "user_access_token": token,
             "api_version": payload.fb_api_version,
         }
         tenant.settings = settings_dict
@@ -1678,6 +1700,7 @@ async def get_fb_token_info(
             "token_type": token_type,
             "expires_at": expires_at,
             "scopes": scopes,
+            "ad_account_id": fb_page_cfg.get("ad_account_id"),
             "error": None,
         }
     except Exception as e:
@@ -1686,6 +1709,7 @@ async def get_fb_token_info(
             "is_valid": False,
             "page_id": page_id,
             "page_name": page_name,
+            "ad_account_id": fb_page_cfg.get("ad_account_id"),
             "error": str(e),
             "expires_at": None,
             "token_type": "unknown",
@@ -1745,6 +1769,297 @@ async def get_ad_history(
         "page_size": page_size,
         "items": items,
     }
+
+
+@router.get("/facebook/ad-accounts")
+async def get_facebook_ad_accounts(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Retrieve all Facebook ad accounts accessible by the stored token."""
+    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+    settings_dict = tenant.settings or {}
+    fb_page_cfg = settings_dict.get("facebook_page", {})
+    fb_legacy_cfg = settings_dict.get("facebook", {})
+    
+    token = fb_page_cfg.get("user_access_token") or fb_page_cfg.get("page_access_token") or fb_legacy_cfg.get("fb_access_token") or fb_legacy_cfg.get("access_token")
+    if not token:
+        raise HTTPException(status_code=400, detail="Facebook integration is not connected. Please connect it first.")
+        
+    import requests as req_lib
+    try:
+        url = "https://graph.facebook.com/v25.0/me/adaccounts"
+        res = req_lib.get(url, params={"access_token": token, "fields": "account_id,name,account_status", "limit": 100}, timeout=15)
+        data = res.json()
+        if "error" in data:
+            logger.error(f"Meta Ad Accounts error response: {data}")
+            raise HTTPException(status_code=400, detail=data["error"].get("message", "Failed to retrieve ad accounts from Meta."))
+        return data.get("data", [])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Meta API connection error: {str(e)}")
+
+
+@router.post("/facebook/select-ad-account")
+async def select_facebook_ad_account(
+    payload: SelectFacebookAdAccountRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Save selected Facebook Ad Account ID to organization settings."""
+    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+    settings_dict = dict(tenant.settings or {})
+    
+    if "facebook_page" not in settings_dict:
+        settings_dict["facebook_page"] = {}
+    if "facebook" not in settings_dict:
+        settings_dict["facebook"] = {}
+        
+    settings_dict["facebook_page"]["ad_account_id"] = payload.ad_account_id.strip()
+    settings_dict["facebook"]["fb_ad_account_id"] = payload.ad_account_id.strip()
+    
+    from sqlalchemy.orm.attributes import flag_modified
+    tenant.settings = settings_dict
+    flag_modified(tenant, "settings")
+    await db.commit()
+    return {"success": True, "message": f"Successfully set active Ad Account to {payload.ad_account_id}"}
+
+
+@router.get("/facebook/campaigns")
+async def get_facebook_campaigns(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Retrieve campaigns and real-time performance insights for the selected Ad Account."""
+    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+    settings_dict = tenant.settings or {}
+    fb_page_cfg = settings_dict.get("facebook_page", {})
+    fb_legacy_cfg = settings_dict.get("facebook", {})
+    
+    token = fb_page_cfg.get("user_access_token") or fb_page_cfg.get("page_access_token") or fb_legacy_cfg.get("fb_access_token") or fb_legacy_cfg.get("access_token")
+    ad_account_id = fb_page_cfg.get("ad_account_id") or fb_legacy_cfg.get("fb_ad_account_id")
+    
+    if not token:
+        raise HTTPException(status_code=400, detail="Facebook integration is not connected. Please connect it first.")
+    if not ad_account_id:
+        return []
+        
+    import requests as req_lib
+    clean_account_id = ad_account_id.strip()
+    if not clean_account_id.startswith("act_"):
+        clean_account_id = f"act_{clean_account_id}"
+        
+    try:
+        # Step 1: Get campaigns list (status, objective, dates)
+        campaigns_url = f"https://graph.facebook.com/v25.0/{clean_account_id}/campaigns"
+        campaigns_res = req_lib.get(campaigns_url, params={
+            "access_token": token,
+            "fields": "id,name,status,objective,start_time,stop_time",
+            "limit": 100
+        }, timeout=15)
+        campaigns_data = campaigns_res.json()
+        if "error" in campaigns_data:
+            raise HTTPException(status_code=400, detail=campaigns_data["error"].get("message", "Failed to retrieve campaigns from Meta."))
+        campaigns = campaigns_data.get("data", [])
+
+        # Step 2: Get real insights (spend, impressions, clicks, CTR) via /insights endpoint
+        insights_url = f"https://graph.facebook.com/v25.0/{clean_account_id}/insights"
+        insights_res = req_lib.get(insights_url, params={
+            "access_token": token,
+            "level": "campaign",
+            "fields": "campaign_id,campaign_name,spend,impressions,clicks,ctr,reach,frequency,actions",
+            "date_preset": "maximum",
+            "limit": 100,
+        }, timeout=20)
+        insights_data = insights_res.json()
+
+        # Build a lookup map from campaign_id → insights row
+        insights_map: dict = {}
+        if "error" not in insights_data:
+            for row in insights_data.get("data", []):
+                cid = row.get("campaign_id")
+                if cid:
+                    insights_map[cid] = row
+
+        # Step 3: Merge campaigns with their insights
+        result = []
+        for c in campaigns:
+            cid = c.get("id", "")
+            ins = insights_map.get(cid, {})
+            result.append({
+                "id": cid,
+                "name": c.get("name"),
+                "status": c.get("status"),
+                "objective": c.get("objective"),
+                "start_time": c.get("start_time"),
+                "stop_time": c.get("stop_time"),
+                "spend": ins.get("spend", "0.00"),
+                "impressions": ins.get("impressions", "0"),
+                "clicks": ins.get("clicks", "0"),
+                "ctr": ins.get("ctr", "0"),
+                "reach": ins.get("reach", "0"),
+                "frequency": ins.get("frequency", "0"),
+            })
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Meta API campaigns connection error: {str(e)}")
+
+
+@router.get("/facebook/ads")
+async def get_facebook_ads(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Retrieve all ads under the active Ad Account."""
+    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+    settings_dict = tenant.settings or {}
+    fb_page_cfg = settings_dict.get("facebook_page", {})
+    fb_legacy_cfg = settings_dict.get("facebook", {})
+    
+    token = fb_page_cfg.get("user_access_token") or fb_page_cfg.get("page_access_token") or fb_legacy_cfg.get("fb_access_token") or fb_legacy_cfg.get("access_token")
+    ad_account_id = fb_page_cfg.get("ad_account_id") or fb_legacy_cfg.get("fb_ad_account_id")
+    
+    if not token or not ad_account_id:
+        return []
+        
+    import requests as req_lib
+    clean_account_id = ad_account_id.strip()
+    if not clean_account_id.startswith("act_"):
+        clean_account_id = f"act_{clean_account_id}"
+        
+    try:
+        url = f"https://graph.facebook.com/v25.0/{clean_account_id}/ads"
+        res = req_lib.get(url, params={"access_token": token, "fields": "id,name,status,campaign_id,adset_id", "limit": 150}, timeout=15)
+        data = res.json()
+        if "error" in data:
+            raise HTTPException(status_code=400, detail=data["error"].get("message", "Failed to retrieve ads from Meta."))
+        return data.get("data", [])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Meta API ads connection error: {str(e)}")
+
+
+@router.post("/facebook/sync-leads")
+async def sync_facebook_leads(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Sync submissions from Facebook Page Lead Gen Forms directly to Postgres Leads database."""
+    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+    settings_dict = tenant.settings or {}
+    fb_page_cfg = settings_dict.get("facebook_page", {})
+    fb_legacy_cfg = settings_dict.get("facebook", {})
+    
+    token = fb_page_cfg.get("page_access_token") or fb_legacy_cfg.get("fb_access_token") or fb_legacy_cfg.get("access_token")
+    page_id = fb_page_cfg.get("page_id") or fb_legacy_cfg.get("fb_page_or_form_id")
+    
+    if not token:
+        raise HTTPException(status_code=400, detail="Facebook integration is not connected. Please connect it first.")
+    if not page_id:
+        raise HTTPException(status_code=400, detail="No connected Page ID found. Please connect a Page first.")
+        
+    import requests as req_lib
+    
+    try:
+        forms_url = f"https://graph.facebook.com/v25.0/{page_id}/leadgen_forms"
+        forms_res = req_lib.get(forms_url, params={"access_token": token, "fields": "id,name,status"}, timeout=15)
+        forms_data = forms_res.json()
+        
+        if "error" in forms_data:
+            raise HTTPException(status_code=400, detail=forms_data["error"].get("message", "Failed to retrieve Page lead forms."))
+            
+        forms = forms_data.get("data", [])
+        if not forms:
+            return {"success": True, "synced_count": 0, "message": "No active lead gen forms found on this Facebook Page."}
+            
+        synced_count = 0
+        
+        for form in forms:
+            form_id = form["id"]
+            leads_url = f"https://graph.facebook.com/v25.0/{form_id}/leads"
+            leads_res = req_lib.get(leads_url, params={"access_token": token, "fields": "id,created_time,field_data"}, timeout=15)
+            leads_data = leads_res.json()
+            
+            if "error" in leads_data:
+                logger.warning(f"Failed to fetch leads for form {form_id}: {leads_data['error'].get('message')}")
+                continue
+                
+            submissions = leads_data.get("data", [])
+            for sub in submissions:
+                sub_id = sub["id"]
+                
+                existing = await db.scalar(
+                    select(Lead).where(Lead.tenant_id == ctx.tenant_id, Lead.external_id == sub_id, Lead.external_source == "facebook")
+                )
+                if existing:
+                    continue
+                    
+                field_data = sub.get("field_data", [])
+                lead_name = "Facebook Lead"
+                lead_email = None
+                lead_phone = None
+                lead_company = None
+                
+                for field in field_data:
+                    name_key = field.get("name", "").lower()
+                    values = field.get("values", [])
+                    val = values[0] if values else None
+                    if not val:
+                        continue
+                        
+                    if "name" in name_key or "fullname" in name_key:
+                        lead_name = val
+                    elif "email" in name_key:
+                        lead_email = val
+                    elif "phone" in name_key or "tel" in name_key:
+                        lead_phone = val
+                    elif "company" in name_key or "organization" in name_key:
+                        lead_company = val
+                
+                # Truncate values to prevent database varying character limit insertion crashes
+                if lead_name:
+                    lead_name = lead_name[:255]
+                if lead_company:
+                    lead_company = lead_company[:255]
+                if lead_email:
+                    lead_email = lead_email[:255]
+                if lead_phone:
+                    lead_phone = lead_phone[:30]
+                
+                new_lead = Lead(
+                    tenant_id=ctx.tenant_id,
+                    name=lead_name,
+                    company_name=lead_company,
+                    email=lead_email,
+                    phone=lead_phone,
+                    status="New",
+                    source="facebook_ad",
+                    external_id=sub_id,
+                    external_source="facebook",
+                    meta={"form_id": form_id, "form_name": form.get("name"), "raw_data": sub},
+                    notes=f"Synced from Meta Lead Form: '{form.get('name')}'"
+                )
+                db.add(new_lead)
+                synced_count += 1
+                
+        if synced_count > 0:
+            await db.commit()
+            
+        return {
+            "success": True,
+            "synced_count": synced_count,
+            "message": f"Successfully synchronized {synced_count} new leads from your Facebook page forms."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error syncing Meta leads: {e}")
+        raise HTTPException(status_code=502, detail=f"Meta leads sync error: {str(e)}")
 
 
 # ─── Customer Intelligence Endpoints ─────────────────────────────────────────

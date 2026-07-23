@@ -384,7 +384,24 @@ async def create_product(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     data = payload.model_dump()
+    brand_name = data.pop("brand", None)
     data["status"] = _parse_status(data.get("status") or "active")
+    
+    # Sync / Find Brand
+    brand_id = None
+    if brand_name and brand_name.strip():
+        b_name = brand_name.strip()
+        b_res = await db.execute(select(Brand).where(Brand.tenant_id == ctx.tenant_id, Brand.name.ilike(b_name)))
+        existing_brand = b_res.scalars().first()
+        if existing_brand:
+            brand_id = existing_brand.id
+        else:
+            new_brand = Brand(id=uuid.uuid4(), tenant_id=ctx.tenant_id, name=b_name, status=EntityStatus.ACTIVE)
+            db.add(new_brand)
+            await db.flush()
+            brand_id = new_brand.id
+            
+    data["brand_id"] = brand_id
     
     product = Product(
         tenant_id=ctx.tenant_id,
@@ -395,6 +412,37 @@ async def create_product(
     
     # Reload with relations
     await db.refresh(product, ["category", "brand", "uom"])
+
+    # Cache in global master catalog if it has a barcode and doesn't exist yet
+    if product.barcode and product.barcode.strip():
+        clean_barcode = product.barcode.strip()
+        existing_mc_res = await db.execute(
+            select(MasterCatalogProduct).where(MasterCatalogProduct.barcode == clean_barcode)
+        )
+        if not existing_mc_res.scalars().first():
+            new_mc = MasterCatalogProduct(
+                id=uuid.uuid4(),
+                tenant_id=None,
+                name=product.name,
+                brand=product.brand.name if product.brand else "General",
+                barcode=clean_barcode,
+                sku_code=product.sku,
+                hsn_code="150990",  # General default
+                cost_price=product.purchase_price or 0.0,
+                mrp=product.mrp or 0.0,
+                sale_price=product.selling_price or product.mrp or 0.0,
+                weight="Standard",
+                quantity=1.0,
+                tax=product.tax_percent or 18.0,
+                type="CGST + SGST",
+                category=product.category.name if product.category else "General",
+                sub_category=product.category.name if product.category else "General",
+                short_description=product.short_description or "",
+                specifications="Created from tenant inventory",
+                source="AI_WEB_SEARCH"
+            )
+            db.add(new_mc)
+
     await db.commit()
     
     res = ProductResponse.model_validate(product)
@@ -421,12 +469,61 @@ async def update_product(
         raise HTTPException(status_code=404, detail="Product not found")
 
     updates = payload.model_dump(exclude_unset=True)
+    
+    if "brand" in updates:
+        brand_name = updates.pop("brand", None)
+        brand_id = None
+        if brand_name and brand_name.strip():
+            b_name = brand_name.strip()
+            b_res = await db.execute(select(Brand).where(Brand.tenant_id == ctx.tenant_id, Brand.name.ilike(b_name)))
+            existing_brand = b_res.scalars().first()
+            if existing_brand:
+                brand_id = existing_brand.id
+            else:
+                new_brand = Brand(id=uuid.uuid4(), tenant_id=ctx.tenant_id, name=b_name, status=EntityStatus.ACTIVE)
+                db.add(new_brand)
+                await db.flush()
+                brand_id = new_brand.id
+        product.brand_id = brand_id
+
     if "status" in updates and updates["status"]:
         updates["status"] = _parse_status(updates["status"])
+        
     for key, value in updates.items():
         setattr(product, key, value)
 
+    # Cache in global master catalog if it has a barcode and doesn't exist yet
+    if product.barcode and product.barcode.strip():
+        clean_barcode = product.barcode.strip()
+        existing_mc_res = await db.execute(
+            select(MasterCatalogProduct).where(MasterCatalogProduct.barcode == clean_barcode)
+        )
+        if not existing_mc_res.scalars().first():
+            new_mc = MasterCatalogProduct(
+                id=uuid.uuid4(),
+                tenant_id=None,
+                name=product.name,
+                brand=product.brand.name if product.brand else "General",
+                barcode=clean_barcode,
+                sku_code=product.sku,
+                hsn_code="150990",  # General default
+                cost_price=product.purchase_price or 0.0,
+                mrp=product.mrp or 0.0,
+                sale_price=product.selling_price or product.mrp or 0.0,
+                weight="Standard",
+                quantity=1.0,
+                tax=product.tax_percent or 18.0,
+                type="CGST + SGST",
+                category=product.category.name if product.category else "General",
+                sub_category=product.category.name if product.category else "General",
+                short_description=product.short_description or "",
+                specifications="Updated from tenant inventory",
+                source="AI_WEB_SEARCH"
+            )
+            db.add(new_mc)
+
     await db.commit()
+    await db.refresh(product, ["category", "brand", "uom"])
     
     res = ProductResponse.model_validate(product)
     res.category_name = product.category.name if product.category else None
@@ -595,9 +692,14 @@ async def master_import_products(
         products_created += 1
         existing_skus.add(item.sku)
 
-        # Cache in global master catalog if it has a barcode and doesn't exist yet
+        # Cache in global master catalog if we can resolve a valid barcode
+        clean_barcode = None
         if item.barcode and item.barcode.strip():
             clean_barcode = item.barcode.strip()
+        elif item.sku and item.sku.strip().isdigit() and len(item.sku.strip()) in [8, 12, 13, 14]:
+            clean_barcode = item.sku.strip()
+
+        if clean_barcode:
             existing_mc_res = await db.execute(
                 select(MasterCatalogProduct).where(MasterCatalogProduct.barcode == clean_barcode)
             )

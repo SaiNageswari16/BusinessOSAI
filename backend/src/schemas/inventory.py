@@ -102,11 +102,12 @@ class UnitOfMeasureUpdate(UnitOfMeasureBase):
 
 
 class ProductCreate(ProductBase):
-    pass
+    brand: Optional[str] = None
 
 class ProductUpdate(ProductBase):
     name: Optional[str] = Field(None, max_length=255)
     sku: Optional[str] = Field(None, max_length=100)
+    brand: Optional[str] = None
 
 
 # ==========================================
@@ -369,6 +370,7 @@ class MasterCatalogSaveToLocalRequest(BaseModel):
     category_name: Optional[str] = None
     sub_category_name: Optional[str] = None
     short_description: Optional[str] = None
+    specifications: Optional[str] = None
     image_url: Optional[str] = None
     purchase_price: Optional[float] = 0.0
     mrp: Optional[float] = 0.0

@@ -6,6 +6,15 @@
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000/api/v1";
 
+export function resolveImageUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (url.startsWith("/images/")) {
+    const backendBase = API_BASE_URL.replace("/api/v1", "");
+    return `${backendBase}${url}`;
+  }
+  return url;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
@@ -1799,6 +1808,42 @@ export const crmLeadsApi = {
   /** Publish a generated ad poster to the connected Facebook Page. */
   publishToFacebook: (data: { image_url: string; caption: string; aspect_ratio?: string }) =>
     request<{ status: string; post_id?: string; page_id?: string; fb_post_url?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
+
+  /** Fetch all Facebook ad accounts. */
+  getFbAdAccounts: () =>
+    request<Array<{ account_id: string; name: string; account_status: number }>>("GET", "/crm/facebook/ad-accounts"),
+
+  /** Select active Facebook Ad Account. */
+  selectFbAdAccount: (ad_account_id: string) =>
+    request<{ success: boolean; message: string }>("POST", "/crm/facebook/select-ad-account", { ad_account_id }),
+
+  /** Fetch active campaigns and their metrics. */
+  getFbCampaigns: () =>
+    request<Array<{
+      id: string;
+      name: string;
+      status: string;
+      objective: string;
+      start_time?: string;
+      stop_time?: string;
+      spend?: string;
+      impressions?: string;
+      clicks?: string;
+    }>>("GET", "/crm/facebook/campaigns"),
+
+  /** Fetch active ads. */
+  getFbAds: () =>
+    request<Array<{
+      id: string;
+      name: string;
+      status: string;
+      campaign_id: string;
+      adset_id: string;
+    }>>("GET", "/crm/facebook/ads"),
+
+  /** Sync lead gen forms submissions. */
+  syncFbLeads: () =>
+    request<{ success: boolean; synced_count: number; message: string }>("POST", "/crm/facebook/sync-leads"),
 
   // ── Master Catalog & AI RAG Search ─────────────────────────────────────────
   searchMasterCatalog: (query: string, searchWeb = false, provider = "gemini") =>

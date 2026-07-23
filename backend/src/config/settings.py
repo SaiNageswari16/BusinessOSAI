@@ -72,7 +72,10 @@ class Settings(BaseSettings):
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o", alias="OPENAI_MODEL")
-    ai_provider: str = Field(default="gemini", alias="AI_PROVIDER") # gemini | openai
+    anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    anthropic_model: str = Field(default="claude-3-5-sonnet-20241022", alias="ANTHROPIC_MODEL")
+    anthropic_base_url: str = Field(default="https://api.anthropic.com", alias="ANTHROPIC_BASE_URL")
+    ai_provider: str = Field(default="gemini", alias="AI_PROVIDER") # gemini | openai | claude
 
     # Meta / Facebook App OAuth
     facebook_app_id: str | None = Field(default=None, alias="FACEBOOK_APP_ID")

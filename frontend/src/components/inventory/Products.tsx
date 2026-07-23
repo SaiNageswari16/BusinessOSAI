@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Filter, Plus, Package, Edit2, MoreHorizontal, Download, Upload, Copy, Archive, X, Sparkles, Globe, Loader2, Sliders } from "lucide-react";
-import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse } from "../../lib/api-client";
+import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { MasterCatalogModal } from "./MasterCatalogModal";
+import { toast } from "sonner";
 
 const ALL_COLUMNS = [
   { id: "image", label: "Image" },
@@ -94,8 +95,9 @@ export function Products() {
       setIsSearchingMaster(true);
       setSearchError(null);
       try {
-        // Query Master Catalog with search_web=true and provider=gemini
-        const res = await inventoryApi.searchMasterCatalog(cleanSearch, true, "gemini");
+        const isNumeric = /^\d+$/.test(cleanSearch);
+        const shouldSearchWeb = isNumeric ? (cleanSearch.length >= 8) : (cleanSearch.length >= 3);
+        const res = await inventoryApi.searchMasterCatalog(cleanSearch, shouldSearchWeb, "gemini");
         setMasterResults(res || []);
       } catch (err: any) {
         console.error("Master catalog search failed:", err);
@@ -170,10 +172,11 @@ export function Products() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // Ensure category_id is null if empty string
+      // Ensure category_id and uom_id are null if empty string
       const payload = {
         ...formData,
-        category_id: formData.category_id || null
+        category_id: formData.category_id || null,
+        uom_id: formData.uom_id || null
       };
 
       if (editingProductId) {
@@ -188,9 +191,10 @@ export function Products() {
       setFormData(defaultFormData);
       // Reload products
       await loadData();
+      toast.success(editingProductId ? "Product updated successfully!" : "Product created successfully!");
     } catch (error) {
       console.error("Failed to save product:", error);
-      alert("Failed to save product. Check console for details.");
+      toast.error("Failed to save product. Check console for details.");
     } finally {
       setIsSubmitting(false);
     }
@@ -198,7 +202,7 @@ export function Products() {
 
   const handleEdit = (product: any) => {
     setFormData({
-      name: product.name, brand: product.brand || "", sku: product.sku || "",
+      name: product.name, brand: product.brand_name || "", sku: product.sku || "",
       barcode: product.barcode || "", category_id: product.category_id || "",
       uom_id: product.uom_id || "", warehouse: product.warehouse || "", supplier: product.supplier || "",
       purchase_price: product.purchase_price || 0, mrp: product.mrp || 0,
@@ -215,7 +219,7 @@ export function Products() {
 
   const handleDuplicate = (product: any) => {
     setFormData({
-      name: product.name + " (Copy)", brand: product.brand || "", sku: (product.sku || "") + "-COPY",
+      name: product.name + " (Copy)", brand: product.brand_name || "", sku: (product.sku || "") + "-COPY",
       barcode: "", category_id: product.category_id || "",
       uom_id: product.uom_id || "", warehouse: product.warehouse || "", supplier: product.supplier || "",
       purchase_price: product.purchase_price || 0, mrp: product.mrp || 0,
@@ -234,9 +238,10 @@ export function Products() {
     if (!window.confirm("Are you sure you want to delete this product?")) return;
     try {
       await inventoryApi.deleteProduct(id);
+      toast.success("Product deleted successfully!");
       await loadData();
     } catch (err: any) {
-      alert("Failed to delete product: " + (err.detail || err.message));
+      toast.error("Failed to delete product: " + (err.detail || err.message));
     }
   };
 
@@ -251,6 +256,7 @@ export function Products() {
         category_name: item.category_name || item.category || "General",
         sub_category_name: item.sub_category_name || item.sub_category || "General",
         short_description: item.short_description || "",
+        specifications: item.specifications || "",
         image_url: item.image_url || "",
         purchase_price: item.purchase_price || item.cost_price || 0.0,
         mrp: item.mrp || 0.0,
@@ -260,11 +266,11 @@ export function Products() {
         supplier: item.supplier || "Global Sourced",
         warehouse: warehouses[0]?.name || "Main Warehouse"
       });
-      alert(`Successfully imported "${item.name}" to your local inventory!`);
+      toast.success(`Successfully imported "${item.name}" to your local inventory!`);
       await loadData();
     } catch (error: any) {
       console.error("Failed to import product:", error);
-      alert("Failed to import product: " + (error.detail || error.message || "Unknown error"));
+      toast.error("Failed to import product: " + (error.detail || error.message || "Unknown error"));
     } finally {
       setIsLoading(false);
     }
@@ -593,7 +599,7 @@ export function Products() {
                       {visibleColumns.includes("image") && (
                         <td className="px-6 py-4">
                           {product.image_url ? (
-                            <img src={product.image_url} alt={product.name} className="size-10 rounded-lg object-cover border bg-white" />
+                            <img src={resolveImageUrl(product.image_url)} alt={product.name} className="size-10 rounded-lg object-cover border bg-white" />
                           ) : (
                             <div className="size-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
                               <Package className="size-5 text-muted-foreground" />
@@ -716,7 +722,7 @@ export function Products() {
                           {visibleColumns.includes("image") && (
                             <td className="px-6 py-4">
                               {item.image_url ? (
-                                <img src={item.image_url} alt={item.name} className="size-10 rounded-lg object-cover border bg-white" />
+                                <img src={resolveImageUrl(item.image_url)} alt={item.name} className="size-10 rounded-lg object-cover border bg-white" />
                               ) : (
                                 <div className="size-10 rounded-lg bg-indigo-100/30 flex items-center justify-center shrink-0">
                                   <Globe className="size-5 text-indigo-500" />
