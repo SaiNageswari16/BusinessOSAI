@@ -60,6 +60,7 @@ class Tenant(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     subscription_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     max_users: Mapped[int] = mapped_column(Integer, default=50)
     max_branches: Mapped[int] = mapped_column(Integer, default=10)
+    settings: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
     companies: Mapped[list["Company"]] = relationship(back_populates="tenant")
     users: Mapped[list["User"]] = relationship(back_populates="tenant")
@@ -1065,3 +1066,426 @@ class PayGrade(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     tds_deduction: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
 
     designation: Mapped["Designation"] = relationship()
+
+
+# -------------------------------------------------------------------------
+# POS MODULE MODELS
+# -------------------------------------------------------------------------
+
+
+class POSTransactionStatus(str, enum.Enum):
+    COMPLETED = "completed"
+    REFUNDED = "refunded"
+    ON_HOLD = "on_hold"
+
+class POSTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_transactions"
+
+    cashier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_sessions.id", ondelete="RESTRICT"), nullable=False)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    
+    receipt_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    status: Mapped[POSTransactionStatus] = mapped_column(Enum(POSTransactionStatus, name="pos_transaction_status"), default=POSTransactionStatus.COMPLETED)
+    
+    parent_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_transactions.id", ondelete="SET NULL"))
+    delivery_status: Mapped[str | None] = mapped_column(String(50))
+    delivery_address: Mapped[str | None] = mapped_column(String(255))
+    driver_name: Mapped[str | None] = mapped_column(String(100))
+    
+    subtotal: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    tax_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    discount_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    total_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+
+    cashier: Mapped["User"] = relationship()
+    items: Mapped[list["POSTransactionItem"]] = relationship(back_populates="transaction", cascade="all, delete-orphan")
+    payments: Mapped[list["POSPayment"]] = relationship(back_populates="transaction", cascade="all, delete-orphan")
+
+
+class POSTransactionItem(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_transaction_items"
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_transactions.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    discount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    subtotal: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+
+    transaction: Mapped["POSTransaction"] = relationship(back_populates="items")
+
+
+class POSPaymentMethod(str, enum.Enum):
+    CASH = "cash"
+    CARD = "card"
+    ONLINE = "online"
+    GIFT_CARD = "gift_card"
+
+class POSPayment(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_payments"
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_transactions.id", ondelete="CASCADE"), nullable=False)
+    payment_method: Mapped[POSPaymentMethod] = mapped_column(Enum(POSPaymentMethod, name="pos_payment_method"), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    reference_number: Mapped[str | None] = mapped_column(String(100))  # For card/online transactions
+
+    transaction: Mapped["POSTransaction"] = relationship(back_populates="payments")
+
+
+class POSSessionStatus(str, enum.Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class POSSession(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "pos_sessions"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    starting_cash: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    status: Mapped[POSSessionStatus] = mapped_column(Enum(POSSessionStatus, name="pos_session_status"), default=POSSessionStatus.OPEN)
+    closing_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expected_cash: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    actual_cash: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    discrepancy_reason: Mapped[str | None] = mapped_column(String(500))
+
+    user: Mapped["User"] = relationship()
+
+# ─── HRMS — Recruitment Models ───────────────────────────────────
+
+class JobOpening(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "job_openings"
+
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
+    department: Mapped[str] = mapped_column(String(100), nullable=False)
+    location: Mapped[str] = mapped_column(String(150), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), default="Full-Time")  # Full-Time|Part-Time|Contract
+    experience: Mapped[str] = mapped_column(String(50), nullable=False)
+    openings: Mapped[int] = mapped_column(Integer, default=1)
+    applicants_count: Mapped[int] = mapped_column(Integer, default=0)
+    posted_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
+    status: Mapped[str] = mapped_column(String(30), default="Open")  # Open|On Hold|Closed
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    threshold_score: Mapped[int] = mapped_column(Integer, default=70)
+    portals: Mapped[list[str]] = mapped_column(JSONB, default=list)  # JSON list
+    criteria: Mapped[str] = mapped_column(String(255), nullable=False)  # Comma-separated search words
+
+    applicants: Mapped[list["Applicant"]] = relationship(back_populates="job", cascade="all, delete-orphan")
+
+
+class Applicant(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "recruitment_applicants"
+
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    email: Mapped[str] = mapped_column(String(150), nullable=False)
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="CASCADE"), nullable=False)
+    job_title: Mapped[str] = mapped_column(String(150), nullable=False)
+    applied_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
+    experience: Mapped[str] = mapped_column(String(50), nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, default=0)
+    stage: Mapped[str] = mapped_column(String(30), default="Applied")  # Applied|Screening|Interview|Offer|Hired|Rejected
+    source: Mapped[str] = mapped_column(String(100), default="Careers Page")
+    match_score: Mapped[int] = mapped_column(Integer, default=50)
+    resume_text: Mapped[str | None] = mapped_column(Text)
+    
+    expected_salary: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    proposed_salary: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    notes_json: Mapped[list[dict]] = mapped_column(JSONB, default=list)
+
+    job: Mapped["JobOpening"] = relationship(back_populates="applicants")
+
+
+class Interview(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "recruitment_interviews"
+
+    applicant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("recruitment_applicants.id", ondelete="CASCADE"), nullable=False)
+    candidate: Mapped[str] = mapped_column(String(150), nullable=False)
+    job_title: Mapped[str] = mapped_column(String(150), nullable=False)
+    interviewer_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    date: Mapped[str] = mapped_column(String(50), nullable=False)
+    time: Mapped[str] = mapped_column(String(50), nullable=False)
+    duration: Mapped[int] = mapped_column(Integer, default=60)
+    type: Mapped[str] = mapped_column(String(100), default="Technical")
+    mode: Mapped[str] = mapped_column(String(50), default="Video Call")
+    meeting_link: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(30), default="Scheduled")  # Scheduled|Completed|Cancelled
+    feedback: Mapped[str | None] = mapped_column(Text)
+
+    applicant: Mapped["Applicant"] = relationship()
+
+
+class OfferLetter(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "recruitment_offer_letters"
+
+    applicant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("recruitment_applicants.id", ondelete="CASCADE"), nullable=False)
+    candidate: Mapped[str] = mapped_column(String(150), nullable=False)
+    role: Mapped[str] = mapped_column(String(150), nullable=False)
+    ctc: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    offer_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
+    expiry_date: Mapped[date] = mapped_column(Date, nullable=False)
+    joining_date: Mapped[date] = mapped_column(Date, nullable=False)
+    signer_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="Awaiting Acceptance")  # Awaiting Acceptance|Accepted|Declined
+    email_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    custom_template: Mapped[str | None] = mapped_column(Text)
+
+    applicant: Mapped["Applicant"] = relationship()
+
+
+class OnboardingRecord(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "recruitment_onboardings"
+
+    applicant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("recruitment_applicants.id", ondelete="CASCADE"), nullable=False)
+    new_hire: Mapped[str] = mapped_column(String(150), nullable=False)
+    role: Mapped[str] = mapped_column(String(150), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    tasks_json: Mapped[list[dict]] = mapped_column(JSONB, default=list)  # List of dicts
+
+    applicant: Mapped["Applicant"] = relationship()
+
+
+# ─── HRMS — Performance Models ───────────────────────────────────
+
+class PerformanceGoal(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "performance_goals"
+
+    employee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"))
+    employee_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    target_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="Not Started")  # Not Started|On Track|At Risk|Completed
+    weight: Mapped[int] = mapped_column(Integer, default=10)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+
+    employee: Mapped["Employee | None"] = relationship()
+
+
+class PerformanceKpi(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "performance_kpis"
+
+    metric: Mapped[str] = mapped_column(String(200), nullable=False)
+    target: Mapped[str] = mapped_column(String(50), nullable=False)
+    current: Mapped[str] = mapped_column(String(50), nullable=False)
+    unit: Mapped[str] = mapped_column(String(50), nullable=False)
+    achievement: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PerformanceAppraisal(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "performance_appraisals"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    employee_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    department: Mapped[str] = mapped_column(String(100), nullable=False)
+    period: Mapped[str] = mapped_column(String(50), nullable=False)  # H1 2026
+    self_score: Mapped[int] = mapped_column(Integer, default=0)
+    manager_score: Mapped[int] = mapped_column(Integer, default=0)
+    final_score: Mapped[int] = mapped_column(Integer, default=0)
+    rating: Mapped[str] = mapped_column(String(100), default="Meets Expectations")  # Outstanding|Exceeds Expectations|Meets Expectations|Needs Improvement
+    reviewer: Mapped[str] = mapped_column(String(150), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="Pending")  # Pending|In Progress|Completed
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class PerformanceIncentive(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "performance_incentives"
+
+    employee_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    department: Mapped[str] = mapped_column(String(100), nullable=False)
+    type: Mapped[str] = mapped_column(String(100), nullable=False)
+    basis: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="Pending")  # Pending|Approved|Paid
+
+
+# ─── HRMS — Learning Models ──────────────────────────────────────
+
+class LearningCourse(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "learning_courses"
+
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    instructor: Mapped[str] = mapped_column(String(150), nullable=False)
+    duration: Mapped[str] = mapped_column(String(50), nullable=False)
+    enrolled: Mapped[int] = mapped_column(Integer, default=0)
+    completion: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(30), default="Active")  # Active | Mandatory | Closed
+
+
+class LearningCertificate(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "learning_certificates"
+
+    employee_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    cert_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    issuer: Mapped[str] = mapped_column(String(150), nullable=False)
+    issued_date: Mapped[str] = mapped_column(String(50), nullable=False)
+    expiry_date: Mapped[str] = mapped_column(String(50), default="N/A")
+    status: Mapped[str] = mapped_column(String(30), default="Valid")  # Valid | Expired
+
+
+class LearningAssessment(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "learning_assessments"
+
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    course_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    due_date: Mapped[str] = mapped_column(String(50), nullable=False)
+    participants: Mapped[int] = mapped_column(Integer, default=0)
+    avg_score: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(30), default="Active")  # Active | Closed | Not Started
+
+
+# ─── HRMS — Exit Management Models ───────────────────────────────
+
+class ExitResignation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "exit_resignations"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    employee_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    department: Mapped[str] = mapped_column(String(100), nullable=False)
+    designation: Mapped[str] = mapped_column(String(100), nullable=False)
+    resign_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
+    last_working_day: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="Pending")  # Pending|Accepted|Rejected|Completed
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class ExitClearanceTask(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "exit_clearance_tasks"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    employee_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    department: Mapped[str] = mapped_column(String(100), nullable=False)
+    task: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="Pending")  # Pending|In Progress|Done
+    assigned_to: Mapped[str] = mapped_column(String(150), nullable=False)
+
+
+class ExitFinalSettlement(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "exit_final_settlements"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    employee_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    last_working_day: Mapped[date] = mapped_column(Date, nullable=False)
+    components_json: Mapped[list[dict]] = mapped_column(JSONB, default=list)  # [{item: str, amount: float}]
+
+
+class ExitExperienceLetter(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "exit_experience_letters"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    employee_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    designation: Mapped[str] = mapped_column(String(150), nullable=False)
+    from_date: Mapped[date] = mapped_column(Date, nullable=False)
+    to_date: Mapped[date] = mapped_column(Date, nullable=False)
+    issued_on: Mapped[str] = mapped_column(String(50), default="—")
+    status: Mapped[str] = mapped_column(String(30), default="Pending")  # Pending|Issued
+
+
+# ─── CRM — Customers & Lead Management ──────────────────────────
+
+class Customer(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_customers"
+    __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_crm_customers_tenant_email"),)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), index=True)
+    phone: Mapped[str | None] = mapped_column(String(30))
+    company_name: Mapped[str | None] = mapped_column(String(255))
+    customer_type: Mapped[str] = mapped_column(String(50), default="Retail")
+    status: Mapped[str] = mapped_column(String(30), default="Active")
+    address: Mapped[str | None] = mapped_column(Text)
+    gst_number: Mapped[str | None] = mapped_column(String(50))
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="SET NULL"), unique=True)
+
+
+class Lead(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_leads"
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    email: Mapped[str | None] = mapped_column(String(255), index=True)
+    phone: Mapped[str | None] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), default="New", index=True)
+    source: Mapped[str | None] = mapped_column(String(100))
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    estimated_value: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+    lost_reason: Mapped[str | None] = mapped_column(String(255))
+    
+    external_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    external_source: Mapped[str | None] = mapped_column(String(50), index=True)
+    meta: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    ai_score: Mapped[int | None] = mapped_column(Integer)
+    ai_sentiment: Mapped[str | None] = mapped_column(String(50))
+
+
+class LeadActivity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_lead_activities"
+
+    lead_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="CASCADE"), nullable=False, index=True)
+    activity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    summary: Mapped[str] = mapped_column(String(500), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class CRMSupportTicket(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_support_tickets"
+
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="SET NULL"))
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    priority: Mapped[str] = mapped_column(String(30), default="Medium")  # Low|Medium|High
+    status: Mapped[str] = mapped_column(String(30), default="Open")  # Open|In Progress|Resolved|Closed
+    category: Mapped[str] = mapped_column(String(100), default="Support")
+    ai_summary: Mapped[str | None] = mapped_column(Text)
+
+
+class CRMQuotation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_quotations"
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False)
+    quote_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    items: Mapped[dict | None] = mapped_column(JSONB, default=dict)  # [{"product_id": ..., "qty": ..., "price": ...}]
+    subtotal: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    tax: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    total: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    status: Mapped[str] = mapped_column(String(30), default="Draft")  # Draft|Sent|Accepted|Declined|Expired
+
+
+class CRMSalesOrder(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_sales_orders"
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False)
+    order_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    items: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    total: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    status: Mapped[str] = mapped_column(String(30), default="Pending")  # Pending|Processing|Shipped|Delivered|Cancelled
+    payment_status: Mapped[str] = mapped_column(String(30), default="Unpaid")  # Unpaid|Partially Paid|Paid
+
+
+class CRMOpportunity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_opportunities"
+
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="SET NULL"), index=True)
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="SET NULL"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(50), nullable=False, default="Prospecting", index=True)
+    amount: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    probability: Mapped[int] = mapped_column(Integer, default=10)
+    expected_close_date: Mapped[date | None] = mapped_column(Date)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    next_step: Mapped[str | None] = mapped_column(String(500))
+    next_step_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    forecast_category: Mapped[str] = mapped_column(String(30), default="Pipeline")
+    lost_reason: Mapped[str | None] = mapped_column(String(255))
+
+from .inventory import *

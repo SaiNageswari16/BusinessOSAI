@@ -39,9 +39,9 @@ export function InventoryForecast() {
               </div>
             </div>
 
-            <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-4">
-              <div className="text-xs font-bold text-primary flex items-center gap-1.5 mb-1"><Sparkles className="size-3" /> AI Suggestion</div>
-              <div className="text-sm font-medium">{fc.suggestion}</div>
+            <div className="bg-indigo-50 border-l-4 border-l-indigo-600 rounded-r-lg p-3 mb-4">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-indigo-700 flex items-center gap-1.5 mb-1"><Sparkles className="size-3" /> AI Suggestion</div>
+              <div className="text-sm font-medium text-slate-800">{fc.suggestion}</div>
             </div>
             
             <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">

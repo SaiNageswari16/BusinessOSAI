@@ -1,12 +1,19 @@
 /**
- * BusinessOS AI — Central API Client
+ * BusinessOS AI â€” Central API Client
  * All backend API calls go through this module.
  * Auth token is injected from localStorage (set by AuthProvider).
  */
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000/api/v1";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export function resolveImageUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (url.startsWith("/images/")) {
+    const backendBase = API_BASE_URL.replace("/api/v1", "");
+    return `${backendBase}${url}`;
+  }
+  return url;
+}
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -21,7 +28,6 @@ export interface ApiError {
   status: number;
 }
 
-// ─── Org Entity Types ─────────────────────────────────────────────────────────
 
 export interface Company {
   id: string;
@@ -148,7 +154,42 @@ export interface BusinessUnit {
   updated_at: string;
 }
 
-// ─── Financial Types ──────────────────────────────────────────────────────────
+export interface InventoryUOM {
+  id: string;
+  name: string;
+  abbreviation: string;
+  description: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface Warehouse {
+  id: string;
+  name: string;
+  warehouse_type: string;
+  capacity: string | null;
+  manager_name: string | null;
+  employees: number;
+  temperature_control: string | null;
+  status: string;
+  created_at: string;
+  address?: string | null;
+}
+
+export interface StorageLocation {
+  id: string;
+  warehouse_id: string;
+  zone: string | null;
+  aisle: string | null;
+  rack: string | null;
+  shelf: string | null;
+  bin: string | null;
+  barcode: string;
+  status: string;
+  created_at: string;
+}
+
+// â”€â”€â”€ CRM Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface FiscalYear {
   id: string;
@@ -226,7 +267,7 @@ export interface NumberSeries {
   updated_at: string;
 }
 
-// ─── Audit Types ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Audit Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface AuditLog {
   id: string;
@@ -246,7 +287,7 @@ export interface AuditLog {
   user_email?: string | null;
 }
 
-// ─── HRMS Types ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Employee {
   id: string;
@@ -342,7 +383,7 @@ export interface Payslip {
   updated_at: string;
 }
 
-// ─── HTTP Core ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ HTTP Core â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function getToken(): string | null {
   try {
@@ -417,14 +458,16 @@ async function request<T>(
       window.location.href = "/login";
     }
     const msg = await parseError(res);
-    throw new Error(msg);
+    const error: any = new Error(msg);
+    error.status = res.status;
+    throw error;
   }
 
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
-// ─── ERP — Companies ──────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Companies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const companiesApi = {
   list: (page = 1, pageSize = 20, search?: string) =>
@@ -441,7 +484,7 @@ export const companiesApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/companies/${id}`),
 };
 
-// ─── ERP — Branches ───────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Branches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const branchesApi = {
   list: (page = 1, pageSize = 20, search?: string, companyId?: string) =>
@@ -459,7 +502,7 @@ export const branchesApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/branches/${id}`),
 };
 
-// ─── ERP — Departments ────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Departments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const departmentsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -476,7 +519,7 @@ export const departmentsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/departments/${id}`),
 };
 
-// ─── ERP — Designations ───────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Designations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const designationsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -493,7 +536,7 @@ export const designationsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/designations/${id}`),
 };
 
-// ─── ERP — Regions ────────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Regions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const regionsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -510,7 +553,7 @@ export const regionsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/regions/${id}`),
 };
 
-// ─── ERP — Zones ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Zones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const zonesApi = {
   list: (page = 1, pageSize = 50, regionId?: string) =>
@@ -527,7 +570,7 @@ export const zonesApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/zones/${id}`),
 };
 
-// ─── ERP — Teams ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Teams â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const teamsApi = {
   list: (page = 1, pageSize = 50, departmentId?: string) =>
@@ -544,7 +587,7 @@ export const teamsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/teams/${id}`),
 };
 
-// ─── ERP — Business Units ─────────────────────────────────────────────────────
+// â”€â”€â”€ ERP â€” Business Units â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const businessUnitsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -561,7 +604,7 @@ export const businessUnitsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/business-units/${id}`),
 };
 
-// ─── Financial — Fiscal Years ─────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Fiscal Years â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const fiscalYearsApi = {
   list: (page = 1, pageSize = 20, companyId?: string) =>
@@ -578,7 +621,7 @@ export const fiscalYearsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/fiscal-years/${id}`),
 };
 
-// ─── Financial — Currencies ───────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Currencies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const currenciesApi = {
   list: (page = 1, pageSize = 50) =>
@@ -594,7 +637,7 @@ export const currenciesApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/currencies/${id}`),
 };
 
-// ─── Financial — Tax Configurations ──────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Tax Configurations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const taxConfigurationsApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -611,7 +654,7 @@ export const taxConfigurationsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/tax-configurations/${id}`),
 };
 
-// ─── Financial — Payment Terms ────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Payment Terms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const paymentTermsApi = {
   list: (page = 1, pageSize = 50) =>
@@ -627,7 +670,7 @@ export const paymentTermsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/payment-terms/${id}`),
 };
 
-// ─── Financial — Cost Centers ─────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Cost Centers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const costCentersApi = {
   list: (page = 1, pageSize = 50, departmentId?: string) =>
@@ -644,7 +687,7 @@ export const costCentersApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/cost-centers/${id}`),
 };
 
-// ─── Financial — Number Series ────────────────────────────────────────────────
+// â”€â”€â”€ Financial â€” Number Series â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const numberSeriesApi = {
   list: (page = 1, pageSize = 50, companyId?: string) =>
@@ -660,7 +703,7 @@ export const numberSeriesApi = {
     request<NumberSeries>("PATCH", `/erp/number-series/${id}`, data),
 };
 
-// ─── Audit Logs ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Audit Logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const auditLogsApi = {
   list: (
@@ -680,7 +723,7 @@ export const auditLogsApi = {
     }),
 };
 
-// ─── HRMS — Employees ─────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS â€” Employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const employeesApi = {
   list: (page = 1, pageSize = 20, search?: string, companyId?: string, departmentId?: string, status?: string) =>
@@ -707,7 +750,7 @@ export const employeesApi = {
     request<EmployeeDocument>("POST", `/hrms/employees/${empId}/documents`, data),
 };
 
-// ─── HRMS — Attendance ────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS â€” Attendance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const attendanceApi = {
   list: (page = 1, pageSize = 50, employeeId?: string, dateFrom?: string, dateTo?: string) =>
@@ -746,7 +789,7 @@ export const attendanceApi = {
     request<AttendanceCorrection>("PATCH", `/hrms/attendance/corrections/${id}/review`, { status }),
 };
 
-// ─── HRMS — Leaves ────────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS â€” Leaves â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const leavesApi = {
   list: (page = 1, pageSize = 20, employeeId?: string, status?: string) =>
@@ -770,7 +813,7 @@ export const leavesApi = {
     request<LeaveRequest>("PATCH", `/hrms/leaves/${id}/review`, { status: "Rejected" }),
 };
 
-// ─── HRMS — Payroll ───────────────────────────────────────────────────────────
+// â”€â”€â”€ HRMS â€” Payroll â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const payrollApi = {
   listPayslips: (employeeId?: string) =>
@@ -788,6 +831,512 @@ export const payrollApi = {
   generatePayslip: (data: Record<string, unknown>) =>
     request<Payslip[]>("POST", "/hrms/payslips/process", data),
 };
+
+// â”€â”€â”€ Workflow Engine Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── HRMS — Recruitment ──────────────────────────────────────────────────────
+
+export interface JobOpening {
+  id: string;
+  tenant_id: string;
+  title: string;
+  department: string;
+  location: string;
+  type: string;
+  experience: string;
+  openings: number;
+  applicants_count: number;
+  posted_date: string;
+  status: string;
+  description: string;
+  threshold_score: number;
+  portals: string[];
+  criteria: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Applicant {
+  id: string;
+  tenant_id: string;
+  name: string;
+  email: string;
+  job_id: string;
+  job_title: string;
+  applied_date: string;
+  experience: string;
+  rating: number;
+  stage: "Applied" | "Screening" | "Interview" | "Offer" | "Hired" | "Rejected";
+  source: string;
+  match_score: number;
+  resume_text: string | null;
+  expected_salary?: number;
+  proposed_salary?: number;
+  notes_json?: { author: string; date: string; text: string }[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Interview {
+  id: string;
+  tenant_id: string;
+  applicant_id: string;
+  candidate: string;
+  job_title: string;
+  interviewer_name: string;
+  date: string;
+  time: string;
+  duration: number;
+  type: string;
+  mode: string;
+  meeting_link: string | null;
+  status: "Scheduled" | "Completed" | "Cancelled";
+  feedback: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Offer {
+  id: string;
+  tenant_id: string;
+  applicant_id: string;
+  candidate: string;
+  role: string;
+  ctc: number;
+  offer_date: string;
+  expiry_date: string;
+  joining_date: string;
+  signer_name: string;
+  status: "Awaiting Acceptance" | "Accepted" | "Declined";
+  email_sent: boolean;
+  custom_template: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OnboardingTask {
+  task: string;
+  assignedTo: string;
+  status: "Pending" | "In Progress" | "Done";
+}
+
+export interface Onboarding {
+  id: string;
+  tenant_id: string;
+  applicant_id: string;
+  new_hire: string;
+  role: string;
+  start_date: string;
+  progress: number;
+  tasks_json: OnboardingTask[];
+  created_at: string;
+  updated_at: string;
+}
+
+export const recruitmentApi = {
+  // Job Openings
+  listJobs: (status?: string, search?: string, page = 1, pageSize = 50) =>
+    request<PaginatedResponse<JobOpening>>("GET", "/hrms/recruitment/jobs", undefined, {
+      status, search, page, page_size: pageSize
+    }),
+  createJob: (data: Record<string, unknown>) =>
+    request<JobOpening>("POST", "/hrms/recruitment/jobs", data),
+  generateJd: (prompt: string) =>
+    request<{ title: string; department: string; criteria: string; description: string; threshold_score: number }>(
+      "POST",
+      "/hrms/recruitment/jobs/generate-jd",
+      { prompt }
+    ),
+  updateJob: (id: string, data: Record<string, unknown>) =>
+    request<JobOpening>("PATCH", `/hrms/recruitment/jobs/${id}`, data),
+  deleteJob: (id: string) =>
+    request<void>("DELETE", `/hrms/recruitment/jobs/${id}`),
+
+  // Applicants
+  listApplicants: (jobId?: string, stage?: string, source?: string, search?: string, page = 1, pageSize = 50) =>
+    request<PaginatedResponse<Applicant>>("GET", "/hrms/recruitment/applicants", undefined, {
+      job_id: jobId, stage, source, search, page, page_size: pageSize
+    }),
+  applyJob: (jobId: string, data: Record<string, unknown>) =>
+    request<Applicant>("POST", `/hrms/recruitment/jobs/${jobId}/apply`, data),
+  updateApplicant: (id: string, data: Record<string, unknown>) =>
+    request<Applicant>("PATCH", `/hrms/recruitment/applicants/${id}`, data),
+  addApplicantNote: (id: string, text: string) =>
+    request<Applicant>("POST", `/hrms/recruitment/applicants/${id}/notes`, { text }),
+
+  // Interviews
+  listInterviews: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<Interview>>("GET", "/hrms/recruitment/interviews", undefined, {
+      page, page_size: pageSize
+    }),
+  checkOverlap: (interviewer: string, date: string, time: string, duration: number) =>
+    request<{ conflict: boolean; candidate?: string; time?: string; duration?: number; detail?: string }>(
+      "GET",
+      "/hrms/recruitment/interviews/check-overlap",
+      undefined,
+      { interviewer, date, time, duration }
+    ),
+  scheduleInterview: (data: Record<string, unknown>) =>
+    request<Interview>("POST", "/hrms/recruitment/interviews", data),
+  updateInterview: (id: string, data: Record<string, unknown>) =>
+    request<Interview>("PATCH", `/hrms/recruitment/interviews/${id}`, data),
+
+  // Offers
+  listOffers: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<Offer>>("GET", "/hrms/recruitment/offers", undefined, {
+      page, page_size: pageSize
+    }),
+  createOffer: (data: Record<string, unknown>) =>
+    request<Offer>("POST", "/hrms/recruitment/offers", data),
+  sendOfferEmail: (id: string) =>
+    request<{ status: string; message: string }>("POST", `/hrms/recruitment/offers/${id}/send-email`),
+  updateOfferStatus: (id: string, data: Record<string, unknown>) =>
+    request<Offer>("PATCH", `/hrms/recruitment/offers/${id}`, data),
+
+  // Onboardings
+  listOnboardings: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<Onboarding>>("GET", "/hrms/recruitment/onboarding", undefined, {
+      page, page_size: pageSize
+    }),
+  createOnboarding: (data: Record<string, unknown>) =>
+    request<Onboarding>("POST", "/hrms/recruitment/onboarding", data),
+  updateOnboarding: (id: string, data: Record<string, unknown>) =>
+    request<Onboarding>("PATCH", `/hrms/recruitment/onboarding/${id}`, data),
+  deleteOnboarding: (id: string) =>
+    request<void>("DELETE", `/hrms/recruitment/onboarding/${id}`),
+};
+
+
+export interface PerformanceGoal {
+  id: string;
+  tenant_id: string;
+  employee_id: string | null;
+  employee_name: string;
+  title: string;
+  description: string | null;
+  target_date: string;
+  status: "Not Started" | "On Track" | "At Risk" | "Completed";
+  weight: number;
+  progress: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PerformanceKpi {
+  id: string;
+  tenant_id: string;
+  metric: string;
+  target: string;
+  current: string;
+  unit: string;
+  achievement: number;
+}
+
+export interface PerformanceAppraisal {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  department: string;
+  period: string;
+  self_score: number;
+  manager_score: number;
+  final_score: number;
+  rating: string;
+  reviewer: string;
+  status: "Pending" | "In Progress" | "Completed";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PerformanceIncentive {
+  id: string;
+  tenant_id: string;
+  employee_name: string;
+  department: string;
+  type: string;
+  basis: string;
+  amount: number;
+  status: "Pending" | "Approved" | "Paid";
+}
+
+export interface LearningCourse {
+  id: string;
+  tenant_id: string;
+  title: string;
+  category: string;
+  instructor: string;
+  duration: string;
+  enrolled: number;
+  completion: number;
+  status: string;
+}
+
+export interface LearningCertificate {
+  id: string;
+  tenant_id: string;
+  employee_name: string;
+  cert_name: string;
+  issuer: string;
+  issued_date: string;
+  expiry_date: string;
+  status: string;
+}
+
+export interface LearningAssessment {
+  id: string;
+  tenant_id: string;
+  title: string;
+  course_name: string;
+  due_date: string;
+  participants: number;
+  avg_score: number;
+  status: string;
+}
+
+
+export const performanceApi = {
+  listGoals: (employeeId?: string, status?: string, page = 1, pageSize = 50) =>
+    request<PaginatedResponse<PerformanceGoal>>("GET", "/hrms/performance/goals", undefined, {
+      employee_id: employeeId, status, page, page_size: pageSize
+    }),
+  createGoal: (data: Record<string, unknown>) =>
+    request<PerformanceGoal>("POST", "/hrms/performance/goals", data),
+  updateGoal: (id: string, data: Record<string, unknown>) =>
+    request<PerformanceGoal>("PATCH", `/hrms/performance/goals/${id}`, data),
+
+  listKpis: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<PerformanceKpi>>("GET", "/hrms/performance/kpis", undefined, {
+      page, page_size: pageSize
+    }),
+  createKpi: (data: Record<string, unknown>) =>
+    request<PerformanceKpi>("POST", "/hrms/performance/kpis", data),
+
+  listAppraisals: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<PerformanceAppraisal>>("GET", "/hrms/performance/appraisals", undefined, {
+      page, page_size: pageSize
+    }),
+  createAppraisal: (data: Record<string, unknown>) =>
+    request<PerformanceAppraisal>("POST", "/hrms/performance/appraisals", data),
+  updateAppraisal: (id: string, data: Record<string, unknown>) =>
+    request<PerformanceAppraisal>("PATCH", `/hrms/performance/appraisals/${id}`, data),
+
+  listIncentives: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<PerformanceIncentive>>("GET", "/hrms/performance/incentives", undefined, {
+      page, page_size: pageSize
+    }),
+  createIncentive: (data: Record<string, unknown>) =>
+    request<PerformanceIncentive>("POST", "/hrms/performance/incentives", data),
+};
+
+export const learningApi = {
+  listCourses: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<LearningCourse>>("GET", "/hrms/learning/courses", undefined, {
+      page, page_size: pageSize
+    }),
+  createCourse: (data: Record<string, unknown>) =>
+    request<LearningCourse>("POST", "/hrms/learning/courses", data),
+
+  listCertificates: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<LearningCertificate>>("GET", "/hrms/learning/certificates", undefined, {
+      page, page_size: pageSize
+    }),
+  createCertificate: (data: Record<string, unknown>) =>
+    request<LearningCertificate>("POST", "/hrms/learning/certificates", data),
+
+  listAssessments: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<LearningAssessment>>("GET", "/hrms/learning/assessments", undefined, {
+      page, page_size: pageSize
+    }),
+  createAssessment: (data: Record<string, unknown>) =>
+    request<LearningAssessment>("POST", "/hrms/learning/assessments", data),
+};
+
+export interface AttendanceDeptStats {
+  dept: string;
+  rate: number;
+}
+
+export interface AttendanceMethodStats {
+  method: string;
+  count: number;
+  pct: number;
+  color: string;
+}
+
+export interface AttendanceAnalytics {
+  avg_attendance: number;
+  today_presence: number;
+  chronic_absentees: number;
+  late_arrivals: number;
+  dept_rates: AttendanceDeptStats[];
+  method_rates: AttendanceMethodStats[];
+}
+
+export interface DeptPayrollCost {
+  dept: string;
+  headcount: number;
+  totalPayroll: number;
+  avgSalary: number;
+  yoyChange: number;
+}
+
+export interface PayrollAnalytics {
+  monthly_payroll: number;
+  highest_dept: string;
+  growth_yoy: string;
+  dept_costs: DeptPayrollCost[];
+}
+
+export interface AtRiskEmployee {
+  name: string;
+  dept: string;
+  riskScore: number;
+  factors: string[];
+  risk: "High" | "Medium";
+}
+
+export interface AttritionPrediction {
+  at_risk: AtRiskEmployee[];
+}
+
+export interface ShiftOptimizationItem {
+  shift: string;
+  employees: number;
+  optimal: number;
+  coverage: number;
+  efficiency: number;
+}
+
+export interface ShiftOptimization {
+  shifts: ShiftOptimizationItem[];
+}
+
+export interface ProductivityItem {
+  name: string;
+  dept: string;
+  score: number;
+  trend: "up" | "down" | "stable";
+  tasks: number;
+  output: string;
+}
+
+export interface ProductivityScore {
+  scores: ProductivityItem[];
+}
+
+export interface TrainingRecommendationItem {
+  employee: string;
+  dept: string;
+  skill: string;
+  reason: string;
+  priority: "High" | "Medium";
+}
+
+export interface TrainingRecommendation {
+  recommendations: TrainingRecommendationItem[];
+}
+
+export const intelligenceApi = {
+  getAttendanceAnalytics: () =>
+    request<AttendanceAnalytics>("GET", "/hrms/intelligence/attendance-analytics"),
+  getPayrollAnalytics: () =>
+    request<PayrollAnalytics>("GET", "/hrms/intelligence/payroll-analytics"),
+  getAttritionPrediction: () =>
+    request<AttritionPrediction>("GET", "/hrms/intelligence/attrition-risk"),
+  getShiftOptimization: () =>
+    request<ShiftOptimization>("GET", "/hrms/intelligence/shift-optimization"),
+  getProductivityScore: () =>
+    request<ProductivityScore>("GET", "/hrms/intelligence/productivity-score"),
+  getTrainingRecommendation: () =>
+    request<TrainingRecommendation>("GET", "/hrms/intelligence/training-recommendation"),
+};
+
+
+export interface ExitResignation {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  department: string;
+  designation: string;
+  resign_date: string;
+  last_working_day: string;
+  reason: string;
+  status: "Pending" | "Accepted" | "Rejected" | "Completed";
+}
+
+export interface ExitClearanceTask {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  department: string;
+  task: string;
+  status: "Pending" | "In Progress" | "Done";
+  assigned_to: string;
+}
+
+export interface ExitFinalSettlement {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  last_working_day: string;
+  components_json: { item: string; amount: number }[];
+}
+
+export interface ExitExperienceLetter {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  employee_name: string;
+  designation: string;
+  from_date: string;
+  to_date: string;
+  issued_on: string;
+  status: "Pending" | "Issued";
+}
+
+export const exitApi = {
+  listResignations: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<ExitResignation>>("GET", "/hrms/exit/resignations", undefined, {
+      page, page_size: pageSize
+    }),
+  createResignation: (data: Record<string, unknown>) =>
+    request<ExitResignation>("POST", "/hrms/exit/resignations", data),
+  updateResignation: (id: string, data: Record<string, unknown>) =>
+    request<ExitResignation>("PATCH", `/hrms/exit/resignations/${id}`, data),
+
+  listClearance: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<ExitClearanceTask>>("GET", "/hrms/exit/clearance", undefined, {
+      page, page_size: pageSize
+    }),
+  createClearance: (data: Record<string, unknown>) =>
+    request<ExitClearanceTask>("POST", "/hrms/exit/clearance", data),
+  updateClearance: (id: string, data: Record<string, unknown>) =>
+    request<ExitClearanceTask>("PATCH", `/hrms/exit/clearance/${id}`, data),
+
+  listSettlements: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<ExitFinalSettlement>>("GET", "/hrms/exit/settlements", undefined, {
+      page, page_size: pageSize
+    }),
+  createSettlement: (data: Record<string, unknown>) =>
+    request<ExitFinalSettlement>("POST", "/hrms/exit/settlements", data),
+
+  listExperienceLetters: (page = 1, pageSize = 50) =>
+    request<PaginatedResponse<ExitExperienceLetter>>("GET", "/hrms/exit/experience-letters", undefined, {
+      page, page_size: pageSize
+    }),
+  createExperienceLetter: (data: Record<string, unknown>) =>
+    request<ExitExperienceLetter>("POST", "/hrms/exit/experience-letters", data),
+  updateExperienceLetter: (id: string, data: Record<string, unknown>) =>
+    request<ExitExperienceLetter>("PATCH", `/hrms/exit/experience-letters/${id}`, data),
+};
+
+
+// ─── Workflow Engine Types ────────────────────────────────────────────────────
+
+
 
 // ─── Workflow Engine Types ────────────────────────────────────────────────────
 
@@ -867,7 +1416,7 @@ export interface CustomField {
   updated_at: string;
 }
 
-// ─── Master Data Types ────────────────────────────────────────────────────────
+// ─── Master Data Types ───────────────────────────────────────────────────────
 
 export interface GeographyCountry {
   id: string;
@@ -928,7 +1477,7 @@ export interface Tag {
   updated_at: string;
 }
 
-// ─── System Types ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ System Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface SystemSetting {
   id: string;
@@ -957,7 +1506,7 @@ export interface SystemHealth {
   services: SystemHealthService[];
 }
 
-// ─── Workflow Engine API ──────────────────────────────────────────────────────
+// â”€â”€â”€ Workflow Engine API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const approvalWorkflowsApi = {
   list: (page = 1, pageSize = 20, search?: string, module?: string) =>
@@ -1024,7 +1573,7 @@ export const customFieldsApi = {
   delete: (id: string) => request<void>("DELETE", `/erp/custom-fields/${id}`),
 };
 
-// ─── Master Data API ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Master Data API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const geographyApi = {
   list: (page = 1, pageSize = 50, search?: string) =>
@@ -1058,10 +1607,8 @@ export const workCalendarsApi = {
       page, page_size: pageSize, search, company_id: companyId,
     }),
   get: (id: string) => request<WorkCalendar>("GET", `/erp/work-calendars/${id}`),
-  create: (data: Record<string, unknown>) =>
-    request<WorkCalendar>("POST", "/erp/work-calendars", data),
-  update: (id: string, data: Record<string, unknown>) =>
-    request<WorkCalendar>("PATCH", `/erp/work-calendars/${id}`, data),
+  create: (data: Record<string, unknown>) => request<WorkCalendar>("POST", "/erp/work-calendars", data),
+  update: (id: string, data: Record<string, unknown>) => request<WorkCalendar>("PATCH", `/erp/work-calendars/${id}`, data),
   delete: (id: string) => request<void>("DELETE", `/erp/work-calendars/${id}`),
 };
 
@@ -1103,6 +1650,431 @@ export const errorLogsApi = {
 export const backupApi = {
   getStatus: () => request<Record<string, unknown>>("GET", "/erp/backup-status"),
 };
+
+// ─── CRM & Sales — Customers and Leads ──────────────────────────────────────
+
+export interface CrmCustomer {
+  id: string;
+  tenant_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  company_name: string | null;
+  customer_type: string;
+  status: string;
+  address: string | null;
+  gst_number: string | null;
+  owner_user_id: string | null;
+  lead_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmLead {
+  id: string;
+  tenant_id: string;
+  name: string;
+  company_name: string | null;
+  email: string | null;
+  phone: string | null;
+  status: "New" | "Contacted" | "Qualified" | "Proposal" | "Won" | "Lost";
+  source: string | null;
+  owner_user_id: string | null;
+  estimated_value: number;
+  last_contact_at: string | null;
+  next_follow_up_at: string | null;
+  notes: string | null;
+  lost_reason: string | null;
+  ai_score: number | null;
+  ai_sentiment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmLeadActivity {
+  id: string;
+  lead_id: string;
+  activity_type: string;
+  summary: string;
+  occurred_at: string;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const crmCustomersApi = {
+  list: (page = 1, pageSize = 20, search?: string, customerType?: string) =>
+    request<PaginatedResponse<CrmCustomer>>("GET", "/crm/customers", undefined, { page, page_size: pageSize, search, customer_type: customerType }),
+  create: (data: Record<string, unknown>) => request<CrmCustomer>("POST", "/crm/customers", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmCustomer>("PATCH", `/crm/customers/${id}`, data),
+};
+
+export const crmLeadsApi = {
+  list: (page = 1, pageSize = 100, search?: string, status?: string) =>
+    request<PaginatedResponse<CrmLead>>("GET", "/crm/leads", undefined, { page, page_size: pageSize, search, status }),
+  create: (data: Record<string, unknown>) => request<CrmLead>("POST", "/crm/leads", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmLead>("PATCH", `/crm/leads/${id}`, data),
+  listActivities: (id: string) => request<CrmLeadActivity[]>("GET", `/crm/leads/${id}/activities`),
+  addActivity: (id: string, data: Record<string, unknown>) => request<CrmLeadActivity>("POST", `/crm/leads/${id}/activities`, data),
+  convert: (id: string) => request<CrmCustomer>("POST", `/crm/leads/${id}/convert`),
+  
+  // ── Facebook OAuth page connection (proper flow) ─────────────────────────────
+  /** Get this tenant's Meta App configuration status */
+  getFbAppConfig: () =>
+    request<{ configured: boolean; app_id?: string; redirect_uri?: string }>("GET", "/crm/facebook/app-config"),
+  /** Save this tenant's Meta App credentials */
+  saveFbAppConfig: (data: { app_id: string; app_secret: string; redirect_uri?: string }) =>
+    request<{ success: boolean; message: string }>("POST", "/crm/facebook/app-config", data),
+  /** Delete this tenant's Meta App credentials */
+  deleteFbAppConfig: () =>
+    request<{ success: boolean }>("DELETE", "/crm/facebook/app-config"),
+  /** Connect a Page or Lead Form directly by pasting both Page ID and Access Token */
+  connectFbDirect: (data: { page_id?: string; access_token: string }) =>
+    request<{ success: boolean; page_name: string; page_id: string; message: string }>("POST", "/crm/facebook/connect-direct", data),
+  /** Returns whether the Meta App is configured and which page (if any) is connected. */
+  getFbStatus: () =>
+    request<{ app_configured: boolean; page_connected: boolean; page_name?: string; page_id?: string }>("GET", "/crm/facebook/status"),
+  /**
+   * Verify a pasted User Token or Page Token from the Meta Graph API Explorer.
+   * No OAuth login required — token is introspected against /me/accounts and
+   * the discovered pages are returned for the user to pick one.
+   */
+  verifyFbToken: (access_token: string) =>
+    request<{ pages: { id: string; name: string; category: string }[]; count: number }>("POST", "/crm/facebook/verify-token", { access_token }),
+  /** Returns the Meta OAuth URL to open in a popup (optional if user prefers OAuth login). */
+  getFbAuthUrl: () =>
+    request<{ auth_url: string }>("GET", "/crm/facebook/auth-url"),
+  /** Returns pages retrieved during OAuth or verify-token flow. */
+  getFbAvailablePages: () =>
+    request<{ pages: { id: string; name: string; category: string }[] }>("GET", "/crm/facebook/available-pages"),
+  /** Saves the selected page permanently (page token stored server-side). */
+  selectFbPage: (data: { page_id: string; page_name: string; page_access_token: string }) =>
+    request<{ success: boolean; page_name: string; page_id: string; message: string }>("POST", "/crm/facebook/select-page", data),
+  /** Disconnects the connected FB page. */
+  disconnectFbPage: () =>
+    request<{ success: boolean }>("DELETE", "/crm/facebook/disconnect"),
+
+  // ── Legacy credential endpoints (for lead import form backward-compat) ───────
+  saveFacebookCredentials: (data: { fb_access_token: string; fb_page_or_form_id?: string; fb_api_version?: string }) =>
+    request<any>("POST", "/crm/facebook/credentials", data),
+  deleteFacebookCredentials: () =>
+    request<any>("DELETE", "/crm/facebook/credentials"),
+  getFacebookCredentials: () =>
+    request<{ configured: boolean; fb_page_or_form_id?: string; fb_api_version?: string; has_token?: boolean }>("GET", "/crm/facebook/credentials"),
+  importFacebookLeads: () =>
+    request<{ imported: number; skipped: number; total: number; message: string }>("POST", "/crm/facebook/import"),
+    
+  // AI scoring
+  analyzeLeadAi: (id: string) =>
+    request<{ id: string; ai_score: number; ai_sentiment: string }>("POST", `/crm/leads/${id}/analyze-ai`),
+
+  // AI outbound call via LiveKit
+  initiateCall: (id: string, data: { sip_number: string; custom_prompt?: string }) =>
+    request<{ status: string; room_name?: string; participant_id?: string; sip_call_id?: string; message: string }>("POST", `/crm/leads/${id}/initiate-call`, data),
+
+  // ── Facebook Token Health & Ad History ───────────────────────────────────────
+  /** Check health/expiry of the stored Facebook access token for this org. */
+  getFbTokenInfo: () =>
+    request<{
+      connected: boolean;
+      is_valid: boolean;
+      page_id?: string;
+      page_name?: string;
+      token_type?: string;
+      expires_at?: number | null;
+      scopes?: string[];
+      error?: string | null;
+    }>("GET", "/crm/campaigns/fb-token-info"),
+
+  /** Fetch paginated list of all Facebook ads published by this org. */
+  getAdHistory: (page = 1, pageSize = 20) =>
+    request<{
+      total: number;
+      page: number;
+      page_size: number;
+      items: Array<{
+        id: string;
+        post_id?: string;
+        page_id?: string;
+        page_name?: string;
+        caption?: string;
+        image_url?: string;
+        fb_post_url?: string;
+        published_at?: string;
+        published_by_user_id?: string;
+      }>;
+    }>("GET", `/crm/campaigns/ad-history?page=${page}&page_size=${pageSize}`),
+
+  /** Publish a generated ad poster to the connected Facebook Page. */
+  publishToFacebook: (data: { image_url: string; caption: string; aspect_ratio?: string }) =>
+    request<{ status: string; post_id?: string; page_id?: string; fb_post_url?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
+
+  /** Fetch all Facebook ad accounts. */
+  getFbAdAccounts: () =>
+    request<Array<{ account_id: string; name: string; account_status: number }>>("GET", "/crm/facebook/ad-accounts"),
+
+  /** Select active Facebook Ad Account. */
+  selectFbAdAccount: (ad_account_id: string) =>
+    request<{ success: boolean; message: string }>("POST", "/crm/facebook/select-ad-account", { ad_account_id }),
+
+  /** Fetch active campaigns and their metrics. */
+  getFbCampaigns: () =>
+    request<Array<{
+      id: string;
+      name: string;
+      status: string;
+      objective: string;
+      start_time?: string;
+      stop_time?: string;
+      spend?: string;
+      impressions?: string;
+      clicks?: string;
+    }>>("GET", "/crm/facebook/campaigns"),
+
+  /** Fetch active ads. */
+  getFbAds: () =>
+    request<Array<{
+      id: string;
+      name: string;
+      status: string;
+      campaign_id: string;
+      adset_id: string;
+    }>>("GET", "/crm/facebook/ads"),
+
+  /** Sync lead gen forms submissions. */
+  syncFbLeads: () =>
+    request<{ success: boolean; synced_count: number; message: string }>("POST", "/crm/facebook/sync-leads"),
+
+  // ── Master Catalog & AI RAG Search ─────────────────────────────────────────
+  searchMasterCatalog: (query: string, searchWeb = false, provider = "gemini") =>
+    request<Array<{
+      id?: string;
+      name: string;
+      barcode?: string;
+      brand_name?: string;
+      category_name?: string;
+      sub_category_name?: string;
+      model_number?: string;
+      hsn_code?: string;
+      mrp?: number;
+      selling_price?: number;
+      purchase_price?: number;
+      image_url?: string;
+      short_description?: string;
+      specifications?: string;
+      source?: "MASTER_DB" | "AI_WEB_SEARCH" | "EXCEL_IMPORT";
+    }>>("GET", `/inventory/master-catalog/search?query=${encodeURIComponent(query)}&search_web=${searchWeb}&provider=${provider}`),
+
+  saveToMasterCatalog: (item: any) =>
+    request<any>("POST", "/inventory/master-catalog/save", item),
+
+  importExcelMasterCatalog: (items: any[]) =>
+    request<{ message: string; count: number }>("POST", "/inventory/master-catalog/import-excel", { items }),
+
+  importToLocalInventory: (data: {
+    name: string;
+    sku?: string;
+    barcode?: string;
+    brand_name?: string;
+    category_name?: string;
+    sub_category_name?: string;
+    short_description?: string;
+    image_url?: string;
+    purchase_price?: number;
+    mrp?: number;
+    selling_price?: number;
+    tax_percent?: number;
+    initial_stock?: number;
+    supplier?: string;
+    warehouse?: string;
+  }) =>
+    request<any>("POST", "/inventory/master-catalog/import-to-local-inventory", data),
+};
+
+export interface CrmOpportunity {
+  id: string;
+  tenant_id: string;
+  customer_id: string | null;
+  lead_id: string | null;
+  name: string;
+  stage: string;
+  amount: number;
+  probability: number;
+  expected_close_date: string | null;
+  owner_user_id: string | null;
+  next_step: string | null;
+  next_step_at: string | null;
+  forecast_category: string;
+  lost_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const crmOpportunitiesApi = {
+  list: async () => {
+    const res = await request<any>("GET", "/crm/opportunities");
+    return Array.isArray(res) ? res : res?.items ?? [];
+  },
+  create: (data: Record<string, unknown>) => request<CrmOpportunity>("POST", "/crm/opportunities", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmOpportunity>("PATCH", `/crm/opportunities/${id}`, data),
+};
+
+export const crmCampaignsApi = {
+  generateCopy: (data: { prompt: string; channel: string; provider?: string; reference_image?: string }) =>
+    request<{ copy: string }>("POST", "/crm/campaigns/generate-copy", data),
+  generatePoster: (data: { prompt: string; style?: string; aspect_ratio?: string; provider?: string }) =>
+    request<{ image_url: string; enhanced_prompt: string; aspect_ratio: string }>("POST", "/crm/campaigns/generate-poster", data),
+  publishFacebook: (data: { image_url: string; caption: string }) =>
+    request<{ status: string; post_id?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
+};
+
+export interface CrmTicket {
+  id: string;
+  customer_id: string | null;
+  subject: string;
+  description: string;
+  priority: string;
+  status: string;
+  category: string;
+  ai_summary: string | null;
+  created_at: string;
+}
+
+export const crmTicketsApi = {
+  list: (category?: string, status?: string) => request<CrmTicket[]>("GET", "/crm/tickets", undefined, { category, status }),
+  create: (data: Record<string, unknown>) => request<CrmTicket>("POST", "/crm/tickets", data),
+  summarize: (id: string) => request<{ id: string; ai_summary: string }>("POST", `/crm/tickets/${id}/summarize-ai`),
+};
+
+export interface CrmQuotation {
+  id: string;
+  customer_id: string;
+  quote_number: string;
+  items: Record<string, any>;
+  subtotal: number;
+  tax: number;
+  total: number;
+  status: string;
+  created_at: string;
+}
+
+export const crmQuotationsApi = {
+  list: () => request<CrmQuotation[]>("GET", "/crm/quotations"),
+  create: (data: Record<string, unknown>) => request<CrmQuotation>("POST", "/crm/quotations", data),
+};
+
+export interface CrmSalesOrder {
+  id: string;
+  customer_id: string;
+  order_number: string;
+  items: Record<string, any>;
+  total: number;
+  status: string;
+  payment_status: string;
+  created_at: string;
+}
+
+export const crmSalesOrdersApi = {
+  list: () => request<CrmSalesOrder[]>("GET", "/crm/sales-orders"),
+  create: (data: Record<string, unknown>) => request<CrmSalesOrder>("POST", "/crm/sales-orders", data),
+};
+
+// ─── Customer Intelligence API ────────────────────────────────────────────────
+
+export interface IntelAnalytics {
+  total_customers: number;
+  active_customers: number;
+  new_customers_this_month: number;
+  total_revenue: number;
+  total_orders: number;
+  avg_order_value: number;
+  repeat_rate: number;
+  monthly_data: { month: string; revenue: number; orders: number; new_customers: number }[];
+  segments: { name: string; count: number }[];
+}
+
+export interface IntelChurnCustomer {
+  customer_id: string;
+  customer: string;
+  company: string | null;
+  risk: number;
+  tier: string;
+  last_purchase: string;
+  order_count: number;
+  open_tickets: number;
+  reason: string;
+}
+
+export interface IntelChurn {
+  summary: { high_risk: number; at_risk: number; watch: number; total: number };
+  customers: IntelChurnCustomer[];
+}
+
+export interface IntelLtvCustomer {
+  customer_id: string;
+  customer: string;
+  company: string | null;
+  ltv: number;
+  revenue: number;
+  profit: number;
+  orders: number;
+  years: number;
+}
+
+export interface IntelLtv {
+  summary: { avg_ltv: number; total_customer_value: number; avg_orders_per_customer: number; total_customers: number };
+  customers: IntelLtvCustomer[];
+}
+
+export interface IntelPurchaseBehaviour {
+  summary: { avg_frequency: number; avg_order_value: number; peak_hour: string; top_category: string };
+  categories: { name: string; pct: number; revenue: number; orders: number }[];
+  top_buyers: { name: string; score: number }[];
+  purchase_times: { hour: string; orders: number }[];
+}
+
+export interface IntelRfmSegment {
+  label: string;
+  count: number;
+  revenue: number;
+  r: number;
+  f: number;
+  description: string;
+  color: string;
+}
+
+export interface IntelRfm {
+  segments: IntelRfmSegment[];
+  total_customers_analysed: number;
+}
+
+export interface IntelRecommendation {
+  id: string;
+  type: string;
+  customer: string;
+  customer_seg: string;
+  title: string;
+  description: string;
+  confidence: number;
+  action: string;
+  priority: string;
+  icon_type: string;
+}
+
+export interface IntelRecommendations {
+  summary: { total_recommendations: number; avg_confidence: number; customers_analysed: number; transactions_analysed: number; support_interactions: number };
+  recommendations: IntelRecommendation[];
+}
+
+export const crmIntelligenceApi = {
+  getAnalytics: () => request<IntelAnalytics>("GET", "/crm/intelligence/analytics"),
+  getChurn: () => request<IntelChurn>("GET", "/crm/intelligence/churn"),
+  getLifetimeValue: () => request<IntelLtv>("GET", "/crm/intelligence/lifetime-value"),
+  getPurchaseBehaviour: () => request<IntelPurchaseBehaviour>("GET", "/crm/intelligence/purchase-behaviour"),
+  getRfm: () => request<IntelRfm>("GET", "/crm/intelligence/rfm"),
+  getRecommendations: () => request<IntelRecommendations>("GET", "/crm/intelligence/recommendations"),
+};
+
 
 // ─── Extended HRMS Types ──────────────────────────────────────────────────────
 
@@ -1231,3 +2203,317 @@ export interface SalaryStructure {
   created_at?: string;
   updated_at?: string;
 }
+
+
+
+// --- POS Types & API ------------------------------------------------
+
+export interface POSCategory {
+  id: string; name: string; description: string | null;
+  color: string | null; icon: string | null; is_active: boolean;
+  created_at: string; updated_at: string;
+}
+
+export interface POSProduct {
+  id: string; name: string; brand: string | null; sku: string | null;
+  barcode: string | null; description: string | null; image_url: string | null;
+  category_id: string | null; category_name: string | null;
+  purchase_price: number; mrp: number; selling_price: number;
+  tax_percent: number; discount: number; stock: number;
+  reorder_level: number; is_active: boolean;
+  created_at: string; updated_at: string;
+}
+
+export interface POSTransactionHistory {
+  id: string; session_id: string; cashier_id: string; customer_id: string | null;
+  receipt_number: string; status: string;
+  parent_transaction_id: string | null;
+  delivery_status: string | null;
+  delivery_address: string | null;
+  driver_name: string | null;
+  subtotal: number; tax_amount: number; discount_amount: number; total_amount: number;
+  created_at: string; updated_at: string;
+  items: { id: string; product_id: string; quantity: number; unit_price: number; discount: number; subtotal: number }[];
+  payments: { id: string; payment_method: string; amount: number; reference_number: string | null }[];
+}
+
+export const posApi = {
+  // Sessions
+  openSession: (data: Record<string, unknown>) => request<any>("POST", "/pos/sessions/open", data),
+  closeSession: (sessionId: string, data: Record<string, unknown>) => request<any>("POST", `/pos/sessions/${sessionId}/close`, data),
+  getCurrentSession: () => request<any>("GET", "/pos/sessions/current"),
+  // Transactions
+  checkout: (data: Record<string, unknown>) => request<any>("POST", "/pos/transactions/checkout", data),
+  getHistory: (params?: { limit?: number; status_filter?: string; search?: string }) => 
+    request<POSTransactionHistory[]>("GET", "/pos/transactions/history", undefined, params as Record<string, string | number | boolean | null | undefined>),
+  getDailySummary: (params?: { session_id?: string }) => 
+    request<any>("GET", "/pos/transactions/reports/daily-summary", undefined, params as Record<string, string | number | boolean | null | undefined>),
+  deleteTransaction: (id: string) => request<void>("DELETE", `/pos/transactions/${id}`),
+  // Products & Categories
+  getCategories: () => request<POSCategory[]>("GET", "/pos/categories"),
+  getProducts: (params?: { category_id?: string; search?: string }) =>
+    request<POSProduct[]>("GET", "/pos/products", undefined, params as Record<string, string | number | boolean | null | undefined>),
+  createProduct: (data: Record<string, unknown>) => request<POSProduct>("POST", "/pos/products", data),
+  bulkCreateProducts: (products: Record<string, unknown>[]) => 
+    request<{ created_count: number; skipped_count: number; errors: string[] }>("POST", "/pos/products/bulk", { products }),
+  updateProduct: (id: string, data: Record<string, unknown>) => request<POSProduct>("PATCH", `/pos/products/${id}`, data),
+  deleteProduct: (id: string) => request<void>("DELETE", `/pos/products/${id}`),
+  createCategory: (data: Record<string, unknown>) => request<POSCategory>("POST", "/pos/categories", data),
+};
+
+// --- Inventory (ERP Product Master) ------------------------------------------------
+
+export interface InventoryCategory {
+  id: string; name: string; category_code: string | null; description: string | null;
+  parent_id: string | null; status: string;
+  created_at: string; updated_at: string;
+}
+
+export interface InventoryBrand {
+  id: string; name: string; description: string | null;
+  manufacturer: string | null; status: string;
+  created_at: string; updated_at: string;
+}
+
+export interface InventoryUOM {
+  id: string;
+  name: string;
+  abbreviation: string;
+  description: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductAttribute {
+  id: string;
+  name: string;
+  module: string;
+  options: string[];
+}
+
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  variant_name: string;
+  sku: string;
+  barcode?: string;
+  attributes: Record<string, string>;
+  additional_price: number;
+  stock_override?: number;
+}
+
+export interface ProductBundle {
+  id: string;
+  name: string;
+  sku: string;
+  description?: string;
+  price: number;
+  items: { id: string; product_id: string; quantity: number }[];
+}
+
+export interface ProductKit {
+  id: string;
+  name: string;
+  sku: string;
+  kit_type: string;
+  description?: string;
+  items: { id: string; component_name: string; quantity: number }[];
+}
+
+export interface ProductImage {
+  id: string;
+  product_id: string;
+  image_url: string;
+  is_primary: boolean;
+  display_order: number;
+}
+
+export interface InventoryProduct {
+  id: string; name: string; sku: string; barcode: string | null;
+  category_id: string | null; brand_id: string | null; uom_id: string | null;
+  category_name: string | null; brand_name: string | null; uom_name: string | null;
+  short_description: string | null; long_description: string | null;
+  image_url: string | null;
+  purchase_price: number; mrp: number; selling_price: number;
+  tax_percent: number; discount_limit: number;
+  initial_stock: number; stock?: number; reorder_level: number; safety_stock: number;
+  supplier: string | null; warehouse: string | null;
+  status: string; created_at: string; updated_at: string;
+}
+
+// --- Inventory Operations ---
+export interface GoodsReceipt {
+  id: string;
+  receipt_number: string;
+  supplier: string | null;
+  reference_number: string | null;
+  notes: string | null;
+  status: string;
+  items: any[];
+}
+
+export interface GoodsIssue {
+  id: string;
+  issue_number: string;
+  recipient: string | null;
+  reference_number: string | null;
+  notes: string | null;
+  status: string;
+  items: any[];
+}
+
+export interface StockMovement {
+  id: string;
+  movement_number: string;
+  product_id: string;
+  source_location: string;
+  destination_location: string;
+  quantity: number;
+  notes: string | null;
+  status: string;
+}
+
+export interface StockAdjustment {
+  id: string;
+  adjustment_number: string;
+  product_id: string;
+  adjustment_type: string;
+  quantity_changed: number;
+  reason: string | null;
+  status: string;
+}
+
+export interface CycleCount {
+  id: string;
+  count_number: string;
+  location: string | null;
+  auditor: string | null;
+  status: string;
+  notes: string | null;
+  items: any[];
+}
+
+export const inventoryApi = {
+  // Products
+  getProducts: (params?: { category_id?: string; brand_id?: string; search?: string; page?: number; page_size?: number }) =>
+    request<PaginatedResponse<InventoryProduct>>("GET", "/inventory/products", undefined, params as Record<string, any>),
+  createProduct: (data: Record<string, unknown>) => request<InventoryProduct>("POST", "/inventory/products", data),
+  masterImportProducts: (items: Record<string, unknown>[]) => 
+    request<{ products_created: number; brands_created: number; categories_created: number; uoms_created: number; skipped_count: number; errors: string[] }>("POST", "/inventory/products/master-import", { items }),
+  updateProduct: (id: string, data: Record<string, unknown>) => request<InventoryProduct>("PATCH", `/inventory/products/${id}`, data),
+  deleteProduct: (id: string) => request<void>("DELETE", `/inventory/products/${id}`),
+
+  // Master Catalog & AI Search
+  searchMasterCatalog: (query: string, searchWeb = false, provider = "gemini") =>
+    request<Array<{
+      id?: string;
+      name: string;
+      barcode?: string;
+      brand_name?: string;
+      category_name?: string;
+      sub_category_name?: string;
+      model_number?: string;
+      hsn_code?: string;
+      mrp?: number;
+      selling_price?: number;
+      purchase_price?: number;
+      image_url?: string;
+      short_description?: string;
+      specifications?: string;
+      source?: "MASTER_DB" | "AI_WEB_SEARCH" | "EXCEL_IMPORT";
+    }>>("GET", `/inventory/master-catalog/search?query=${encodeURIComponent(query)}&search_web=${searchWeb}&provider=${provider}`),
+
+  saveToMasterCatalog: (item: any) =>
+    request<any>("POST", "/inventory/master-catalog/save", item),
+
+  importExcelMasterCatalog: (items: any[]) =>
+    request<{ message: string; count: number }>("POST", "/inventory/master-catalog/import-excel", { items }),
+
+  importToLocalInventory: (data: Record<string, unknown>) =>
+    request<any>("POST", "/inventory/master-catalog/import-to-local-inventory", data),
+  
+  // Categories
+  getCategories: (params?: { search?: string; page?: number; page_size?: number }) =>
+    request<PaginatedResponse<InventoryCategory>>("GET", "/inventory/categories", undefined, params as Record<string, any>),
+  createCategory: (data: Record<string, unknown>) => request<InventoryCategory>("POST", "/inventory/categories", data),
+  bulkCreateCategories: (categories: Record<string, unknown>[]) => 
+    request<{ created_count: number; skipped_count: number; errors: string[] }>("POST", "/inventory/categories/bulk", { categories }),
+  updateCategory: (id: string, data: Record<string, unknown>) => request<InventoryCategory>("PATCH", `/inventory/categories/${id}`, data),
+  deleteCategory: (id: string) => request<void>("DELETE", `/inventory/categories/${id}`),
+  
+  // Brands
+  getBrands: (params?: { search?: string; page?: number; page_size?: number }) =>
+    request<PaginatedResponse<InventoryBrand>>("GET", "/inventory/brands", undefined, params as Record<string, any>),
+  createBrand: (data: Record<string, unknown>) => request<InventoryBrand>("POST", "/inventory/brands", data),
+  updateBrand: (id: string, data: Record<string, unknown>) => request<InventoryBrand>("PATCH", `/inventory/brands/${id}`, data),
+  deleteBrand: (id: string) => request<void>("DELETE", `/inventory/brands/${id}`),
+  
+  // UOMs
+  getUOMs: (params?: { search?: string; page?: number; page_size?: number }) =>
+    request<PaginatedResponse<InventoryUOM>>("GET", "/inventory/uoms", undefined, params as Record<string, any>),
+  createUOM: (data: Record<string, unknown>) => request<InventoryUOM>("POST", "/inventory/uoms", data),
+  deleteUOM: (id: string) => request<void>("DELETE", `/inventory/uoms/${id}`),
+
+  // Attributes
+  getProductAttributes: () => request<ProductAttribute[]>("GET", "/inventory/product-attributes"),
+  createProductAttribute: (data: Record<string, unknown>) => request<ProductAttribute>("POST", "/inventory/product-attributes", data),
+  deleteProductAttribute: (id: string) => request<void>("DELETE", `/inventory/product-attributes/${id}`),
+
+  // Variants
+  getProductVariants: () => request<ProductVariant[]>("GET", "/inventory/product-variants"),
+  createProductVariant: (data: Record<string, unknown>) => request<ProductVariant>("POST", "/inventory/product-variants", data),
+  deleteProductVariant: (id: string) => request<void>("DELETE", `/inventory/product-variants/${id}`),
+
+  // Bundles
+  getProductBundles: () => request<ProductBundle[]>("GET", "/inventory/product-bundles"),
+  createProductBundle: (data: Record<string, unknown>) => request<ProductBundle>("POST", "/inventory/product-bundles", data),
+  deleteProductBundle: (id: string) => request<void>("DELETE", `/inventory/product-bundles/${id}`),
+
+  // Kits
+  getProductKits: () => request<ProductKit[]>("GET", "/inventory/product-kits"),
+  createProductKit: (data: Record<string, unknown>) => request<ProductKit>("POST", "/inventory/product-kits", data),
+  deleteProductKit: (id: string) => request<void>("DELETE", `/inventory/product-kits/${id}`),
+
+  // Images
+  getProductImages: () => request<ProductImage[]>("GET", "/inventory/product-images"),
+  createProductImage: (data: Record<string, unknown>) => request<ProductImage>("POST", "/inventory/product-images", data),
+  deleteProductImage: (id: string) => request<void>("DELETE", `/inventory/product-images/${id}`),
+
+  // Operations - Overview
+  getOperationsOverview: () => request<any>("GET", "/inventory/operations/overview"),
+
+  // Operations - GRN
+  getGoodsReceipts: () => request<GoodsReceipt[]>("GET", "/inventory/grn"),
+  createGoodsReceipt: (data: Record<string, unknown>) => request<GoodsReceipt>("POST", "/inventory/grn", data),
+  deleteGoodsReceipt: (id: string) => request<void>("DELETE", `/inventory/grn/${id}`),
+
+  // Operations - Goods Issue
+  getGoodsIssues: () => request<GoodsIssue[]>("GET", "/inventory/goods-issue"),
+  createGoodsIssue: (data: Record<string, unknown>) => request<GoodsIssue>("POST", "/inventory/goods-issue", data),
+  deleteGoodsIssue: (id: string) => request<void>("DELETE", `/inventory/goods-issue/${id}`),
+
+  // Operations - Stock Movement
+  getStockMovements: () => request<StockMovement[]>("GET", "/inventory/movements"),
+  createStockMovement: (data: Record<string, unknown>) => request<StockMovement>("POST", "/inventory/movements", data),
+  deleteStockMovement: (id: string) => request<void>("DELETE", `/inventory/movements/${id}`),
+
+  // Operations - Stock Adjustment
+  getStockAdjustments: () => request<StockAdjustment[]>("GET", "/inventory/adjustments"),
+  createStockAdjustment: (data: Record<string, unknown>) => request<StockAdjustment>("POST", "/inventory/adjustments", data),
+  deleteStockAdjustment: (id: string) => request<void>("DELETE", `/inventory/adjustments/${id}`),
+
+  // Operations - Cycle Counting
+  getCycleCounts: () => request<CycleCount[]>("GET", "/inventory/cycle-counts"),
+  createCycleCount: (data: Record<string, unknown>) => request<CycleCount>("POST", "/inventory/cycle-counts", data),
+  deleteCycleCount: (id: string) => request<void>("DELETE", `/inventory/cycle-counts/${id}`),
+
+  // Warehouse Management
+  getWarehouses: () => request<Warehouse[]>("GET", "/inventory/warehouses"),
+  createWarehouse: (data: Record<string, unknown>) => request<Warehouse>("POST", "/inventory/warehouses", data),
+  deleteWarehouse: (id: string) => request<void>("DELETE", `/inventory/warehouses/${id}`),
+  
+  getStorageLocations: () => request<StorageLocation[]>("GET", "/inventory/locations"),
+  createStorageLocation: (warehouseId: string, data: Record<string, unknown>) => request<StorageLocation>("POST", `/inventory/warehouses/${warehouseId}/locations`, data),
+  deleteStorageLocation: (id: string) => request<void>("DELETE", `/inventory/locations/${id}`),
+};

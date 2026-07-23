@@ -1,3 +1,7 @@
+import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 from functools import lru_cache
 from typing import List
 
@@ -62,6 +66,31 @@ class Settings(BaseSettings):
     google_client_id: str | None = Field(default=None, alias="GOOGLE_CLIENT_ID")
     google_client_secret: str | None = Field(default=None, alias="GOOGLE_CLIENT_SECRET")
     google_redirect_uri: str | None = Field(default=None, alias="GOOGLE_REDIRECT_URI")
+
+    # AI / LLM
+    gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o", alias="OPENAI_MODEL")
+    anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    anthropic_model: str = Field(default="claude-3-5-sonnet-20241022", alias="ANTHROPIC_MODEL")
+    anthropic_base_url: str = Field(default="https://api.anthropic.com", alias="ANTHROPIC_BASE_URL")
+    ai_provider: str = Field(default="gemini", alias="AI_PROVIDER") # gemini | openai | claude
+
+    # Meta / Facebook App OAuth
+    facebook_app_id: str | None = Field(default=None, alias="FACEBOOK_APP_ID")
+    facebook_app_secret: str | None = Field(default=None, alias="FACEBOOK_APP_SECRET")
+    # Redirect URI registered in Meta Developer App -> Facebook Login settings
+    facebook_redirect_uri: str = Field(default="http://localhost:8000/api/v1/crm/facebook/oauth-callback", alias="FACEBOOK_REDIRECT_URI")
+
+    # LiveKit / Telephony
+    livekit_url: str | None = Field(default=None, alias="LIVEKIT_URL")
+    livekit_api_key: str | None = Field(default=None, alias="LIVEKIT_API_KEY")
+    livekit_api_secret: str | None = Field(default=None, alias="LIVEKIT_API_SECRET")
+    sip_trunk_id: str | None = Field(default=None, alias="SIP_TRUNK_ID")
+    plivo_termination_domain: str | None = Field(default=None, alias="PLIVO_TERMINATION_DOMAIN")
+    plivo_auth_id: str | None = Field(default=None, alias="PLIVO_AUTH_ID")
+    plivo_auth_token: str | None = Field(default=None, alias="PLIVO_AUTH_TOKEN")
 
     # Frontend integration
     frontend_url: str = Field(default="http://localhost:8080", alias="FRONTEND_URL")

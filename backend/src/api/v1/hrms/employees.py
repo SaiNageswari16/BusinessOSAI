@@ -87,7 +87,7 @@ async def list_employees(
 async def create_employee(
     payload: EmployeeCreate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms_employees"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     # 1. Auto-generate employee code if none is provided or matches "AUTO" / is empty
@@ -222,7 +222,7 @@ async def create_employee(
 async def bulk_create_employees(
     payload: EmployeeBulkCreate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms_employees"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     created_count = 0
@@ -292,7 +292,7 @@ async def update_employee(
     emp_id: uuid.UUID,
     payload: EmployeeUpdate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms_employees"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     emp = await db.scalar(
@@ -320,7 +320,7 @@ async def update_employee(
 async def delete_employee(
     emp_id: uuid.UUID,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms_employees"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     emp = await db.scalar(
@@ -368,7 +368,7 @@ async def create_employee_document(
     emp_id: uuid.UUID,
     payload: EmployeeDocumentCreate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms_employees"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     emp = await db.scalar(

@@ -1547,3 +1547,792 @@ class PayGradeResponse(ORMModel):
     tds_deduction: float
     created_at: datetime
     updated_at: datetime
+# -------------------------------------------------------------------------
+# POS MODULE SCHEMAS
+# -------------------------------------------------------------------------
+
+# --- Categories ---
+class POSCategoryCreate(BaseModel):
+    name: str
+    description: str | None = None
+    color: str | None = None
+    icon: str | None = None
+    is_active: bool = True
+
+class POSCategoryResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    color: str | None
+    icon: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Products ---
+class POSProductCreate(BaseModel):
+    name: str
+    brand: str | None = None
+    sku: str | None = None
+    barcode: str | None = None
+    description: str | None = None
+    image_url: str | None = None
+    category_id: uuid.UUID | None = None
+    purchase_price: float = 0.0
+    mrp: float = 0.0
+    selling_price: float
+    tax_percent: float = 5.0
+    discount: float = 0.0
+    stock: int = 0
+    reorder_level: int = 10
+    is_active: bool = True
+
+class POSProductUpdate(BaseModel):
+    name: str | None = None
+    brand: str | None = None
+    sku: str | None = None
+    barcode: str | None = None
+    description: str | None = None
+    image_url: str | None = None
+    category_id: uuid.UUID | None = None
+    purchase_price: float | None = None
+    mrp: float | None = None
+    selling_price: float | None = None
+    tax_percent: float | None = None
+    discount: float | None = None
+    stock: int | None = None
+    reorder_level: int | None = None
+    is_active: bool | None = None
+
+class POSProductResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    brand: str | None
+    sku: str | None
+    barcode: str | None
+    description: str | None
+    image_url: str | None
+    category_id: uuid.UUID | None
+    category_name: str | None = None
+    purchase_price: float
+    mrp: float
+    selling_price: float
+    tax_percent: float
+    discount: float
+    stock: int
+    reorder_level: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class POSProductBulkCreate(BaseModel):
+    products: list[POSProductCreate]
+
+class POSProductBulkResponse(BaseModel):
+    created_count: int
+    skipped_count: int
+    errors: list[str]
+
+
+
+class POSTransactionItemBase(BaseModel):
+    product_id: uuid.UUID
+    quantity: int
+    unit_price: float
+    discount: float = 0.0
+
+class POSTransactionItemCreate(POSTransactionItemBase):
+    pass
+
+class POSTransactionItemResponse(POSTransactionItemBase):
+    id: uuid.UUID
+    transaction_id: uuid.UUID
+    subtotal: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class POSPaymentBase(BaseModel):
+    payment_method: str
+    amount: float
+    reference_number: str | None = None
+
+class POSPaymentCreate(POSPaymentBase):
+    pass
+
+class POSPaymentResponse(POSPaymentBase):
+    id: uuid.UUID
+    transaction_id: uuid.UUID
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class POSTransactionBase(BaseModel):
+    customer_id: uuid.UUID | None = None
+    subtotal: float
+    tax_amount: float = 0.0
+    discount_amount: float = 0.0
+    total_amount: float
+
+class POSTransactionCreate(POSTransactionBase):
+    items: list[POSTransactionItemCreate]
+    payments: list[POSPaymentCreate]
+
+class POSTransactionResponse(POSTransactionBase):
+    id: uuid.UUID
+    cashier_id: uuid.UUID
+    receipt_number: str
+    status: str
+    
+    parent_transaction_id: uuid.UUID | None = None
+    delivery_status: str | None = None
+    delivery_address: str | None = None
+    driver_name: str | None = None
+
+    created_at: datetime
+    updated_at: datetime
+    items: list[POSTransactionItemResponse] = []
+    payments: list[POSPaymentResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+class POSCheckoutPayload(BaseModel):
+    """
+    Combined payload received from the frontend POSTerminal cart.
+    """
+    session_id: uuid.UUID
+    customer_id: uuid.UUID | None = None
+    
+    # Support for Hold/Resume, Refunds, Delivery
+    status: str = "completed"
+    parent_transaction_id: uuid.UUID | None = None
+    delivery_status: str | None = None
+    delivery_address: str | None = None
+    driver_name: str | None = None
+
+    items: list[POSTransactionItemCreate]
+    payments: list[POSPaymentCreate]
+    subtotal: float
+    tax_amount: float = 0.0
+    discount_amount: float = 0.0
+    total_amount: float
+
+
+class POSSessionCreate(BaseModel):
+    starting_cash: float = 0.0
+
+
+class POSSessionClose(BaseModel):
+    expected_cash: float
+    actual_cash: float
+    discrepancy_reason: str | None = None
+
+
+class POSSessionResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    user_id: uuid.UUID
+    starting_cash: float
+    status: str
+    closing_time: datetime | None = None
+    expected_cash: float | None = None
+    actual_cash: float | None = None
+    discrepancy_reason: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+# ─── HRMS — Recruitment Schemas ──────────────────────────────────
+
+class JobOpeningBase(BaseModel):
+    title: str
+    department: str
+    location: str
+    type: str = "Full-Time"
+    experience: str
+    openings: int = 1
+    status: str = "Open"
+    description: str
+    threshold_score: int = 70
+    portals: list[str] = []
+    criteria: str
+
+
+class JobOpeningCreate(JobOpeningBase):
+    pass
+
+
+class JobOpeningUpdate(BaseModel):
+    title: str | None = None
+    department: str | None = None
+    location: str | None = None
+    type: str | None = None
+    experience: str | None = None
+    openings: int | None = None
+    status: str | None = None
+    description: str | None = None
+    threshold_score: int | None = None
+    portals: list[str] | None = None
+    criteria: str | None = None
+
+
+class JobOpeningResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    title: str
+    department: str
+    location: str
+    type: str
+    experience: str
+    openings: int
+    applicants_count: int
+    posted_date: date
+    status: str
+    description: str
+    threshold_score: int
+    portals: list[str]
+    criteria: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ApplicantBase(BaseModel):
+    name: str
+    email: str
+    job_id: uuid.UUID | None = None
+    experience: str
+    resume_text: str | None = None
+    source: str = "Careers Page"
+    expected_salary: float | None = None
+
+
+class ApplicantCreate(ApplicantBase):
+    pass
+
+
+class ApplicantUpdate(BaseModel):
+    rating: int | None = None
+    stage: str | None = None
+    expected_salary: float | None = None
+    proposed_salary: float | None = None
+
+
+class ApplicantResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    email: str
+    job_id: uuid.UUID
+    job_title: str
+    applied_date: date
+    experience: str
+    rating: int
+    stage: str
+    source: str
+    match_score: int
+    resume_text: str | None
+    expected_salary: float | None = None
+    proposed_salary: float | None = None
+    notes_json: list[dict] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+class InterviewBase(BaseModel):
+    applicant_id: uuid.UUID
+    interviewer_name: str
+    date: str
+    time: str
+    duration: int = 60
+    type: str = "Technical"
+    mode: str = "Video Call"
+
+
+class InterviewCreate(InterviewBase):
+    pass
+
+
+class InterviewUpdate(BaseModel):
+    status: str | None = None
+    feedback: str | None = None
+
+
+class InterviewResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    applicant_id: uuid.UUID
+    candidate: str
+    job_title: str
+    interviewer_name: str
+    date: str
+    time: str
+    duration: int
+    type: str
+    mode: str
+    meeting_link: str | None
+    status: str
+    feedback: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class OfferLetterBase(BaseModel):
+    applicant_id: uuid.UUID
+    ctc: float
+    expiry_date: date
+    joining_date: date
+    signer_name: str
+    custom_template: str | None = None
+
+
+class OfferLetterCreate(OfferLetterBase):
+    pass
+
+
+class OfferLetterUpdate(BaseModel):
+    status: str | None = None
+    email_sent: bool | None = None
+
+
+class OfferLetterResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    applicant_id: uuid.UUID
+    candidate: str
+    role: str
+    ctc: float
+    offer_date: date
+    expiry_date: date
+    joining_date: date
+    signer_name: str
+    status: str
+    email_sent: bool
+    custom_template: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class OnboardingTaskSchema(BaseModel):
+    task: str
+    assignedTo: str
+    status: str = "Pending"
+
+
+class OnboardingBase(BaseModel):
+    applicant_id: uuid.UUID
+    start_date: date
+    tasks: list[OnboardingTaskSchema] = []
+
+
+class OnboardingCreate(OnboardingBase):
+    pass
+
+
+class OnboardingUpdate(BaseModel):
+    progress: int | None = None
+    tasks: list[OnboardingTaskSchema] | None = None
+
+
+class OnboardingResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    applicant_id: uuid.UUID
+    new_hire: str
+    role: str
+    start_date: date
+    progress: int
+    tasks_json: list[dict]
+    created_at: datetime
+    updated_at: datetime
+
+
+# ─── Performance Schemas ──────────────────────────────────────────
+
+class PerformanceGoalBase(BaseModel):
+    employee_id: uuid.UUID | None = None
+    employee_name: str
+    title: str
+    description: str | None = None
+    target_date: date
+    weight: int = 10
+    progress: int = 0
+    status: str = "Not Started"
+
+
+class PerformanceGoalCreate(PerformanceGoalBase):
+    pass
+
+
+class PerformanceGoalUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    target_date: date | None = None
+    weight: int | None = None
+    progress: int | None = None
+    status: str | None = None
+
+
+class PerformanceGoalResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_id: uuid.UUID | None
+    employee_name: str
+    title: str
+    description: str | None
+    target_date: date
+    weight: int
+    progress: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class PerformanceKpiBase(BaseModel):
+    metric: str
+    target: str
+    current: str
+    unit: str
+    achievement: int = 0
+
+
+class PerformanceKpiCreate(PerformanceKpiBase):
+    pass
+
+
+class PerformanceKpiResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    metric: str
+    target: str
+    current: str
+    unit: str
+    achievement: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PerformanceAppraisalBase(BaseModel):
+    employee_id: uuid.UUID
+    employee_name: str
+    department: str
+    period: str
+    self_score: int = 0
+    manager_score: int = 0
+    final_score: int = 0
+    rating: str = "Meets Expectations"
+    reviewer: str
+    status: str = "Pending"
+
+
+class PerformanceAppraisalCreate(PerformanceAppraisalBase):
+    pass
+
+
+class PerformanceAppraisalUpdate(BaseModel):
+    self_score: int | None = None
+    manager_score: int | None = None
+    final_score: int | None = None
+    rating: str | None = None
+    status: str | None = None
+
+
+class PerformanceAppraisalResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_name: str
+    department: str
+    period: str
+    self_score: int
+    manager_score: int
+    final_score: int
+    rating: str
+    reviewer: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class PerformanceIncentiveBase(BaseModel):
+    employee_name: str
+    department: str
+    type: str
+    basis: str
+    amount: float
+    status: str = "Pending"
+
+
+class PerformanceIncentiveCreate(PerformanceIncentiveBase):
+    pass
+
+
+class PerformanceIncentiveResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_name: str
+    department: str
+    type: str
+    basis: str
+    amount: float
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+# ─── Learning Schemas ─────────────────────────────────────────────
+
+class LearningCourseBase(BaseModel):
+    title: str
+    category: str
+    instructor: str
+    duration: str
+    enrolled: int = 0
+    completion: int = 0
+    status: str = "Active"
+
+
+class LearningCourseCreate(LearningCourseBase):
+    pass
+
+
+class LearningCourseResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    title: str
+    category: str
+    instructor: str
+    duration: str
+    enrolled: int
+    completion: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class LearningCertificateBase(BaseModel):
+    employee_name: str
+    cert_name: str
+    issuer: str
+    issued_date: str
+    expiry_date: str = "N/A"
+    status: str = "Valid"
+
+
+class LearningCertificateCreate(LearningCertificateBase):
+    pass
+
+
+class LearningCertificateResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_name: str
+    cert_name: str
+    issuer: str
+    issued_date: str
+    expiry_date: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class LearningAssessmentBase(BaseModel):
+    title: str
+    course_name: str
+    due_date: str
+    participants: int = 0
+    avg_score: int = 0
+    status: str = "Active"
+
+
+class LearningAssessmentCreate(LearningAssessmentBase):
+    pass
+
+
+class LearningAssessmentResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    title: str
+    course_name: str
+    due_date: str
+    participants: int
+    avg_score: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+# ─── Exit Management Schemas ─────────────────────────────────────
+
+class ExitResignationBase(BaseModel):
+    employee_id: uuid.UUID
+    employee_name: str
+    department: str
+    designation: str
+    last_working_day: date
+    reason: str
+    status: str = "Pending"
+
+
+class ExitResignationCreate(ExitResignationBase):
+    pass
+
+
+class ExitResignationUpdate(BaseModel):
+    status: str | None = None
+    last_working_day: date | None = None
+
+
+class ExitResignationResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_name: str
+    department: str
+    designation: str
+    resign_date: date
+    last_working_day: date
+    reason: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExitClearanceTaskBase(BaseModel):
+    employee_id: uuid.UUID
+    employee_name: str
+    department: str
+    task: str
+    status: str = "Pending"
+    assigned_to: str
+
+
+class ExitClearanceTaskCreate(ExitClearanceTaskBase):
+    pass
+
+
+class ExitClearanceTaskUpdate(BaseModel):
+    status: str | None = None
+
+
+class ExitClearanceTaskResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_name: str
+    department: str
+    task: str
+    status: str
+    assigned_to: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExitFinalSettlementBase(BaseModel):
+    employee_id: uuid.UUID
+    employee_name: str
+    last_working_day: date
+    components_json: list[dict] = []
+
+
+class ExitFinalSettlementCreate(ExitFinalSettlementBase):
+    pass
+
+
+class ExitFinalSettlementResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_name: str
+    last_working_day: date
+    components_json: list[dict]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExitExperienceLetterBase(BaseModel):
+    employee_id: uuid.UUID
+    employee_name: str
+    designation: str
+    from_date: date
+    to_date: date
+    issued_on: str = "—"
+    status: str = "Pending"
+
+
+class ExitExperienceLetterCreate(ExitExperienceLetterBase):
+    pass
+
+
+class ExitExperienceLetterUpdate(BaseModel):
+    status: str | None = None
+    issued_on: str | None = None
+
+
+class ExitExperienceLetterResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_name: str
+    designation: str
+    from_date: date
+    to_date: date
+    issued_on: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+ponents_json: list[dict] = []
+
+
+class ExitFinalSettlementCreate(ExitFinalSettlementBase):
+    pass
+
+
+class ExitFinalSettlementResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_name: str
+    last_working_day: date
+    components_json: list[dict]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExitExperienceLetterBase(BaseModel):
+    employee_id: uuid.UUID
+    employee_name: str
+    designation: str
+    from_date: date
+    to_date: date
+    issued_on: str = "—"
+    status: str = "Pending"
+
+
+class ExitExperienceLetterCreate(ExitExperienceLetterBase):
+    pass
+
+
+class ExitExperienceLetterUpdate(BaseModel):
+    status: str | None = None
+    issued_on: str | None = None
+
+
+class ExitExperienceLetterResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_name: str
+    designation: str
+    from_date: date
+    to_date: date
+    issued_on: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+
+

@@ -1,32 +1,42 @@
 import { useState, useEffect, useCallback } from "react";
-import { systemSettingsApi, SystemSetting } from "../../lib/api-client";
+import { systemSettingsApi, crmLeadsApi, SystemSetting } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { Settings, Globe, Shield, Bell, Palette, Database, Check, Loader2 } from "lucide-react";
+import { Settings, Globe, Shield, Bell, Palette, Database, Check, Loader2, Facebook } from "lucide-react";
+import { toast } from "sonner";
 
 const CATEGORIES = [
   { id: "general", icon: Globe, label: "Localization" },
   { id: "security", icon: Shield, label: "Security & MFA" },
   { id: "notifications", icon: Bell, label: "Notifications" },
   { id: "branding", icon: Palette, label: "Theme & Branding" },
+  { id: "facebook", icon: Facebook, label: "Meta Integration" },
   { id: "data", icon: Database, label: "Backup & Retention" },
 ];
 
-const DEFAULT_SETTINGS: { key: string; label: string; category: string; type: "text" | "toggle" | "select"; options?: string[] }[] = [
+const DEFAULT_SETTINGS: { key: string; label: string; category: string; type: "text" | "toggle" | "select" | "password"; options?: string[] }[] = [
   { key: "default_currency", label: "Default Currency", category: "general", type: "text" },
   { key: "default_timezone", label: "Default Timezone", category: "general", type: "text" },
   { key: "system_language", label: "System Language", category: "general", type: "text" },
   { key: "date_format", label: "Date Format", category: "general", type: "text" },
   { key: "enable_gst_vat", label: "Enable GST / VAT Tracking", category: "general", type: "toggle" },
   { key: "strict_fy_locking", label: "Strict Financial Year Locking", category: "general", type: "toggle" },
+  
   { key: "mfa_required", label: "Require MFA for all users", category: "security", type: "toggle" },
   { key: "session_timeout_hours", label: "Session Timeout (hours)", category: "security", type: "text" },
   { key: "password_expiry_days", label: "Password Expiry (days)", category: "security", type: "text" },
+  
   { key: "email_notifications", label: "Email Notifications", category: "notifications", type: "toggle" },
   { key: "sms_notifications", label: "SMS Notifications", category: "notifications", type: "toggle" },
+  
   { key: "primary_color", label: "Primary Brand Color", category: "branding", type: "text" },
   { key: "company_logo_url", label: "Company Logo URL", category: "branding", type: "text" },
+  
+  { key: "fb_page_or_form_id", label: "Facebook Page ID / Lead Form ID", category: "facebook", type: "text" },
+  { key: "fb_access_token", label: "Facebook Page Access Token", category: "facebook", type: "password" },
+  { key: "fb_api_version", label: "Graph API Version", category: "facebook", type: "select", options: ["v25.0", "v24.0"] },
+  
   { key: "backup_frequency", label: "Backup Frequency", category: "data", type: "select", options: ["daily", "weekly", "monthly"] },
   { key: "data_retention_days", label: "Data Retention (days)", category: "data", type: "text" },
 ];
@@ -45,28 +55,68 @@ export function GlobalSettings() {
     try {
       const res = await systemSettingsApi.list();
       setSettings(res);
-      // Seed local values from server
+      
       const vals: Record<string, string> = {};
       res.forEach(s => { vals[s.key] = s.value ?? ""; });
+
+      // Progressive enhancement: load Facebook credentials from CRM endpoints
+      try {
+        const fbRes = await crmLeadsApi.getFacebookCredentials();
+        vals["fb_page_or_form_id"] = fbRes.fb_page_or_form_id ?? "";
+        vals["fb_access_token"] = fbRes.has_token ? "••••••••••••••••" : "";
+        vals["fb_api_version"] = fbRes.fb_api_version ?? "v25.0";
+      } catch (fbErr) {
+        console.warn("Could not retrieve Facebook credentials", fbErr);
+      }
+
       setLocalValues(vals);
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Failed to load settings"); }
-    finally { setLoading(false); }
+    } catch (err: unknown) { 
+      setError(err instanceof Error ? err.message : "Failed to load settings"); 
+    } finally { 
+      setLoading(false); 
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
     setSaving(true); setSaved(false); setError("");
+    
+    // Save Facebook credentials via CRM integration
+    if (activeCategory === "facebook") {
+      try {
+        await crmLeadsApi.saveFacebookCredentials({
+          fb_page_or_form_id: localValues["fb_page_or_form_id"] ?? "",
+          fb_access_token: localValues["fb_access_token"] ?? "",
+          fb_api_version: localValues["fb_api_version"] || "v25.0"
+        });
+        toast.success("Meta Integration credentials updated!");
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to update Meta configurations");
+        toast.error("Failed to update Facebook credentials");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Default System settings update
     const categoryKeys = DEFAULT_SETTINGS.filter(s => s.category === activeCategory).map(s => s.key);
     const toSave = categoryKeys.map(key => ({
       key, value: localValues[key] ?? null, category: activeCategory,
     }));
     try {
       await systemSettingsApi.batchUpdate(toSave);
+      toast.success("System configurations updated!");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Failed to save"); }
-    finally { setSaving(false); }
+    } catch (err: unknown) { 
+      setError(err instanceof Error ? err.message : "Failed to save settings"); 
+    } finally { 
+      setSaving(false); 
+    }
   };
 
   const categorySetting = DEFAULT_SETTINGS.filter(s => s.category === activeCategory);
@@ -88,9 +138,13 @@ export function GlobalSettings() {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
         <div className="md:col-span-1 space-y-1">
-          {CATEGORIES.map((item, idx) => (
+          {CATEGORIES.map((item) => (
             <button key={item.id} onClick={() => setActiveCategory(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${activeCategory === item.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`}>
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left border-none cursor-pointer ${
+                activeCategory === item.id 
+                  ? "bg-primary/10 text-primary" 
+                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground bg-transparent"
+              }`}>
               <item.icon className="size-4" /> {item.label}
             </button>
           ))}
@@ -114,7 +168,7 @@ export function GlobalSettings() {
                         <div key={setting.key} className="col-span-2 flex items-center justify-between p-4 border rounded-lg">
                           <div className="font-semibold text-sm">{setting.label}</div>
                           <button type="button" onClick={() => setLocalValues(prev => ({ ...prev, [setting.key]: isOn ? "false" : "true" }))}
-                            className={`w-10 h-5 rounded-full relative transition-colors ${isOn ? "bg-primary" : "bg-muted-foreground/30"}`}>
+                            className={`w-10 h-5 rounded-full relative transition-colors border-none cursor-pointer ${isOn ? "bg-primary" : "bg-muted-foreground/30"}`}>
                             <div className={`absolute top-1 size-3 bg-white rounded-full transition-all ${isOn ? "right-1" : "left-1"}`} />
                           </button>
                         </div>
@@ -132,10 +186,15 @@ export function GlobalSettings() {
                       );
                     }
                     return (
-                      <div key={setting.key} className="space-y-2">
+                      <div key={setting.key} className="col-span-2 space-y-2">
                         <label className="text-xs font-semibold text-muted-foreground uppercase">{setting.label}</label>
-                        <Input value={val} onChange={e => setLocalValues(prev => ({ ...prev, [setting.key]: e.target.value }))}
-                          placeholder={`Enter ${setting.label.toLowerCase()}...`} className="text-sm" />
+                        <Input 
+                          type={setting.type === "password" ? "password" : "text"}
+                          value={val} 
+                          onChange={e => setLocalValues(prev => ({ ...prev, [setting.key]: e.target.value }))}
+                          placeholder={`Enter ${setting.label.toLowerCase()}...`} 
+                          className="text-sm" 
+                        />
                       </div>
                     );
                   })}

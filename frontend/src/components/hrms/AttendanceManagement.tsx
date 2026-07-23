@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { attendanceApi, employeesApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee } from "../../lib/api-client";
+import { attendanceApi, employeesApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, workCalendarsApi } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -79,6 +79,36 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     corrected_check_out: "",
   });
 
+  // Shift & Calendars states
+  const [workCalendars, setWorkCalendars] = useState<any[]>([]);
+  const [calendarDialogOpen, setCalendarDialogOpen] = useState(false);
+  const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
+  const [selectedCalendar, setSelectedCalendar] = useState<any | null>(null);
+  
+  const [shiftForm, setShiftForm] = useState({
+    name: "",
+    startTime: "09:00",
+    endTime: "18:00"
+  });
+
+  const [calendarForm, setCalendarForm] = useState({
+    name: "",
+    workingDays: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+  });
+
+  const loadShiftsData = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const res = await workCalendarsApi.list(1, 50);
+      setWorkCalendars(res.items || []);
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || "Failed to load shift calendars");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const loadDailyAttendance = useCallback(async () => {
     setLoading(true); setError("");
     try {
@@ -130,8 +160,11 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   }, []);
 
   useEffect(() => {
-    if (tab === "daily_attendance" || tab === "gps_attendance" || tab === "shift_attendance") {
+    if (tab === "daily_attendance" || tab === "gps_attendance") {
       loadDailyAttendance();
+    } else if (tab === "shift_attendance") {
+      loadDailyAttendance();
+      loadShiftsData();
     } else if (tab === "biometric") {
       loadBiometric();
     } else if (tab === "face_recognition") {
@@ -139,7 +172,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     } else if (tab === "attendance_corrections") {
       loadCorrections();
     }
-  }, [tab, loadDailyAttendance, loadBiometric, loadFaceLogs, loadCorrections]);
+  }, [tab, loadDailyAttendance, loadShiftsData, loadBiometric, loadFaceLogs, loadCorrections]);
 
   // Load employees list for face simulator dropdown
   const loadEmployeesList = useCallback(async () => {
@@ -517,34 +550,271 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
 
   // ─── Render: Shift Attendance ───────────────────────────────────
   if (tab === "shift_attendance") {
-    // Basic shifts simulation computed from logs
+    const handleCreateCalendar = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!calendarForm.name.trim()) return;
+      try {
+        await workCalendarsApi.create({
+          name: calendarForm.name,
+          calendar_type: "shift",
+          working_days: calendarForm.workingDays,
+          shifts: []
+        });
+        setCalendarDialogOpen(false);
+        setCalendarForm({ name: "", workingDays: ["Mon", "Tue", "Wed", "Thu", "Fri"] });
+        loadShiftsData();
+      } catch (err: any) {
+        alert("Failed to create calendar: " + err.message);
+      }
+    };
+
+    const handleAddShift = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!selectedCalendar || !shiftForm.name.trim()) return;
+      try {
+        const updatedShifts = [...(selectedCalendar.shifts || [])];
+        updatedShifts.push({
+          name: shiftForm.name,
+          start_time: shiftForm.startTime,
+          end_time: shiftForm.endTime
+        });
+        await workCalendarsApi.update(selectedCalendar.id, {
+          shifts: updatedShifts
+        });
+        setShiftDialogOpen(false);
+        setShiftForm({ name: "", startTime: "09:00", endTime: "18:00" });
+        setSelectedCalendar(null);
+        loadShiftsData();
+      } catch (err: any) {
+        alert("Failed to add shift: " + err.message);
+      }
+    };
+
+    const handleDeleteShift = async (cal: any, index: number) => {
+      if (!confirm("Are you sure you want to delete this shift?")) return;
+      try {
+        const updatedShifts = [...(cal.shifts || [])];
+        updatedShifts.splice(index, 1);
+        await workCalendarsApi.update(cal.id, {
+          shifts: updatedShifts
+        });
+        loadShiftsData();
+      } catch (err: any) {
+        alert("Failed to delete shift: " + err.message);
+      }
+    };
+
+    const handleDeleteCalendar = async (id: string) => {
+      if (!confirm("Are you sure you want to delete this shift calendar?")) return;
+      try {
+        await workCalendarsApi.delete(id);
+        loadShiftsData();
+      } catch (err: any) {
+        alert("Failed to delete calendar: " + err.message);
+      }
+    };
+
     return (
       <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Shift Attendance Summary</h1>
-          <p className="text-sm text-muted-foreground">Detailed headcount and presentation percentages across shifts.</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Shift & Calendars Configuration</h1>
+            <p className="text-sm text-muted-foreground">Manage active work calendars, day schedules, and shift timings.</p>
+          </div>
+          <Button 
+            className="gradient-brand text-white border-0" 
+            onClick={() => setCalendarDialogOpen(true)}
+          >
+            <Plus className="size-4 mr-2" /> New Shift Calendar
+          </Button>
         </div>
 
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
 
-        {!loading && (
-          <div className="space-y-4">
-            {[
-              { name: "General Shift (09:00 - 18:00)", present: attendance.length, absent: stats?.on_leave || 0, rate: attendance.length > 0 ? "95%" : "0%" },
-              { name: "Morning Shift (07:00 - 15:00)", present: 0, absent: 0, rate: "100%" },
-              { name: "Night Shift (23:00 - 07:00)", present: 0, absent: 0, rate: "100%" },
-            ].map(shift => (
-              <div key={shift.name} className="glass-panel p-5 rounded-xl border flex justify-between items-center">
-                <div>
-                  <h3 className="font-bold text-foreground text-base mb-1">{shift.name}</h3>
-                  <p className="text-xs text-muted-foreground">{shift.present} Present • {shift.absent} On Leave/Absent</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xl font-bold text-primary">{shift.rate}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Attendance</p>
-                </div>
+        {!loading && workCalendars.length === 0 && (
+          <div className="flex flex-col items-center justify-center p-12 text-center glass-panel rounded-xl border border-border/50 bg-muted/10">
+            <Clock className="size-12 text-muted-foreground mb-4 opacity-50" />
+            <h3 className="font-semibold text-foreground text-lg mb-1">No Shift Calendars Found</h3>
+            <p className="text-sm text-muted-foreground max-w-sm mb-4">
+              Add a work calendar to organize and assign shift timings for your employees.
+            </p>
+            <Button className="gradient-brand text-white border-0" onClick={() => setCalendarDialogOpen(true)}>
+              Initialize Calendar
+            </Button>
+          </div>
+        )}
+
+        {!loading && workCalendars.map((cal) => (
+          <motion.div 
+            key={cal.id} 
+            initial={{ opacity: 0, y: 10 }} 
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-panel p-6 rounded-xl border border-border/50 space-y-4"
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="font-bold text-foreground text-lg mb-1">{cal.name}</h3>
+                <p className="text-xs text-muted-foreground">
+                  Days: {cal.working_days?.join(", ") || "None"} | Type: {cal.calendar_type}
+                </p>
               </div>
-            ))}
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="text-xs bg-transparent"
+                  onClick={() => {
+                    setSelectedCalendar(cal);
+                    setShiftDialogOpen(true);
+                  }}
+                >
+                  <Plus className="size-3.5 mr-1" /> Add Shift
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="text-red-500 hover:text-red-600 hover:bg-red-500/10 text-xs"
+                  onClick={() => handleDeleteCalendar(cal.id)}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Shifts</p>
+              {(!cal.shifts || cal.shifts.length === 0) ? (
+                <p className="text-sm text-muted-foreground italic">No shifts configured. Click 'Add Shift' to insert one.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {cal.shifts.map((shift: any, sIdx: number) => (
+                    <div 
+                      key={sIdx} 
+                      className="flex justify-between items-center p-3 rounded-lg border border-border/50 bg-muted/20"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-1.5 bg-primary/10 rounded-md"><Clock className="size-4 text-primary" /></div>
+                        <div>
+                          <p className="font-semibold text-sm text-foreground">{shift.name}</p>
+                          <p className="text-xs text-muted-foreground">{shift.start_time} - {shift.end_time}</p>
+                        </div>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="text-muted-foreground hover:text-red-500 p-1 h-auto"
+                        onClick={() => handleDeleteShift(cal, sIdx)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        ))}
+
+        {/* Modal: New Shift Calendar */}
+        {calendarDialogOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              className="w-full max-w-md p-6 rounded-xl border bg-card text-card-foreground shadow-lg space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold">New Shift Calendar</h3>
+                <button onClick={() => setCalendarDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
+                  <XCircle className="size-5" />
+                </button>
+              </div>
+              <form onSubmit={handleCreateCalendar} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase">Calendar Name</label>
+                  <Input 
+                    placeholder="e.g. Standard Rotating Shifts" 
+                    value={calendarForm.name} 
+                    onChange={e => setCalendarForm({ ...calendarForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase">Working Days</label>
+                  <div className="flex flex-wrap gap-2">
+                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => {
+                      const active = calendarForm.workingDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                            active 
+                              ? "bg-primary border-primary text-white" 
+                              : "bg-muted border-border/50 text-muted-foreground"
+                          }`}
+                          onClick={() => {
+                            const next = active 
+                              ? calendarForm.workingDays.filter(d => d !== day)
+                              : [...calendarForm.workingDays, day];
+                            setCalendarForm({ ...calendarForm, workingDays: next });
+                          }}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setCalendarDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" className="gradient-brand text-white border-0">Create Calendar</Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Modal: Add Shift */}
+        {shiftDialogOpen && selectedCalendar && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              className="w-full max-w-md p-6 rounded-xl border bg-card text-card-foreground shadow-lg space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold">Add Shift to {selectedCalendar.name}</h3>
+                <button onClick={() => setShiftDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
+                  <XCircle className="size-5" />
+                </button>
+              </div>
+              <form onSubmit={handleAddShift} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase">Shift Name</label>
+                  <Input 
+                    placeholder="e.g. Night Shift" 
+                    value={shiftForm.name} 
+                    onChange={e => setShiftForm({ ...shiftForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase">Start Time</label>
+                    <Input 
+                      type="time" 
+                      value={shiftForm.startTime} 
+                      onChange={e => setShiftForm({ ...shiftForm, startTime: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase">End Time</label>
+                    <Input 
+                      type="time" 
+                      value={shiftForm.endTime} 
+                      onChange={e => setShiftForm({ ...shiftForm, endTime: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setShiftDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" className="gradient-brand text-white border-0">Add Shift</Button>
+                </div>
+              </form>
+            </motion.div>
           </div>
         )}
       </div>

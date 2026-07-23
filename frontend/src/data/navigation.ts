@@ -4,10 +4,10 @@ import {
   Briefcase, Target, Network, CreditCard, Calendar, Laptop, History, Activity, Clock, FileCheck,
   Package, FolderTree, Layers, Tags, Scale, SlidersHorizontal, Combine, PackagePlus, Blocks, Image, ArrowRightLeft,
   Sliders, RotateCw, RefreshCw, ClipboardCheck, Grid, Columns, Inbox, ArrowDownToLine, ListChecks, Hash, Barcode, CalendarX,
-  CalendarClock, ScanBarcode, QrCode, AlertTriangle, TrendingUp, Snail, Rocket, Skull, PieChart, LineChart, BrainCircuit, Database, Banknote, Lock, Monitor
+  CalendarClock, ScanBarcode, QrCode, AlertTriangle, TrendingUp, Snail, Rocket, Skull, PieChart, LineChart, BrainCircuit, Database, Banknote, Lock, Monitor, Factory, Search, Tag, Heart, Wallet, Gift, Plus
 } from "lucide-react";
 
-type NavItem = {
+export type NavItem = {
   to: string;
   label: string;
   icon: any;
@@ -16,21 +16,22 @@ type NavItem = {
   subItems?: { to: string; label: string; icon: any; permission?: string }[];
 };
 
-type NavGroup = {
+export type NavGroup = {
   group: string;
+  icon: any;
   permission?: string;
   items: NavItem[];
 };
 
 export const nav: NavGroup[] = [
   {
-    group: "Workspace", items: [
+    group: "Workspace", icon: LayoutDashboard, items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view:dashboard" },
       { to: "/copilot", label: "Antigravity AI", icon: Sparkles, badge: "OS", permission: "view:copilot" },
     ]
   },
   {
-    group: "Core ERP", permission: "view:erp", items: [
+    group: "Core ERP", icon: Building2, permission: "view:erp", items: [
       {
         to: "/erp?tab=companies",
         label: "Organization",
@@ -114,7 +115,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Inventory & Warehouse", permission: "view:inventory", items: [
+    group: "Inventory & Warehouse", icon: Boxes, permission: "view:inventory", items: [
       {
         to: "/inventory?tab=products",
         label: "Product Master",
@@ -122,7 +123,6 @@ export const nav: NavGroup[] = [
         subItems: [
           { to: "/inventory?tab=products", label: "Products", icon: Package },
           { to: "/inventory?tab=categories", label: "Categories", icon: FolderTree },
-          { to: "/inventory?tab=subcategories", label: "Sub Categories", icon: Layers },
           { to: "/inventory?tab=brands", label: "Brands", icon: Tags },
           { to: "/inventory?tab=units", label: "Units of Measure", icon: Scale },
           { to: "/inventory?tab=attributes", label: "Product Attributes", icon: SlidersHorizontal },
@@ -138,6 +138,8 @@ export const nav: NavGroup[] = [
         icon: Activity,
         subItems: [
           { to: "/inventory?tab=stock_overview", label: "Stock Overview", icon: BarChart3 },
+          { to: "/inventory?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: Boxes },
+          { to: "/inventory?tab=goods_issue", label: "Goods Issue", icon: Truck },
           { to: "/inventory?tab=stock_movement", label: "Stock Movement", icon: ArrowRightLeft },
           { to: "/inventory?tab=stock_adjustment", label: "Stock Adjustment", icon: Sliders },
           { to: "/inventory?tab=stock_transfer", label: "Stock Transfer", icon: Truck },
@@ -179,6 +181,7 @@ export const nav: NavGroup[] = [
         label: "Inventory Intelligence",
         icon: BrainCircuit,
         subItems: [
+          { to: "/inventory?tab=ai_health", label: "AI Inventory Health", icon: Sparkles },
           { to: "/inventory?tab=low_stock", label: "Low Stock Alerts", icon: AlertTriangle },
           { to: "/inventory?tab=reorder_planning", label: "Reorder Planning", icon: TrendingUp },
           { to: "/inventory?tab=slow_moving", label: "Slow Moving Inventory", icon: Snail },
@@ -192,7 +195,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Operations", items: [
+    group: "Operations", icon: Factory, items: [
       {
         to: "/procurement?tab=suppliers",
         label: "Supplier Management",
@@ -252,47 +255,24 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "POS", permission: "view:pos", items: [
+    group: "POS", icon: Store, permission: "view:pos", items: [
       { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/pos?tab=terminal", label: "Terminal", icon: ShoppingCart },
-      {
-        to: "/pos?tab=sales",
-        label: "Sales",
-        icon: TrendingUp,
+      { 
+        to: "/pos?tab=terminal", 
+        label: "Terminal", 
+        icon: ShoppingCart,
         subItems: [
-          { to: "/pos?tab=sales", label: "All Orders", icon: ShoppingCart },
-          { to: "/pos?tab=sales&view=held", label: "Held Orders", icon: Clock },
-          { to: "/pos?tab=sales&view=completed", label: "Completed", icon: FileCheck },
-          { to: "/pos?tab=sales&view=cancelled", label: "Cancelled", icon: AlertTriangle },
-          { to: "/pos?tab=sales&view=today", label: "Today's Sales", icon: TrendingUp },
-          { to: "/pos?tab=sales&view=history", label: "Sales History", icon: History },
-          { to: "/pos?tab=sales&view=invoices", label: "Invoices", icon: FileCheck },
-        ]
-      },
-      {
-        to: "/pos?tab=customers",
-        label: "Customers",
-        icon: Users,
-        subItems: [
-          { to: "/pos?tab=customers&view=walk_in", label: "Walk-in Customer", icon: UserCog },
-          { to: "/pos?tab=customers&view=search", label: "Customer Search", icon: Users },
-          { to: "/pos?tab=customers&view=loyalty", label: "Loyalty", icon: Tags },
-          { to: "/pos?tab=customers&view=membership", label: "Membership", icon: ShieldCheck },
-          { to: "/pos?tab=customers&view=wallet", label: "Wallet", icon: CreditCard },
-          { to: "/pos?tab=customers&view=gift_cards", label: "Gift Cards", icon: CreditCard },
-          { to: "/pos?tab=customers&view=history", label: "Purchase History", icon: History },
-        ]
-      },
-      {
-        to: "/pos?tab=payments",
-        label: "Payments",
-        icon: CreditCard,
-        subItems: [
-          { to: "/pos?tab=payments&view=cash", label: "Cash", icon: Banknote },
-          { to: "/pos?tab=payments&view=card", label: "Card", icon: CreditCard },
-          { to: "/pos?tab=payments&view=upi", label: "UPI", icon: QrCode },
-          { to: "/pos?tab=payments&view=split", label: "Split Payment", icon: Combine },
-          { to: "/pos?tab=payments&view=refunds", label: "Refund History", icon: History },
+          { to: "/pos?tab=terminal", label: "Billing", icon: ShoppingCart },
+          { to: "/pos?tab=terminal&view=barcode", label: "Barcode Scanner", icon: ScanBarcode },
+          { to: "/pos?tab=terminal&view=delivery", label: "Delivery", icon: Truck },
+          { to: "/pos?tab=terminal&view=exchange", label: "Exchange", icon: RefreshCw },
+          { to: "/pos?tab=terminal&view=refund", label: "Refund", icon: CreditCard },
+          { to: "/pos?tab=terminal&view=price_check", label: "Price Check", icon: Tag },
+          { to: "/pos?tab=terminal&view=favorites", label: "Favorites", icon: Heart },
+          { to: "/pos?tab=terminal&view=recent", label: "Recent Bills", icon: History },
+          { to: "/pos?tab=terminal&view=ai_suggest", label: "AI Suggestions", icon: Sparkles },
+          { to: "/pos?tab=store_operations", label: "Store Operations", icon: Store },
+          { to: "/pos?tab=returns", label: "Return / Exchange", icon: ArrowRightLeft }
         ]
       },
       {
@@ -300,11 +280,14 @@ export const nav: NavGroup[] = [
         label: "Store Operations",
         icon: Store,
         subItems: [
-          { to: "/pos?tab=store_operations&view=shift", label: "Open/Close Shift", icon: Clock },
+          { to: "/pos?tab=store_operations&view=shift", label: "Shift Management", icon: Clock },
           { to: "/pos?tab=store_operations&view=drawer", label: "Cash Drawer", icon: Store },
-          { to: "/pos?tab=store_operations&view=cash_io", label: "Cash In/Out", icon: ArrowRightLeft },
-          { to: "/pos?tab=store_operations&view=register", label: "Register Closing", icon: Lock },
-          { to: "/pos?tab=store_operations&view=eod", label: "End Of Day", icon: CalendarX },
+          { to: "/pos?tab=store_operations&view=terminal", label: "Terminal Settings", icon: Settings },
+          { to: "/pos?tab=store_operations&view=printer", label: "Receipt Printer", icon: FileCheck },
+          { to: "/pos?tab=store_operations&view=scanner", label: "Barcode Scanner", icon: ScanBarcode },
+          { to: "/pos?tab=store_operations&view=label", label: "Label Printer", icon: Tags },
+          { to: "/pos?tab=store_operations&view=display", label: "Customer Display", icon: Monitor },
+          { to: "/pos?tab=store_operations&view=scale", label: "Weight Scale", icon: Scale },
         ]
       },
       {
@@ -315,49 +298,13 @@ export const nav: NavGroup[] = [
           { to: "/pos?tab=returns&view=returns", label: "Returns", icon: ArrowRightLeft },
           { to: "/pos?tab=returns&view=exchange", label: "Exchange", icon: RefreshCw },
           { to: "/pos?tab=returns&view=refund", label: "Refund", icon: CreditCard },
-          { to: "/pos?tab=returns&view=store_credit", label: "Store Credit", icon: FileCheck },
           { to: "/pos?tab=returns&view=damaged", label: "Damaged Products", icon: AlertTriangle },
         ]
-      },
-      {
-        to: "/pos?tab=devices",
-        label: "Devices",
-        icon: ScanBarcode,
-        subItems: [
-          { to: "/pos?tab=devices&view=barcode", label: "Barcode Scanner", icon: Barcode },
-          { to: "/pos?tab=devices&view=printer", label: "Receipt Printer", icon: FileCheck },
-          { to: "/pos?tab=devices&view=drawer", label: "Cash Drawer", icon: Store },
-          { to: "/pos?tab=devices&view=display", label: "Pole Display", icon: Monitor },
-          { to: "/pos?tab=devices&view=scale", label: "Weight Scale", icon: Scale },
-        ]
-      },
-      {
-        to: "/pos?tab=reports",
-        label: "Reports",
-        icon: BarChart3,
-        subItems: [
-          { to: "/pos?tab=reports&view=sales", label: "Daily/Hourly Sales", icon: LineChart },
-          { to: "/pos?tab=reports&view=cash", label: "Cash Report", icon: PieChart },
-          { to: "/pos?tab=reports&view=payment", label: "Payment Report", icon: BarChart3 },
-          { to: "/pos?tab=reports&view=tax", label: "Tax Report", icon: Calculator },
-          { to: "/pos?tab=reports&view=shift", label: "Shift Report", icon: Clock },
-        ]
-      },
-      {
-        to: "/pos?tab=ai_assistant",
-        label: "AI Assistant",
-        icon: Sparkles,
-        subItems: [
-          { to: "/pos?tab=ai_assistant&view=summary", label: "Sales Summary", icon: Sparkles },
-          { to: "/pos?tab=ai_assistant&view=peak", label: "Peak Hours Prediction", icon: TrendingUp },
-          { to: "/pos?tab=ai_assistant&view=fraud", label: "Fraud Detection", icon: ShieldCheck },
-          { to: "/pos?tab=ai_assistant&view=alerts", label: "Inventory Alerts", icon: AlertTriangle },
-        ]
-      },
+      }
     ]
   },
   {
-    group: "Sales & CRM", permission: "view:crm", items: [
+    group: "Sales & CRM", icon: Target, permission: "view:crm", items: [
       {
         to: "/crm?tab=customers",
         label: "Customer Management",
@@ -373,10 +320,12 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/crm?tab=leads",
-        label: "Sales CRM",
+        to: "/crm?tab=ad_generator",
+        label: "Marketing & Sales",
         icon: TrendingUp,
         subItems: [
+          { to: "/crm?tab=ad_generator", label: "Marketing Ad Generator", icon: Sparkles },
+          { to: "/crm?tab=ad_history", label: "Ad Post History", icon: History },
           { to: "/crm?tab=leads", label: "Leads", icon: UserCog },
           { to: "/crm?tab=opportunities", label: "Opportunities", icon: Rocket },
           { to: "/crm?tab=deals", label: "Deals", icon: Target },
@@ -424,7 +373,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Marketplace", items: [
+    group: "Marketplace", icon: ShoppingBag, items: [
       {
         to: "/marketplace?tab=vendors",
         label: "Vendor Management",
@@ -513,7 +462,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Accounting & Finance", permission: "view:accounting", items: [
+    group: "Accounting & Finance", icon: Calculator, permission: "view:accounting", items: [
       {
         to: "/accounting?tab=chart_of_accounts",
         label: "Accounting",
@@ -634,7 +583,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "HRMS", permission: "view:hrms", items: [
+    group: "HRMS", icon: Users, permission: "view:hrms", items: [
       {
         to: "/hrms?tab=employees",
         label: "Employee Management",
@@ -764,7 +713,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "IoT", permission: "view:iot", items: [
+    group: "IoT", icon: Radio, permission: "view:iot", items: [
       {
         to: "/iot?tab=connected_devices",
         label: "Devices",
@@ -830,7 +779,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Analytics & Intelligence", permission: "view:reports", items: [
+    group: "Analytics & Intelligence", icon: BarChart3, permission: "view:reports", items: [
       {
         to: "/reports?tab=sales_reports",
         label: "Sales",
@@ -937,7 +886,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "System Configuration", permission: "view:settings", items: [
+    group: "System Configuration", icon: Settings, permission: "view:settings", items: [
       {
         to: "/settings?tab=company_profile",
         label: "Company",
