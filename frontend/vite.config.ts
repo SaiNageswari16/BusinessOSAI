@@ -4,9 +4,9 @@ export default defineConfig({
   tanstackStart: {
     server: {
       entry: "server",
+      preset: "node-server",
     },
-  },
-
+   },
   vite: {
     server: {
       host: true,
