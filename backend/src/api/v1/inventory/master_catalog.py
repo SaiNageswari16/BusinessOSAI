@@ -3,6 +3,11 @@ import re
 import uuid
 import requests
 import logging
+import io
+import os
+import urllib.parse
+from html import unescape
+from html.parser import HTMLParser
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, BackgroundTasks
@@ -73,8 +78,8 @@ def _is_meaningless_product_name(name: Optional[str], query: str) -> bool:
     return False
 
 
-def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Optional[str]:
-    """Downloads an external image URL and saves it locally in the 'images' static directory."""
+def _deprecated_download_and_cache_product_image(image_url: str, barcode: str = None) -> Optional[str]:
+    """Legacy implementation retained only for source-history compatibility."""
     if not image_url or not image_url.startswith("http"):
         return image_url
         
@@ -110,77 +115,240 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
     return image_url
 
 
-def _fetch_web_search_context(query: str) -> str:
-    """Fetches search snippets from Yahoo Search (falling back to Bing) to provide RAG context."""
-    # 1. Try Yahoo first
+def _deprecated_fetch_barcodelookup_data(barcode: str) -> dict:
+    """Legacy implementation retained only for source-history compatibility."""
+    import urllib.parse, re
+    result = {"name": "", "brand": "", "description": "", "image_url": "", "category": "", "weight": ""}
     try:
-        import urllib.parse
+        url = f"https://www.barcodelookup.com/{barcode}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.google.com/"
+        }
+        res = requests.get(url, headers=headers, timeout=12)
+        logger.info(f"BarcodeLookup.com status for {barcode}: {res.status_code}")
+        if res.status_code == 200:
+            html = res.text
+            # Extract product name
+            name_match = re.search(r'<h4[^>]*>\s*(.*?)\s*</h4>', html, re.DOTALL)
+            if not name_match:
+                name_match = re.search(r'<h1[^>]*class="[^"]*product[^"]*"[^>]*>\s*(.*?)\s*</h1>', html, re.DOTALL | re.IGNORECASE)
+            if name_match:
+                result["name"] = re.sub(r'<[^>]+>', '', name_match.group(1)).strip()
+            
+            # Extract product image - look for the main product image
+            img_match = re.search(r'<img[^>]+(?:id="[^"]*product[^"]*"|class="[^"]*product[^"]*")[^>]+src="([^"]+)"', html, re.IGNORECASE)
+            if not img_match:
+                img_match = re.search(r'<div[^>]*class="[^"]*product-image[^"]*"[^>]*>.*?<img[^>]+src="([^"]+)"', html, re.DOTALL | re.IGNORECASE)
+            if not img_match:
+                # Try og:image meta tag
+                img_match = re.search(r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"', html, re.IGNORECASE)
+            if not img_match:
+                # Try any large image that's not a logo/icon
+                img_match = re.search(r'<img[^>]+src="(https://[^"]+(?:product|item|barcode)[^"]*\.(?:jpg|jpeg|png|webp))"', html, re.IGNORECASE)
+            if img_match:
+                result["image_url"] = img_match.group(1).strip()
+                
+            # Extract brand
+            brand_match = re.search(r'(?:Brand|Manufacturer)[^<]*:\s*<[^>]*>([^<]+)<', html, re.IGNORECASE)
+            if not brand_match:
+                brand_match = re.search(r'"brand"\s*:\s*"([^"]+)"', html)
+            if brand_match:
+                result["brand"] = brand_match.group(1).strip()
+                
+            # Extract description  
+            desc_match = re.search(r'<p[^>]*class="[^"]*description[^"]*"[^>]*>([\s\S]*?)</p>', html, re.IGNORECASE)
+            if not desc_match:
+                desc_match = re.search(r'<div[^>]*class="[^"]*description[^"]*"[^>]*>([\s\S]*?)</div>', html, re.IGNORECASE)
+            if desc_match:
+                result["description"] = re.sub(r'<[^>]+>', '', desc_match.group(1)).strip()[:500]
+                
+            # Extract category
+            cat_match = re.search(r'(?:Category|Type)[^<]*:\s*<[^>]*>([^<]+)<', html, re.IGNORECASE)
+            if cat_match:
+                result["category"] = cat_match.group(1).strip()
+                
+            # Extract weight/size
+            weight_match = re.search(r'(?:Weight|Size|Net Weight)[^<]*:\s*<[^>]*>([^<]+)<', html, re.IGNORECASE)
+            if not weight_match:
+                weight_match = re.search(r'(?:Weight|Size|Net Weight)\s*[:\-]\s*([0-9]+\s*(?:g|kg|ml|l|oz|lb)[^<,\n]*)', html, re.IGNORECASE)
+            if weight_match:
+                result["weight"] = weight_match.group(1).strip()
+                
+            logger.info(f"BarcodeLookup.com data: name='{result['name']}', image='{result['image_url'][:60] if result['image_url'] else 'none'}'")
+    except Exception as e:
+        logger.warning(f"BarcodeLookup.com scrape failed: {e}")
+    return result
+
+
+def _deprecated_fetch_web_search_context(query: str) -> dict:
+    """Legacy implementation retained only for source-history compatibility.
+    Returns a dict with 'text' (context for AI prompt) and 'image_url' (best image found)."""
+    import urllib.parse, re
+    context_parts = []
+    found_image_url = ""
+    
+    clean = query.strip()
+    is_barcode = clean.isdigit() and len(clean) >= 8
+    
+    # 1. BarcodeLookup.com — PRIMARY source, richest data + images
+    if is_barcode:
+        bl_data = _fetch_barcodelookup_data(clean)
+        if bl_data.get("name"):
+            bl_text = f"[BarcodeLookup.com - AUTHORITATIVE]\nProduct Name: {bl_data['name']}\nBrand: {bl_data['brand']}\nDescription: {bl_data['description']}\nCategory: {bl_data['category']}\nWeight: {bl_data['weight']}"
+            context_parts.append(bl_text)
+            if bl_data.get("image_url"):
+                found_image_url = bl_data["image_url"]
+    
+    # 2. Open Food Facts — great for food/FMCG barcodes (with image)
+    if is_barcode:
+        try:
+            off_url = f"https://world.openfoodfacts.org/api/v2/product/{clean}.json"
+            off_headers = {"User-Agent": "BusinessOSAI/1.0 (contact@businessosai.com)"}
+            off_res = requests.get(off_url, headers=off_headers, timeout=8)
+            if off_res.status_code == 200:
+                off_data = off_res.json()
+                if off_data.get("status") == 1:
+                    p = off_data.get("product", {})
+                    name = p.get("product_name") or p.get("product_name_en") or ""
+                    brand = p.get("brands", "")
+                    quantity = p.get("quantity", "")
+                    categories = p.get("categories", "")
+                    ingreds = p.get("ingredients_text", "")
+                    country = p.get("countries", "")
+                    image = p.get("image_url") or p.get("image_front_url", "")
+                    off_text = f"[Open Food Facts]\nProduct Name: {name}\nBrand: {brand}\nQuantity/Weight: {quantity}\nCategories: {categories}\nIngredients: {ingreds[:200] if ingreds else 'N/A'}\nCountry: {country}"
+                    context_parts.append(off_text)
+                    if image and not found_image_url:
+                        found_image_url = image
+                    logger.info(f"Open Food Facts: {name}")
+        except Exception as e:
+            logger.warning(f"Open Food Facts lookup failed: {e}")
+
+    # 3. DuckDuckGo Instant Answer
+    try:
+        ddg_url = f"https://api.duckduckgo.com/?q={urllib.parse.quote(query)}&format=json&no_redirect=1&no_html=1"
+        ddg_res = requests.get(ddg_url, headers={"User-Agent": "BusinessOSAI/1.0"}, timeout=8)
+        if ddg_res.status_code == 200:
+            ddg_data = ddg_res.json()
+            bits = []
+            if ddg_data.get("AbstractText"):
+                bits.append(ddg_data["AbstractText"])
+            if ddg_data.get("Answer"):
+                bits.append(ddg_data["Answer"])
+            for r in ddg_data.get("RelatedTopics", [])[:4]:
+                if isinstance(r, dict) and r.get("Text"):
+                    bits.append(r["Text"])
+            if bits:
+                context_parts.append("[DuckDuckGo]\n" + "\n".join(bits))
+    except Exception as e:
+        logger.warning(f"DuckDuckGo lookup failed: {e}")
+
+    # 4. Yahoo scraping for additional context and titles (always run to ensure rich data)
+    try:
         url = f"https://search.yahoo.com/search?p={urllib.parse.quote(query)}"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5"
         }
         res = requests.get(url, headers=headers, timeout=10)
-        logger.info(f"Yahoo Search status code: {res.status_code}")
         if res.status_code == 200:
-            import re
-            snippets = re.findall(r'<p class="[^"]*fc-spry[^"]*">([\s\S]*?)</p>|<div class="compText[^"]*">([\s\S]*?)</div>', res.text)
-            logger.info(f"Yahoo Search found {len(snippets)} snippets.")
-            clean_snippets = []
-            for match in snippets[:8]:
-                val = match[0] or match[1]
-                clean = re.sub(r'<[^>]+>', '', val).strip()
-                clean = re.sub(r'\s+', ' ', clean)
-                if len(clean) > 20:
-                    clean_snippets.append(clean)
-            if clean_snippets:
-                return "\n".join(clean_snippets)
+            # Extract titles
+            titles = re.findall(r'<h3[^>]*class="[^"]*title[^"]*"[^>]*>([\s\S]*?)</h3>', res.text)
+            # Extract snippets
+            snippets = re.findall(r'<(?:p|span|div)[^>]*class="[^"]*(?:spry|caption|abstract|abstract-text|result-snippet|compText)[^"]*"[^>]*>([\s\S]*?)</(?:p|span|div)>', res.text)
+            
+            yahoo_bits = []
+            for i in range(max(len(titles), len(snippets))):
+                bit = []
+                if i < len(titles):
+                    t_clean = re.sub(r'<[^>]+>', '', titles[i]).strip()
+                    if t_clean:
+                        bit.append(f"Title: {t_clean}")
+                if i < len(snippets):
+                    s_clean = re.sub(r'<[^>]+>', '', snippets[i]).strip()
+                    if s_clean and "cookie" not in s_clean.lower():
+                        bit.append(f"Snippet: {s_clean}")
+                if bit:
+                    yahoo_bits.append(" - ".join(bit))
+            
+            if yahoo_bits:
+                context_parts.append("[Yahoo Search Results]\n" + "\n".join(yahoo_bits[:8]))
+                
+            # Try to grab a product image from the search page HTML (e.g. favicons or image links)
+            if not found_image_url:
+                img_matches = re.findall(r'src="(https://[^"]+?\.(?:jpg|jpeg|png|webp))"', res.text, re.IGNORECASE)
+                for img in img_matches:
+                    if any(x in img.lower() for x in ["product", "item", "catalog", "nehanx", "bigbasket", "jiomart", "netmeds", "1mg", "amazon", "m.media-amazon"]):
+                        found_image_url = img
+                        logger.info(f"Extracted image from Yahoo Search HTML: {found_image_url}")
+                        break
     except Exception as e:
-        logger.warning(f"Yahoo Search RAG scraper failed: {e}")
-        
-    # 2. Fallback to Bing
-    try:
-        import urllib.parse
-        url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0"
-        }
-        res = requests.get(url, headers=headers, timeout=10)
-        logger.info(f"Bing Search status code: {res.status_code}")
-        if res.status_code == 200:
-            import re
-            snippets = re.findall(r'<p>([\s\S]*?)</p>|<div class="b_caption">([\s\S]*?)</div>', res.text)
-            logger.info(f"Bing Search found {len(snippets)} snippets.")
-            clean_snippets = []
-            for match in snippets[:8]:
-                val = match[0] or match[1]
-                clean = re.sub(r'<[^>]+>', '', val).strip()
-                clean = re.sub(r'\s+', ' ', clean)
-                if len(clean) > 20 and not "cookie" in clean.lower():
-                    clean_snippets.append(clean)
-            if clean_snippets:
-                return "\n".join(clean_snippets)
-    except Exception as e:
-        logger.warning(f"Bing Search RAG scraper failed: {e}")
-        
-    return ""
+        logger.warning(f"Yahoo search scrape failed: {e}")
+
+    return {"text": "\n\n".join(context_parts), "image_url": found_image_url}
 
 
-async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -> List[MasterCatalogItem]:
-    """Uses Gemini 2.5 Google Search Grounding, OpenAI, or Claude to fetch live real-time product details from the web."""
+
+def _is_valid_key(key: str | None) -> bool:
+    """Returns True only when an API key is genuinely configured (non-empty and not a commented-out placeholder like #...)."""
+    return bool(key) and not str(key).strip().startswith("#")
+
+
+def _normalize_provider(provider: str | None) -> str:
+    """Normalize provider names and treat empty/unknown values as auto."""
+    if not provider:
+        return ""
+    provider_name = str(provider).strip().lower()
+    return provider_name if provider_name in {"gemini", "openai", "claude"} else ""
+
+
+def _resolve_ai_provider(requested_provider: str | None) -> str:
+    """Prefer the explicit request when it has a configured key, otherwise honor server AI_PROVIDER."""
+    requested = _normalize_provider(requested_provider)
+    configured = {
+        "gemini": _is_valid_key(settings.gemini_api_key),
+        "openai": _is_valid_key(settings.openai_api_key),
+        "claude": _is_valid_key(settings.anthropic_api_key),
+    }
+
+    if requested and configured.get(requested):
+        return requested
+
+    server_provider = _normalize_provider(getattr(settings, "ai_provider", None))
+    if server_provider and configured.get(server_provider):
+        return server_provider
+
+    for provider_name, is_configured in configured.items():
+        if is_configured:
+            return provider_name
+
+    return requested or server_provider or "gemini"
+
+
+async def _deprecated_perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -> List[MasterCatalogItem]:
+    """Legacy implementation retained only for source-history compatibility."""
     ai_results: List[MasterCatalogItem] = []
     
-    active_provider = provider
-    if provider == "gemini" and settings.ai_provider in ["openai", "claude"]:
-        active_provider = settings.ai_provider
+    # Resolve the effective active AI provider, always honouring server configuration
+    has_gemini = _is_valid_key(settings.gemini_api_key)
+    has_openai = _is_valid_key(settings.openai_api_key)
+    has_claude = _is_valid_key(settings.anthropic_api_key)
+
+    active_provider = _resolve_ai_provider(provider)
         
-    search_context = ""
+    search_context_text = ""
+    direct_image_url = ""
     if active_provider in ["openai", "claude"] and query_str:
         logger.info(f"Retrieving search grounding context for '{query_str}'...")
-        search_context = _fetch_web_search_context(query_str)
+        context_res = _fetch_web_search_context(query_str)
+        search_context_text = context_res.get("text", "")
+        direct_image_url = context_res.get("image_url", "")
         
-    if active_provider == "gemini" and settings.gemini_api_key:
+    if active_provider == "gemini" and has_gemini:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
             
@@ -414,14 +582,26 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                 "tax, type, cess, cess_on, cess_type, tax_amount, taxable_value, cess_tax_amount, additional_cess_tax_amount, "
                 "supplier, discount_rs, discount_percent, actual_margin_rs, margin_on_cp, margin_on_sp, category, sub_category, instock_value."
             )
-            if search_context:
-                prompt += f"\n\nHere is the live web search context for this product/barcode:\n{search_context}\n"
+            if search_context_text:
+                prompt += f"\n\nHere is the live web search context for this product/barcode:\n{search_context_text}\n"
             body = {
                 "model": settings.openai_model or "gpt-4o",
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"}
             }
-            res = requests.post(url, json=body, headers=headers, timeout=60)
+            import time
+            max_retries = 4
+            backoff = 2.0
+            res = None
+            for attempt in range(max_retries):
+                res = requests.post(url, json=body, headers=headers, timeout=60)
+                if res.status_code == 429 and attempt < max_retries - 1:
+                    logger.warning(f"OpenAI API returned 429 (Rate Limit Exceeded). Retrying in {backoff}s... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(backoff)
+                    backoff *= 2
+                    continue
+                break
+                
             if res.status_code == 429:
                 raise HTTPException(status_code=429, detail="OpenAI API rate limit exceeded (429).")
             if res.status_code != 200:
@@ -474,7 +654,7 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                     category=item.get("category"),
                     sub_category=item.get("sub_category"),
                     instock_value=float(item.get("instock_value") or 0.0),
-                    image_url=_download_and_cache_product_image(item.get("image_url"), item.get("barcode")),
+                    image_url=_download_and_cache_product_image(item.get("image_url") or direct_image_url, item.get("barcode")),
                     short_description=item.get("short_description"),
                     specifications=item.get("specifications"),
                     source="AI_WEB_SEARCH"
@@ -505,6 +685,7 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
             prompt = (
                 f"Identify real-world product specifications, real-time MRP, sales price, specifications, weight, and correct brand for the query/barcode: '{query_str}'.\n"
                 "CRITICAL: Do NOT attempt to call any tools or output tool calls (such as <tool_call> or web_search). Answer directly using your internal knowledge.\n"
+                "CRITICAL: Keep your response extremely brief. Generate ONLY the JSON array. Do NOT output any thinking, preamble, explanation, or conversational text. Go straight to the JSON output.\n"
                 "Return the findings as a JSON ARRAY of 1 to 3 matching product objects. Do NOT output any conversational text or markdown codeblocks, only valid JSON.\n"
                 "Structure structure for each product item:\n"
                 "[\n"
@@ -550,14 +731,26 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                 "  }\n"
                 "]"
             )
-            if search_context:
-                prompt += f"\n\nHere is the live web search context for this product/barcode:\n{search_context}\n"
+            if search_context_text:
+                prompt += f"\n\nHere is the live web search context for this product/barcode:\n{search_context_text}\n"
             body = {
                 "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
                 "max_tokens": 4096,
                 "messages": [{"role": "user", "content": prompt}]
             }
-            res = requests.post(url, json=body, headers=headers, timeout=60)
+            import time
+            max_retries = 4
+            backoff = 2.0
+            res = None
+            for attempt in range(max_retries):
+                res = requests.post(url, json=body, headers=headers, timeout=120)
+                if res.status_code == 429 and attempt < max_retries - 1:
+                    logger.warning(f"Anthropic API returned 429 (Rate Limit Exceeded). Retrying in {backoff}s... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(backoff)
+                    backoff *= 2
+                    continue
+                break
+                
             if res.status_code == 429:
                 raise HTTPException(status_code=429, detail="Anthropic API rate limit exceeded (429).")
             if res.status_code != 200:
@@ -621,7 +814,7 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
                     category=item.get("category"),
                     sub_category=item.get("sub_category"),
                     instock_value=float(item.get("instock_value") or 0.0),
-                    image_url=_download_and_cache_product_image(item.get("image_url"), item.get("barcode")),
+                    image_url=_download_and_cache_product_image(item.get("image_url") or direct_image_url, item.get("barcode")),
                     short_description=item.get("short_description"),
                     specifications=item.get("specifications"),
                     source="AI_WEB_SEARCH"
@@ -703,13 +896,691 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
             raise HTTPException(status_code=502, detail=f"Barcode registry network resolution error: {ex}")
 
     # If no AI keys are configured and it's not a barcode query, throw the error that keys are missing
-    if not settings.gemini_api_key and not settings.openai_api_key:
+    if not _is_valid_key(settings.gemini_api_key) and not _is_valid_key(settings.openai_api_key) and not _is_valid_key(settings.anthropic_api_key):
         raise HTTPException(
             status_code=400,
             detail="AI Sourcing API keys are not configured. Please check your .env settings."
         )
 
+    # Backfill missing images using Open Food Facts if a barcode is available
+    for item in ai_results:
+        has_no_img = not item.image_url or item.image_url.strip() == "" or "placeholder" in item.image_url.lower() or "example.com" in item.image_url.lower()
+        if has_no_img and item.barcode and item.barcode.strip().isdigit() and len(item.barcode.strip()) >= 8:
+            try:
+                barcode_clean = item.barcode.strip()
+                logger.info(f"Image is missing for barcode {barcode_clean}. Sourcing from Open Food Facts...")
+                off_url = f"https://world.openfoodfacts.org/api/v2/product/{barcode_clean}.json"
+                off_headers = {"User-Agent": "BusinessOSAI/1.0 (contact@businessosai.com)"}
+                off_res = requests.get(off_url, headers=off_headers, timeout=5)
+                if off_res.status_code == 200:
+                    off_data = off_res.json()
+                    if off_data.get("status") == 1:
+                        off_prod = off_data.get("product", {})
+                        off_img = off_prod.get("image_url") or off_prod.get("image_front_url")
+                        if off_img:
+                            item.image_url = _download_and_cache_product_image(off_img, barcode_clean)
+                            logger.info(f"Successfully backfilled image from Open Food Facts for barcode {barcode_clean}")
+            except Exception as off_err:
+                logger.warning(f"Failed to backfill image from Open Food Facts: {off_err}")
+
     return ai_results
+
+
+# Source-first product sourcing helpers.  These definitions intentionally replace
+# the older helpers above while keeping the route and response contracts intact.
+_IMAGE_TIMEOUT = (5, 20)
+_SOURCE_HEADERS = {
+    "User-Agent": "BusinessOSAI/1.0 (+https://businessos.ai)",
+    "Accept": "application/json,text/html,application/xhtml+xml,image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+}
+
+
+class _ProductMetadataParser(HTMLParser):
+    """Small dependency-free parser for structured product metadata."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.meta: dict[str, str] = {}
+        self.json_ld: list[str] = []
+        self._in_json_ld = False
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+        attributes = {key.lower(): value or "" for key, value in attrs}
+        if tag.lower() == "meta":
+            key = (attributes.get("property") or attributes.get("name") or attributes.get("itemprop") or "").lower()
+            value = attributes.get("content", "").strip()
+            if key and value and key not in self.meta:
+                self.meta[key] = unescape(value)
+        if tag.lower() == "script" and "ld+json" in attributes.get("type", "").lower():
+            self._in_json_ld = True
+            self._chunks = []
+
+    def handle_data(self, data: str) -> None:
+        if self._in_json_ld:
+            self._chunks.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "script" and self._in_json_ld:
+            self.json_ld.append("".join(self._chunks))
+            self._in_json_ld = False
+
+
+def _clean_source_text(value: object, limit: int = 1000) -> str:
+    return re.sub(r"\s+", " ", unescape(str(value or ""))).strip()[:limit]
+
+
+def _normalise_identity(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (value or "").lower())
+
+
+def _is_barcode_query(query: str) -> bool:
+    return query.strip().isdigit() and len(query.strip()) in (8, 12, 13, 14)
+
+
+def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Optional[str]:
+    """Validate, download, verify and cache only a real product image.
+
+    Returning ``None`` is deliberate: callers must not persist an unverified
+    remote URL as a product image.
+    """
+    if not image_url:
+        return None
+    if image_url.startswith("/images/"):
+        return image_url
+    parsed = urllib.parse.urlparse(image_url.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        logger.warning("Rejected invalid product image URL: %r", image_url)
+        return None
+
+    response = None
+    try:
+        # HEAD cheaply rejects error pages and non-image resources before GET.
+        head = requests.head(image_url, headers=_SOURCE_HEADERS, timeout=_IMAGE_TIMEOUT, allow_redirects=True)
+        if head.status_code != 200:
+            logger.warning("Rejected product image %s: HEAD returned %s", image_url, head.status_code)
+            return None
+        content_type = (head.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+        if not content_type.startswith("image/"):
+            logger.warning("Rejected product image %s: MIME type %s", image_url, content_type or "missing")
+            return None
+
+        response = requests.get(image_url, headers=_SOURCE_HEADERS, timeout=_IMAGE_TIMEOUT, allow_redirects=True)
+        content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+        if response.status_code != 200 or not content_type.startswith("image/"):
+            logger.warning("Rejected product image %s: GET status=%s MIME=%s", image_url, response.status_code, content_type or "missing")
+            return None
+        if not response.content:
+            logger.warning("Rejected empty product image: %s", image_url)
+            return None
+
+        from PIL import Image, UnidentifiedImageError
+        try:
+            Image.open(io.BytesIO(response.content)).verify()
+            image = Image.open(io.BytesIO(response.content))
+            image.load()
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            logger.warning("Rejected corrupt product image %s: %s", image_url, exc)
+            return None
+
+        # Preserve accepted web formats. Convert all other decodable images to JPEG.
+        image_format = (image.format or "").upper()
+        extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif"}.get(image_format, ".jpg")
+        if extension == ".jpg":
+            image = image.convert("RGB")
+        filename = f"{barcode.strip() if barcode else uuid.uuid4()}{extension}"
+        images_dir = os.path.join("images")
+        os.makedirs(images_dir, exist_ok=True)
+        local_path = os.path.join(images_dir, filename)
+        temporary_path = f"{local_path}.tmp"
+        try:
+            if image_format in {"JPEG", "PNG", "WEBP", "GIF"}:
+                with open(temporary_path, "wb") as image_file:
+                    image_file.write(response.content)
+            else:
+                image.save(temporary_path, format="JPEG", quality=90, optimize=True)
+            os.replace(temporary_path, local_path)
+        finally:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
+        logger.info("Validated and cached product image: /images/%s", filename)
+        return f"/images/{filename}"
+    except requests.RequestException as exc:
+        logger.warning("Could not download product image %s: %s", image_url, exc)
+    except ImportError:
+        logger.error("Pillow is required to validate product images; image was not cached")
+    except Exception:
+        logger.exception("Unexpected failure while caching product image: %s", image_url)
+    return None
+
+
+def _walk_json_ld(value: object) -> list[dict]:
+    if isinstance(value, dict):
+        found = [value]
+        for child in value.values():
+            found.extend(_walk_json_ld(child))
+        return found
+    if isinstance(value, list):
+        return [node for child in value for node in _walk_json_ld(child)]
+    return []
+
+
+def _value_from_schema(value: object) -> str:
+    if isinstance(value, dict):
+        return _clean_source_text(value.get("name") or value.get("@id"))
+    if isinstance(value, list):
+        return _clean_source_text(", ".join(_value_from_schema(item) for item in value if _value_from_schema(item)))
+    return _clean_source_text(value)
+
+
+def _fetch_barcodelookup_data(barcode: str) -> dict:
+    """Fetch BarcodeLookup using JSON-LD/OpenGraph before HTML fallbacks."""
+    result = {"name": "", "brand": "", "description": "", "image_url": "", "category": "", "weight": "", "source": "BarcodeLookup"}
+    try:
+        response = requests.get(f"https://www.barcodelookup.com/{barcode}", headers=_SOURCE_HEADERS, timeout=(5, 15))
+        if response.status_code != 200:
+            logger.info("BarcodeLookup returned %s for %s", response.status_code, barcode)
+            return result
+        parser = _ProductMetadataParser()
+        parser.feed(response.text)
+        schema_products: list[dict] = []
+        for raw_json in parser.json_ld:
+            try:
+                for node in _walk_json_ld(json.loads(raw_json)):
+                    node_types = node.get("@type", "")
+                    node_types = node_types if isinstance(node_types, list) else [node_types]
+                    if any(str(node_type).lower() in {"product", "individualproduct"} for node_type in node_types):
+                        schema_products.append(node)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        product = schema_products[0] if schema_products else {}
+        meta = parser.meta
+        result.update({
+            "name": _value_from_schema(product.get("name")) or _clean_source_text(meta.get("og:title") or meta.get("twitter:title")),
+            "brand": _value_from_schema(product.get("brand")),
+            "description": _value_from_schema(product.get("description")) or _clean_source_text(meta.get("og:description") or meta.get("description")),
+            "image_url": _value_from_schema(product.get("image")) or _clean_source_text(meta.get("og:image") or meta.get("twitter:image")),
+            "category": _value_from_schema(product.get("category")),
+            "weight": _value_from_schema(product.get("weight")),
+        })
+        if not result["brand"]:
+            result["brand"] = _clean_source_text(meta.get("product:brand") or meta.get("brand"))
+        # Last-resort fallback for legacy BarcodeLookup pages with no metadata.
+        if not result["name"]:
+            title_match = re.search(r"<h[14][^>]*>\s*(.*?)\s*</h[14]>", response.text, re.I | re.S)
+            if title_match:
+                result["name"] = _clean_source_text(re.sub(r"<[^>]+>", " ", title_match.group(1)))
+        logger.info("BarcodeLookup source for %s: name=%r", barcode, result["name"])
+    except requests.RequestException as exc:
+        logger.warning("BarcodeLookup lookup failed for %s: %s", barcode, exc)
+    except Exception:
+        logger.exception("Could not parse BarcodeLookup result for %s", barcode)
+    return result
+
+
+def _fetch_openfacts_data(barcode: str, host: str, source: str) -> dict:
+    """Read one of the public Open Facts product registries by barcode."""
+    result = {"name": "", "brand": "", "description": "", "image_url": "", "category": "", "weight": "", "source": source}
+    try:
+        response = requests.get(f"https://{host}/api/v2/product/{barcode}.json", headers=_SOURCE_HEADERS, timeout=(5, 12))
+        data = response.json() if response.status_code == 200 else {}
+        if data.get("status") != 1:
+            return result
+        product = data.get("product") or {}
+        result.update({
+            "name": _clean_source_text(product.get("product_name") or product.get("product_name_en")),
+            "brand": _clean_source_text((product.get("brands") or "").split(",")[0]),
+            "description": _clean_source_text(product.get("generic_name") or product.get("ingredients_text")),
+            "image_url": _clean_source_text(product.get("image_url") or product.get("image_front_url")),
+            "category": _clean_source_text((product.get("categories") or "").split(",")[0]),
+            "weight": _clean_source_text(product.get("quantity") or product.get("serving_size")),
+        })
+        logger.info("%s source for %s: name=%r", source, barcode, result["name"])
+    except (requests.RequestException, ValueError) as exc:
+        logger.info("%s lookup failed for %s: %s", source, barcode, exc)
+    return result
+
+
+def _fetch_openfoodfacts_data(barcode: str) -> dict:
+    return _fetch_openfacts_data(barcode, "world.openfoodfacts.org", "Open Food Facts")
+
+
+def _fetch_openfacts_registries(barcode: str) -> list[dict]:
+    """Public barcode registries covering food, beauty, pet and general products."""
+    registries = (
+        ("world.openfoodfacts.org", "Open Food Facts"),
+        ("world.openbeautyfacts.org", "Open Beauty Facts"),
+        ("world.openpetfoodfacts.org", "Open Pet Food Facts"),
+        ("world.openproductsfacts.org", "Open Products Facts"),
+    )
+    return [product for host, source in registries
+            if (product := _fetch_openfacts_data(barcode, host, source)).get("name")]
+
+
+def _fetch_upcitemdb_data(barcode: str) -> dict:
+    """Use UPCitemdb's public trial endpoint as an additional non-scraped source."""
+    result = {"name": "", "brand": "", "description": "", "image_url": "", "category": "", "weight": "", "source": "UPCitemdb"}
+    try:
+        response = requests.get(
+            f"https://api.upcitemdb.com/prod/trial/lookup?upc={urllib.parse.quote(barcode)}",
+            headers=_SOURCE_HEADERS, timeout=(5, 12),
+        )
+        data = response.json() if response.status_code == 200 else {}
+        item = (data.get("items") or [{}])[0]
+        result.update({
+            "name": _clean_source_text(item.get("title")), "brand": _clean_source_text(item.get("brand")),
+            "description": _clean_source_text(item.get("description")), "image_url": _clean_source_text((item.get("images") or [""])[0]),
+            "category": _clean_source_text(item.get("category")), "weight": _clean_source_text(item.get("size")),
+        })
+        if result["name"]:
+            logger.info("UPCitemdb source for %s: name=%r", barcode, result["name"])
+    except (requests.RequestException, ValueError, IndexError) as exc:
+        logger.info("UPCitemdb lookup unavailable for %s: %s", barcode, exc)
+    return result
+
+
+def _fetch_search_snippets(query: str, provider_name: str) -> list[str]:
+    """Fetch minimal public search context without making an AI call."""
+    try:
+        if provider_name == "Yahoo":
+            url = f"https://search.yahoo.com/search?p={urllib.parse.quote(query)}"
+            response = requests.get(url, headers=_SOURCE_HEADERS, timeout=(5, 12))
+            parser = _ProductMetadataParser()
+            parser.feed(response.text if response.status_code == 200 else "")
+            description = parser.meta.get("description", "")
+            return [_clean_source_text(description)] if description else []
+        response = requests.get(
+            f"https://api.duckduckgo.com/?q={urllib.parse.quote(query)}&format=json&no_redirect=1&no_html=1",
+            headers=_SOURCE_HEADERS, timeout=(5, 12),
+        )
+        data = response.json() if response.status_code == 200 else {}
+        snippets = [data.get("AbstractText", ""), data.get("Answer", "")]
+        snippets.extend(topic.get("Text", "") for topic in data.get("RelatedTopics", [])[:5] if isinstance(topic, dict))
+        return [_clean_source_text(item) for item in snippets if _clean_source_text(item)]
+    except (requests.RequestException, ValueError) as exc:
+        logger.info("%s search context unavailable for %s: %s", provider_name, query, exc)
+        return []
+
+
+def _fetch_web_search_context(query: str) -> dict:
+    """Return source-ranked, non-AI search context used only for enrichment."""
+    clean_query = query.strip()
+    sources: list[dict] = []
+    if _is_barcode_query(clean_query):
+        sources.extend(_fetch_openfacts_registries(clean_query))
+        for lookup in (_fetch_barcodelookup_data, _fetch_upcitemdb_data):
+            product = lookup(clean_query)
+            if product.get("name"):
+                sources.append(product)
+    yahoo = _fetch_search_snippets(clean_query, "Yahoo")
+    if yahoo:
+        sources.append({"source": "Yahoo", "text": "\n".join(yahoo)})
+    duckduckgo = _fetch_search_snippets(clean_query, "DuckDuckGo")
+    if duckduckgo:
+        sources.append({"source": "DuckDuckGo", "text": "\n".join(duckduckgo)})
+    text_parts = []
+    for source in sources:
+        if source.get("name"):
+            text_parts.append("[{source}]\nProduct Name: {name}\nBrand: {brand}\nDescription: {description}\nCategory: {category}\nWeight: {weight}".format(**source))
+        elif source.get("text"):
+            text_parts.append(f"[{source['source']}]\n{source['text']}")
+    image_url = next((source.get("image_url", "") for source in sources if source.get("image_url")), "")
+    registry_sources = [source for source in sources if source.get("name")]
+    confidence = 0
+    if len(registry_sources) == 1:
+        confidence = 80
+    elif len(registry_sources) > 1 and _normalise_identity(registry_sources[0]["name"]) == _normalise_identity(registry_sources[1]["name"]):
+        confidence = 100
+    return {
+        "text": "\n\n".join(text_parts), "image_url": image_url, "confidence": confidence,
+        "sources": sources, "source_list": [source["source"] for source in sources],
+    }
+
+
+def _resolve_conflicting_identity(barcode: str, candidates: list[dict], context: str) -> Optional[dict]:
+    """Use Gemini only as a constrained selector after registry/retailer conflict."""
+    if not _is_valid_key(settings.gemini_api_key):
+        return None
+    choices = [{"name": item["name"], "brand": item.get("brand", "")} for item in candidates]
+    prompt = (
+        f"Select the most consistently supported existing candidate for barcode {barcode}. "
+        "You must return exactly one JSON object with only selected_index, or {} if the evidence is insufficient. "
+        "Do not create, rename, or infer a product.\n"
+        f"Candidates: {json.dumps(choices)}\nRetailer evidence: {context[:5000]}"
+    )
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
+        response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}}, timeout=45)
+        if response.status_code != 200:
+            logger.warning("Gemini conflict resolution returned %s for %s", response.status_code, barcode)
+            return None
+        data = _extract_json_from_text(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+        index = data.get("selected_index") if isinstance(data, dict) else None
+        return candidates[index] if isinstance(index, int) and 0 <= index < len(candidates) else None
+    except Exception as exc:
+        logger.warning("Gemini could not resolve barcode conflict %s: %s", barcode, exc)
+        return None
+
+
+def _resolve_barcode_consensus(barcode: str) -> dict:
+    valid = _fetch_openfacts_registries(barcode)
+    for lookup in (_fetch_barcodelookup_data, _fetch_upcitemdb_data):
+        product = lookup(barcode)
+        if product.get("name"):
+            valid.append(product)
+    if not valid:
+        return {"identity": None, "confidence": 0, "source": "", "resolved_by": "no_registry_match", "candidates": []}
+    if len(valid) == 1:
+        return {"identity": valid[0], "confidence": 80, "source": valid[0]["source"], "resolved_by": "single_registry", "candidates": valid}
+    identity_groups: dict[str, list[dict]] = {}
+    for product in valid:
+        identity_groups.setdefault(_normalise_identity(product["name"]), []).append(product)
+    best_group = max(identity_groups.values(), key=len)
+    if len(best_group) >= 2:
+        identity = dict(best_group[0])
+        for product in best_group[1:]:
+            for key, value in product.items():
+                if not identity.get(key) and value:
+                    identity[key] = value
+        return {"identity": identity, "confidence": 100, "source": " + ".join(item["source"] for item in best_group), "resolved_by": "registry_consensus", "candidates": valid}
+    # Retailer/search evidence is deliberately only a tie breaker. No LLM identity
+    # is accepted unless it exactly selects one of the registry candidates.
+    context = _fetch_web_search_context(barcode)
+    retailer_text = context["text"].lower()
+    scores = [retailer_text.count(candidate["name"].lower()) for candidate in valid]
+    if max(scores) and scores.count(max(scores)) == 1:
+        selected = valid[scores.index(max(scores))]
+        return {"identity": selected, "confidence": 85, "source": selected["source"], "resolved_by": "retailer_context", "candidates": valid}
+    selected = _resolve_conflicting_identity(barcode, valid, context["text"])
+    if selected:
+        return {"identity": selected, "confidence": 80, "source": selected["source"], "resolved_by": "gemini_constrained_selector", "candidates": valid}
+    return {"identity": None, "confidence": 0, "source": " + ".join(item["source"] for item in valid), "resolved_by": "conflicting_registries", "candidates": valid}
+
+
+def _resolve_barcode_with_claude_web_search(barcode: str) -> Optional[dict]:
+    """Last-resort web-grounded resolution for barcodes missing from public registries.
+
+    Claude must cite search evidence and return the exact requested barcode; its
+    answer is rejected otherwise. This is intentionally not a knowledge-only call.
+    """
+    if not _is_valid_key(settings.anthropic_api_key):
+        return None
+    prompt = (
+        f"Search the web for the exact GTIN/EAN/UPC barcode {barcode}. Prefer the manufacturer and established retailers "
+        "such as Amazon, Tata 1mg, Netmeds, BigBasket, JioMart, and pharmacy/manufacturer sites. "
+        "Return JSON only with barcode, name, brand, description, category, weight, image_url, source_urls. "
+        "Only return an object if at least one search result explicitly supports this exact barcode and product title. "
+        "Never infer an identity from a barcode prefix; otherwise return {}."
+    )
+    url = f"{settings.anthropic_base_url.rstrip('/')}/v1/messages"
+    headers = {
+        "x-api-key": settings.anthropic_api_key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "web-search-2025-03-05",
+        "content-type": "application/json",
+    }
+    messages = [{"role": "user", "content": prompt}]
+    body = {
+        "model": settings.anthropic_model or "claude-sonnet-4-20250514",
+        "max_tokens": 1200,
+        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+        "messages": messages,
+    }
+    try:
+        for _ in range(3):
+            response = requests.post(url, headers=headers, json=body, timeout=90)
+            if response.status_code != 200:
+                logger.warning("Claude web search returned %s for barcode %s", response.status_code, barcode)
+                return None
+            payload = response.json()
+            content = payload.get("content") or []
+            if payload.get("stop_reason") != "pause_turn":
+                text = next((block.get("text", "") for block in reversed(content) if block.get("type") == "text"), "")
+                data = _extract_json_from_text(text) if text else {}
+                if not isinstance(data, dict) or str(data.get("barcode", "")).strip() != barcode:
+                    return None
+                name = _clean_source_text(data.get("name"))
+                source_urls = data.get("source_urls")
+                if _is_meaningless_product_name(name, barcode) or not isinstance(source_urls, list) or not source_urls:
+                    return None
+                return {
+                    "name": name, "brand": _clean_source_text(data.get("brand")),
+                    "description": _clean_source_text(data.get("description")), "category": _clean_source_text(data.get("category")),
+                    "weight": _clean_source_text(data.get("weight")), "image_url": _clean_source_text(data.get("image_url")),
+                    "source": "Claude Web Search",
+                }
+            messages.append({"role": "assistant", "content": content})
+            body["messages"] = messages
+        logger.warning("Claude web search did not complete for barcode %s", barcode)
+    except (requests.RequestException, ValueError, KeyError) as exc:
+        logger.warning("Claude web-search fallback failed for %s: %s", barcode, exc)
+    return None
+
+
+def _resolve_barcode_with_gemini_web_search(barcode: str) -> Optional[dict]:
+    """Web-grounded Gemini fallback when public barcode registries have no match."""
+    if not _is_valid_key(settings.gemini_api_key):
+        return None
+    prompt = (
+        f"Search for the exact GTIN/EAN/UPC barcode {barcode}. Use only manufacturer or established retailer evidence. "
+        "Return JSON only with barcode, name, brand, description, category, and weight. "
+        "The barcode field must be exactly the supplied barcode. Never infer a product from a barcode prefix; return {} if no search result explicitly confirms it."
+    )
+    try:
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "tools": [{"googleSearch": {}}],
+            },
+            timeout=90,
+        )
+        if response.status_code != 200:
+            logger.warning("Gemini web search returned %s for barcode %s: %s", response.status_code, barcode, response.text[:300])
+            return None
+        candidate = (response.json().get("candidates") or [{}])[0]
+        text = next((part.get("text", "") for part in candidate.get("content", {}).get("parts", []) if part.get("text")), "")
+        data = _extract_json_from_text(text) if text else {}
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        if isinstance(data, dict) and isinstance(data.get("products"), list):
+            data = data["products"][0] if data["products"] else {}
+        grounding = candidate.get("groundingMetadata") or {}
+        chunks = grounding.get("groundingChunks") or []
+        source_urls = [
+            (chunk.get("web") or {}).get("uri")
+            for chunk in chunks if isinstance(chunk, dict) and (chunk.get("web") or {}).get("uri")
+        ]
+        returned_barcode = re.sub(r"\D", "", str(data.get("barcode", ""))) if isinstance(data, dict) else ""
+        if not isinstance(data, dict) or returned_barcode != barcode:
+            logger.warning(
+                "Gemini web search did not confirm barcode %s (returned=%r, sources=%d, text=%r)",
+                barcode, returned_barcode, len(source_urls), text[:300],
+            )
+            return None
+        name = _clean_source_text(data.get("name"))
+        if _is_meaningless_product_name(name, barcode):
+            return None
+        image_url = _find_grounded_product_image(source_urls)
+        return {
+            "name": name, "brand": _clean_source_text(data.get("brand")),
+            "description": _clean_source_text(data.get("description")), "category": _clean_source_text(data.get("category")),
+            "weight": _clean_source_text(data.get("weight")), "image_url": image_url,
+            "source": "Gemini Google Search",
+        }
+    except (requests.RequestException, ValueError, KeyError) as exc:
+        logger.warning("Gemini web-search fallback failed for %s: %s", barcode, exc)
+    return None
+
+
+def _find_grounded_product_image(source_urls: list[str]) -> str:
+    """Get a product image from Gemini-grounded pages, never from model text."""
+    for source_url in source_urls[:5]:
+        parsed = urllib.parse.urlparse(source_url)
+        if parsed.scheme not in {"http", "https"}:
+            continue
+        try:
+            response = requests.get(source_url, headers=_SOURCE_HEADERS, timeout=(5, 10))
+            content_type = (response.headers.get("Content-Type") or "").lower()
+            if response.status_code != 200 or "html" not in content_type:
+                continue
+            parser = _ProductMetadataParser()
+            parser.feed(response.text)
+            image_url = _clean_source_text(parser.meta.get("og:image") or parser.meta.get("twitter:image"))
+            if image_url:
+                return urllib.parse.urljoin(source_url, image_url)
+        except requests.RequestException as exc:
+            logger.info("Could not fetch grounded page image from %s: %s", source_url, exc)
+    return ""
+
+
+def _catalog_item(identity: dict, barcode: str, enrichment: Optional[dict] = None) -> MasterCatalogItem:
+    enrichment = enrichment or {}
+    def number(name: str) -> float:
+        try:
+            return float(enrichment.get(name) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    image_url = _download_and_cache_product_image(identity.get("image_url") or enrichment.get("image_url"), barcode)
+    return MasterCatalogItem(
+        name=identity["name"], brand=identity.get("brand") or None, barcode=barcode,
+        sku_code=enrichment.get("sku_code"), product_code=enrichment.get("product_code"), hsn_code=enrichment.get("hsn_code"), plu_no=enrichment.get("plu_no"),
+        cost_price=number("cost_price"), mrp=number("mrp"), sale_price=number("sale_price"), wholesale_price=number("wholesale_price"), special_price=number("special_price"), online_price=number("online_price"),
+        weight=identity.get("weight") or enrichment.get("weight"), quantity=number("quantity") or 1.0, expired_quantity=0.0, near_expiry_quantity=0.0,
+        tax=number("tax"), type=enrichment.get("type"), cess=number("cess"), cess_on=number("cess_on"), cess_type=enrichment.get("cess_type"), tax_amount=number("tax_amount"), taxable_value=number("taxable_value"), cess_tax_amount=number("cess_tax_amount"), additional_cess_tax_amount=number("additional_cess_tax_amount"),
+        supplier=enrichment.get("supplier"), discount_rs=number("discount_rs"), discount_percent=number("discount_percent"), actual_margin_rs=number("actual_margin_rs"), margin_on_cp=number("margin_on_cp"), margin_on_sp=number("margin_on_sp"),
+        category=enrichment.get("category") or identity.get("category") or None, sub_category=enrichment.get("sub_category"), instock_value=0.0,
+        image_url=image_url, short_description=enrichment.get("short_description") or identity.get("description") or None, specifications=enrichment.get("specifications"), source="AI_WEB_SEARCH",
+    )
+
+
+def _call_enrichment_ai(provider: str, identity: dict, barcode: str, context: str) -> dict:
+    """Ask an LLM for enrichment only; identity values are never accepted."""
+    prompt = (
+        "Enrich this already-resolved product. Do not change or infer its identity. "
+        f"Barcode: {barcode}; Name: {identity['name']}; Brand: {identity.get('brand') or ''}.\n"
+        "Return one JSON object containing only: short_description, specifications, category, sub_category, weight, mrp, sale_price, online_price, cost_price, tax, hsn_code. "
+        "Use 0 or null when unavailable. Do not include name, brand, barcode, image_url, or any identity field.\n"
+        f"Source context:\n{context[:6000]}"
+    )
+    try:
+        if provider == "gemini" and _is_valid_key(settings.gemini_api_key):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
+            response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}}, timeout=60)
+            text = response.json()["candidates"][0]["content"]["parts"][0]["text"] if response.status_code == 200 else "{}"
+        elif provider == "openai" and _is_valid_key(settings.openai_api_key):
+            response = requests.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"}, json={"model": settings.openai_model or "gpt-4o", "messages": [{"role": "user", "content": prompt}], "response_format": {"type": "json_object"}}, timeout=60)
+            text = response.json()["choices"][0]["message"]["content"] if response.status_code == 200 else "{}"
+        elif provider == "claude" and _is_valid_key(settings.anthropic_api_key):
+            response = requests.post(f"{settings.anthropic_base_url.rstrip('/')}/v1/messages", headers={"x-api-key": settings.anthropic_api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}, json={"model": settings.anthropic_model or "claude-3-5-sonnet-20241022", "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}, timeout=60)
+            text = next((block.get("text", "") for block in response.json().get("content", []) if block.get("type") == "text"), "{}") if response.status_code == 200 else "{}"
+        else:
+            return {}
+        data = _extract_json_from_text(text)
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        logger.warning("Product enrichment failed for %s: %s", barcode, exc)
+        return {}
+
+
+async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -> List[MasterCatalogItem]:
+    """Source product identity first, then use AI only for safe enrichment."""
+    query = query_str.strip()
+    active_provider = _resolve_ai_provider(provider)
+    if _is_barcode_query(query):
+        consensus = _resolve_barcode_consensus(query)
+        identity = consensus["identity"]
+        if not identity:
+            # Preserve the proven Gemini Google Search path for products that are
+            # absent from public barcode registries.  It uses the original broad
+            # retailer-search prompt and still passes image URLs through the
+            # validated cache function defined in this module.
+            if active_provider == "gemini":
+                legacy_results = await _deprecated_perform_ai_rag_web_search(query, provider="gemini")
+                if legacy_results:
+                    logger.info("Resolved barcode %s through legacy Gemini Google Search grounding", query)
+                    return legacy_results
+            if active_provider == "gemini":
+                identity = _resolve_barcode_with_gemini_web_search(query)
+            elif active_provider == "claude":
+                identity = _resolve_barcode_with_claude_web_search(query)
+            else:
+                # OpenAI has no server-side web-search tool in this integration;
+                # prefer a configured grounded provider before returning a 404.
+                identity = (
+                    _resolve_barcode_with_gemini_web_search(query)
+                    or _resolve_barcode_with_claude_web_search(query)
+                )
+            if identity:
+                consensus = {
+                    "confidence": 65, "source": identity["source"],
+                    "resolved_by": "grounded_web_search", "candidates": [],
+                }
+            else:
+                logger.warning("No safe product identity for barcode %s (%s)", query, consensus["resolved_by"])
+                raise HTTPException(status_code=404, detail=f"Product with barcode {query} could not be confidently resolved from public registries or web-grounded search.")
+        context = _fetch_web_search_context(query)
+        enrichment = _call_enrichment_ai(active_provider, identity, query, context["text"])
+        logger.info("Resolved barcode %s confidence=%s source=%s resolved_by=%s", query, consensus["confidence"], consensus["source"], consensus["resolved_by"])
+        return [_catalog_item(identity, query, enrichment)]
+
+    # Existing text-query capability is retained. It never claims a barcode unless
+    # the provider supplies one; a barcode result will be revalidated on a later lookup.
+    context = _fetch_web_search_context(query)
+    identity = {"name": query, "brand": "", "description": "", "category": "", "weight": "", "image_url": context.get("image_url", "")}
+    enrichment = _call_enrichment_ai(active_provider, identity, "", context["text"])
+    proposed_name = _clean_source_text(enrichment.pop("name", ""))
+    if proposed_name and not _is_meaningless_product_name(proposed_name, query):
+        identity["name"] = proposed_name
+    identity["brand"] = _clean_source_text(enrichment.pop("brand", ""))
+    return [_catalog_item(identity, _clean_source_text(enrichment.pop("barcode", "")) or None, enrichment)] if identity["name"] else []
+
+
+@router.get("/suggestions", response_model=List[str])
+async def get_search_suggestions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    query: str = Query(..., min_length=1)
+):
+    """Returns rapid search suggestions combining local Master DB and DuckDuckGo autocomplete."""
+    local_matches = []
+    try:
+        # Search local database for suggestions
+        like = f"%{query}%"
+        db_query = select(MasterCatalogProduct.name).where(
+            MasterCatalogProduct.name.ilike(like) | 
+            MasterCatalogProduct.brand.ilike(like) | 
+            MasterCatalogProduct.barcode.ilike(like)
+        ).limit(5)
+        db_res = await db.execute(db_query)
+        local_matches = list(db_res.scalars().all())
+    except Exception as e:
+        logger.error(f"Failed to fetch local suggestions: {e}")
+
+    ddg_matches = []
+    import requests as _req
+    try:
+        # Fetch auto-suggestions from DuckDuckGo autocomplete service
+        url = f"https://ac.duckduckgo.com/ac/?q={query}&type=list"
+        res = _req.get(url, timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            if isinstance(data, list) and len(data) > 1:
+                ddg_matches = data[1]
+    except Exception as e:
+        logger.error(f"Failed to fetch DuckDuckGo suggestions: {e}")
+
+    # Merge maintaining uniqueness
+    seen = set()
+    results = []
+    for item in local_matches + ddg_matches:
+        cleaned = item.strip()
+        cleaned_lower = cleaned.lower()
+        if cleaned_lower not in seen and len(cleaned) > 1:
+            seen.add(cleaned_lower)
+            results.append(cleaned)
+            
+    return results[:10]
 
 
 @router.get("/search", response_model=List[MasterCatalogItem])
@@ -719,11 +1590,12 @@ async def search_master_catalog(
     db: Annotated[AsyncSession, Depends(get_db)],
     query: str = Query(..., min_length=1),
     search_web: bool = Query(False),
-    provider: str = Query("gemini")
+    provider: str | None = Query(None)
 ):
     """Searches Master Catalog DB first, and falls back or combines with AI Web RAG search."""
     results: List[MasterCatalogItem] = []
-    
+    effective_provider = _resolve_ai_provider(provider)
+
     # 1. Search local Master Catalog DB with split-word fuzzy search
     words = [w.strip() for w in query.strip().split() if w.strip()]
     if words:
@@ -745,8 +1617,8 @@ async def search_master_catalog(
     db_res = await db.execute(db_query)
     db_products = db_res.scalars().all()
     
-    # 2. Enrich limited products inline if search_web is requested and keys are configured
-    if search_web and (settings.gemini_api_key or settings.openai_api_key):
+    # 2. Enrich limited products inline if search_web is requested and any AI key is configured
+    if search_web and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):
         for p in db_products:
             # We define limited data if it has no pricing (mrp is 0 or None), or no image, or no specifications
             has_limited_data = (
@@ -758,7 +1630,7 @@ async def search_master_catalog(
                 try:
                     logger.info(f"Product '{p.name}' (barcode: {p.barcode}) has limited data. Sourcing real-time details inline...")
                     search_term = p.barcode if (p.barcode and p.barcode.strip()) else p.name
-                    ai_items = await _perform_ai_rag_web_search(search_term, provider=provider)
+                    ai_items = await _perform_ai_rag_web_search(search_term, provider=effective_provider)
                     
                     if ai_items:
                         ai_item = ai_items[0]
@@ -841,12 +1713,16 @@ async def search_master_catalog(
             image_url=p.image_url,
             short_description=p.short_description,
             specifications=p.specifications,
-            source=p.source or "MASTER_DB"
+            source=p.source or "MASTER_DB",
+            ai_search_done=p.ai_search_done,
+            rag_status=p.rag_status,
+            rag_enriched_at=p.rag_enriched_at,
+            rag_error=p.rag_error
         ))
         
     # 2. If no local DB results and search_web is requested, perform AI RAG Search
     if not results and search_web:
-        ai_items = await _perform_ai_rag_web_search(query, provider=provider)
+        ai_items = await _perform_ai_rag_web_search(query, provider=effective_provider)
         results.extend(ai_items)
         
     # Prepend request base URL to static image paths so they load on localhost/production
@@ -1094,3 +1970,233 @@ async def import_to_local_inventory(
     await db.refresh(new_product, ["category", "brand", "uom"])
     
     return new_product
+
+
+from pydantic import BaseModel
+
+class RAGEnrichTriggerRequest(BaseModel):
+    product_ids: Optional[list[uuid.UUID]] = None
+    enrich_all: bool = False
+
+
+@router.post("/enrich/trigger", status_code=status.HTTP_200_OK)
+async def trigger_rag_enrichment(
+    payload: RAGEnrichTriggerRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Enqueues products for RAG enrichment by resetting their ai_search_done status to False."""
+    from src.models.inventory import MasterCatalogProduct
+    from sqlalchemy import update
+    
+    if payload.enrich_all:
+        stmt = (
+            update(MasterCatalogProduct)
+            .values(ai_search_done=False, rag_status="pending")
+            .where(MasterCatalogProduct.barcode != None)
+        )
+        await db.execute(stmt)
+        await db.commit()
+        return {"message": "All catalog products enqueued for RAG enrichment."}
+        
+    if payload.product_ids:
+        stmt = (
+            update(MasterCatalogProduct)
+            .values(ai_search_done=False, rag_status="pending")
+            .where(MasterCatalogProduct.id.in_(payload.product_ids))
+        )
+        await db.execute(stmt)
+        await db.commit()
+        return {"message": f"{len(payload.product_ids)} catalog products enqueued for RAG enrichment."}
+        
+    raise HTTPException(status_code=400, detail="Must provide either product_ids or enrich_all=true")
+
+
+@router.post("/enrich/pause", status_code=status.HTTP_200_OK)
+async def pause_rag_enrichment(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:erp"))]
+):
+    """Pauses RAG enrichment worker by creating .rag_enricher_paused file."""
+    import os
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
+    with open(pause_file, "w") as f:
+        f.write("paused")
+    return {"message": "RAG Enrichment paused successfully."}
+
+
+@router.post("/enrich/resume", status_code=status.HTTP_200_OK)
+async def resume_rag_enrichment(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:erp"))]
+):
+    """Resumes RAG enrichment worker by removing .rag_enricher_paused file."""
+    import os
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
+    if os.path.exists(pause_file):
+        os.remove(pause_file)
+    return {"message": "RAG Enrichment resumed successfully."}
+
+
+@router.get("/enrich/status")
+async def get_rag_enrichment_status(
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Returns real-time progress statistics for the background RAG enricher pipeline."""
+    from src.models.inventory import MasterCatalogProduct
+    from sqlalchemy import select, func
+    import os
+    
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
+    is_paused = os.path.exists(pause_file)
+    
+    total_stmt = select(func.count()).select_from(MasterCatalogProduct).where(MasterCatalogProduct.barcode != None)
+    pending_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
+        (MasterCatalogProduct.ai_search_done == False) & 
+        (MasterCatalogProduct.barcode != None) & 
+        (MasterCatalogProduct.rag_status != "processing")
+    )
+    processing_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
+        (MasterCatalogProduct.rag_status == "processing") & 
+        (MasterCatalogProduct.barcode != None)
+    )
+    completed_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
+        (MasterCatalogProduct.ai_search_done == True) & 
+        (MasterCatalogProduct.barcode != None)
+    )
+    failed_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
+        (MasterCatalogProduct.rag_status == "failed") & 
+        (MasterCatalogProduct.barcode != None)
+    )
+    
+    total = await db.scalar(total_stmt) or 0
+    pending = await db.scalar(pending_stmt) or 0
+    processing = await db.scalar(processing_stmt) or 0
+    completed = await db.scalar(completed_stmt) or 0
+    failed = await db.scalar(failed_stmt) or 0
+    
+    return {
+        "total": total,
+        "pending": pending,
+        "processing": processing,
+        "completed": completed,
+        "failed": failed,
+        "paused": is_paused
+    }
+
+
+class AdminCatalogListResponse(BaseModel):
+    items: list[MasterCatalogItem]
+    total: int
+    page: int
+    page_size: int
+
+
+@router.get("/admin/list", response_model=AdminCatalogListResponse)
+async def get_admin_master_catalog_list(
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = 1,
+    page_size: int = 20,
+    search: Optional[str] = None,
+    rag_status: Optional[str] = None
+):
+    """Returns paginated and filtered global master catalog products for admin view."""
+    from src.models.inventory import MasterCatalogProduct
+    from sqlalchemy import select, func, and_
+    
+    offset = (page - 1) * page_size
+    
+    query_stmt = select(MasterCatalogProduct)
+    count_stmt = select(func.count()).select_from(MasterCatalogProduct)
+    
+    conditions = []
+    if search:
+        search_words = [w.strip() for w in search.strip().split() if w.strip()]
+        for w in search_words:
+            like = f"%{w}%"
+            conditions.append(
+                MasterCatalogProduct.name.ilike(like) |
+                MasterCatalogProduct.barcode.ilike(like) |
+                MasterCatalogProduct.brand.ilike(like) |
+                MasterCatalogProduct.sku_code.ilike(like) |
+                MasterCatalogProduct.product_code.ilike(like)
+            )
+            
+    if rag_status:
+        if rag_status == "enriched":
+            conditions.append(MasterCatalogProduct.ai_search_done == True)
+        elif rag_status == "pending":
+            conditions.append((MasterCatalogProduct.ai_search_done == False) & (MasterCatalogProduct.rag_status != "processing"))
+        elif rag_status == "processing":
+            conditions.append(MasterCatalogProduct.rag_status == "processing")
+        elif rag_status == "failed":
+            conditions.append(MasterCatalogProduct.rag_status == "failed")
+            
+    if conditions:
+        query_stmt = query_stmt.where(and_(*conditions))
+        count_stmt = count_stmt.where(and_(*conditions))
+        
+    total = await db.scalar(count_stmt) or 0
+    
+    query_stmt = query_stmt.order_by(MasterCatalogProduct.created_at.desc()).offset(offset).limit(page_size)
+    db_res = await db.execute(query_stmt)
+    products = db_res.scalars().all()
+    
+    serialized_items = []
+    for p in products:
+        serialized_items.append(MasterCatalogItem(
+            id=p.id,
+            name=p.name,
+            brand=p.brand,
+            barcode=p.barcode,
+            sku_code=p.sku_code,
+            product_code=p.product_code,
+            hsn_code=p.hsn_code,
+            plu_no=p.plu_no,
+            cost_price=float(p.cost_price or 0.0),
+            mrp=float(p.mrp or 0.0),
+            sale_price=float(p.sale_price or 0.0),
+            wholesale_price=float(p.wholesale_price or 0.0),
+            special_price=float(p.special_price or 0.0),
+            online_price=float(p.online_price or 0.0),
+            weight=p.weight,
+            quantity=float(p.quantity or 0.0),
+            expired_quantity=float(p.expired_quantity or 0.0),
+            near_expiry_quantity=float(p.near_expiry_quantity or 0.0),
+            tax=float(p.tax or 0.0),
+            type=p.type,
+            cess=float(p.cess or 0.0),
+            cess_on=float(p.cess_on or 0.0),
+            cess_type=p.cess_type,
+            tax_amount=float(p.tax_amount or 0.0),
+            taxable_value=float(p.taxable_value or 0.0),
+            cess_tax_amount=float(p.cess_tax_amount or 0.0),
+            additional_cess_tax_amount=float(p.additional_cess_tax_amount or 0.0),
+            supplier=p.supplier,
+            discount_rs=float(p.discount_rs or 0.0),
+            discount_percent=float(p.discount_percent or 0.0),
+            actual_margin_rs=float(p.actual_margin_rs or 0.0),
+            margin_on_cp=float(p.margin_on_cp or 0.0),
+            margin_on_sp=float(p.margin_on_sp or 0.0),
+            category=p.category,
+            sub_category=p.sub_category,
+            instock_value=float(p.instock_value or 0.0),
+            image_url=p.image_url,
+            short_description=p.short_description,
+            specifications=p.specifications,
+            source=p.source or "MASTER_DB",
+            ai_search_done=p.ai_search_done,
+            rag_status=p.rag_status,
+            rag_enriched_at=p.rag_enriched_at,
+            rag_error=p.rag_error
+        ))
+        
+    return {
+        "items": serialized_items,
+        "total": total,
+        "page": page,
+        "page_size": page_size
+    }

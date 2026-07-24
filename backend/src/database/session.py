@@ -8,7 +8,9 @@ settings = get_settings()
 
 engine = create_async_engine(
     settings.async_database_url,
-    echo=settings.app_debug and not settings.is_production,
+    # SQL text and bound values are noisy and can expose operational data in logs.
+    # Keep engine echo disabled in every environment; application errors still log.
+    echo=False,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,

@@ -70,6 +70,10 @@ interface MasterCatalogItem {
   short_description?: string;
   specifications?: string;
   source?: "MASTER_DB" | "AI_WEB_SEARCH" | "EXCEL_IMPORT";
+  ai_search_done?: boolean;
+  rag_status?: string;
+  rag_enriched_at?: string;
+  rag_error?: string;
 }
 
 interface MasterCatalogModalProps {
@@ -84,10 +88,75 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
   onProductAdded
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [provider, setProvider] = useState<"gemini" | "openai">("gemini");
+  const [provider, setProvider] = useState<"gemini" | "openai" | "auto">("auto");
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<MasterCatalogItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+
+  // RAG Enrichment Tracking Hooks
+  const [ragStatus, setRagStatus] = useState({ total: 0, pending: 0, processing: 0, completed: 0, failed: 0 });
+  const [isTriggeringRAG, setIsTriggeringRAG] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [ragFilterDone, setRagFilterDone] = useState(false); // Filter to exclude AI search done products
+
+  // Periodically fetch pipeline status while modal is open
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const fetchStatus = async () => {
+      try {
+        const stats = await inventoryApi.getRAGEnrichmentStatus();
+        setRagStatus(stats);
+      } catch (err) {
+        console.error("Failed to fetch RAG stats:", err);
+      }
+    };
+    fetchStatus();
+    const timer = setInterval(fetchStatus, 4000);
+    return () => clearInterval(timer);
+  }, [isOpen]);
+
+  const handleTriggerBulkRAG = async () => {
+    setIsTriggeringRAG(true);
+    try {
+      await inventoryApi.triggerRAGEnrichment(undefined, true);
+      showToast("Background AI RAG search enqueued successfully for all products with barcodes!", "success");
+      const stats = await inventoryApi.getRAGEnrichmentStatus();
+      setRagStatus(stats);
+    } catch (err: any) {
+      showToast(err.message || "Failed to trigger bulk AI RAG search", "error");
+    } finally {
+      setIsTriggeringRAG(false);
+    }
+  };
+
+  const handleTriggerSelectedRAG = async () => {
+    if (selectedProductIds.length === 0) return;
+    setIsTriggeringRAG(true);
+    try {
+      await inventoryApi.triggerRAGEnrichment(selectedProductIds, false);
+      showToast(`Successfully enqueued ${selectedProductIds.length} products for RAG enrichment!`, "success");
+      setSelectedProductIds([]);
+      const stats = await inventoryApi.getRAGEnrichmentStatus();
+      setRagStatus(stats);
+    } catch (err: any) {
+      showToast(err.message || "Failed to trigger selected RAG enrichment", "error");
+    } finally {
+      setIsTriggeringRAG(false);
+    }
+  };
+
+  const handleTriggerSingleRAG = async (productId: string) => {
+    try {
+      await inventoryApi.triggerRAGEnrichment([productId], false);
+      showToast("Enqueued product for RAG enrichment!", "success");
+      const stats = await inventoryApi.getRAGEnrichmentStatus();
+      setRagStatus(stats);
+      // Update result state inline
+      setResults(prev => prev.map(r => r.id === productId ? { ...r, rag_status: "pending" } : r));
+    } catch (err: any) {
+      showToast(err.message || "Failed to enqueue product", "error");
+    }
+  };
 
   // Local Inventory Quick Import Modal state
   const [selectedItem, setSelectedItem] = useState<MasterCatalogItem | null>(null);
@@ -353,6 +422,17 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
             {/* Provider Toggle */}
             <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
               <button
+                onClick={() => setProvider("auto")}
+                className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
+                  provider === "auto"
+                    ? "bg-slate-700 text-white shadow"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Database className="w-3.5 h-3.5 text-slate-300" />
+                Server Default
+              </button>
+              <button
                 onClick={() => setProvider("gemini")}
                 className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
                   provider === "gemini"
@@ -398,10 +478,22 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
 
           {/* Excel File Importer Row */}
           <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
-            <span className="flex items-center gap-1.5">
-              <Info className="w-3.5 h-3.5 text-indigo-400" />
-              Upload an Excel/CSV file with master product details to populate Master Data Catalog.
-            </span>
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-indigo-400" />
+                Upload an Excel/CSV file with master product details to populate Master Data Catalog.
+              </span>
+              
+              <label className="flex items-center gap-2 text-slate-300 cursor-pointer hover:text-white select-none">
+                <input
+                  type="checkbox"
+                  checked={ragFilterDone}
+                  onChange={(e) => setRagFilterDone(e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-900 text-indigo-650 focus:ring-indigo-500 w-3.5 h-3.5"
+                />
+                <span>Exclude AI-sourced products</span>
+              </label>
+            </div>
 
             <label className="cursor-pointer px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg transition flex items-center gap-2 border border-slate-700">
               {isUploadingExcel ? (
@@ -431,12 +523,77 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
           )}
 
           {!isLoading && !hasSearched && (
-            <div className="py-16 flex flex-col items-center justify-center text-center space-y-3 text-slate-500">
-              <Package className="w-12 h-12 stroke-[1.5] text-slate-600" />
-              <h3 className="text-base font-semibold text-slate-300">Ready to Source Products</h3>
-              <p className="text-xs max-w-md text-slate-400">
-                Type any product query (e.g. \"Godrej Split AC 2 Ton\") or barcode into the search bar above to fetch master data details.
-              </p>
+            <div className="space-y-6">
+              {/* RAG pipeline dashboard */}
+              <div className="bg-slate-950/60 rounded-xl p-5 border border-slate-800 space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Active Background RAG Catalog Enrichment</h4>
+                      <p className="text-[11px] text-slate-400">Continuous AI agent sourcing product details from the web sequentially.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleTriggerBulkRAG}
+                    disabled={isTriggeringRAG}
+                    className="h-8 text-xs font-semibold px-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-650 hover:to-purple-705 text-white rounded-lg shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isTriggeringRAG ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3 h-3 text-amber-300" />}
+                    Start/Resume Bulk AI Sourcing
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">
+                  <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800 text-center">
+                    <div className="text-xs text-slate-400 font-medium">Total Barcodes</div>
+                    <div className="text-lg font-bold text-slate-200 mt-1">{ragStatus.total}</div>
+                  </div>
+                  <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800 text-center">
+                    <div className="text-xs text-slate-400 font-medium">Pending AI</div>
+                    <div className="text-lg font-bold text-amber-400 mt-1">{ragStatus.pending}</div>
+                  </div>
+                  <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800 text-center">
+                    <div className="text-xs text-slate-400 font-medium">Processing</div>
+                    <div className="text-lg font-bold text-indigo-400 mt-1 flex items-center justify-center gap-1">
+                      {ragStatus.processing > 0 && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />}
+                      <span>{ragStatus.processing}</span>
+                    </div>
+                  </div>
+                  <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800 text-center">
+                    <div className="text-xs text-slate-400 font-medium">Completed</div>
+                    <div className="text-lg font-bold text-emerald-400 mt-1">{ragStatus.completed}</div>
+                  </div>
+                  <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800 text-center col-span-2 md:col-span-1">
+                    <div className="text-xs text-slate-400 font-medium">Failed</div>
+                    <div className="text-lg font-bold text-rose-400 mt-1">{ragStatus.failed}</div>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                {ragStatus.total > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px] font-semibold text-slate-300">
+                      <span>Overall Progress</span>
+                      <span>{Math.round((ragStatus.completed / (ragStatus.total || 1)) * 100)}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                      <div 
+                        className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500 transition-all duration-500" 
+                        style={{ width: `${(ragStatus.completed / (ragStatus.total || 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="py-8 flex flex-col items-center justify-center text-center space-y-3 text-slate-500 border border-slate-800/40 rounded-xl bg-slate-950/20">
+                <Package className="w-12 h-12 stroke-[1.5] text-slate-600" />
+                <h3 className="text-base font-semibold text-slate-300">Ready to Source Products</h3>
+                <p className="text-xs max-w-md text-slate-400">
+                  Type any product query (e.g. "Godrej Split AC 2 Ton") or barcode into the search bar above to fetch master data details.
+                </p>
+              </div>
             </div>
           )}
 
@@ -457,127 +614,193 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
           )}
 
           {!isLoading && results.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {results.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="bg-slate-950 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition flex flex-col justify-between space-y-4"
-                >
-                  <div className="space-y-3">
-                    {/* Source Badge & Brand */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`text-[10px] font-bold tracking-wide uppercase px-2.5 py-0.5 rounded-full border ${
-                          item.source === "AI_WEB_SEARCH"
-                            ? "bg-purple-500/10 text-purple-400 border-purple-500/30"
-                            : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                        }`}
-                      >
-                        {item.source === "AI_WEB_SEARCH" ? "🌐 Live AI Web Search" : "💾 Master Catalog DB"}
-                      </span>
-
-                      {item.brand && (
-                        <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
-                          <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                          {item.brand}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Title & Description */}
-                    <div>
-                      <h4 className="text-base font-semibold text-white leading-snug">{item.name}</h4>
-                      {item.short_description && (
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">{item.short_description}</p>
-                      )}
-                    </div>
-
-                    {/* Metadata Specs Grid */}
-                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900/60 p-3 rounded-xl border border-slate-800/80">
-                      {item.barcode && (
-                        <div className="flex items-center gap-1.5 text-slate-300">
-                          <Barcode className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                          <span className="font-mono text-[11px] truncate">{item.barcode}</span>
-                        </div>
-                      )}
-                      {item.category && (
-                        <div className="flex items-center gap-1.5 text-slate-300">
-                          <Layers className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                          <span className="truncate">{item.category}</span>
-                        </div>
-                      )}
-                      {item.mrp ? (
-                        <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-                          <Tag className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          <span>MRP: ₹{item.mrp.toLocaleString()}</span>
-                        </div>
-                      ) : null}
-                      {item.hsn_code && (
-                        <div className="flex items-center gap-1.5 text-slate-400">
-                          <ShieldCheck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                          <span>HSN: {item.hsn_code}</span>
-                        </div>
-                      )}
-                      {item.cost_price ? (
-                        <div className="flex items-center gap-1.5 text-slate-300">
-                          <DollarSign className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span>Cost: ₹{item.cost_price}</span>
-                        </div>
-                      ) : null}
-                      {item.sale_price ? (
-                        <div className="flex items-center gap-1.5 text-slate-300">
-                          <Tag className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                          <span>Sale: ₹{item.sale_price}</span>
-                        </div>
-                      ) : null}
-                      {item.quantity ? (
-                        <div className="flex items-center gap-1.5 text-slate-300">
-                          <Package className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span>Qty: {item.quantity}</span>
-                        </div>
-                      ) : null}
-                      {item.supplier ? (
-                        <div className="flex items-center gap-1.5 text-slate-300 col-span-2">
-                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">Supplier: {item.supplier}</span>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {item.specifications && (
-                      <p className="text-[11px] text-slate-400 bg-slate-900/30 p-2 rounded-lg border border-slate-800/40 italic">
-                        {item.specifications}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Actions Bar */}
-                  <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2">
-                    {item.source === "AI_WEB_SEARCH" && (
-                      <button
-                        onClick={() => handleSaveToMaster(item, idx)}
-                        disabled={savingToMasterId === `item-${idx}`}
-                        className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 border border-slate-700"
-                      >
-                        {savingToMasterId === `item-${idx}` ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Database className="w-3.5 h-3.5 text-purple-400" />
-                        )}
-                        Save to Master
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => openImportToLocalModal(item)}
-                      className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Save to Local Inventory
-                    </button>
-                  </div>
+            <div className="space-y-4">
+              {/* Bulk manual trigger bar */}
+              {selectedProductIds.length > 0 && (
+                <div className="bg-slate-950/80 border border-indigo-500/40 rounded-xl p-3.5 flex items-center justify-between text-xs text-indigo-300">
+                  <span className="flex items-center gap-2 font-medium">
+                    <Info className="w-4 h-4 text-indigo-400 shrink-0" />
+                    Selected {selectedProductIds.length} products for RAG enrichment.
+                  </span>
+                  <button
+                    onClick={handleTriggerSelectedRAG}
+                    disabled={isTriggeringRAG}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isTriggeringRAG ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-amber-300" />}
+                    Enrich Selected via AI
+                  </button>
                 </div>
-              ))}
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(ragFilterDone ? results.filter(r => !r.ai_search_done) : results).map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-slate-950 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition flex flex-col justify-between space-y-4"
+                  >
+                    <div className="space-y-3">
+                      {/* Source Badge & Brand */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center">
+                          {item.source !== "AI_WEB_SEARCH" && item.id && (
+                            <input
+                              type="checkbox"
+                              checked={selectedProductIds.includes(item.id)}
+                              onChange={(e) => {
+                                const id = item.id!;
+                                if (e.target.checked) {
+                                  setSelectedProductIds(prev => [...prev, id]);
+                                } else {
+                                  setSelectedProductIds(prev => prev.filter(x => x !== id));
+                                }
+                              }}
+                              className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer mr-2 shrink-0"
+                            />
+                          )}
+                          <span
+                            className={`text-[10px] font-bold tracking-wide uppercase px-2.5 py-0.5 rounded-full border ${
+                              item.source === "AI_WEB_SEARCH"
+                                ? "bg-purple-500/10 text-purple-400 border-purple-500/30"
+                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                            }`}
+                          >
+                            {item.source === "AI_WEB_SEARCH" ? "🌐 Live AI Web Search" : "💾 Master Catalog DB"}
+                          </span>
+                          
+                          {item.source !== "AI_WEB_SEARCH" && (
+                            <span
+                              className={`text-[10px] font-bold tracking-wide uppercase px-2.5 py-0.5 rounded-full border ml-1.5 ${
+                                item.ai_search_done
+                                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20"
+                                  : item.rag_status === "processing"
+                                  ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/20"
+                                  : "bg-slate-500/10 text-slate-400 border-slate-800"
+                              }`}
+                            >
+                              {item.ai_search_done ? "✓ AI Enriched" : item.rag_status === "processing" ? "⚡ Sourcing..." : "Pending"}
+                            </span>
+                          )}
+                        </div>
+
+                        {item.brand && (
+                          <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
+                            <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                            {item.brand}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Title & Description */}
+                      <div>
+                        <h4 className="text-base font-semibold text-white leading-snug">{item.name}</h4>
+                        {item.short_description && (
+                          <p className="text-xs text-slate-400 mt-1 line-clamp-2">{item.short_description}</p>
+                        )}
+                      </div>
+
+                      {/* Metadata Specs Grid */}
+                      <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900/60 p-3 rounded-xl border border-slate-800/80">
+                        {item.barcode && (
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <Barcode className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                            <span className="font-mono text-[11px] truncate">{item.barcode}</span>
+                          </div>
+                        )}
+                        {item.category && (
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <Layers className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                            <span className="truncate">{item.category}</span>
+                          </div>
+                        )}
+                        {item.mrp ? (
+                          <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                            <Tag className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span>MRP: ₹{item.mrp.toLocaleString()}</span>
+                          </div>
+                        ) : null}
+                        {item.hsn_code && (
+                          <div className="flex items-center gap-1.5 text-slate-400">
+                            <ShieldCheck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span>HSN: {item.hsn_code}</span>
+                          </div>
+                        )}
+                        {item.cost_price ? (
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <DollarSign className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            <span>Cost: ₹{item.cost_price}</span>
+                          </div>
+                        ) : null}
+                        {item.sale_price ? (
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <Tag className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                            <span>Sale: ₹{item.sale_price}</span>
+                          </div>
+                        ) : null}
+                        {item.quantity ? (
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <Package className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>Qty: {item.quantity}</span>
+                          </div>
+                        ) : null}
+                        {item.supplier ? (
+                          <div className="flex items-center gap-1.5 text-slate-300 col-span-2">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate">Supplier: {item.supplier}</span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {item.specifications && (
+                        <p className="text-[11px] text-slate-400 bg-slate-900/30 p-2 rounded-lg border border-slate-800/40 italic">
+                          {item.specifications}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Actions Bar */}
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2">
+                      {item.source === "AI_WEB_SEARCH" && (
+                        <button
+                          onClick={() => handleSaveToMaster(item, idx)}
+                          disabled={savingToMasterId === `item-${idx}`}
+                          className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 border border-slate-700"
+                        >
+                          {savingToMasterId === `item-${idx}` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Database className="w-3.5 h-3.5 text-purple-400" />
+                          )}
+                          Save to Master
+                        </button>
+                      )}
+                      
+                      {item.source !== "AI_WEB_SEARCH" && item.id && !item.ai_search_done && (
+                        <button
+                          onClick={() => handleTriggerSingleRAG(item.id!)}
+                          disabled={item.rag_status === "processing" || item.rag_status === "pending"}
+                          className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 border border-slate-700 disabled:opacity-50"
+                        >
+                          {item.rag_status === "processing" || item.rag_status === "pending" ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                          ) : (
+                            <Zap className="w-3.5 h-3.5 text-indigo-400" />
+                          )}
+                          <span>AI Enrich Specs</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => openImportToLocalModal(item)}
+                        className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Save to Local Inventory
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

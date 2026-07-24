@@ -675,6 +675,7 @@ async def master_import_products(
             sku=item.sku,
             barcode=item.barcode,
             short_description=item.short_description,
+            long_description=item.long_description,
             brand_id=brand_id,
             category_id=category_id,
             uom_id=uom_id,

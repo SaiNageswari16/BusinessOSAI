@@ -132,7 +132,7 @@ export function RibbonNavigation() {
       {/* Level 1: Main Modules */}
       {!isTerminal && (
         <div className={cn(
-          "md:flex md:flex-row md:items-center md:px-0 md:overflow-x-auto md:scrollbar-none border-b border-border bg-background transition-all",
+          "md:flex md:flex-row md:items-center md:px-0 md:overflow-x-auto border-b border-border bg-background transition-all pb-1 md:pb-0",
           mobileMenuOpen ? "flex flex-col absolute top-full left-0 right-0 bg-background shadow-xl border-b z-50 p-4 gap-2" : "hidden md:flex"
         )}>
           {nav.map((group) => {
@@ -176,7 +176,7 @@ export function RibbonNavigation() {
           >
             {/* Level 2: Module Ribbon (Browser Tabs) */}
             {!isTerminal && (
-              <div className="flex items-end px-4 overflow-x-auto scrollbar-none bg-background pt-3 gap-1.5 border-b border-border/60">
+              <div className="flex items-end px-4 overflow-x-auto bg-background pt-3 pb-1.5 gap-1.5 border-b border-border/60">
                 {activeGroup.items.map((item) => {
                   const isActive = activeItem.label === item.label;
                   return (
@@ -189,7 +189,7 @@ export function RibbonNavigation() {
                           ? "bg-muted/40 text-foreground border-border/60 border-b-transparent z-10" 
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/20"
                       )}
-                      style={isActive ? { marginBottom: "-1px" } : {}}
+                      style={isActive ? { marginBottom: "-1.5px" } : {}}
                     >
                       <item.icon className={cn("size-[18px]", isActive ? "text-primary" : "opacity-60")} />
                       {item.label}
@@ -209,7 +209,7 @@ export function RibbonNavigation() {
 
             {/* Level 3: Feature Ribbon (Pills) */}
             {activeItem.subItems && activeItem.subItems.length > 0 && (
-              <div className="flex items-center px-5 py-2.5 overflow-x-auto scrollbar-none bg-background gap-2.5 border-b border-border/40">
+              <div className="flex items-center px-5 pt-2.5 pb-3 overflow-x-auto bg-background gap-2.5 border-b border-border/40">
                 {isTerminal && (
                   <div className="flex items-center">
                     <button 

@@ -47,5 +47,23 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to 'crm_leads': {e}")
 
+    # Add RAG tracking columns to erp_master_catalog
+    catalog_cols = [
+        ("ai_search_done", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("rag_status", "VARCHAR(50) DEFAULT 'pending'"),
+        ("rag_enriched_at", "TIMESTAMP"),
+        ("rag_error", "TEXT")
+    ]
+    for name, col_type in catalog_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE erp_master_catalog ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'erp_master_catalog' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in 'erp_master_catalog'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to 'erp_master_catalog': {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())

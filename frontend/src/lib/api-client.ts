@@ -1846,7 +1846,10 @@ export const crmLeadsApi = {
     request<{ success: boolean; synced_count: number; message: string }>("POST", "/crm/facebook/sync-leads"),
 
   // ── Master Catalog & AI RAG Search ─────────────────────────────────────────
-  searchMasterCatalog: (query: string, searchWeb = false, provider = "gemini") =>
+  getSearchSuggestions: (query: string) =>
+    request<string[]>("GET", `/inventory/master-catalog/suggestions?query=${encodeURIComponent(query)}`),
+
+  searchMasterCatalog: (query: string, searchWeb = false, provider?: string) =>
     request<Array<{
       id?: string;
       name: string;
@@ -1863,7 +1866,7 @@ export const crmLeadsApi = {
       short_description?: string;
       specifications?: string;
       source?: "MASTER_DB" | "AI_WEB_SEARCH" | "EXCEL_IMPORT";
-    }>>("GET", `/inventory/master-catalog/search?query=${encodeURIComponent(query)}&search_web=${searchWeb}&provider=${provider}`),
+    }>>("GET", `/inventory/master-catalog/search?query=${encodeURIComponent(query)}&search_web=${searchWeb}${provider && provider !== "auto" ? `&provider=${encodeURIComponent(provider)}` : ""}`),
 
   saveToMasterCatalog: (item: any) =>
     request<any>("POST", "/inventory/master-catalog/save", item),
@@ -2405,7 +2408,10 @@ export const inventoryApi = {
   deleteProduct: (id: string) => request<void>("DELETE", `/inventory/products/${id}`),
 
   // Master Catalog & AI Search
-  searchMasterCatalog: (query: string, searchWeb = false, provider = "gemini") =>
+  getSearchSuggestions: (query: string) =>
+    request<string[]>("GET", `/inventory/master-catalog/suggestions?query=${encodeURIComponent(query)}`),
+
+  searchMasterCatalog: (query: string, searchWeb = false, provider?: string) =>
     request<Array<{
       id?: string;
       name: string;
@@ -2422,7 +2428,7 @@ export const inventoryApi = {
       short_description?: string;
       specifications?: string;
       source?: "MASTER_DB" | "AI_WEB_SEARCH" | "EXCEL_IMPORT";
-    }>>("GET", `/inventory/master-catalog/search?query=${encodeURIComponent(query)}&search_web=${searchWeb}&provider=${provider}`),
+    }>>("GET", `/inventory/master-catalog/search?query=${encodeURIComponent(query)}&search_web=${searchWeb}${provider && provider !== "auto" ? `&provider=${encodeURIComponent(provider)}` : ""}`),
 
   saveToMasterCatalog: (item: any) =>
     request<any>("POST", "/inventory/master-catalog/save", item),
@@ -2432,6 +2438,21 @@ export const inventoryApi = {
 
   importToLocalInventory: (data: Record<string, unknown>) =>
     request<any>("POST", "/inventory/master-catalog/import-to-local-inventory", data),
+
+  triggerRAGEnrichment: (productIds?: string[], enrichAll = false) =>
+    request<{ message: string }>("POST", "/inventory/master-catalog/enrich/trigger", { product_ids: productIds, enrich_all: enrichAll }),
+
+  getRAGEnrichmentStatus: () =>
+    request<{ total: number; pending: number; processing: number; completed: number; failed: number; paused?: boolean }>("GET", "/inventory/master-catalog/enrich/status"),
+
+  pauseRAGEnrichment: () =>
+    request<{ message: string }>("POST", "/inventory/master-catalog/enrich/pause"),
+
+  resumeRAGEnrichment: () =>
+    request<{ message: string }>("POST", "/inventory/master-catalog/enrich/resume"),
+
+  adminGetMasterCatalogList: (params?: { page?: number; page_size?: number; search?: string; rag_status?: string }) =>
+    request<{ items: any[]; total: number; page: number; page_size: number }>("GET", "/inventory/master-catalog/admin/list", undefined, params as Record<string, any>),
   
   // Categories
   getCategories: (params?: { search?: string; page?: number; page_size?: number }) =>

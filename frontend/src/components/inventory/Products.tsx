@@ -57,6 +57,10 @@ const ALL_COLUMNS = [
 
 export function Products() {
   const [search, setSearch] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  
   const [isColumnsMenuOpen, setIsColumnsMenuOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
     const saved = localStorage.getItem("products_visible_columns");
@@ -67,7 +71,6 @@ export function Products() {
     }
     return ["image", "name", "sku", "barcode", "category", "brand", "mrp", "initial_stock", "status"];
   });
-
 
   const [products, setProducts] = useState<InventoryProduct[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
@@ -81,35 +84,92 @@ export function Products() {
   const [isSearchingMaster, setIsSearchingMaster] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  // Debounced search to query Global Master Catalog & AI RAG
+  // Close suggestions on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Debounced search to query fast suggestions & local master catalog (NO automatic slow web search)
   useEffect(() => {
     const cleanSearch = search.trim();
     const isBarcode = /^\d{8,14}$/.test(cleanSearch);
+    
     if (cleanSearch.length < 3 && !isBarcode) {
+      setSuggestions([]);
       setMasterResults([]);
       setSearchError(null);
       return;
     }
     
     const timer = setTimeout(async () => {
+      // 1. Fetch suggestions in background
+      try {
+        const sugs = await inventoryApi.getSearchSuggestions(cleanSearch);
+        setSuggestions(sugs || []);
+      } catch (err) {
+        console.error("Suggestions fetch failed:", err);
+      }
+
+      // 2. Fetch local database matches instantly (searchWeb = false)
       setIsSearchingMaster(true);
       setSearchError(null);
       try {
-        const isNumeric = /^\d+$/.test(cleanSearch);
-        const shouldSearchWeb = isNumeric ? (cleanSearch.length >= 8) : (cleanSearch.length >= 3);
-        const res = await inventoryApi.searchMasterCatalog(cleanSearch, shouldSearchWeb, "gemini");
+        const res = await inventoryApi.searchMasterCatalog(cleanSearch, false, "auto");
         setMasterResults(res || []);
+        
+        // Automatic AI Web Sourcing Fallback for Barcodes!
+        if (isBarcode && (!res || res.length === 0)) {
+          toast.info(`Barcode not found in local catalog. Sourcing details for barcode "${cleanSearch}" using AI...`);
+          const aiRes = await inventoryApi.searchMasterCatalog(cleanSearch, true, "auto");
+          setMasterResults(aiRes || []);
+          if (aiRes && aiRes.length > 0) {
+            toast.success(`Successfully sourced details for barcode "${cleanSearch}"!`);
+          } else {
+            toast.error(`Could not source details for barcode "${cleanSearch}".`);
+          }
+        }
       } catch (err: any) {
-        console.error("Master catalog search failed:", err);
-        setMasterResults([]);
-        setSearchError(err.detail || err.message || "Failed to connect to AI Sourcing API.");
+        console.error("Local master search failed:", err);
+        setSearchError(err.detail || err.message || "Failed to search local master catalog.");
       } finally {
         setIsSearchingMaster(false);
       }
-    }, 500);
+    }, 400);
 
     return () => clearTimeout(timer);
   }, [search]);
+
+  // Execute full targeted AI web search when user selects a suggestion
+  const handleSelectSuggestion = async (sug: string) => {
+    setSearch(sug);
+    setShowSuggestions(false);
+    setIsSearchingMaster(true);
+    setSearchError(null);
+    setMasterResults([]);
+    try {
+      toast.info(`Sourcing specifications for "${sug}" using AI...`);
+      // Call searchMasterCatalog with searchWeb = true
+      const res = await inventoryApi.searchMasterCatalog(sug, true, "auto");
+      setMasterResults(res || []);
+      if (res && res.length > 0) {
+        toast.success(`Successfully sourced specifications for "${sug}"!`);
+      } else {
+        toast.error("No specs found for this product.");
+      }
+    } catch (err: any) {
+      console.error("AI Sourcing failed:", err);
+      setSearchError(err.detail || err.message || "AI Sourcing failed.");
+      toast.error("AI Sourcing failed. Check logs.");
+    } finally {
+      setIsSearchingMaster(false);
+    }
+  };
 
   // Form State
   const [formData, setFormData] = useState({
@@ -445,13 +505,38 @@ export function Products() {
       </div>
 
       <div className="flex gap-4 items-center">
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1 max-w-sm" ref={suggestionsRef}>
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setShowSuggestions(true);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
             placeholder="Search by name, SKU, or Barcode..."
           />
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+              <div className="text-[10px] font-bold text-slate-400 px-3 py-1.5 bg-slate-50/50 uppercase border-b border-slate-100">
+                Sourcing Suggestions (Select to source details)
+              </div>
+              <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                {suggestions.map((sug, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSelectSuggestion(sug)}
+                    className="w-full text-left px-4 py-2.5 text-xs font-semibold hover:bg-slate-50 text-slate-700 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="size-3 text-indigo-500 shrink-0" />
+                    <span className="truncate">{sug}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <Button variant="outline"><Filter className="size-4 mr-2" /> Filters</Button>
         <div className="relative">

@@ -323,11 +323,15 @@ async def connect_fb_direct(
     tenant = await _get_tenant_or_404(db, ctx.tenant_id)
     settings_dict = dict(tenant.settings or {})
     
+    # Store the user access token if it is different from page token, or default to input token
+    user_access_token = token if token != resolved_token else settings_dict.get("facebook_page", {}).get("user_access_token") or token
+    
     # Save for ad campaign publisher
     settings_dict["facebook_page"] = {
         "page_id": resolved_page_id,
         "page_name": page_name,
         "page_access_token": resolved_token,
+        "user_access_token": user_access_token,
         "api_version": "v25.0",
         "ad_account_id": payload.ad_account_id.strip() if payload.ad_account_id else settings_dict.get("facebook_page", {}).get("ad_account_id"),
     }

@@ -51,6 +51,8 @@ import { AbcAnalysis } from "../components/inventory/AbcAnalysis";
 import { XyzAnalysis } from "../components/inventory/XyzAnalysis";
 import { InventoryForecast } from "../components/inventory/InventoryForecast";
 
+import { MasterCatalogAdmin } from "../components/inventory/MasterCatalogAdmin";
+
 export const Route = createFileRoute("/_app/inventory")({
   component: InventoryModule,
 });
@@ -60,6 +62,7 @@ const componentMap: Record<string, React.ElementType> = {
   products: Products,
   categories: Categories,
   brands: Brands,
+  master_catalog: MasterCatalogAdmin,
   units: UnitsOfMeasure,
   attributes: ProductAttributes,
   variants: ProductVariants,

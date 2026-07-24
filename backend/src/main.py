@@ -26,7 +26,9 @@ async def lifespan(_: FastAPI):
             await session.rollback()
             logger.exception("Bootstrap failed")
             raise
+
     yield
+
     logger.info("Shutting down %s", settings.app_name)
 
 

@@ -428,7 +428,7 @@ function PosTerminalInner() {
     <div className="flex flex-col h-screen w-full overflow-hidden bg-slate-50 font-sans">
       
       {/* Terminal Header Nav */}
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 flex items-center overflow-x-auto scrollbar-none gap-2 py-2">
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 flex items-center overflow-x-auto gap-2 py-2">
         <button
           onClick={() => {
             if (document.fullscreenElement) {

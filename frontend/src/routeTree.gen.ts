@@ -9,32 +9,28 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AppRouteImport } from './routes/_app'
-import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as RoleSelectRouteImport } from './routes/role-select'
-import { Route as AppAccountingRouteImport } from './routes/_app.accounting'
-import { Route as AppCopilotRouteImport } from './routes/_app.copilot'
-import { Route as AppCrmRouteImport } from './routes/_app.crm'
-import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
-import { Route as AppErpRouteImport } from './routes/_app.erp'
-import { Route as AppHrmsRouteImport } from './routes/_app.hrms'
-import { Route as AppInventoryRouteImport } from './routes/_app.inventory'
-import { Route as AppIotRouteImport } from './routes/_app.iot'
-import { Route as AppMarketplaceRouteImport } from './routes/_app.marketplace'
-import { Route as AppPosRouteImport } from './routes/_app.pos'
-import { Route as AppProcurementRouteImport } from './routes/_app.procurement'
-import { Route as AppReportsRouteImport } from './routes/_app.reports'
-import { Route as AppSettingsRouteImport } from './routes/_app.settings'
+import { Route as ChangePasswordRouteImport } from './routes/change-password'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppWarehouseRouteImport } from './routes/_app.warehouse'
+import { Route as AppSettingsRouteImport } from './routes/_app.settings'
+import { Route as AppReportsRouteImport } from './routes/_app.reports'
+import { Route as AppProcurementRouteImport } from './routes/_app.procurement'
+import { Route as AppPosRouteImport } from './routes/_app.pos'
+import { Route as AppMarketplaceRouteImport } from './routes/_app.marketplace'
+import { Route as AppIotRouteImport } from './routes/_app.iot'
+import { Route as AppInventoryRouteImport } from './routes/_app.inventory'
+import { Route as AppHrmsRouteImport } from './routes/_app.hrms'
+import { Route as AppErpRouteImport } from './routes/_app.erp'
+import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppCrmRouteImport } from './routes/_app.crm'
+import { Route as AppCopilotRouteImport } from './routes/_app.copilot'
+import { Route as AppAccountingRouteImport } from './routes/_app.accounting'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppRoute = AppRouteImport.update({
-  id: '/_app',
+const RoleSelectRoute = RoleSelectRouteImport.update({
+  id: '/role-select',
+  path: '/role-select',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangePasswordRoute = ChangePasswordRouteImport.update({
@@ -42,69 +38,18 @@ const ChangePasswordRoute = ChangePasswordRouteImport.update({
   path: '/change-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RoleSelectRoute = RoleSelectRouteImport.update({
-  id: '/role-select',
-  path: '/role-select',
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppAccountingRoute = AppAccountingRouteImport.update({
-  id: '/accounting',
-  path: '/accounting',
-  getParentRoute: () => AppRoute,
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppCopilotRoute = AppCopilotRouteImport.update({
-  id: '/copilot',
-  path: '/copilot',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppCrmRoute = AppCrmRouteImport.update({
-  id: '/crm',
-  path: '/crm',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDashboardRoute = AppDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppErpRoute = AppErpRouteImport.update({
-  id: '/erp',
-  path: '/erp',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppHrmsRoute = AppHrmsRouteImport.update({
-  id: '/hrms',
-  path: '/hrms',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppInventoryRoute = AppInventoryRouteImport.update({
-  id: '/inventory',
-  path: '/inventory',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppIotRoute = AppIotRouteImport.update({
-  id: '/iot',
-  path: '/iot',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppMarketplaceRoute = AppMarketplaceRouteImport.update({
-  id: '/marketplace',
-  path: '/marketplace',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppPosRoute = AppPosRouteImport.update({
-  id: '/pos',
-  path: '/pos',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppProcurementRoute = AppProcurementRouteImport.update({
-  id: '/procurement',
-  path: '/procurement',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppReportsRoute = AppReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
+const AppWarehouseRoute = AppWarehouseRouteImport.update({
+  id: '/warehouse',
+  path: '/warehouse',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -112,9 +57,64 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
-const AppWarehouseRoute = AppWarehouseRouteImport.update({
-  id: '/warehouse',
-  path: '/warehouse',
+const AppReportsRoute = AppReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProcurementRoute = AppProcurementRouteImport.update({
+  id: '/procurement',
+  path: '/procurement',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPosRoute = AppPosRouteImport.update({
+  id: '/pos',
+  path: '/pos',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMarketplaceRoute = AppMarketplaceRouteImport.update({
+  id: '/marketplace',
+  path: '/marketplace',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIotRoute = AppIotRouteImport.update({
+  id: '/iot',
+  path: '/iot',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInventoryRoute = AppInventoryRouteImport.update({
+  id: '/inventory',
+  path: '/inventory',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHrmsRoute = AppHrmsRouteImport.update({
+  id: '/hrms',
+  path: '/hrms',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppErpRoute = AppErpRouteImport.update({
+  id: '/erp',
+  path: '/erp',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDashboardRoute = AppDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCrmRoute = AppCrmRouteImport.update({
+  id: '/crm',
+  path: '/crm',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCopilotRoute = AppCopilotRouteImport.update({
+  id: '/copilot',
+  path: '/copilot',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountingRoute = AppAccountingRouteImport.update({
+  id: '/accounting',
+  path: '/accounting',
   getParentRoute: () => AppRoute,
 } as any)
 
@@ -247,18 +247,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_app': {
-      id: '/_app'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AppRouteImport
+    '/role-select': {
+      id: '/role-select'
+      path: '/role-select'
+      fullPath: '/role-select'
+      preLoaderRoute: typeof RoleSelectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/change-password': {
@@ -268,95 +261,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChangePasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/role-select': {
-      id: '/role-select'
-      path: '/role-select'
-      fullPath: '/role-select'
-      preLoaderRoute: typeof RoleSelectRouteImport
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/accounting': {
-      id: '/_app/accounting'
-      path: '/accounting'
-      fullPath: '/accounting'
-      preLoaderRoute: typeof AppAccountingRouteImport
-      parentRoute: typeof AppRoute
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_app/copilot': {
-      id: '/_app/copilot'
-      path: '/copilot'
-      fullPath: '/copilot'
-      preLoaderRoute: typeof AppCopilotRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/crm': {
-      id: '/_app/crm'
-      path: '/crm'
-      fullPath: '/crm'
-      preLoaderRoute: typeof AppCrmRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/dashboard': {
-      id: '/_app/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AppDashboardRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/erp': {
-      id: '/_app/erp'
-      path: '/erp'
-      fullPath: '/erp'
-      preLoaderRoute: typeof AppErpRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/hrms': {
-      id: '/_app/hrms'
-      path: '/hrms'
-      fullPath: '/hrms'
-      preLoaderRoute: typeof AppHrmsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/inventory': {
-      id: '/_app/inventory'
-      path: '/inventory'
-      fullPath: '/inventory'
-      preLoaderRoute: typeof AppInventoryRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/iot': {
-      id: '/_app/iot'
-      path: '/iot'
-      fullPath: '/iot'
-      preLoaderRoute: typeof AppIotRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/marketplace': {
-      id: '/_app/marketplace'
-      path: '/marketplace'
-      fullPath: '/marketplace'
-      preLoaderRoute: typeof AppMarketplaceRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/pos': {
-      id: '/_app/pos'
-      path: '/pos'
-      fullPath: '/pos'
-      preLoaderRoute: typeof AppPosRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/procurement': {
-      id: '/_app/procurement'
-      path: '/procurement'
-      fullPath: '/procurement'
-      preLoaderRoute: typeof AppProcurementRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/reports': {
-      id: '/_app/reports'
-      path: '/reports'
-      fullPath: '/reports'
-      preLoaderRoute: typeof AppReportsRouteImport
+    '/_app/warehouse': {
+      id: '/_app/warehouse'
+      path: '/warehouse'
+      fullPath: '/warehouse'
+      preLoaderRoute: typeof AppWarehouseRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings': {
@@ -366,11 +289,88 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/warehouse': {
-      id: '/_app/warehouse'
-      path: '/warehouse'
-      fullPath: '/warehouse'
-      preLoaderRoute: typeof AppWarehouseRouteImport
+    '/_app/reports': {
+      id: '/_app/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof AppReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/procurement': {
+      id: '/_app/procurement'
+      path: '/procurement'
+      fullPath: '/procurement'
+      preLoaderRoute: typeof AppProcurementRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/pos': {
+      id: '/_app/pos'
+      path: '/pos'
+      fullPath: '/pos'
+      preLoaderRoute: typeof AppPosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/marketplace': {
+      id: '/_app/marketplace'
+      path: '/marketplace'
+      fullPath: '/marketplace'
+      preLoaderRoute: typeof AppMarketplaceRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/iot': {
+      id: '/_app/iot'
+      path: '/iot'
+      fullPath: '/iot'
+      preLoaderRoute: typeof AppIotRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/inventory': {
+      id: '/_app/inventory'
+      path: '/inventory'
+      fullPath: '/inventory'
+      preLoaderRoute: typeof AppInventoryRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/hrms': {
+      id: '/_app/hrms'
+      path: '/hrms'
+      fullPath: '/hrms'
+      preLoaderRoute: typeof AppHrmsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/erp': {
+      id: '/_app/erp'
+      path: '/erp'
+      fullPath: '/erp'
+      preLoaderRoute: typeof AppErpRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard': {
+      id: '/_app/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AppDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/crm': {
+      id: '/_app/crm'
+      path: '/crm'
+      fullPath: '/crm'
+      preLoaderRoute: typeof AppCrmRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/copilot': {
+      id: '/_app/copilot'
+      path: '/copilot'
+      fullPath: '/copilot'
+      preLoaderRoute: typeof AppCopilotRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/accounting': {
+      id: '/_app/accounting'
+      path: '/accounting'
+      fullPath: '/accounting'
+      preLoaderRoute: typeof AppAccountingRouteImport
       parentRoute: typeof AppRoute
     }
   }

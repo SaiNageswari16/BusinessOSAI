@@ -358,6 +358,10 @@ class MasterCatalogItem(BaseModel):
     short_description: Optional[str] = None
     specifications: Optional[str] = None
     source: Optional[str] = "MASTER_DB" # "MASTER_DB" | "AI_WEB_SEARCH"
+    ai_search_done: Optional[bool] = False
+    rag_status: Optional[str] = "pending"
+    rag_enriched_at: Optional[datetime] = None
+    rag_error: Optional[str] = None
 
 class MasterCatalogImportRequest(BaseModel):
     items: List[MasterCatalogItem]

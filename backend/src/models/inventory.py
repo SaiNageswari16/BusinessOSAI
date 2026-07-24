@@ -344,3 +344,9 @@ class MasterCatalogProduct(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     specifications: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(50), default="EXCEL_IMPORT")
 
+    # Automated RAG enricher tracking columns
+    ai_search_done: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    rag_status: Mapped[str | None] = mapped_column(String(50), default="pending", index=True)
+    rag_enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rag_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
