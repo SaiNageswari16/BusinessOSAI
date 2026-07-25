@@ -66,7 +66,10 @@ class RAGEnricherService:
                             MasterCatalogProduct.ai_search_done == False,
                             MasterCatalogProduct.barcode != None,
                             func.length(func.trim(MasterCatalogProduct.barcode)) >= 8,
-                            MasterCatalogProduct.rag_status != "processing"
+                            or_(
+                                MasterCatalogProduct.rag_status == None,
+                                MasterCatalogProduct.rag_status.notin_(["processing", "failed"])
+                            )
                         )
                     ).order_by(MasterCatalogProduct.created_at.asc()).limit(8)
                     
@@ -175,4 +178,4 @@ class RAGEnricherService:
                         
                         await session.commit()
             except Exception as db_ex:
-                logger.error(f"[RAG Enricher] Database update failed for '{name}' ({barcode}): {db_ex}")
+                logger.error(f"[RAG Enricher] Database update failed for '{name}' ({barcode}):", exc_info=True)

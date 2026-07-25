@@ -534,48 +534,97 @@ def generate_fallback_jd(prompt: str) -> dict:
 def parse_jd_response_text(text: str) -> GenerateJdResponse:
     import json
     import re
-    
-    cleaned_text = text.strip()
-    # Remove markdown code block markers if any
-    if cleaned_text.startswith("```"):
-        cleaned_text = re.sub(r"^```[a-zA-Z]*\n", "", cleaned_text)
-        cleaned_text = re.sub(r"\n```$", "", cleaned_text)
-        cleaned_text = cleaned_text.strip()
 
-    # 1. Attempt JSON parsing
-    try:
-        data = json.loads(cleaned_text)
-        if isinstance(data, dict):
-            title = data.get("title") or data.get("TITLE")
-            dept = data.get("department") or data.get("DEPARTMENT")
-            crit = data.get("criteria") or data.get("CRITERIA")
-            desc = data.get("description") or data.get("DESCRIPTION")
-            
-            if isinstance(crit, list):
-                crit = ", ".join(crit)
-                
-            if title and desc:
-                return GenerateJdResponse(
-                    title=str(title).strip(),
-                    department=str(dept or "Engineering").strip(),
-                    criteria=str(crit or "").strip(),
-                    description=str(desc).strip(),
-                    threshold_score=80
-                )
-    except Exception:
-        pass
+    def sanitize_json_escapes(s: str) -> str:
+        # Replace invalid escape sequences: \\- \\DST etc.
+        def fix_escape(m):
+            char = m.group(1)
+            valid = {'"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'}
+            if char in valid:
+                return m.group(0)  # Keep valid escapes as-is
+            return char  # Drop the backslash for invalid escapes
+        return re.sub(r'\\(.)', fix_escape, s)
 
-    # 2. Heuristic Line-by-Line / Regex Parser fallback
-    title = "Enterprise Systems Developer"
+    def extract_and_parse_json(raw: str):
+        """Try multiple strategies to extract and parse JSON from the raw text."""
+        # Strategy 1: Strip markdown code fences and try direct parse
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?```$", "", cleaned)
+            cleaned = cleaned.strip()
+
+        # Strategy 2: Find first { to last } (handles text before/after JSON)
+        brace_match = re.search(r'\{[\s\S]*\}', cleaned)
+        candidates = []
+        if brace_match:
+            candidates.append(brace_match.group(0))
+        candidates.append(cleaned)  # Also try the whole text
+
+        for candidate in candidates:
+            # Try raw parse first
+            try:
+                data = json.loads(candidate)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+
+            # Try after sanitizing invalid escape sequences
+            try:
+                sanitized = sanitize_json_escapes(candidate)
+                data = json.loads(sanitized)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+
+            # Try removing all lone backslashes before non-special chars
+            try:
+                # More aggressive: replace any \X where X is not a valid escape
+                aggressive = re.sub(r'\\([^"\\/bfnrtu])', r'\1', candidate)
+                data = json.loads(aggressive)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+
+        return None
+
+    # ── Primary: JSON extraction ──────────────────────────────────────────────
+    data = extract_and_parse_json(text)
+    if data:
+        title = data.get("title") or data.get("TITLE") or ""
+        dept  = data.get("department") or data.get("DEPARTMENT") or "Engineering"
+        crit  = data.get("criteria") or data.get("CRITERIA") or ""
+        desc  = data.get("description") or data.get("DESCRIPTION") or ""
+
+        if isinstance(crit, list):
+            crit = ", ".join(crit)
+        if isinstance(desc, list):
+            desc = "\n".join(str(x) for x in desc)
+
+        if title and desc:
+            return GenerateJdResponse(
+                title=str(title).strip(),
+                department=str(dept).strip(),
+                criteria=str(crit).strip(),
+                description=str(desc).strip(),
+                threshold_score=80
+            )
+
+    # ── Fallback: Regex heuristic line-parser ─────────────────────────────────
+    print(f"[JD Parser] JSON extraction failed; falling back to regex heuristics. Text[:200]: {text[:200]}")
+
+    title      = "Enterprise Systems Developer"
     department = "Engineering"
-    criteria = "Python, REST APIs, Git"
+    criteria   = "Python, REST APIs, Git"
     description = text
-    
-    # Try regex matching (case-insensitive, multi-line)
+
     title_match = re.search(r"(?i)^TITLE:\s*(.*)", text, re.MULTILINE)
-    dept_match = re.search(r"(?i)^DEPARTMENT:\s*(.*)", text, re.MULTILINE)
-    crit_match = re.search(r"(?i)^CRITERIA:\s*(.*)", text, re.MULTILINE)
-    
+    dept_match  = re.search(r"(?i)^DEPARTMENT:\s*(.*)", text, re.MULTILINE)
+    crit_match  = re.search(r"(?i)^CRITERIA:\s*(.*)", text, re.MULTILINE)
+
     if title_match:
         title = title_match.group(1).strip()
     if dept_match:
@@ -583,24 +632,25 @@ def parse_jd_response_text(text: str) -> GenerateJdResponse:
     if crit_match:
         criteria = crit_match.group(1).strip()
 
-    # Extract description
     desc_match = re.search(r"(?i)DESCRIPTION:\s*(.*)", text, re.DOTALL)
     if desc_match:
         description = desc_match.group(1).strip()
     else:
-        # Clean tags to get description body
         clean_desc = text
-        clean_desc = re.sub(r"(?i)^TITLE:.*?\n", "", clean_desc, flags=re.MULTILINE)
-        clean_desc = re.sub(r"(?i)^DEPARTMENT:.*?\n", "", clean_desc, flags=re.MULTILINE)
-        clean_desc = re.sub(r"(?i)^CRITERIA:.*?\n", "", clean_desc, flags=re.MULTILINE)
-        clean_desc = re.sub(r"(?i)^DESCRIPTION:.*?\n", "", clean_desc, flags=re.MULTILINE)
-        clean_desc = re.sub(r"-{3,}", "", clean_desc)
-        description = clean_desc.strip()
+        for pat in [r"(?i)^TITLE:.*?\n", r"(?i)^DEPARTMENT:.*?\n",
+                    r"(?i)^CRITERIA:.*?\n", r"(?i)^DESCRIPTION:.*?\n"]:
+            clean_desc = re.sub(pat, "", clean_desc, flags=re.MULTILINE)
+        description = re.sub(r"-{3,}", "", clean_desc).strip()
 
-    # Strip formatting artifacts
-    title = re.sub(r"^[-#\s*]+", "", title).strip()
+    title      = re.sub(r"^[-#\s*]+", "", title).strip()
     department = re.sub(r"^[-#\s*]+", "", department).strip()
-    criteria = re.sub(r"^[-#\s*]+", "", criteria).strip()
+    criteria   = re.sub(r"^[-#\s*]+", "", criteria).strip()
+
+    # Last resort: try to extract title from first markdown H1
+    if title == "Enterprise Systems Developer":
+        h1_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+        if h1_match:
+            title = h1_match.group(1).strip()
 
     return GenerateJdResponse(
         title=title,
@@ -620,32 +670,54 @@ async def generate_job_description(
     
     # ─── Dynamic Fallback Checks ───────────────────────────────────
     if provider == "openai" and not settings.openai_api_key:
-        if settings.gemini_api_key:
+        if settings.anthropic_api_key:
+            provider = "claude"
+        elif settings.gemini_api_key:
             provider = "gemini"
         else:
             res = generate_fallback_jd(payload.prompt)
             return GenerateJdResponse(**res)
             
+    if provider == "claude" and not settings.anthropic_api_key:
+        if settings.gemini_api_key:
+            provider = "gemini"
+        elif settings.openai_api_key:
+            provider = "openai"
+        else:
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+            
     if provider == "gemini" and not settings.gemini_api_key:
-        if settings.openai_api_key:
+        if settings.anthropic_api_key:
+            provider = "claude"
+        elif settings.openai_api_key:
             provider = "openai"
         else:
             res = generate_fallback_jd(payload.prompt)
             return GenerateJdResponse(**res)
 
     instruction = (
-        "You are an elite enterprise HR Director and technical recruiter. Based on this prompt: "
-        f"'{payload.prompt}', generate a comprehensive, highly detailed, production-grade Job Description (JD).\n"
-        "The generated description must be formatted beautifully in markdown and include standard corporate headings: "
-        "# Job Profile: [Title], ## Executive Summary, ## Key Responsibilities, ## Required Technical Skills & Stack, "
-        "## Preferred Qualifications & Experience, ## Behavioral Competencies, and ## Structured Evaluation Criteria (detailing specific threshold scores, e.g. Technical Assignment Score >= 80%).\n"
-        "Return your response EXACTLY as a JSON object matching this schema:\n"
-        "{\n"
-        '  "title": "[Suggest a professional job title]",\n'
-        '  "department": "[Suggest the exact organizational department, e.g. Engineering, Sales, Marketing, HR, Finance, Operations]",\n'
-        '  "criteria": "[3-5 specific, comma-separated keywords/technologies for resume keyword matching]",\n'
-        '  "description": "[The complete, detailed markdown JD containing all headings and paragraphs mentioned above. Ensure proper markdown formatting and escape quotes properly.]"\n'
-        "}"
+        "You are an elite enterprise HR Director and technical recruiter with 20 years of experience. "
+        "Your task: generate a COMPLETE, highly detailed, enterprise-grade Job Description (JD) based on the following context:\n\n"
+        f"{payload.prompt}\n\n"
+        "STRICT RULES:\n"
+        "1. Extract the exact job title, department, experience level, and required skills FROM the context above — do NOT use generic defaults.\n"
+        "2. If the context already contains a JD (pasted text), use ALL the information in it — role name, responsibilities, skills, requirements — and enhance/restructure it into a perfect enterprise JD.\n"
+        "3. Format the description in beautiful markdown with ALL these sections:\n"
+        "   # [Exact Job Title from context]\n"
+        "   ## About the Role\n"
+        "   ## Key Responsibilities\n"
+        "   ## Required Qualifications & Experience\n"
+        "   ## Technical Skills & Stack\n"
+        "   ## Behavioral Competencies\n"
+        "   ## What Success Looks Like (first 90 days)\n"
+        "   ## Compensation & Benefits\n"
+        "   ## Structured Evaluation Criteria (with specific threshold scores)\n"
+        "4. The 'criteria' field must list the ACTUAL key skills from the JD (comma-separated, 5-8 specific terms).\n"
+        "5. The 'department' must reflect the actual department (e.g., 'Data Science & Analytics', 'Engineering', 'Operations').\n"
+        "6. Return ONLY a raw JSON object (no markdown code fences, no extra text) matching exactly this schema:\n"
+        '{"title": "...", "department": "...", "criteria": "...", "description": "..."}\n\n'
+        "IMPORTANT: Keep your thinking/reasoning process extremely brief (under 300 tokens) to ensure the JSON fits in the token window and is not truncated."
     )
     
     import requests
@@ -664,13 +736,100 @@ async def generate_job_description(
             ]
         }
         try:
-            response = requests.post(url, json=body, headers=headers, timeout=20)
+            response = requests.post(url, json=body, headers=headers, timeout=30)
             response.raise_for_status()
             res_json = response.json()
             text = res_json["choices"][0]["message"]["content"]
             return parse_jd_response_text(text)
         except Exception as e:
             print(f"OpenAI API request failed, falling back. Error: {e}")
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+            
+    # ─── Claude / Anthropic Provider execution ────────────────────
+    elif provider == "claude":
+        url = f"{settings.anthropic_base_url.rstrip('/')}/v1/messages"
+        headers = {
+            "x-api-key": settings.anthropic_api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        body = {
+            "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
+            "max_tokens": 8192,
+            "messages": [
+                {"role": "user", "content": instruction}
+            ]
+        }
+        try:
+            response = requests.post(url, json=body, headers=headers, timeout=60)
+            response.raise_for_status()
+            res_json = response.json()
+            
+            # Debug log the response structure
+            print(f"[Claude JD] Response keys: {list(res_json.keys())}")
+            
+            # Handle multiple possible response formats from different proxy providers
+            text = None
+            
+            # Standard Anthropic format: {"content": [{"type": "text", "text": "..."}, ...]}
+            # Extended thinking mode adds a "thinking" block BEFORE the text block — loop to find type="text"
+            if "content" in res_json and isinstance(res_json["content"], list):
+                for block in res_json["content"]:
+                    if isinstance(block, dict):
+                        block_type = block.get("type", "")
+                        if block_type == "text":
+                            text = block.get("text")
+                            break
+                        elif block_type == "thinking":
+                            # Skip thinking/reasoning blocks
+                            continue
+                # Fallback: use first block if no text-typed block found
+                if not text and res_json["content"]:
+                    first_block = res_json["content"][0]
+                    text = first_block.get("text") or first_block.get("content")
+            
+            # OpenAI-compatible format: {"choices": [{"message": {"content": "..."}}]}
+            elif "choices" in res_json and res_json["choices"]:
+                msg = res_json["choices"][0].get("message", {})
+                text = msg.get("content") or msg.get("text")
+            
+            # Direct text field
+            elif "text" in res_json:
+                text = res_json["text"]
+            
+            # Flat message field
+            elif "message" in res_json:
+                msg = res_json["message"]
+                if isinstance(msg, str):
+                    text = msg
+                elif isinstance(msg, dict):
+                    text = msg.get("content") or msg.get("text")
+            
+            # Output field (some proxies)
+            elif "output" in res_json:
+                text = str(res_json["output"])
+
+            if not text:
+                print(f"[Claude JD] Unexpected response format: {res_json}")
+                raise ValueError(f"Could not extract text from response. Keys: {list(res_json.keys())}")
+            
+            return parse_jd_response_text(text)
+        except Exception as e:
+            print(f"Claude API request failed, falling back to Gemini. Error: {e}")
+            # Try Gemini as secondary fallback if key available
+            if settings.gemini_api_key:
+                try:
+                    api_key = settings.gemini_api_key
+                    model = settings.gemini_model or "gemini-2.5-flash"
+                    gurl = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+                    gbody = {"contents": [{"parts": [{"text": instruction}]}]}
+                    gresp = requests.post(gurl, json=gbody, headers={"Content-Type": "application/json"}, timeout=20)
+                    gresp.raise_for_status()
+                    gtext = gresp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    return parse_jd_response_text(gtext)
+                except Exception as ge:
+                    print(f"Gemini fallback also failed: {ge}")
             res = generate_fallback_jd(payload.prompt)
             return GenerateJdResponse(**res)
             
@@ -690,7 +849,7 @@ async def generate_job_description(
             }]
         }
         try:
-            response = requests.post(url, json=body, headers=headers, timeout=15)
+            response = requests.post(url, json=body, headers=headers, timeout=20)
             response.raise_for_status()
             res_json = response.json()
             text = res_json["candidates"][0]["content"]["parts"][0]["text"]

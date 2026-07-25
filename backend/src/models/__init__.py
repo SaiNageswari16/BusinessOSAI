@@ -1158,7 +1158,7 @@ class JobOpening(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "job_openings"
 
     title: Mapped[str] = mapped_column(String(150), nullable=False)
-    department: Mapped[str] = mapped_column(String(100), nullable=False)
+    department: Mapped[str] = mapped_column(String(200), nullable=False)
     location: Mapped[str] = mapped_column(String(150), nullable=False)
     type: Mapped[str] = mapped_column(String(50), default="Full-Time")  # Full-Time|Part-Time|Contract
     experience: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -1169,7 +1169,13 @@ class JobOpening(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     threshold_score: Mapped[int] = mapped_column(Integer, default=70)
     portals: Mapped[list[str]] = mapped_column(JSONB, default=list)  # JSON list
-    criteria: Mapped[str] = mapped_column(String(255), nullable=False)  # Comma-separated search words
+    criteria: Mapped[str] = mapped_column(Text, nullable=False)  # Comma-separated search words (no length limit)
+
+    # Zoho Recruit & third-party recruitment sync columns
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    provider_job_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    sync_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    last_synced: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     applicants: Mapped[list["Applicant"]] = relationship(back_populates="job", cascade="all, delete-orphan")
 
@@ -1193,6 +1199,10 @@ class Applicant(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     proposed_salary: Mapped[float | None] = mapped_column(Numeric(12, 2))
     notes_json: Mapped[list[dict]] = mapped_column(JSONB, default=list)
 
+    # Sync tracking columns
+    provider_candidate_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    sync_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     job: Mapped["JobOpening"] = relationship(back_populates="applicants")
 
 
@@ -1211,6 +1221,10 @@ class Interview(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     meeting_link: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(30), default="Scheduled")  # Scheduled|Completed|Cancelled
     feedback: Mapped[str | None] = mapped_column(Text)
+
+    # Sync tracking columns
+    provider_interview_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    sync_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     applicant: Mapped["Applicant"] = relationship()
 
@@ -1488,4 +1502,24 @@ class CRMOpportunity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     forecast_category: Mapped[str] = mapped_column(String(30), default="Pipeline")
     lost_reason: Mapped[str | None] = mapped_column(String(255))
 
+
+class OrganizationIntegration(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "organization_integrations"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "provider", name="uq_org_integrations_provider"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    api_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    organization_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    connected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sync: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 from .inventory import *
+from .procurement import *

@@ -37,7 +37,7 @@ import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Card } from "../ui/card";
 import { Progress } from "../ui/progress";
-import { recruitmentApi, employeesApi, JobOpening, Applicant, Interview, Offer, Onboarding, Employee } from "../../lib/api-client";
+import { recruitmentApi, employeesApi, inventoryApi, JobOpening, Applicant, Interview, Offer, Onboarding, Employee } from "../../lib/api-client";
 
 interface Props {
   tab?: string;
@@ -195,6 +195,9 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
   // Threshold Scores
   const [thresholdScoreVal, setThresholdScoreVal] = useState(70);
 
+  // JD view mode (preview | edit)
+  const [jdViewMode, setJdViewMode] = useState<"preview" | "edit">("preview");
+
   // Edit fields for Job Opening Form (Step 2)
   const [jobForm, setJobForm] = useState({
     id: "",
@@ -345,12 +348,12 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
 
       // 2. Play visual log progress steps
       const logs = [
-        "Analyzing context keywords...",
-        "Querying Gemini LLM engine...",
+        "Analyzing role requirements...",
+        "Querying Claude AI engine...",
         "Creating enterprise role definition...",
         "Drafting Key Responsibilities checklist...",
-        "Formulating technical thresholds...",
-        "Finalizing evaluation framework..."
+        "Formulating technical thresholds & evaluation criteria...",
+        "Finalizing professional JD layout..."
       ];
 
       for (const log of logs) {
@@ -380,7 +383,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
         title: res.title,
         department: res.department,
         criteria: res.criteria,
-        description: generatedJdText + "\n\n(Generated dynamically by BusinessOS AI JD Assistant)"
+        description: generatedJdText
       }));
       setThresholdScoreVal(res.threshold_score || 80);
       setWizardStep(2);
@@ -505,6 +508,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     });
     setThresholdScoreVal(job.threshold_score);
     setJobActionType("edit");
+    setJdViewMode("preview");
     setWizardStep(2);
     setPostJobOpen(true);
   };
@@ -847,6 +851,104 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     }
   };
 
+  const handlePublishToZoho = async (jobId: string) => {
+    try {
+      showNotification("Publishing Job Opening to Zoho Recruit...", "info");
+      await inventoryApi.publishJobToZoho(jobId);
+      showNotification("Job opening successfully published to Zoho Recruit!", "success");
+      await loadJobs();
+    } catch (e: any) {
+      console.error(e);
+      showNotification(e.message || "Failed to publish job to Zoho Recruit.", "error");
+    }
+  };
+
+  const handleDownloadJdPdf = (job: JobOpening) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      showNotification("Popup blocked! Please allow popups to save/download the JD.", "error");
+      return;
+    }
+    
+    const markdownToHtml = (md: string) => {
+      return md
+        .replace(/# (.*)/g, '<h1 class="text-2xl font-extrabold text-slate-900 border-b pb-3 mb-4 mt-4">$1</h1>')
+        .replace(/## (.*)/g, '<h2 class="text-lg font-bold text-slate-800 border-b pb-2 mb-3 mt-6">$1</h2>')
+        .replace(/### (.*)/g, '<h3 class="text-md font-bold text-slate-700 mb-2 mt-4">$1</h3>')
+        .replace(/\- (.*)/g, '<li class="text-sm text-slate-600 ml-4 mb-1.5 list-disc">$1</li>')
+        .replace(/\n\n/g, '<p class="my-3 text-sm text-slate-600 leading-relaxed"></p>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    };
+
+    const formattedDesc = markdownToHtml(job.description || "");
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${job.title} - Job Description</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <style>
+            @media print {
+              body {
+                padding: 0;
+                margin: 0;
+                background: white;
+              }
+              .no-print {
+                display: none;
+              }
+              .page-card {
+                border: none;
+                box-shadow: none;
+                padding: 0;
+                margin: 0;
+              }
+            }
+          </style>
+        </head>
+        <body class="bg-slate-50 min-h-screen p-6 text-slate-800 antialiased font-sans">
+          <div class="max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-slate-100 page-card">
+            <div class="no-print flex justify-between items-center bg-indigo-50 border border-indigo-100 p-4 rounded-xl mb-6">
+              <div class="text-xs text-indigo-700 font-medium">
+                📄 Confirm JD layout details, then click "Print/Save as PDF".
+              </div>
+              <button 
+                onclick="window.print()" 
+                class="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 active:scale-[0.98] transition-all"
+              >
+                Print / Save PDF
+              </button>
+            </div>
+            
+            <div class="flex justify-between items-start border-b pb-4 mb-6">
+              <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">${job.department} Department</span>
+                <h1 class="text-2xl font-extrabold text-slate-900 mt-1">${job.title}</h1>
+                <p class="text-xs text-slate-500 mt-2">Location: ${job.location} · Job Type: ${job.type} · Experience: ${job.experience}</p>
+              </div>
+              <div class="text-right">
+                <div class="text-xl font-bold text-slate-900">${job.openings}</div>
+                <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Openings</div>
+              </div>
+            </div>
+            
+            <div class="prose max-w-none">
+              ${formattedDesc}
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 300);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const activeOnboarding = onboardings.find(o => o.id === selectedOnboardingId) || onboardings[0];
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -899,7 +1001,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                   <Button onClick={() => setCareersPortalOpen(true)} variant="outline" className="border-primary/30 text-primary gap-2 hover:bg-primary/5">
                     <Globe className="size-4" /> Public Careers Portal
                   </Button>
-                  <Button onClick={() => { setJobActionType("create"); setJobForm({ id: "", title: "", department: "Engineering", location: "Remote", type: "Full-Time", experience: "3-5 years", openings: 1, description: "", criteria: "", portals: ["Careers Page"] }); setPostJobOpen(true); }} className="gradient-brand text-white gap-2">
+                  <Button onClick={() => { setJobActionType("create"); setJdViewMode("preview"); setJobForm({ id: "", title: "", department: "Engineering", location: "Remote", type: "Full-Time", experience: "3-5 years", openings: 1, description: "", criteria: "", portals: ["Careers Page"] }); setPostJobOpen(true); }} className="gradient-brand text-white gap-2">
                     <Plus className="size-4" /> Post Job
                   </Button>
                 </div>
@@ -958,9 +1060,35 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                           )) || null}
                         </div>
 
-                        <Button size="sm" variant="ghost" onClick={() => openEditJob(job)} className="text-xs text-primary gap-1 group-hover:bg-primary/10 hover:underline">
-                          <Edit2 className="size-3" /> Edit JD
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          {job.provider === "zoho" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle className="size-3" /> Zoho Synced
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePublishToZoho(job.id)}
+                              className="text-[9px] h-6 px-2 border-indigo-500/30 hover:bg-indigo-500/10 text-indigo-500 font-semibold gap-1"
+                            >
+                              Publish to Zoho
+                            </Button>
+                          )}
+
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDownloadJdPdf(job)}
+                            className="text-xs text-muted-foreground gap-1 hover:bg-muted/80"
+                          >
+                            <FileText className="size-3" /> PDF
+                          </Button>
+
+                          <Button size="sm" variant="ghost" onClick={() => openEditJob(job)} className="text-xs text-primary gap-1 group-hover:bg-primary/10 hover:underline">
+                            <Edit2 className="size-3" /> Edit JD
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </motion.div>
@@ -1465,34 +1593,89 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                           exit={{ opacity: 0, y: -10 }}
                           className="space-y-4"
                         >
+                          {/* ── Template Picker ── */}
                           <div>
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Roles Context Prompt</label>
+                            <label className="block text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">Start from a Template</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                {
+                                  icon: "⚙️",
+                                  label: "Backend Engineer",
+                                  prompt: "Senior Backend Engineer with 5+ years experience. Must know Python, FastAPI, PostgreSQL, Docker, AWS Lambda, Redis. Strong background in REST API design, microservices architecture, and CI/CD pipelines. Remote position, salary 110-140k USD."
+                                },
+                                {
+                                  icon: "🎨",
+                                  label: "Frontend Developer",
+                                  prompt: "Senior Frontend Developer with 4+ years experience in React, TypeScript, TailwindCSS, and Vite. Must have led UI architecture on at least one production SaaS product. Experience with Figma-to-code workflows and state management using Zustand or Redux. Remote-first, equity included."
+                                },
+                                {
+                                  icon: "📊",
+                                  label: "Data Scientist",
+                                  prompt: "Senior Data Scientist with 5+ years experience. Expertise in Python, pandas, scikit-learn, PyTorch or TensorFlow. Must have built production ML pipelines and worked with large-scale data warehouse systems. Background in A/B testing and feature engineering strongly preferred."
+                                },
+                                {
+                                  icon: "🚀",
+                                  label: "Product Manager",
+                                  prompt: "Senior Product Manager with 6+ years experience in B2B SaaS products. Must have owned product roadmaps, written detailed PRDs, and led cross-functional teams of engineers and designers. Excellent data-driven decision making using Amplitude or Mixpanel. Onsite Mumbai."
+                                },
+                                {
+                                  icon: "🔐",
+                                  label: "DevOps / SRE",
+                                  prompt: "DevOps / Site Reliability Engineer with 4+ years experience. Must know Kubernetes, Terraform, GitHub Actions, ArgoCD, Prometheus, and Grafana. Experience with multi-cloud deployments (AWS + GCP) and zero-downtime deployment strategies. Strong scripting in Bash and Python."
+                                },
+                                {
+                                  icon: "🎯",
+                                  label: "Sales Executive",
+                                  prompt: "Enterprise Sales Executive with 5+ years B2B SaaS sales experience. Must have closed deals above ₹50L ARR and managed CRM pipelines using Salesforce. Excellent communication, negotiation, and demo skills. Comfortable with outbound prospecting and LinkedIn outreach. Mumbai / Delhi."
+                                },
+                                {
+                                  icon: "🧑‍🤝‍🧑",
+                                  label: "HR Recruiter",
+                                  prompt: "Talent Acquisition Specialist with 3+ years of full-cycle recruitment experience for technical roles. Must have used ATS tools (Zoho Recruit, Lever, or Greenhouse), conducted structured interviews, and collaborated closely with engineering leads. Knowledge of Indian labor law preferred."
+                                },
+                                {
+                                  icon: "📱",
+                                  label: "Mobile Developer",
+                                  prompt: "React Native Mobile Developer with 4+ years cross-platform app development experience. Must have shipped apps on both iOS and Android App Stores. Proficient in Expo, Redux Toolkit, React Navigation, REST APIs, and push notifications integration. Experience with Apple TestFlight and Play Console."
+                                }
+                              ].map((t) => (
+                                <button
+                                  key={t.label}
+                                  type="button"
+                                  disabled={generatingAi}
+                                  onClick={() => setAiContext(t.prompt)}
+                                  className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-all hover:bg-primary/5 hover:border-primary/30 ${aiContext === t.prompt ? "border-primary/60 bg-primary/10 text-primary" : "border-border/50 bg-muted/10 text-muted-foreground"}`}
+                                >
+                                  <span className="text-lg leading-none">{t.icon}</span>
+                                  <span className="text-[11px] font-semibold">{t.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* ── Context Prompt Input ── */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="block text-xs font-semibold text-muted-foreground">Role Context Prompt</label>
+                              {aiContext && (
+                                <button
+                                  type="button"
+                                  onClick={() => setAiContext("")}
+                                  className="text-[10px] text-muted-foreground hover:text-destructive transition-colors"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
                             <Textarea
-                              placeholder="e.g. I need a Senior React Developer with 5 years of experience in state management, Vite, and Tailwind CSS. Should have experience leading frontend developers, remote position, salary 120-140k."
+                              placeholder="Describe the role in detail — title, skills, years of experience, salary range, location, company culture, must-haves vs. nice-to-haves..."
                               value={aiContext}
                               onChange={(e) => setAiContext(e.target.value)}
                               rows={4}
                               disabled={generatingAi}
                               className="text-xs"
                             />
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5 items-center">
-                            <span className="text-[10px] text-muted-foreground font-semibold uppercase">Suggestions:</span>
-                            <button
-                              disabled={generatingAi}
-                              onClick={() => setAiContext("Need a Python API developer with 4 years experience. Knowing FastAPI, PostgreSQL, Docker, AWS, and unit testing workflows. Remote.")}
-                              className="text-[10px] bg-muted border hover:bg-muted/80 text-muted-foreground px-2 py-0.5 rounded"
-                            >
-                              Backend Engineer
-                            </button>
-                            <button
-                              disabled={generatingAi}
-                              onClick={() => setAiContext("UX Designer with 3+ years experience. Strong in design systems, Figma prototypes, responsive user flows, user interviews. San Francisco onsite.")}
-                              className="text-[10px] bg-muted border hover:bg-muted/80 text-muted-foreground px-2 py-0.5 rounded"
-                            >
-                              UX / Figma Designer
-                            </button>
+                            <p className="text-[10px] text-muted-foreground mt-1">Tip: The more specific you are, the better Claude's output.</p>
                           </div>
 
                           <Button
@@ -1500,29 +1683,53 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                             disabled={generatingAi || !aiContext.trim()}
                             className="gradient-brand text-white w-full gap-2"
                           >
-                            <Sparkles className="size-4" /> {generatingAi ? "Generating JD Details..." : "Generate JD using AI"}
+                            <Sparkles className="size-4" /> {generatingAi ? "Generating with Claude AI..." : "Generate Enterprise JD using AI"}
                           </Button>
 
                           {generatingAi && (
                             <div className="space-y-2 border border-border/80 rounded-xl p-4 bg-muted/10">
                               <p className="text-xs text-indigo-500 font-bold flex items-center gap-1.5">
-                                <Sparkles className="size-3.5 text-indigo-500 animate-spin" /> {aiProgressText || "AI processing..."}
+                                <Sparkles className="size-3.5 text-indigo-500 animate-spin" /> {aiProgressText || "Claude AI processing..."}
                               </p>
                               <div
                                 ref={textStreamRef}
                                 className="bg-background/90 p-4 border border-border/40 rounded-lg text-xs leading-relaxed max-h-[180px] overflow-y-auto whitespace-pre-wrap font-mono"
                               >
-                                {aiStreamingText || "Awaiting AI models output..."}
+                                {aiStreamingText || "Awaiting Claude AI output..."}
                               </div>
                             </div>
                           )}
 
                           {!generatingAi && aiStreamingText && (
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 border border-border/80 rounded-xl p-5 bg-muted/10 text-left">
-                              <div className="flex items-center gap-2 text-xs font-bold text-primary">
-                                <Sparkles className="size-4 text-primary" /> AI Generated Job Opening Details (Review & Edit)
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 border border-primary/20 rounded-xl p-5 bg-primary/5 text-left">
+                              {/* Header with Generate Again */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs font-bold text-primary">
+                                  <Sparkles className="size-4 text-primary" /> Claude AI Generated JD — Review & Edit
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleGenerateAiJd}
+                                  disabled={generatingAi}
+                                  className="text-[10px] h-7 px-3 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 font-semibold"
+                                >
+                                  <Sparkles className="size-3" /> Regenerate
+                                </Button>
                               </div>
-                              
+
+                              {/* Inline quick-edit prompt */}
+                              <div className="bg-background/80 border border-border/40 rounded-lg p-3 space-y-2">
+                                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Modify prompt & regenerate</p>
+                                <Textarea
+                                  value={aiContext}
+                                  onChange={(e) => setAiContext(e.target.value)}
+                                  rows={2}
+                                  className="text-xs bg-background"
+                                  placeholder="Modify your prompt here and click Regenerate above..."
+                                />
+                              </div>
+
                               <div className="grid grid-cols-2 gap-4 text-xs">
                                 <div>
                                   <label className="block font-semibold text-muted-foreground mb-1.5">Job Title</label>
@@ -1561,16 +1768,52 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                                 />
                               </div>
 
+                              {/* Markdown Preview/Edit Toggle in inline panel */}
                               <div>
-                                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Description Text</label>
-                                <Textarea
-                                  value={jobForm.description}
-                                  onChange={(e) => {
-                                    setJobForm({ ...jobForm, description: e.target.value });
-                                  }}
-                                  rows={12}
-                                  className="bg-background text-xs leading-relaxed font-mono"
-                                />
+                                <div className="flex items-center justify-between mb-2">
+                                  <label className="block text-xs font-semibold text-muted-foreground">Generated Description</label>
+                                  <div className="flex items-center gap-1 bg-muted/30 border border-border/40 rounded-lg p-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setJdViewMode("preview")}
+                                      className={`px-2.5 py-0.5 rounded-md text-[10px] font-semibold transition-all ${jdViewMode === "preview" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                                    >
+                                      Preview
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setJdViewMode("edit")}
+                                      className={`px-2.5 py-0.5 rounded-md text-[10px] font-semibold transition-all ${jdViewMode === "edit" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                                    >
+                                      Edit
+                                    </button>
+                                  </div>
+                                </div>
+                                {jdViewMode === "preview" ? (
+                                  <div
+                                    className="border border-border/50 rounded-xl bg-background p-4 text-sm leading-relaxed max-h-[260px] overflow-y-auto"
+                                    dangerouslySetInnerHTML={{
+                                      __html: (jobForm.description || "")
+                                        .replace(/^# (.*)/gm, '<h1 class="text-lg font-extrabold text-foreground border-b border-border pb-2 mt-3 mb-2">$1</h1>')
+                                        .replace(/^## (.*)/gm, '<h2 class="text-sm font-bold text-foreground mt-4 mb-1.5 flex items-center gap-1.5"><span class="w-1 h-3.5 bg-primary rounded-full inline-block"></span>$1</h2>')
+                                        .replace(/^### (.*)/gm, '<h3 class="text-xs font-bold text-foreground mt-3 mb-1">$1</h3>')
+                                        .replace(/^- (.*)/gm, '<li class="ml-4 mb-1 text-xs text-muted-foreground list-disc">$1</li>')
+                                        .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
+                                        .replace(/`(.*?)`/g, '<code class="bg-muted px-1 py-0.5 rounded text-xs font-mono text-primary">$1</code>')
+                                        .replace(/\n\n/g, '<div class="my-2"></div>')
+                                        .replace(/\n/g, '<br />')
+                                    }}
+                                  />
+                                ) : (
+                                  <Textarea
+                                    value={jobForm.description}
+                                    onChange={(e) => {
+                                      setJobForm({ ...jobForm, description: e.target.value });
+                                    }}
+                                    rows={12}
+                                    className="bg-background text-xs leading-relaxed font-mono"
+                                  />
+                                )}
                               </div>
                             </motion.div>
                           )}
@@ -1667,13 +1910,49 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Full Job Description Text</label>
-                      <Textarea
-                        value={jobForm.description}
-                        onChange={(e) => setJobForm({ ...jobForm, description: e.target.value })}
-                        rows={8}
-                        className="text-xs"
-                      />
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-semibold text-muted-foreground">Full Job Description</label>
+                        <div className="flex items-center gap-1 bg-muted/30 border border-border/40 rounded-lg p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setJdViewMode("preview")}
+                            className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${(jdViewMode ?? "preview") === "preview" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                          >
+                            Preview
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setJdViewMode("edit")}
+                            className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${jdViewMode === "edit" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                          >
+                            Edit Markdown
+                          </button>
+                        </div>
+                      </div>
+                      {(jdViewMode ?? "preview") === "preview" ? (
+                        <div
+                          className="border border-border/50 rounded-xl bg-background p-5 text-sm leading-relaxed max-h-[320px] overflow-y-auto prose prose-sm dark:prose-invert max-w-none"
+                          dangerouslySetInnerHTML={{
+                            __html: (jobForm.description || "")
+                              .replace(/^# (.*)/gm, '<h1 class="text-xl font-extrabold text-foreground border-b border-border pb-2 mt-4 mb-3">$1</h1>')
+                              .replace(/^## (.*)/gm, '<h2 class="text-base font-bold text-foreground mt-5 mb-2 flex items-center gap-2"><span class="w-1 h-4 bg-primary rounded-full inline-block"></span>$1</h2>')
+                              .replace(/^### (.*)/gm, '<h3 class="text-sm font-bold text-foreground mt-4 mb-1.5">$1</h3>')
+                              .replace(/^- (.*)/gm, '<li class="ml-4 mb-1 text-xs text-muted-foreground list-disc">$1</li>')
+                              .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
+                              .replace(/`(.*?)`/g, '<code class="bg-muted px-1 py-0.5 rounded text-xs font-mono text-primary">$1</code>')
+                              .replace(/\n\n/g, '<div class="my-3"></div>')
+                              .replace(/\n/g, '<br />')
+                          }}
+                        />
+                      ) : (
+                        <Textarea
+                          value={jobForm.description}
+                          onChange={(e) => setJobForm({ ...jobForm, description: e.target.value })}
+                          rows={12}
+                          className="text-xs font-mono leading-relaxed"
+                          placeholder="Job description markdown..."
+                        />
+                      )}
                     </div>
 
                     <div className="pt-2 border-t border-border">

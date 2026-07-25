@@ -853,6 +853,10 @@ export interface JobOpening {
   criteria: string;
   created_at: string;
   updated_at: string;
+  provider?: string;
+  provider_job_id?: string;
+  sync_status?: string;
+  last_synced?: string;
 }
 
 export interface Applicant {
@@ -2537,4 +2541,72 @@ export const inventoryApi = {
   getStorageLocations: () => request<StorageLocation[]>("GET", "/inventory/locations"),
   createStorageLocation: (warehouseId: string, data: Record<string, unknown>) => request<StorageLocation>("POST", `/inventory/warehouses/${warehouseId}/locations`, data),
   deleteStorageLocation: (id: string) => request<void>("DELETE", `/inventory/locations/${id}`),
+
+  // --- Procurement & Supplier Management ---
+  getSuppliers: (params?: { search?: string; status?: string }) => request<any[]>("GET", "/inventory/procurement/suppliers", undefined, params),
+  createSupplier: (data: any) => request<any>("POST", "/inventory/procurement/suppliers", data),
+  updateSupplier: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/suppliers/${id}`, data),
+  deleteSupplier: (id: string) => request<any>("DELETE", `/inventory/procurement/suppliers/${id}`),
+
+  getSupplierCategories: () => request<any[]>("GET", "/inventory/procurement/supplier-categories"),
+  createSupplierCategory: (data: any) => request<any>("POST", "/inventory/procurement/supplier-categories", data),
+
+  getSupplierContacts: (params?: { supplier_id?: string }) => request<any[]>("GET", "/inventory/procurement/supplier-contacts", undefined, params),
+  createSupplierContact: (data: any) => request<any>("POST", "/inventory/procurement/supplier-contacts", data),
+
+  getSupplierContracts: (params?: { supplier_id?: string }) => request<any[]>("GET", "/inventory/procurement/supplier-contracts", undefined, params),
+  createSupplierContract: (data: any) => request<any>("POST", "/inventory/procurement/supplier-contracts", data),
+
+  getSupplierPerformance: (params?: { supplier_id?: string }) => request<any[]>("GET", "/inventory/procurement/supplier-performance", undefined, params),
+  createSupplierPerformance: (data: any) => request<any>("POST", "/inventory/procurement/supplier-performance", data),
+
+  getBlacklistedSuppliers: () => request<any[]>("GET", "/inventory/procurement/blacklisted-suppliers"),
+  blacklistSupplier: (data: any) => request<any>("POST", "/inventory/procurement/blacklisted-suppliers", data),
+
+  getPurchaseRequests: () => request<any[]>("GET", "/inventory/procurement/purchase-requests"),
+  createPurchaseRequest: (data: any) => request<any>("POST", "/inventory/procurement/purchase-requests", data),
+
+  getPurchaseQuotations: () => request<any[]>("GET", "/inventory/procurement/purchase-quotations"),
+  createPurchaseQuotation: (data: any) => request<any>("POST", "/inventory/procurement/purchase-quotations", data),
+
+  getPurchaseOrders: () => request<any[]>("GET", "/inventory/procurement/purchase-orders"),
+  createPurchaseOrder: (data: any) => request<any>("POST", "/inventory/procurement/purchase-orders", data),
+
+  getGoodsReceivedNotes: () => request<any[]>("GET", "/inventory/procurement/goods-received-notes"),
+  createGoodsReceivedNote: (data: any) => request<any>("POST", "/inventory/procurement/goods-received-notes", data),
+
+  getPurchaseReturns: () => request<any[]>("GET", "/inventory/procurement/purchase-returns"),
+  createPurchaseReturn: (data: any) => request<any>("POST", "/inventory/procurement/purchase-returns", data),
+
+  getVendorBills: () => request<any[]>("GET", "/inventory/procurement/vendor-bills"),
+  createVendorBill: (data: any) => request<any>("POST", "/inventory/procurement/vendor-bills", data),
+
+  getVendorPayments: () => request<any[]>("GET", "/inventory/procurement/vendor-payments"),
+  createVendorPayment: (data: any) => request<any>("POST", "/inventory/procurement/vendor-payments", data),
+
+  getVendorCreditNotes: () => request<any[]>("GET", "/inventory/procurement/credit-notes"),
+  createVendorCreditNote: (data: any) => request<any>("POST", "/inventory/procurement/credit-notes", data),
+  getVendorDebitNotes: () => request<any[]>("GET", "/inventory/procurement/debit-notes"),
+  createVendorDebitNote: (data: any) => request<any>("POST", "/inventory/procurement/debit-notes", data),
+
+  getSpendAnalysis: () => request<any>("GET", "/inventory/procurement/analytics/spend-analysis"),
+  getLeadTimeAnalysis: () => request<any[]>("GET", "/inventory/procurement/analytics/lead-time"),
+  getAISuggestions: (refresh = false) => request<any[]>("GET", `/inventory/procurement/analytics/ai-suggestions?refresh=${refresh}`),
+  executeAISuggestion: (id: string) => request<{ message: string; purchase_request_id?: string }>("POST", `/inventory/procurement/analytics/ai-suggestions/${id}/execute`),
+  getCostAnalysis: () => request<any>("GET", "/inventory/procurement/analytics/cost-analysis"),
+  getProcurementForecast: () => request<any>("GET", "/inventory/procurement/analytics/procurement-forecast"),
+  getPendingApprovals: () => request<any[]>("GET", "/inventory/procurement/analytics/approvals"),
+  submitApprovalAction: (id: string, raw_type: string, action: string) => request<any>("POST", `/inventory/procurement/analytics/approvals/${id}/action`, { raw_type, action }),
+
+  // --- Real-time Analytics & Intelligence ---
+  getReportData: (tab: string) => request<any>("GET", `/analytics/reports/${tab}`),
+  consultAIReport: (tab: string, query: string, contextData: any) => request<{ answer: string }>("POST", `/analytics/reports/${tab}/ai-consult`, { query, contextData }),
+
+  // --- Zoho Recruit Integration ---
+  getZohoStatus: () => request<any>("GET", "/integrations/zoho/status"),
+  connectZoho: () => request<{ url: string }>("GET", "/integrations/zoho/connect"),
+  disconnectZoho: () => request<any>("DELETE", "/integrations/zoho/disconnect"),
+  testZohoConnection: () => request<any>("POST", "/integrations/zoho/test"),
+  publishJobToZoho: (jobId: string) => request<any>("POST", "/integrations/zoho/jobs/publish", { job_id: jobId }),
+  syncJobsFromZoho: () => request<{ success: boolean; message: string; created: number; updated: number; total_from_zoho: number }>("POST", "/integrations/zoho/sync-from-zoho"),
 };

@@ -95,6 +95,12 @@ class Settings(BaseSettings):
     # Frontend integration
     frontend_url: str = Field(default="http://localhost:8080", alias="FRONTEND_URL")
 
+    # Zoho Recruit Integration
+    zoho_client_id: str | None = Field(default=None, alias="ZOHO_CLIENT_ID")
+    zoho_client_secret: str | None = Field(default=None, alias="ZOHO_CLIENT_SECRET")
+    zoho_redirect_uri: str | None = Field(default=None, alias="ZOHO_REDIRECT_URI")
+    zoho_region: str = Field(default="US", alias="ZOHO_REGION")
+
     @field_validator("secret_key")
     @classmethod
     def validate_secret_key(cls, value: str) -> str:

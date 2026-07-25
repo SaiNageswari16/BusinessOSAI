@@ -1,54 +1,89 @@
+import { useState, useEffect } from "react";
 import { Card } from "../ui/card";
-import { Button } from "../ui/button";
-import { BarChart3, Filter, Download } from "lucide-react";
+import { BarChart3, Loader2 } from "lucide-react";
+import { inventoryApi } from "../../lib/api-client";
+import { toast } from "sonner";
 
 export function SpendAnalysis() {
-  const data = [
-    { category: "Electronics", spend: "₹1,45,00,000", pct: 65 },
-    { category: "Groceries", spend: "₹45,50,000", pct: 20 },
-    { category: "Office Supplies", spend: "₹12,80,000", pct: 8 },
-    { category: "Logistics", spend: "₹8,90,000", pct: 7 },
-  ];
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchSpend = async () => {
+    setLoading(true);
+    try {
+      const res = await inventoryApi.getSpendAnalysis();
+      setAnalytics(res);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load spend analytics");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSpend();
+  }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Spend Analysis</h2>
-          <p className="text-sm text-muted-foreground">Interactive analytics for department and supplier spend.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline"><Filter className="size-4 mr-2" /> Filter</Button>
-          <Button variant="outline"><Download className="size-4 mr-2" /> Export</Button>
-        </div>
+    <div className="space-y-6 text-foreground">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+          <BarChart3 className="text-primary size-6" /> Spend Analysis
+        </h2>
+        <p className="text-sm text-muted-foreground">Interactive analytics for department and supplier spend.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="p-6 md:col-span-2">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-lg flex items-center gap-2"><BarChart3 className="size-5 text-primary" /> Spend by Category</h3>
-          </div>
-          <div className="space-y-4">
-            {data.map((cat, i) => (
-              <div key={i} className="flex flex-col gap-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">{cat.category}</span>
-                  <span className="text-sm font-bold font-mono">{cat.spend}</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-primary h-2 rounded-full" style={{ width: `${cat.pct}%` }}></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+      {loading ? (
+        <div className="py-16 text-center text-muted-foreground">
+          <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-2" />
+          Loading spend analytics...
+        </div>
+      ) : !analytics ? (
+        <div className="bg-card border p-8 rounded-xl text-center text-muted-foreground font-semibold shadow-sm">
+          No procurement transactions logged to run spend analysis.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="bg-card border p-6 md:col-span-2 space-y-4 shadow-sm">
+            <h3 className="font-bold text-lg flex items-center gap-2">
+              <BarChart3 className="size-5 text-primary" /> Spend by Supplier
+            </h3>
+            
+            <div className="space-y-4">
+              {analytics.supplier_spend && analytics.supplier_spend.length > 0 ? (
+                analytics.supplier_spend.map((item: any, i: number) => {
+                  const pct = analytics.total_spend > 0 ? (item.amount / analytics.total_spend) * 100 : 0;
+                  return (
+                    <div key={i} className="flex flex-col gap-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-semibold">{item.supplier}</span>
+                        <span className="font-bold font-mono">
+                          ₹{item.amount.toLocaleString("en-IN")} ({Math.round(pct)}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div className="bg-primary h-2 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-muted-foreground font-medium py-6 text-center">No supplier transactions mapped.</div>
+              )}
+            </div>
+          </Card>
 
-        <Card className="p-6 bg-primary text-primary-foreground flex flex-col justify-center">
-          <div className="text-[10px] uppercase font-bold text-primary-foreground/70 mb-1">Total Procurement Spend (YTD)</div>
-          <div className="text-4xl font-bold font-mono tracking-tighter">₹2.12<span className="text-xl ml-1">Cr</span></div>
-          <div className="text-sm font-medium mt-2 bg-white/20 w-fit px-2 py-1 rounded text-white">+14% vs Last Year</div>
-        </Card>
-      </div>
+          <Card className="bg-primary text-primary-foreground p-6 flex flex-col justify-center rounded-xl shadow-sm">
+            <div className="text-[10px] uppercase font-bold text-primary-foreground/75 mb-1">Total Procurement Spend (YTD)</div>
+            <div className="text-4xl font-bold font-mono tracking-tighter">
+              ₹{analytics.total_spend.toLocaleString("en-IN")}
+            </div>
+            <div className="text-xs font-semibold mt-2.5 bg-white/20 w-fit px-2 py-0.5 rounded text-white">
+              Active ledger verified
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

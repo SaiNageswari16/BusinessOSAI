@@ -264,6 +264,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("bos-active-role");
   };
 
+  // Inactivity timeout of 30 minutes (30 * 60 * 1000 ms)
+  useEffect(() => {
+    if (!user) return;
+
+    let lastActive = Date.now();
+
+    const handleActivity = () => {
+      lastActive = Date.now();
+    };
+
+    // Events that count as user activity
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    events.forEach(event => window.addEventListener(event, handleActivity));
+
+    // Check inactivity every 10 seconds
+    const interval = setInterval(() => {
+      const inactiveMs = Date.now() - lastActive;
+      if (inactiveMs >= 30 * 60 * 1000) {
+        console.log("Session expired due to inactivity");
+        logout();
+        window.location.href = "/"; // Redirect back to login screen
+      }
+    }, 10000);
+
+    return () => {
+      events.forEach(event => window.removeEventListener(event, handleActivity));
+      clearInterval(interval);
+    };
+  }, [user]);
+
   return (
     <Ctx.Provider
       value={{

@@ -2,6 +2,7 @@ import React from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { MockScreen } from "@/components/mock-screen";
+import { RecruitmentIntegrations } from "@/components/recruitment-integrations";
 
 export const Route = createFileRoute("/_app/settings")({
   component: SettingsModule,
@@ -9,6 +10,7 @@ export const Route = createFileRoute("/_app/settings")({
 
 const componentMap: Record<string, React.ElementType> = {
   company_profile: () => <MockScreen type="settings" title="Company Profile" />,
+  recruitment_integrations: RecruitmentIntegrations,
 };
 
 function SettingsModule() {

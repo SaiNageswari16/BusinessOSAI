@@ -84,6 +84,37 @@ export function Products() {
   const [isSearchingMaster, setIsSearchingMaster] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  const [aiPaused, setAiPaused] = useState(false);
+
+  const checkAiStatus = async () => {
+    try {
+      const res = await inventoryApi.getRAGEnrichmentStatus();
+      setAiPaused(!!res.paused);
+    } catch (e) {
+      console.error("Failed to fetch RAG status:", e);
+    }
+  };
+
+  useEffect(() => {
+    checkAiStatus();
+  }, []);
+
+  const handleToggleAi = async () => {
+    try {
+      if (aiPaused) {
+        await inventoryApi.resumeRAGEnrichment();
+        toast.success("AI Search resumed (enabled)!");
+        setAiPaused(false);
+      } else {
+        await inventoryApi.pauseRAGEnrichment();
+        toast.success("AI Search paused (disabled)!");
+        setAiPaused(true);
+      }
+    } catch (e) {
+      toast.error("Failed to toggle AI search status.");
+    }
+  };
+
   // Close suggestions on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -124,7 +155,7 @@ export function Products() {
         setMasterResults(res || []);
         
         // Automatic AI Web Sourcing Fallback for Barcodes!
-        if (isBarcode && (!res || res.length === 0)) {
+        if (isBarcode && (!res || res.length === 0) && !aiPaused) {
           toast.info(`Barcode not found in local catalog. Sourcing details for barcode "${cleanSearch}" using AI...`);
           const aiRes = await inventoryApi.searchMasterCatalog(cleanSearch, true, "auto");
           setMasterResults(aiRes || []);
@@ -143,7 +174,7 @@ export function Products() {
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, aiPaused]);
 
   // Execute full targeted AI web search when user selects a suggestion
   const handleSelectSuggestion = async (sug: string) => {
@@ -153,6 +184,12 @@ export function Products() {
     setSearchError(null);
     setMasterResults([]);
     try {
+      if (aiPaused) {
+        toast.info(`AI Search is paused. Searching local master database for "${sug}"...`);
+        const res = await inventoryApi.searchMasterCatalog(sug, false, "auto");
+        setMasterResults(res || []);
+        return;
+      }
       toast.info(`Sourcing specifications for "${sug}" using AI...`);
       // Call searchMasterCatalog with searchWeb = true
       const res = await inventoryApi.searchMasterCatalog(sug, true, "auto");
@@ -539,6 +576,20 @@ export function Products() {
           )}
         </div>
         <Button variant="outline"><Filter className="size-4 mr-2" /> Filters</Button>
+
+        <Button
+          variant="outline"
+          onClick={handleToggleAi}
+          className={
+            "font-semibold text-xs h-10 px-3 flex items-center gap-2 transition-all duration-300 " +
+            (aiPaused 
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20" 
+              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20")
+          }
+        >
+          <Sparkles className={"size-4 shrink-0 " + (!aiPaused ? "animate-pulse" : "")} />
+          <span>AI Search: {aiPaused ? "Paused" : "Active"}</span>
+        </Button>
         <div className="relative">
           <Button variant="outline" onClick={() => setIsColumnsMenuOpen(!isColumnsMenuOpen)}>
             <Sliders className="size-4 mr-2" /> Columns

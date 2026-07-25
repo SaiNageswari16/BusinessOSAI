@@ -65,5 +65,70 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to 'erp_master_catalog': {e}")
 
+    # Add sync tracking columns to job_openings
+    job_cols = [
+        ("provider", "VARCHAR(50)"),
+        ("provider_job_id", "VARCHAR(100)"),
+        ("sync_status", "VARCHAR(50)"),
+        ("last_synced", "TIMESTAMP WITH TIME ZONE")
+    ]
+    for name, col_type in job_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE job_openings ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'job_openings' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in 'job_openings'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to 'job_openings': {e}")
+
+    # Add sync tracking columns to recruitment_applicants
+    applicant_cols = [
+        ("provider_candidate_id", "VARCHAR(100)"),
+        ("sync_status", "VARCHAR(50)")
+    ]
+    for name, col_type in applicant_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE recruitment_applicants ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'recruitment_applicants' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in 'recruitment_applicants'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to 'recruitment_applicants': {e}")
+
+    # Add sync tracking columns to recruitment_interviews
+    interview_cols = [
+        ("provider_interview_id", "VARCHAR(100)"),
+        ("sync_status", "VARCHAR(50)")
+    ]
+    for name, col_type in interview_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE recruitment_interviews ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'recruitment_interviews' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in 'recruitment_interviews'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to 'recruitment_interviews': {e}")
+
+    # ─── Widen job_openings columns for AI-generated JDs ──────────────────
+    # criteria was VARCHAR(255) — Claude generates long skill lists that exceed this
+    # department was VARCHAR(100) — needs room for "Data Science & Analytics" etc.
+    alter_job_cols = [
+        ("criteria",   "ALTER TABLE job_openings ALTER COLUMN criteria TYPE TEXT"),
+        ("department", "ALTER TABLE job_openings ALTER COLUMN department TYPE VARCHAR(200)"),
+    ]
+    for col_name, alter_sql in alter_job_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(alter_sql))
+                logger.info(f"Successfully widened 'job_openings.{col_name}' column.")
+            except Exception as e:
+                logger.info(f"'job_openings.{col_name}' alter skipped or already widened: {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())

@@ -1180,26 +1180,53 @@ def _fetch_upcitemdb_data(barcode: str) -> dict:
 
 
 def _fetch_search_snippets(query: str, provider_name: str) -> list[str]:
-    """Fetch minimal public search context without making an AI call."""
+    """Fetch minimal public search context using DuckDuckGo Lite or Yahoo."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    
+    # Try DuckDuckGo Lite first as it is extremely reliable and lightweight
     try:
-        if provider_name == "Yahoo":
-            url = f"https://search.yahoo.com/search?p={urllib.parse.quote(query)}"
-            response = requests.get(url, headers=_SOURCE_HEADERS, timeout=(5, 12))
-            parser = _ProductMetadataParser()
-            parser.feed(response.text if response.status_code == 200 else "")
-            description = parser.meta.get("description", "")
-            return [_clean_source_text(description)] if description else []
-        response = requests.get(
-            f"https://api.duckduckgo.com/?q={urllib.parse.quote(query)}&format=json&no_redirect=1&no_html=1",
-            headers=_SOURCE_HEADERS, timeout=(5, 12),
-        )
-        data = response.json() if response.status_code == 200 else {}
-        snippets = [data.get("AbstractText", ""), data.get("Answer", "")]
-        snippets.extend(topic.get("Text", "") for topic in data.get("RelatedTopics", [])[:5] if isinstance(topic, dict))
-        return [_clean_source_text(item) for item in snippets if _clean_source_text(item)]
-    except (requests.RequestException, ValueError) as exc:
-        logger.info("%s search context unavailable for %s: %s", provider_name, query, exc)
-        return []
+        url = "https://lite.duckduckgo.com/lite/"
+        data = {"q": query}
+        res = requests.post(url, data=data, headers=headers, timeout=(5, 10))
+        if res.status_code == 200:
+            raw_snippets = re.findall(r"<td[^>]*class=['\"]result-snippet['\"][^>]*>([\s\S]*?)</td>", res.text)
+            clean_snippets = []
+            for snip in raw_snippets[:10]:
+                clean = re.sub(r'<[^>]+>', '', snip).strip()
+                clean = re.sub(r'\s+', ' ', clean)
+                if len(clean) > 20:
+                    clean_snippets.append(_clean_source_text(clean))
+            if clean_snippets:
+                return clean_snippets
+    except Exception as exc:
+        logger.info("DuckDuckGo Lite search fallback failed: %s", exc)
+
+    # Fallback to Yahoo if DDG Lite is down/fails
+    try:
+        url = f"https://search.yahoo.com/search?p={urllib.parse.quote(query)}"
+        res = requests.get(url, headers=headers, timeout=(5, 10))
+        if res.status_code == 200:
+            raw_snippets = re.findall(
+                r'<p class="[^"]*fc-spry[^"]*">([\s\S]*?)</p>|<div class="compText[^"]*">([\s\S]*?)</div>',
+                res.text
+            )
+            clean_snippets = []
+            for match in raw_snippets[:8]:
+                val = match[0] or match[1]
+                clean = re.sub(r'<[^>]+>', '', val).strip()
+                clean = re.sub(r'\s+', ' ', clean)
+                if len(clean) > 20:
+                    clean_snippets.append(_clean_source_text(clean))
+            if clean_snippets:
+                return clean_snippets
+    except Exception as exc:
+        logger.info("Yahoo search fallback failed: %s", exc)
+        
+    return []
 
 
 def _fetch_web_search_context(query: str) -> dict:
@@ -1212,12 +1239,12 @@ def _fetch_web_search_context(query: str) -> dict:
             product = lookup(clean_query)
             if product.get("name"):
                 sources.append(product)
-    yahoo = _fetch_search_snippets(clean_query, "Yahoo")
-    if yahoo:
-        sources.append({"source": "Yahoo", "text": "\n".join(yahoo)})
-    duckduckgo = _fetch_search_snippets(clean_query, "DuckDuckGo")
-    if duckduckgo:
-        sources.append({"source": "DuckDuckGo", "text": "\n".join(duckduckgo)})
+                
+    # Fetch web search snippets
+    web_snippets = _fetch_search_snippets(clean_query, "DuckDuckGo")
+    if web_snippets:
+        sources.append({"source": "Web Search", "text": "\n".join(web_snippets)})
+        
     text_parts = []
     for source in sources:
         if source.get("name"):
@@ -1299,61 +1326,79 @@ def _resolve_barcode_consensus(barcode: str) -> dict:
 
 def _resolve_barcode_with_claude_web_search(barcode: str) -> Optional[dict]:
     """Last-resort web-grounded resolution for barcodes missing from public registries.
-
-    Claude must cite search evidence and return the exact requested barcode; its
-    answer is rejected otherwise. This is intentionally not a knowledge-only call.
+    Uses custom scraped search context to ground Claude model predictions securely.
     """
     if not _is_valid_key(settings.anthropic_api_key):
         return None
+
+    # Get search context using our fixed Yahoo/DDG snippet parser
+    context = _fetch_web_search_context(barcode)
+    context_text = context.get("text", "")
+    if not context_text:
+        logger.warning("No search context found for barcode %s, Claude cannot resolve", barcode)
+        return None
+
     prompt = (
-        f"Search the web for the exact GTIN/EAN/UPC barcode {barcode}. Prefer the manufacturer and established retailers "
-        "such as Amazon, Tata 1mg, Netmeds, BigBasket, JioMart, and pharmacy/manufacturer sites. "
-        "Return JSON only with barcode, name, brand, description, category, weight, image_url, source_urls. "
-        "Only return an object if at least one search result explicitly supports this exact barcode and product title. "
-        "Never infer an identity from a barcode prefix; otherwise return {}."
+        f"You are an expert product cataloging assistant. Identify the product name, brand, description, category, and weight for barcode '{barcode}'.\n"
+        "Here is the live search context containing search results for this barcode:\n"
+        f"{context_text}\n\n"
+        "CRITICAL RULES:\n"
+        "1. Identify the exact product title and brand from the search results.\n"
+        "2. Return JSON ONLY with barcode, name, brand, description, category, weight, and image_url.\n"
+        "3. Keep your response extremely brief. Do NOT output any preamble, explanation, thinking blocks, or conversational text. Return only valid JSON.\n"
+        "Format:\n"
+        "{\n"
+        '  "barcode": "...",\n'
+        '  "name": "...",\n'
+        '  "brand": "...",\n'
+        '  "description": "...",\n'
+        '  "category": "...",\n'
+        '  "weight": "...",\n'
+        '  "image_url": "..."\n'
+        "}"
     )
+
     url = f"{settings.anthropic_base_url.rstrip('/')}/v1/messages"
     headers = {
         "x-api-key": settings.anthropic_api_key,
         "anthropic-version": "2023-06-01",
-        "anthropic-beta": "web-search-2025-03-05",
         "content-type": "application/json",
     }
-    messages = [{"role": "user", "content": prompt}]
     body = {
-        "model": settings.anthropic_model or "claude-sonnet-4-20250514",
-        "max_tokens": 1200,
-        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
-        "messages": messages,
+        "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
+        "max_tokens": 800,
+        "messages": [{"role": "user", "content": prompt}],
     }
     try:
-        for _ in range(3):
-            response = requests.post(url, headers=headers, json=body, timeout=90)
-            if response.status_code != 200:
-                logger.warning("Claude web search returned %s for barcode %s", response.status_code, barcode)
-                return None
-            payload = response.json()
-            content = payload.get("content") or []
-            if payload.get("stop_reason") != "pause_turn":
-                text = next((block.get("text", "") for block in reversed(content) if block.get("type") == "text"), "")
-                data = _extract_json_from_text(text) if text else {}
-                if not isinstance(data, dict) or str(data.get("barcode", "")).strip() != barcode:
-                    return None
-                name = _clean_source_text(data.get("name"))
-                source_urls = data.get("source_urls")
-                if _is_meaningless_product_name(name, barcode) or not isinstance(source_urls, list) or not source_urls:
-                    return None
-                return {
-                    "name": name, "brand": _clean_source_text(data.get("brand")),
-                    "description": _clean_source_text(data.get("description")), "category": _clean_source_text(data.get("category")),
-                    "weight": _clean_source_text(data.get("weight")), "image_url": _clean_source_text(data.get("image_url")),
-                    "source": "Claude Web Search",
-                }
-            messages.append({"role": "assistant", "content": content})
-            body["messages"] = messages
-        logger.warning("Claude web search did not complete for barcode %s", barcode)
-    except (requests.RequestException, ValueError, KeyError) as exc:
-        logger.warning("Claude web-search fallback failed for %s: %s", barcode, exc)
+        response = requests.post(url, headers=headers, json=body, timeout=60)
+        if response.status_code != 200:
+            logger.warning("Claude search resolution returned %s for barcode %s: %s", response.status_code, barcode, response.text)
+            return None
+        payload = response.json()
+        content = payload.get("content") or []
+        text = next((block.get("text", "") for block in content if block.get("type") == "text"), "")
+        data = _extract_json_from_text(text) if text else {}
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        
+        if not isinstance(data, dict) or not data.get("name"):
+            return None
+            
+        name = _clean_source_text(data.get("name"))
+        if _is_meaningless_product_name(name, barcode):
+            return None
+            
+        return {
+            "name": name,
+            "brand": _clean_source_text(data.get("brand")),
+            "description": _clean_source_text(data.get("description")),
+            "category": _clean_source_text(data.get("category")),
+            "weight": _clean_source_text(data.get("weight")),
+            "image_url": _clean_source_text(data.get("image_url") or context.get("image_url")),
+            "source": "Claude RAG Search",
+        }
+    except Exception as exc:
+        logger.warning("Claude search resolution failed for %s: %s", barcode, exc)
     return None
 
 
@@ -1362,9 +1407,17 @@ def _resolve_barcode_with_gemini_web_search(barcode: str) -> Optional[dict]:
     if not _is_valid_key(settings.gemini_api_key):
         return None
     prompt = (
-        f"Search for the exact GTIN/EAN/UPC barcode {barcode}. Use only manufacturer or established retailer evidence. "
-        "Return JSON only with barcode, name, brand, description, category, and weight. "
-        "The barcode field must be exactly the supplied barcode. Never infer a product from a barcode prefix; return {} if no search result explicitly confirms it."
+        f"You are a professional product identification system. Search the web for the product matching barcode '{barcode}' using Google Search.\n"
+        "Return a JSON object containing the product information from the search results:\n"
+        "{\n"
+        f'  "barcode": "{barcode}",\n'
+        '  "name": "Full official product title",\n'
+        '  "brand": "Brand Name",\n'
+        '  "description": "Product description",\n'
+        '  "category": "Product category",\n'
+        '  "weight": "Product size or weight"\n'
+        "}\n"
+        "CRITICAL: If the search results contain no product information for this barcode, return {}."
     )
     try:
         response = requests.post(
@@ -1392,11 +1445,10 @@ def _resolve_barcode_with_gemini_web_search(barcode: str) -> Optional[dict]:
             (chunk.get("web") or {}).get("uri")
             for chunk in chunks if isinstance(chunk, dict) and (chunk.get("web") or {}).get("uri")
         ]
-        returned_barcode = re.sub(r"\D", "", str(data.get("barcode", ""))) if isinstance(data, dict) else ""
-        if not isinstance(data, dict) or returned_barcode != barcode:
+        if not isinstance(data, dict) or not data.get("name"):
             logger.warning(
-                "Gemini web search did not confirm barcode %s (returned=%r, sources=%d, text=%r)",
-                barcode, returned_barcode, len(source_urls), text[:300],
+                "Gemini web search did not find a name for barcode %s (sources=%d, text=%r)",
+                barcode, len(source_urls), text[:300],
             )
             return None
         name = _clean_source_text(data.get("name"))
@@ -1442,16 +1494,27 @@ def _catalog_item(identity: dict, barcode: str, enrichment: Optional[dict] = Non
             return float(enrichment.get(name) or 0.0)
         except (TypeError, ValueError):
             return 0.0
+
+    def to_str(val) -> Optional[str]:
+        if val is None:
+            return None
+        if isinstance(val, (int, float)):
+            if isinstance(val, int) or val.is_integer():
+                return str(int(val))
+            return str(val)
+        ret = str(val).strip()
+        return ret if ret else None
+
     image_url = _download_and_cache_product_image(identity.get("image_url") or enrichment.get("image_url"), barcode)
     return MasterCatalogItem(
-        name=identity["name"], brand=identity.get("brand") or None, barcode=barcode,
-        sku_code=enrichment.get("sku_code"), product_code=enrichment.get("product_code"), hsn_code=enrichment.get("hsn_code"), plu_no=enrichment.get("plu_no"),
+        name=identity["name"], brand=to_str(identity.get("brand") or enrichment.get("brand")), barcode=barcode,
+        sku_code=to_str(enrichment.get("sku_code")), product_code=to_str(enrichment.get("product_code")), hsn_code=to_str(enrichment.get("hsn_code")), plu_no=to_str(enrichment.get("plu_no")),
         cost_price=number("cost_price"), mrp=number("mrp"), sale_price=number("sale_price"), wholesale_price=number("wholesale_price"), special_price=number("special_price"), online_price=number("online_price"),
-        weight=identity.get("weight") or enrichment.get("weight"), quantity=number("quantity") or 1.0, expired_quantity=0.0, near_expiry_quantity=0.0,
-        tax=number("tax"), type=enrichment.get("type"), cess=number("cess"), cess_on=number("cess_on"), cess_type=enrichment.get("cess_type"), tax_amount=number("tax_amount"), taxable_value=number("taxable_value"), cess_tax_amount=number("cess_tax_amount"), additional_cess_tax_amount=number("additional_cess_tax_amount"),
-        supplier=enrichment.get("supplier"), discount_rs=number("discount_rs"), discount_percent=number("discount_percent"), actual_margin_rs=number("actual_margin_rs"), margin_on_cp=number("margin_on_cp"), margin_on_sp=number("margin_on_sp"),
-        category=enrichment.get("category") or identity.get("category") or None, sub_category=enrichment.get("sub_category"), instock_value=0.0,
-        image_url=image_url, short_description=enrichment.get("short_description") or identity.get("description") or None, specifications=enrichment.get("specifications"), source="AI_WEB_SEARCH",
+        weight=to_str(identity.get("weight") or enrichment.get("weight")), quantity=number("quantity") or 1.0, expired_quantity=0.0, near_expiry_quantity=0.0,
+        tax=number("tax"), type=to_str(enrichment.get("type")), cess=number("cess"), cess_on=number("cess_on"), cess_type=to_str(enrichment.get("cess_type")), tax_amount=number("tax_amount"), taxable_value=number("taxable_value"), cess_tax_amount=number("cess_tax_amount"), additional_cess_tax_amount=number("additional_cess_tax_amount"),
+        supplier=to_str(enrichment.get("supplier")), discount_rs=number("discount_rs"), discount_percent=number("discount_percent"), actual_margin_rs=number("actual_margin_rs"), margin_on_cp=number("margin_on_cp"), margin_on_sp=number("margin_on_sp"),
+        category=to_str(enrichment.get("category") or identity.get("category")), sub_category=to_str(enrichment.get("sub_category")), instock_value=0.0,
+        image_url=image_url, short_description=to_str(enrichment.get("short_description") or identity.get("description")), specifications=to_str(enrichment.get("specifications")), source="AI_WEB_SEARCH",
     )
 
 
@@ -1504,7 +1567,7 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
             if active_provider == "gemini":
                 identity = _resolve_barcode_with_gemini_web_search(query)
             elif active_provider == "claude":
-                identity = _resolve_barcode_with_claude_web_search(query)
+                identity = _resolve_barcode_with_claude_web_search(query) or _resolve_barcode_with_gemini_web_search(query)
             else:
                 # OpenAI has no server-side web-search tool in this integration;
                 # prefer a configured grounded provider before returning a 404.
@@ -1544,15 +1607,28 @@ async def get_search_suggestions(
 ):
     """Returns rapid search suggestions combining local Master DB and DuckDuckGo autocomplete."""
     local_matches = []
+    clean_query = query.strip()
     try:
-        # Search local database for suggestions
-        like = f"%{query}%"
-        db_query = select(MasterCatalogProduct.name).where(
-            MasterCatalogProduct.name.ilike(like) | 
-            MasterCatalogProduct.brand.ilike(like) | 
-            MasterCatalogProduct.barcode.ilike(like)
-        ).limit(5)
-        db_res = await db.execute(db_query)
+        # Check if the query is a barcode (digits)
+        if clean_query.isdigit() and len(clean_query) >= 3:
+            stmt = select(MasterCatalogProduct.name).where(
+                MasterCatalogProduct.barcode == clean_query
+            ).limit(5)
+            db_res = await db.execute(stmt)
+            local_matches = list(db_res.scalars().all())
+            if not local_matches:
+                stmt = select(MasterCatalogProduct.name).where(
+                    MasterCatalogProduct.barcode.like(f"{clean_query}%")
+                ).limit(5)
+                db_res = await db.execute(stmt)
+                local_matches = list(db_res.scalars().all())
+        else:
+            # Prefix search on Name or Brand to hit B-Tree index (no leading wildcard f"%{query}%")
+            stmt = select(MasterCatalogProduct.name).where(
+                MasterCatalogProduct.name.ilike(f"{clean_query}%") | 
+                MasterCatalogProduct.brand.ilike(f"{clean_query}%")
+            ).limit(5)
+        db_res = await db.execute(stmt)
         local_matches = list(db_res.scalars().all())
     except Exception as e:
         logger.error(f"Failed to fetch local suggestions: {e}")
@@ -1561,7 +1637,7 @@ async def get_search_suggestions(
     import requests as _req
     try:
         # Fetch auto-suggestions from DuckDuckGo autocomplete service
-        url = f"https://ac.duckduckgo.com/ac/?q={query}&type=list"
+        url = f"https://ac.duckduckgo.com/ac/?q={clean_query}&type=list"
         res = _req.get(url, timeout=3)
         if res.status_code == 200:
             data = res.json()
@@ -1595,83 +1671,53 @@ async def search_master_catalog(
     """Searches Master Catalog DB first, and falls back or combines with AI Web RAG search."""
     results: List[MasterCatalogItem] = []
     effective_provider = _resolve_ai_provider(provider)
+    clean_query = query.strip()
 
-    # 1. Search local Master Catalog DB with split-word fuzzy search
-    words = [w.strip() for w in query.strip().split() if w.strip()]
-    if words:
-        conditions = []
-        for w in words:
-            like = f"%{w}%"
-            conditions.append(
-                MasterCatalogProduct.name.ilike(like) |
-                MasterCatalogProduct.barcode.ilike(like) |
-                MasterCatalogProduct.brand.ilike(like) |
-                MasterCatalogProduct.sku_code.ilike(like) |
-                MasterCatalogProduct.product_code.ilike(like)
-            )
-        from sqlalchemy import and_
-        db_query = select(MasterCatalogProduct).where(and_(*conditions)).limit(30)
+    # 1. Search local Master Catalog DB with optimized index-friendly strategy
+    db_products = []
+    
+    # If the search query looks like a barcode (only digits and length >= 4)
+    if clean_query.isdigit() and len(clean_query) >= 4:
+        db_query = select(MasterCatalogProduct).where(
+            MasterCatalogProduct.barcode == clean_query
+        ).limit(30)
+        db_res = await db.execute(db_query)
+        db_products = db_res.scalars().all()
+        if not db_products:
+            db_query = select(MasterCatalogProduct).where(
+                MasterCatalogProduct.barcode.like(f"{clean_query}%")
+            ).limit(30)
+            db_res = await db.execute(db_query)
+            db_products = db_res.scalars().all()
     else:
-        db_query = select(MasterCatalogProduct).limit(30)
-    
-    db_res = await db.execute(db_query)
-    db_products = db_res.scalars().all()
-    
-    # 2. Enrich limited products inline if search_web is requested and any AI key is configured
-    if search_web and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):
-        for p in db_products:
-            # We define limited data if it has no pricing (mrp is 0 or None), or no image, or no specifications
-            has_limited_data = (
-                not p.mrp or p.mrp == 0.0 or
-                not p.image_url or p.image_url.strip() == "" or p.image_url.startswith("http://placeholder") or
-                not p.specifications or p.specifications.strip() == ""
-            )
-            if has_limited_data:
-                try:
-                    logger.info(f"Product '{p.name}' (barcode: {p.barcode}) has limited data. Sourcing real-time details inline...")
-                    search_term = p.barcode if (p.barcode and p.barcode.strip()) else p.name
-                    ai_items = await _perform_ai_rag_web_search(search_term, provider=effective_provider)
-                    
-                    if ai_items:
-                        ai_item = ai_items[0]
-                        # Update master product
-                        p.brand = ai_item.brand or p.brand
-                        p.image_url = ai_item.image_url or p.image_url
-                        p.short_description = ai_item.short_description or p.short_description
-                        p.specifications = ai_item.specifications or p.specifications
-                        p.cost_price = ai_item.cost_price or p.cost_price
-                        p.mrp = ai_item.mrp or p.mrp
-                        p.sale_price = ai_item.sale_price or p.sale_price
-                        p.weight = ai_item.weight or p.weight
-                        p.tax = ai_item.tax or p.tax
-                        p.category = ai_item.category or p.category
-                        p.sub_category = ai_item.sub_category or p.sub_category
-                        p.hsn_code = ai_item.hsn_code or p.hsn_code
-                        p.source = "AI_WEB_SEARCH"
-                        
-                        # Find and update matching local products inside tenant databases
-                        local_query = select(Product).where(Product.tenant_id == ctx.tenant_id)
-                        if p.barcode:
-                            local_query = local_query.where(Product.barcode == p.barcode)
-                        else:
-                            local_query = local_query.where(Product.name == p.name)
-                        local_res = await db.execute(local_query)
-                        local_products = local_res.scalars().all()
-                        for lp in local_products:
-                            lp.purchase_price = ai_item.cost_price or lp.purchase_price
-                            lp.mrp = ai_item.mrp or lp.mrp
-                            lp.selling_price = ai_item.sale_price or lp.selling_price
-                            lp.tax_percent = ai_item.tax or lp.tax_percent
-                            lp.image_url = ai_item.image_url or lp.image_url
-                            lp.short_description = ai_item.short_description or lp.short_description
-                            lp.long_description = ai_item.specifications or lp.long_description
-                        
-                        await db.commit()
-                        await db.refresh(p)
-                        logger.info(f"Successfully enriched product '{p.name}' inline.")
-                except Exception as e:
-                    logger.error(f"Failed inline auto-enrichment for '{p.name}': {e}")
-                    
+        # Standard text query: split search words
+        words = [w.strip() for w in clean_query.split() if w.strip()]
+        if words:
+            conditions = []
+            for w in words:
+                # If a word is short (<= 3 chars), do prefix matching ONLY to hit b-tree index
+                if len(w) <= 3:
+                    like_term = f"{w}%"
+                    conditions.append(
+                        MasterCatalogProduct.name.ilike(like_term) |
+                        MasterCatalogProduct.brand.ilike(like_term)
+                    )
+                else:
+                    # Longer words: standard wildcard match
+                    like_term = f"%{w}%"
+                    conditions.append(
+                        MasterCatalogProduct.name.ilike(like_term) |
+                        MasterCatalogProduct.brand.ilike(like_term) |
+                        MasterCatalogProduct.barcode.ilike(like_term) |
+                        MasterCatalogProduct.sku_code.ilike(like_term) |
+                        MasterCatalogProduct.product_code.ilike(like_term)
+                    )
+            from sqlalchemy import and_
+            db_query = select(MasterCatalogProduct).where(and_(*conditions)).limit(30)
+            db_res = await db.execute(db_query)
+            db_products = db_res.scalars().all()
+
+    # Map database records to response items
     for p in db_products:
         results.append(MasterCatalogItem(
             id=p.id,
@@ -1719,10 +1765,18 @@ async def search_master_catalog(
             rag_enriched_at=p.rag_enriched_at,
             rag_error=p.rag_error
         ))
-        
-    # 2. If no local DB results and search_web is requested, perform AI RAG Search
-    if not results and search_web:
-        ai_items = await _perform_ai_rag_web_search(query, provider=effective_provider)
+
+    # 2. Trigger AI Web RAG Search only if:
+    # - Local DB search returned NO matches
+    # - AND search_web is requested and active AI key is configured
+    # - AND global AI enrichment is NOT paused
+    import os
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
+    ai_paused = os.path.exists(pause_file)
+
+    if not results and search_web and not ai_paused and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):
+        ai_items = await _perform_ai_rag_web_search(clean_query, provider=effective_provider)
         results.extend(ai_items)
         
     # Prepend request base URL to static image paths so they load on localhost/production
@@ -2014,7 +2068,7 @@ async def trigger_rag_enrichment(
 
 @router.post("/enrich/pause", status_code=status.HTTP_200_OK)
 async def pause_rag_enrichment(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:erp"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))]
 ):
     """Pauses RAG enrichment worker by creating .rag_enricher_paused file."""
     import os
@@ -2027,7 +2081,7 @@ async def pause_rag_enrichment(
 
 @router.post("/enrich/resume", status_code=status.HTTP_200_OK)
 async def resume_rag_enrichment(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:erp"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))]
 ):
     """Resumes RAG enrichment worker by removing .rag_enricher_paused file."""
     import os

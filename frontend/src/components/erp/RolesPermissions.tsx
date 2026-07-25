@@ -185,11 +185,15 @@ const PERMISSION_LABELS: Record<string, string> = {
   // Standard modules
   "view:erp": "View ERP / Back Office",
   "view:inventory": "View Inventory",
+  "manage:inventory": "Manage Inventory",
   "view:warehouse": "View Warehouse",
+  "manage:warehouse": "Manage Warehouse",
   "view:procurement": "View Procurement",
+  "manage:procurement": "Manage Procurement",
   "view:pos": "Use POS Terminal",
   "view:accounting": "View Accounting",
   "view:crm": "View CRM",
+  "manage:crm": "Manage CRM",
   "view:hrms": "View HRMS Dashboard",
   "view:payroll": "View HRMS Payroll",
   "view:reports": "View Intelligence Reports",
@@ -304,7 +308,12 @@ const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
   },
   { 
     label: "Operations & Sales Modules", 
-    keys: ["view:inventory", "view:warehouse", "view:procurement", "view:pos", "view:crm"] 
+    keys: [
+      "view:inventory", "manage:inventory",
+      "view:warehouse", "manage:warehouse",
+      "view:procurement", "manage:procurement",
+      "view:pos", "view:crm", "manage:crm"
+    ] 
   },
   { 
     label: "Accounting & Settings", 

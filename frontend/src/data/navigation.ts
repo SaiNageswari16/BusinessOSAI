@@ -915,6 +915,7 @@ export const nav: NavGroup[] = [
         icon: Network,
         subItems: [
           { to: "/settings?tab=payment_gateways", label: "Payment Gateways", icon: CreditCard },
+          { to: "/settings?tab=recruitment_integrations", label: "Recruitment Integrations", icon: Briefcase },
           { to: "/settings?tab=whatsapp_integration", label: "WhatsApp", icon: Network },
           { to: "/settings?tab=sms_integration", label: "SMS", icon: Radio },
           { to: "/settings?tab=email_integration", label: "Email", icon: Inbox },
