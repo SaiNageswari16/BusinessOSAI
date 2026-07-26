@@ -1926,6 +1926,40 @@ export const crmOpportunitiesApi = {
   update: (id: string, data: Record<string, unknown>) => request<CrmOpportunity>("PATCH", `/crm/opportunities/${id}`, data),
 };
 
+export interface EmailCampaign {
+  id: string;
+  tenant_id: string;
+  name: string;
+  subject: string;
+  body_html: string;
+  target_category: string;
+  status: string;
+  recipient_count: number;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailTemplate {
+  id: string;
+  tenant_id: string;
+  name: string;
+  subject: string | null;
+  body_html: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LiveNotification {
+  id: string;
+  tenant_id: string;
+  title: string;
+  body: string;
+  category: string;
+  unread: boolean;
+  created_at: string;
+}
+
 export const crmCampaignsApi = {
   generateCopy: (data: { prompt: string; channel: string; provider?: string; reference_image?: string }) =>
     request<{ copy: string }>("POST", "/crm/campaigns/generate-copy", data),
@@ -1933,6 +1967,21 @@ export const crmCampaignsApi = {
     request<{ image_url: string; enhanced_prompt: string; aspect_ratio: string }>("POST", "/crm/campaigns/generate-poster", data),
   publishFacebook: (data: { image_url: string; caption: string }) =>
     request<{ status: string; post_id?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
+  
+  // Email Campaign methods
+  listEmailCampaigns: () => request<EmailCampaign[]>("GET", "/crm/email-campaigns"),
+  createEmailCampaign: (data: { name: string; subject: string; body_html: string; target_category: string }) =>
+    request<EmailCampaign>("POST", "/crm/email-campaigns", data),
+  sendEmailCampaign: (campaignId: string) =>
+    request<EmailCampaign>("POST", `/crm/email-campaigns/${campaignId}/send`),
+  listEmailTemplates: () => request<EmailTemplate[]>("GET", "/crm/email-templates"),
+  createEmailTemplate: (data: { name: string; subject?: string; body_html: string }) =>
+    request<EmailTemplate>("POST", "/crm/email-templates", data),
+};
+
+export const liveNotificationsApi = {
+  list: () => request<LiveNotification[]>("GET", "/system/notifications/live"),
+  readAll: () => request<{ message: string }>("POST", "/system/notifications/read-all"),
 };
 
 export interface CrmTicket {

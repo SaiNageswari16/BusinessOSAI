@@ -12,6 +12,7 @@ from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
 from src.models import POSTransaction, POSTransactionItem, POSPayment, Product
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
+from src.utils.notifications import add_system_notification
 
 router = APIRouter(prefix="/transactions", tags=["POS - Transactions"])
 
@@ -99,6 +100,13 @@ async def checkout(
             reference_number=payment.reference_number
         )
         db.add(tx_payment)
+
+
+
+    # Trigger live notification before committing POS checkout
+    msg_title = "POS Refund Processed" if transaction.status == "refunded" else "New POS Order Checked Out"
+    msg_body = f"Receipt {transaction.receipt_number} processed. Cashier: {ctx.user.full_name} | Total: ${transaction.total_amount:,.2f}"
+    await add_system_notification(db, ctx.user.tenant_id, msg_title, msg_body, "pos")
 
     await db.commit()
     
