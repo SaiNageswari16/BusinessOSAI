@@ -97,5 +97,20 @@ api_router.include_router(reports_router)
 from src.integrations.zoho.routes import router as zoho_router
 from src.api.v1.notifications import router as notifications_router
 
+# ERP Accounting & Finance modules
+from src.api.v1.erp.accounting import router as accounting_router
+from src.api.v1.erp.invoices import router as invoices_router
+from src.api.v1.erp.bank import router as bank_router
+from src.api.v1.erp.fixed_assets import router as fixed_assets_router
+from src.api.v1.erp.vouchers import router as vouchers_router
+from src.api.v1.erp.tax import router as tax_router
+
 api_router.include_router(zoho_router)
 api_router.include_router(notifications_router)
+
+api_router.include_router(accounting_router)
+api_router.include_router(invoices_router, tags=["Invoices & AR"])
+api_router.include_router(bank_router)
+api_router.include_router(fixed_assets_router)
+api_router.include_router(vouchers_router)
+api_router.include_router(tax_router)

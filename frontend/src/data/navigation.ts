@@ -202,7 +202,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Operations", icon: Settings2, items: [
+    group: "Operations", icon: Settings2, permission: "view:procurement", items: [
       {
         to: "/procurement?tab=suppliers",
         label: "Supplier Management",
@@ -380,7 +380,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Marketplace", icon: Store, items: [
+    group: "Marketplace", icon: Store, permission: "view:marketplace", items: [
       {
         to: "/marketplace?tab=vendors",
         label: "Vendor Management",

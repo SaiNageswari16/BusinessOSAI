@@ -1,23 +1,34 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { nav, NavGroup, NavItem } from "@/data/navigation";
 import { cn } from "@/lib/utils";
 import { Menu, X, ArrowLeft } from "lucide-react";
+import { useRbac } from "@/contexts/rbac-context";
 
 export function RibbonNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { hasPermission } = useRbac();
+
+  // Filter nav groups to only those the user is permitted to see
+  const visibleNav = useMemo(() => {
+    return nav.filter((group) => {
+      // If no permission required, always show (e.g. Workspace/Dashboard)
+      if (!group.permission) return true;
+      return hasPermission(group.permission);
+    });
+  }, [hasPermission]);
 
   // Find active items based on URL + Search string
   const currentPathWithSearch = location.href;
   const currentPath = location.pathname;
 
-  let activeG = nav[0];
-  let activeI = nav[0].items[0];
+  let activeG = visibleNav[0] ?? nav[0];
+  let activeI = (visibleNav[0] ?? nav[0]).items[0];
   let activeS = nav[0].items[0]?.subItems?.[0];
 
-  for (const group of nav) {
+  for (const group of visibleNav) {
     for (const item of group.items) {
       if (item.subItems) {
         for (const sub of item.subItems) {
@@ -38,8 +49,8 @@ export function RibbonNavigation() {
   }
 
   // Fallback to pathname matching if no precise search param match
-  if (!activeG || (activeG === nav[0] && location.pathname !== "/dashboard")) {
-    for (const group of nav) {
+  if (!activeG || (activeG === visibleNav[0] && location.pathname !== "/dashboard")) {
+    for (const group of visibleNav) {
       for (const item of group.items) {
         if (item.subItems) {
           for (const sub of item.subItems) {
@@ -135,7 +146,7 @@ export function RibbonNavigation() {
           "md:flex md:flex-row md:items-center md:px-0 md:overflow-x-auto border-b border-border bg-white transition-all pb-1 md:pb-0",
           mobileMenuOpen ? "flex flex-col absolute top-full left-0 right-0 bg-background shadow-xl border-b z-50 p-4 gap-2" : "hidden md:flex"
         )}>
-          {nav.map((group) => {
+          {visibleNav.map((group) => {
             const isActive = activeGroup.group === group.group;
             return (
               <button

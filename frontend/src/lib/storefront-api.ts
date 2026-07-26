@@ -1,7 +1,14 @@
-// The base URL connects straight to the inventory public endpoints
-const API_BASE_URL = 'http://localhost:8000/api/v1/inventory/public';
+/**
+ * Storefront API — connects to the public inventory endpoints that expose
+ * products from ALL tenants (Amazon-style marketplace).
+ *
+ * The base URL is read from VITE_API_BASE_URL (set in frontend/.env).
+ * No auth token is needed — these are public endpoints.
+ */
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1'}/inventory/public`;
 
-// Types corresponding to POSProductResponse and POSCategoryResponse from backend
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 export interface StorefrontCategory {
   id: string;
   name: string;
@@ -38,28 +45,52 @@ export interface StorefrontProduct {
   mrp: number;
   selling_price: number;
   stock: number;
+  /** The business / tenant name that sells this product (shown as "Sold by: …") */
+  seller_name?: string;
+  tenant_id?: string;
   images?: StorefrontProductImage[];
   variants?: StorefrontProductVariant[];
 }
 
+// ─── API helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all active product categories from the marketplace
+ * (aggregated across ALL tenant inventories by default).
+ */
 export const fetchStorefrontCategories = async (): Promise<StorefrontCategory[]> => {
   const response = await fetch(`${API_BASE_URL}/categories`);
   if (!response.ok) {
-    throw new Error("Failed to fetch categories");
+    throw new Error(`Failed to fetch categories: ${response.status}`);
   }
   const data = await response.json();
   return data.items || [];
 };
 
-export const fetchStorefrontProducts = async (categoryId?: string, search?: string): Promise<StorefrontProduct[]> => {
+/**
+ * Fetch products from the marketplace (all tenants by default).
+ * Pass categoryId to filter by category, or search for a keyword.
+ * Pass tenantId to restrict to a single seller / tenant.
+ */
+export const fetchStorefrontProducts = async (
+  categoryId?: string,
+  search?: string,
+  tenantId?: string,
+  page = 1,
+  pageSize = 50,
+): Promise<{ items: StorefrontProduct[]; total: number; page: number; page_size: number }> => {
   const url = new URL(`${API_BASE_URL}/products`);
-  if (categoryId) url.searchParams.append("category_id", categoryId);
-  if (search) url.searchParams.append("search", search);
+  if (categoryId) url.searchParams.append('category_id', categoryId);
+  if (search) url.searchParams.append('search', search);
+  url.searchParams.append('page', String(page));
+  url.searchParams.append('page_size', String(pageSize));
 
-  const response = await fetch(url.toString());
+  const headers: HeadersInit = {};
+  if (tenantId) headers['X-Tenant-Id'] = tenantId;
+
+  const response = await fetch(url.toString(), { headers });
   if (!response.ok) {
-    throw new Error("Failed to fetch products");
+    throw new Error(`Failed to fetch products: ${response.status}`);
   }
-  const data = await response.json();
-  return data.items || [];
+  return response.json();
 };

@@ -136,6 +136,7 @@ async def bootstrap_defaults(db: AsyncSession) -> None:
 
     await seed_hrms_features(db)
     await seed_crm_features(db)
+    await seed_accounting_features(db)
 
 
 def slugify(value: str) -> str:
@@ -709,19 +710,20 @@ async def seed_hrms_features(db: AsyncSession) -> None:
 
 
 async def seed_crm_features(db: AsyncSession) -> None:
-    # Check if there is already a tenant
-    tenant = await db.scalar(select(Tenant).where(Tenant.slug == "nimbus-retail"))
-    if not tenant:
-        return
-        
-    tenant_id = tenant.id
-    
-    from src.models import Customer, Lead, CRMSupportTicket, CRMQuotation, CRMSalesOrder
-    
-    # 1. Seed Leads
-    lead_count = await db.scalar(select(func.count()).select_from(Lead).where(Lead.tenant_id == tenant_id))
-    if lead_count == 0:
-        logger.info("Seeding CRM Leads...")
+    from datetime import date
+    tenants = (await db.execute(select(Tenant))).scalars().all()
+    for tenant in tenants:
+        tenant_id = tenant.id
+
+        from src.models import Customer, Lead, CRMSupportTicket, CRMQuotation, CRMSalesOrder
+
+        # 1. Seed Leads
+        lead_count = await db.scalar(select(func.count()).select_from(Lead).where(Lead.tenant_id == tenant_id))
+        if lead_count > 0:
+            logger.info(f"CRM & Sales features already seeded for tenant {tenant.slug}. Skipping.")
+            continue
+
+        logger.info(f"Seeding CRM Leads for tenant {tenant.slug}...")
         leads = [
             Lead(
                 tenant_id=tenant_id,
@@ -758,158 +760,392 @@ async def seed_crm_features(db: AsyncSession) -> None:
                 status="Qualified",
                 source="Referral",
                 estimated_value=25000.0,
-                notes="Met at retail expo. Budgets approved for Q3 rollout.",
-                ai_score=95,
-                ai_sentiment="Positive"
-            ),
-            Lead(
-                tenant_id=tenant_id,
-                name="Emily Davis",
-                company_name="Davis Retail Corp",
-                email="emily@davisretail.com",
-                phone="+91 9123456783",
-                status="Lost",
-                source="Social Media",
-                estimated_value=12000.0,
-                notes="Closed lost due to timeline delay. They went with local vendor.",
-                lost_reason="Competitor",
-                ai_score=45,
+                notes="Decision maker is warm. Wants to schedule a pilot run next month.",
+                ai_score=78,
                 ai_sentiment="Neutral"
             )
         ]
         for l in leads:
             db.add(l)
         await db.flush()
-        
+
         # 2. Seed Customers
-        customer_count = await db.scalar(select(func.count()).select_from(Customer).where(Customer.tenant_id == tenant_id))
-        if customer_count == 0:
-            logger.info("Seeding CRM Customers...")
-            customers = [
-                Customer(
-                    tenant_id=tenant_id,
-                    name="Acme Corporation",
-                    email="procurement@acme.com",
-                    phone="+91 9887766554",
-                    company_name="Acme Corp",
-                    customer_type="Corporate",
-                    status="Active",
-                    address="456 Acme Industrial Boulevard, Mumbai",
-                    gst_number="27ACME1234A1Z1"
-                ),
-                Customer(
-                    tenant_id=tenant_id,
-                    name="Global Trade LLC",
-                    email="info@globaltrade.net",
-                    phone="+91 9887766555",
-                    company_name="Global Trade LLC",
-                    customer_type="Corporate",
-                    status="Active",
-                    address="789 Trade Tower, BKC, Mumbai",
-                    gst_number="27GLOBE1234A1Z2"
-                )
-            ]
-            for c in customers:
-                db.add(c)
-            await db.flush()
+        logger.info(f"Seeding CRM Customers for tenant {tenant.slug}...")
+        customers = [
+            Customer(
+                tenant_id=tenant_id,
+                name="Acme Corporation",
+                email="billing@acme.com",
+                phone="+1 555-0199",
+                status="Active",
+                customer_type="Corporate",
+                address="456 Acme Industrial Boulevard, Mumbai"
+            ),
+            Customer(
+                tenant_id=tenant_id,
+                name="Globex Biotech",
+                email="procurement@globex.org",
+                phone="+1 555-0144",
+                status="Active",
+                customer_type="Corporate",
+                address="789 Trade Tower, BKC, Mumbai"
+            )
+        ]
+        for c in customers:
+            db.add(c)
+        await db.flush()
+
+        # 3. Seed Support Tickets
+        logger.info(f"Seeding CRM Support Tickets for tenant {tenant.slug}...")
+        tickets = [
+            CRMSupportTicket(
+                tenant_id=tenant_id,
+                customer_id=customers[0].id,
+                subject="API webhook payload delay",
+                description="Webhooks for POS checkouts are arriving 4-5 seconds late. Please check broker latency.",
+                priority="High",
+                status="Open"
+            ),
+            CRMSupportTicket(
+                tenant_id=tenant_id,
+                customer_id=customers[1].id,
+                subject="Missing billing invoice copy",
+                description="We did not receive the automated PDF invoice for June 2026 renewal. Please send manually.",
+                priority="Medium",
+                status="Resolved"
+            )
+        ]
+        for t in tickets:
+            db.add(t)
             
-            # 3. Seed Support Tickets
-            logger.info("Seeding CRM Support Tickets...")
-            tickets = [
-                CRMSupportTicket(
-                    tenant_id=tenant_id,
-                    customer_id=customers[0].id,
-                    subject="API Integration Timeout Error",
-                    description="Our checkout pipeline keeps receiving HTTP 504 timeouts when sync is initiated at peak hours.",
-                    priority="High",
-                    status="Open",
-                    category="Technical",
-                    ai_summary="Client Acme Corp experiencing HTTP 504 timeouts during peak hours Checkout sync."
-                ),
-                CRMSupportTicket(
-                    tenant_id=tenant_id,
-                    customer_id=customers[1].id,
-                    subject="Invoice billing mismatch",
-                    description="The Q2 invoice lists tax component as 18% instead of the 12% promotional rate promised.",
-                    priority="Medium",
-                    status="In Progress",
-                    category="Billing",
-                    ai_summary="Billing mismatch on Q2 invoice - tax charged at 18% instead of promotional 12%."
-                )
-            ]
-            for t in tickets:
-                db.add(t)
-                
-            # 4. Seed Quotations
-            logger.info("Seeding CRM Quotations...")
-            quotes = [
-                CRMQuotation(
-                    tenant_id=tenant_id,
-                    customer_id=customers[0].id,
-                    quote_number="QT-2026-001",
-                    items={"items": [{"name": "Enterprise POS Subscription", "qty": 10, "price": 1200}]},
-                    subtotal=12000.0,
-                    tax=2160.0,
-                    total=14160.0,
-                    status="Sent"
-                ),
-                CRMQuotation(
-                    tenant_id=tenant_id,
-                    customer_id=customers[1].id,
-                    quote_number="QT-2026-002",
-                    items={"items": [{"name": "Hardware Terminal Pro", "qty": 5, "price": 450}]},
-                    subtotal=2250.0,
-                    tax=405.0,
-                    total=2655.0,
-                    status="Draft"
-                )
-            ]
-            for q in quotes:
-                db.add(q)
-                
-            # 5. Seed Sales Orders
-            logger.info("Seeding CRM Sales Orders...")
-            orders = [
-                CRMSalesOrder(
-                    tenant_id=tenant_id,
-                    customer_id=customers[0].id,
-                    order_number="SO-2026-101",
-                    items={"items": [{"name": "Enterprise Subscription", "qty": 1, "price": 8500}]},
-                    total=8500.0,
-                    status="Processing",
-                    payment_status="Paid"
-                )
-            ]
-            for o in orders:
-                db.add(o)
-                
-            # 6. Seed Opportunities
-            logger.info("Seeding CRM Opportunities...")
-            from src.models import CRMOpportunity
-            from datetime import date
-            opportunities = [
-                CRMOpportunity(
-                    tenant_id=tenant_id,
-                    customer_id=customers[0].id,
-                    name="Nimbus Retail POS Expansion",
-                    stage="Value Proposition",
-                    amount=45000.0,
-                    probability=70,
-                    expected_close_date=date(2026, 9, 30)
-                ),
-                CRMOpportunity(
-                    tenant_id=tenant_id,
-                    lead_id=leads[2].id,
-                    name="Johnson & Co Q3 Enterprise Rollout",
-                    stage="Needs Analysis",
-                    amount=85000.0,
-                    probability=40,
-                    expected_close_date=date(2026, 11, 15)
-                )
-            ]
-            for opp in opportunities:
-                db.add(opp)
-                
-        await db.commit()
-        logger.info("CRM & Sales seeds created successfully.")
+        # 4. Seed Quotations
+        logger.info(f"Seeding CRM Quotations for tenant {tenant.slug}...")
+        quotations = [
+            CRMQuotation(
+                tenant_id=tenant_id,
+                customer_id=customers[0].id,
+                quote_number="QT-2026-0001",
+                items={"items": [{"name": "Enterprise POS Subscription", "qty": 10, "price": 1200}]},
+                subtotal=12000.0,
+                tax=2160.0,
+                total=14160.0,
+                status="Sent"
+            ),
+            CRMQuotation(
+                tenant_id=tenant_id,
+                customer_id=customers[1].id,
+                quote_number="QT-2026-0002",
+                items={"items": [{"name": "Hardware Terminal Pro", "qty": 5, "price": 450}]},
+                subtotal=2250.0,
+                tax=405.0,
+                total=2655.0,
+                status="Draft"
+            )
+        ]
+        for q in quotations:
+            db.add(q)
+        await db.flush()
+
+        # 5. Seed Sales Orders
+        logger.info(f"Seeding CRM Sales Orders for tenant {tenant.slug}...")
+        orders = [
+            CRMSalesOrder(
+                tenant_id=tenant_id,
+                customer_id=customers[0].id,
+                order_number="SO-2026-0001",
+                items={"items": [{"name": "Enterprise Subscription", "qty": 1, "price": 8500}]},
+                total=8500.0,
+                status="Processing",
+                payment_status="Paid"
+            )
+        ]
+        for o in orders:
+            db.add(o)
+            
+        # 6. Seed Opportunities
+        logger.info(f"Seeding CRM Opportunities for tenant {tenant.slug}...")
+        from src.models import CRMOpportunity
+        opportunities = [
+            CRMOpportunity(
+                tenant_id=tenant_id,
+                customer_id=customers[0].id,
+                name="Nimbus Retail POS Expansion",
+                stage="Value Proposition",
+                amount=45000.0,
+                probability=70,
+                expected_close_date=date(2026, 9, 30)
+            ),
+            CRMOpportunity(
+                tenant_id=tenant_id,
+                lead_id=leads[2].id,
+                name="Johnson & Co Q3 Enterprise Rollout",
+                stage="Needs Analysis",
+                amount=85000.0,
+                probability=40,
+                expected_close_date=date(2026, 11, 15)
+            )
+        ]
+        for opp in opportunities:
+            db.add(opp)
+            
+    await db.commit()
+    logger.info("CRM & Sales seeds created successfully.")
+
+
+async def seed_accounting_features(db: AsyncSession) -> None:
+    tenants = (await db.execute(select(Tenant))).scalars().all()
+    for tenant in tenants:
+        tenant_id = tenant.id
+
+        from src.models import Company, Branch
+        from src.models.erp import (
+            ChartOfAccount, BankAccount, BankTransaction, JournalEntry, JournalEntryLine,
+            AccountType, AccountSubType, BankAccountStatus, EntryStatus, EntryType
+        )
+
+        # Check if we already have accounts for this tenant
+        acc_count = await db.scalar(select(func.count()).select_from(ChartOfAccount).where(ChartOfAccount.tenant_id == tenant_id))
+        if acc_count > 0:
+            logger.info(f"Accounting features already seeded for tenant {tenant.slug}. Skipping.")
+            continue
+
+        logger.info(f"Seeding Chart of Accounts for tenant {tenant.slug}...")
+        
+        # Get or create company for tenant
+        comp_id = await db.scalar(select(Company.id).where(Company.tenant_id == tenant_id))
+        if not comp_id:
+            company = Company(
+                tenant_id=tenant_id,
+                name=f"{tenant.name or 'Demo'} Company",
+                legal_name=f"{tenant.name or 'Demo'} Pvt Ltd",
+                company_type="Private Limited",
+                industry="Retail",
+                country="India",
+                state="Maharashtra",
+                city="Mumbai",
+                default_currency_code="INR"
+            )
+            db.add(company)
+            await db.flush()
+            comp_id = company.id
+
+        # Get or create branch for tenant
+        branch_id = await db.scalar(select(Branch.id).where(Branch.tenant_id == tenant_id))
+        if not branch_id:
+            branch = Branch(
+                tenant_id=tenant_id,
+                company_id=comp_id,
+                code="BR-100",
+                name="Main Branch",
+                city="Mumbai",
+                country="India",
+                has_warehouse=True
+            )
+            db.add(branch)
+            await db.flush()
+
+        # 1. Create Chart of Accounts
+        accounts_to_seed = [
+            # ASSETS
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="1000", name="Cash in Bank",
+                description="Main operational bank checking account balance",
+                account_type=AccountType.ASSET, account_sub_type=AccountSubType.BANK,
+                is_control_account=False, is_active=True, opening_balance=1250000.50,
+                allow_posting=True, sort_order=10, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="1100", name="Petty Cash",
+                description="On-hand cash for office petty expenses",
+                account_type=AccountType.ASSET, account_sub_type=AccountSubType.CASH,
+                is_control_account=False, is_active=True, opening_balance=15000.00,
+                allow_posting=True, sort_order=20, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="1200", name="Accounts Receivable",
+                description="Control account for outstanding customer invoices",
+                account_type=AccountType.ASSET, account_sub_type=AccountSubType.RECEIVABLE,
+                is_control_account=True, is_active=True, opening_balance=450000.00,
+                allow_posting=True, sort_order=30, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="1300", name="Prepaid Expenses",
+                description="Paid expenses that are not yet incurred",
+                account_type=AccountType.ASSET, account_sub_type=AccountSubType.CURRENT_ASSET,
+                is_control_account=False, is_active=True, opening_balance=28000.00,
+                allow_posting=True, sort_order=40, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="1500", name="Inventory",
+                description="Control account for raw materials and finished goods inventory",
+                account_type=AccountType.ASSET, account_sub_type=AccountSubType.INVENTORY,
+                is_control_account=True, is_active=True, opening_balance=850000.00,
+                allow_posting=True, sort_order=50, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="1600", name="Fixed Assets (Net)",
+                description="Office machinery, computers and property fixed assets assets balance",
+                account_type=AccountType.ASSET, account_sub_type=AccountSubType.FIXED_ASSET,
+                is_control_account=False, is_active=True, opening_balance=2100000.00,
+                allow_posting=True, sort_order=60, currency_code="INR"
+            ),
+
+            # LIABILITIES
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="2000", name="Accounts Payable",
+                description="Control account for outstanding vendor bills",
+                account_type=AccountType.LIABILITY, account_sub_type=AccountSubType.PAYABLE,
+                is_control_account=True, is_active=True, opening_balance=21000.00,
+                allow_posting=True, sort_order=70, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="2100", name="GST Payable",
+                description="Tax collected from sales and due to government authority",
+                account_type=AccountType.LIABILITY, account_sub_type=AccountSubType.TAX,
+                is_control_account=False, is_active=True, opening_balance=48000.00,
+                allow_posting=True, sort_order=80, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="2200", name="Salaries Payable",
+                description="Accrued employee salaries and payroll liabilities",
+                account_type=AccountType.LIABILITY, account_sub_type=AccountSubType.CURRENT_LIABILITY,
+                is_control_account=False, is_active=True, opening_balance=85000.00,
+                allow_posting=True, sort_order=90, currency_code="INR"
+            ),
+
+            # EQUITY
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="3000", name="Retained Earnings",
+                description="Accumulated net profits retained in the business",
+                account_type=AccountType.EQUITY, account_sub_type=AccountSubType.RETAINED_EARNINGS,
+                is_control_account=False, is_active=True, opening_balance=1800000.00,
+                allow_posting=True, sort_order=100, currency_code="INR"
+            ),
+
+            # INCOME
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="4000", name="Sales Revenue",
+                description="Revenue from product sales and retail transactions",
+                account_type=AccountType.INCOME, account_sub_type=AccountSubType.SALES,
+                is_control_account=False, is_active=True, opening_balance=0.0,
+                allow_posting=True, sort_order=110, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="4100", name="Other Income",
+                description="Interest and miscellaneous income",
+                account_type=AccountType.INCOME, account_sub_type=AccountSubType.OTHER_INCOME,
+                is_control_account=False, is_active=True, opening_balance=0.0,
+                allow_posting=True, sort_order=120, currency_code="INR"
+            ),
+
+            # EXPENSES
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="5000", name="Cost of Goods Sold",
+                description="Direct cost of merchandise sold to customers",
+                account_type=AccountType.EXPENSE, account_sub_type=AccountSubType.COGS,
+                is_control_account=False, is_active=True, opening_balance=0.0,
+                allow_posting=True, sort_order=130, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="5100", name="Salaries & Wages",
+                description="Employee salaries and benefit costs",
+                account_type=AccountType.EXPENSE, account_sub_type=AccountSubType.OPERATING_EXPENSE,
+                is_control_account=False, is_active=True, opening_balance=0.0,
+                allow_posting=True, sort_order=140, currency_code="INR"
+            ),
+            ChartOfAccount(
+                tenant_id=tenant_id, company_id=comp_id, code="5200", name="Office Rent",
+                description="Rental costs for offices and showrooms",
+                account_type=AccountType.EXPENSE, account_sub_type=AccountSubType.OPERATING_EXPENSE,
+                is_control_account=False, is_active=True, opening_balance=0.0,
+                allow_posting=True, sort_order=150, currency_code="INR"
+            ),
+        ]
+
+        for acc in accounts_to_seed:
+            db.add(acc)
+        await db.flush()
+
+        # Find the newly created cash in bank account
+        cash_in_bank = [a for a in accounts_to_seed if a.code == "1000"][0]
+
+        # 2. Seed Bank Accounts
+        logger.info(f"Seeding Bank Accounts for tenant {tenant.slug}...")
+        bank_acc = BankAccount(
+            tenant_id=tenant_id,
+            company_id=comp_id,
+            chart_of_account_id=cash_in_bank.id,
+            name="HDFC Premium Checking",
+            account_number="5010020304050",
+            ifsc_code="HDFC0000104",
+            bank_name="HDFC Bank Ltd",
+            branch_name="Bandra East Branch",
+            account_type="checking",
+            currency_code="INR",
+            opening_balance=1250000.50,
+            current_balance=1250000.50,
+            status=BankAccountStatus.ACTIVE,
+            is_default=True
+        )
+        db.add(bank_acc)
+        await db.flush()
+
+        # 3. Seed Bank Transactions
+        from datetime import date
+        txs = [
+            BankTransaction(
+                tenant_id=tenant_id, bank_account_id=bank_acc.id, transaction_date=date(2026, 7, 10),
+                description="Opening Balance Funding", transaction_type="deposit", amount=1250000.50,
+                running_balance=1250000.50, is_reconciled=True, is_manual=False
+            ),
+            BankTransaction(
+                tenant_id=tenant_id, bank_account_id=bank_acc.id, transaction_date=date(2026, 7, 15),
+                description="Nexon Vendor Payment PO-402", transaction_type="withdrawal", amount=45000.00,
+                running_balance=1205000.50, is_reconciled=False, is_manual=True
+            ),
+            BankTransaction(
+                tenant_id=tenant_id, bank_account_id=bank_acc.id, transaction_date=date(2026, 7, 20),
+                description="Retail Cash Counter Receipt", transaction_type="deposit", amount=28500.00,
+                running_balance=1233500.50, is_reconciled=False, is_manual=False
+            ),
+            BankTransaction(
+                tenant_id=tenant_id, bank_account_id=bank_acc.id, transaction_date=date(2026, 7, 25),
+                description="Bandra Office Rent Posting", transaction_type="withdrawal", amount=12000.00,
+                running_balance=1221500.50, is_reconciled=True, is_manual=False
+            ),
+        ]
+        for tx in txs:
+            db.add(tx)
+        await db.flush()
+
+        # 4. Seed Journal Entries
+        logger.info(f"Seeding Journal Entries for tenant {tenant.slug}...")
+        je = JournalEntry(
+            tenant_id=tenant_id, company_id=comp_id, entry_number="JE-2026-0001",
+            entry_type=EntryType.JOURNAL, status=EntryStatus.POSTED, entry_date=date(2026, 7, 1),
+            reference="OPENING_2026", description="Initial ledger balances opening entry",
+            total_debit=150000.0, total_credit=150000.0, currency_code="INR"
+        )
+        db.add(je)
+        await db.flush()
+
+        # Get accounts references for lines
+        salaries_payable = [a for a in accounts_to_seed if a.code == "2200"][0]
+        salaries_expense = [a for a in accounts_to_seed if a.code == "5100"][0]
+
+        lines = [
+            JournalEntryLine(
+                entry_id=je.id, account_id=salaries_expense.id,
+                debit=150000.0, credit=0.0, description="Salary expense seeding"
+            ),
+            JournalEntryLine(
+                entry_id=je.id, account_id=salaries_payable.id,
+                debit=0.0, credit=150000.0, description="Salary liability seeding"
+            )
+        ]
+        for line in lines:
+            db.add(line)
+
+    await db.commit()
+    logger.info("Seeded default accounting data successfully.")
 

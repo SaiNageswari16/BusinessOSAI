@@ -417,6 +417,8 @@ class PublicProductResponse(BaseModel):
     mrp: float
     selling_price: float
     stock: int = 0
+    seller_name: Optional[str] = None   # tenant / business name for marketplace display
+    tenant_id: Optional[uuid.UUID] = None
     images: List[PublicProductImageResponse] = Field(default_factory=list)
     variants: List[PublicProductVariantResponse] = Field(default_factory=list)
 

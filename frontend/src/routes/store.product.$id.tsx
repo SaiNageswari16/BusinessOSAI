@@ -1,17 +1,47 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { ProductGallery } from "../components/storefront/ProductGallery";
 import { ProductInfo } from "../components/storefront/ProductInfo";
-import { mockMarketplaceProducts } from "../data/mockMarketplaceData";
+import { mockMarketplaceProducts, MarketplaceProduct } from "../data/mockMarketplaceData";
 import { ArrowLeft, Home } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { fetchStorefrontProducts, StorefrontProduct } from "@/lib/storefront-api";
 
 export const Route = createFileRoute("/store/product/$id")({
   component: ProductDetail,
 });
 
+const mockAsStorefrontProduct = (mock: MarketplaceProduct): StorefrontProduct => {
+  return {
+    id: mock.id,
+    name: mock.name,
+    sku: `MOCK-${mock.id}`,
+    category_name: mock.category,
+    brand: mock.vendorName,
+    short_description: `Mock product from ${mock.vendorName}`,
+    image_url: undefined,
+    mrp: mock.price * 1.2,
+    selling_price: mock.price,
+    stock: mock.stock,
+    images: [],
+    variants: []
+  };
+};
+
 function ProductDetail() {
   const { id } = Route.useParams();
-  const product = mockMarketplaceProducts.find(p => p.id === id);
+
+  const { data: productData } = useQuery({
+    queryKey: ['storefrontProducts'],
+    queryFn: () => fetchStorefrontProducts(),
+  });
+  const allProducts = productData?.items ?? [];
+
+  const liveProduct = allProducts.find(p => p.id === id);
+  const mockProduct = mockMarketplaceProducts.find(p => p.id === id);
+
+  const product = liveProduct || (mockProduct ? mockAsStorefrontProduct(mockProduct) : undefined);
+
 
   if (!product) {
     return (
@@ -35,7 +65,7 @@ function ProductDetail() {
             Home
           </Link>
           <span className="text-gray-400">/</span>
-          <span className="hover:text-blue-600 cursor-pointer font-medium">{product.category}</span>
+          <span className="hover:text-blue-600 cursor-pointer font-medium">{product.category_name || "Uncategorized"}</span>
           <span className="text-gray-400">/</span>
           <span className="text-[#1A1A1A] font-bold truncate max-w-[200px] sm:max-w-none">{product.name}</span>
         </div>

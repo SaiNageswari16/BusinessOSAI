@@ -1554,5 +1554,6 @@ class LiveNotification(Base, UUIDPrimaryKeyMixin, TenantScopedMixin):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+from .erp import *
 from .inventory import *
 from .procurement import *
