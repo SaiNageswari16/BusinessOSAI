@@ -176,11 +176,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const stored = localStorage.getItem("bos-auth");
       if (!stored) return;
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       
       try {
         const parsed: StoredAuth = JSON.parse(stored);
+        
+        // Fast fail if token is locally known to be expired
+        if (parsed.accessToken) {
+          try {
+            const payload = JSON.parse(atob(parsed.accessToken.split('.')[1]));
+            if (payload.exp && payload.exp * 1000 < Date.now()) {
+              throw new Error("Token expired");
+            }
+          } catch (e) {
+            // Ignore parse errors and just try the backend
+          }
+        }
+        
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), 500); // reduced from 1500ms to 500ms
+        
         // Custom fetch with abort signal just for this initial load
         const response = await fetch(`${API_BASE_URL}/auth/me`, {
           headers: { Authorization: `Bearer ${parsed.accessToken}` },

@@ -1721,7 +1721,7 @@ export const crmLeadsApi = {
   listActivities: (id: string) => request<CrmLeadActivity[]>("GET", `/crm/leads/${id}/activities`),
   addActivity: (id: string, data: Record<string, unknown>) => request<CrmLeadActivity>("POST", `/crm/leads/${id}/activities`, data),
   convert: (id: string) => request<CrmCustomer>("POST", `/crm/leads/${id}/convert`),
-  
+
   // ── Facebook OAuth page connection (proper flow) ─────────────────────────────
   /** Get this tenant's Meta App configuration status */
   getFbAppConfig: () =>
@@ -1767,7 +1767,7 @@ export const crmLeadsApi = {
     request<{ configured: boolean; fb_page_or_form_id?: string; fb_api_version?: string; has_token?: boolean }>("GET", "/crm/facebook/credentials"),
   importFacebookLeads: () =>
     request<{ imported: number; skipped: number; total: number; message: string }>("POST", "/crm/facebook/import"),
-    
+
   // AI scoring
   analyzeLeadAi: (id: string) =>
     request<{ id: string; ai_score: number; ai_sentiment: string }>("POST", `/crm/leads/${id}/analyze-ai`),
@@ -1967,7 +1967,7 @@ export const crmCampaignsApi = {
     request<{ image_url: string; enhanced_prompt: string; aspect_ratio: string }>("POST", "/crm/campaigns/generate-poster", data),
   publishFacebook: (data: { image_url: string; caption: string }) =>
     request<{ status: string; post_id?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
-  
+
   // Email Campaign methods
   listEmailCampaigns: () => request<EmailCampaign[]>("GET", "/crm/email-campaigns"),
   createEmailCampaign: (data: { name: string; subject: string; body_html: string; target_category: string }) =>
@@ -2308,9 +2308,9 @@ export const posApi = {
   getCurrentSession: () => request<any>("GET", "/pos/sessions/current"),
   // Transactions
   checkout: (data: Record<string, unknown>) => request<any>("POST", "/pos/transactions/checkout", data),
-  getHistory: (params?: { limit?: number; status_filter?: string; search?: string }) => 
+  getHistory: (params?: { limit?: number; status_filter?: string; search?: string }) =>
     request<POSTransactionHistory[]>("GET", "/pos/transactions/history", undefined, params as Record<string, string | number | boolean | null | undefined>),
-  getDailySummary: (params?: { session_id?: string }) => 
+  getDailySummary: (params?: { session_id?: string }) =>
     request<any>("GET", "/pos/transactions/reports/daily-summary", undefined, params as Record<string, string | number | boolean | null | undefined>),
   deleteTransaction: (id: string) => request<void>("DELETE", `/pos/transactions/${id}`),
   // Products & Categories
@@ -2318,7 +2318,7 @@ export const posApi = {
   getProducts: (params?: { category_id?: string; search?: string }) =>
     request<POSProduct[]>("GET", "/pos/products", undefined, params as Record<string, string | number | boolean | null | undefined>),
   createProduct: (data: Record<string, unknown>) => request<POSProduct>("POST", "/pos/products", data),
-  bulkCreateProducts: (products: Record<string, unknown>[]) => 
+  bulkCreateProducts: (products: Record<string, unknown>[]) =>
     request<{ created_count: number; skipped_count: number; errors: string[] }>("POST", "/pos/products/bulk", { products }),
   updateProduct: (id: string, data: Record<string, unknown>) => request<POSProduct>("PATCH", `/pos/products/${id}`, data),
   deleteProduct: (id: string) => request<void>("DELETE", `/pos/products/${id}`),
@@ -2463,7 +2463,7 @@ export const inventoryApi = {
   getProducts: (params?: { category_id?: string; brand_id?: string; search?: string; page?: number; page_size?: number }) =>
     request<PaginatedResponse<InventoryProduct>>("GET", "/inventory/products", undefined, params as Record<string, any>),
   createProduct: (data: Record<string, unknown>) => request<InventoryProduct>("POST", "/inventory/products", data),
-  masterImportProducts: (items: Record<string, unknown>[]) => 
+  masterImportProducts: (items: Record<string, unknown>[]) =>
     request<{ products_created: number; brands_created: number; categories_created: number; uoms_created: number; skipped_count: number; errors: string[] }>("POST", "/inventory/products/master-import", { items }),
   updateProduct: (id: string, data: Record<string, unknown>) => request<InventoryProduct>("PATCH", `/inventory/products/${id}`, data),
   deleteProduct: (id: string) => request<void>("DELETE", `/inventory/products/${id}`),
@@ -2514,23 +2514,23 @@ export const inventoryApi = {
 
   adminGetMasterCatalogList: (params?: { page?: number; page_size?: number; search?: string; rag_status?: string }) =>
     request<{ items: any[]; total: number; page: number; page_size: number }>("GET", "/inventory/master-catalog/admin/list", undefined, params as Record<string, any>),
-  
+
   // Categories
   getCategories: (params?: { search?: string; page?: number; page_size?: number }) =>
     request<PaginatedResponse<InventoryCategory>>("GET", "/inventory/categories", undefined, params as Record<string, any>),
   createCategory: (data: Record<string, unknown>) => request<InventoryCategory>("POST", "/inventory/categories", data),
-  bulkCreateCategories: (categories: Record<string, unknown>[]) => 
+  bulkCreateCategories: (categories: Record<string, unknown>[]) =>
     request<{ created_count: number; skipped_count: number; errors: string[] }>("POST", "/inventory/categories/bulk", { categories }),
   updateCategory: (id: string, data: Record<string, unknown>) => request<InventoryCategory>("PATCH", `/inventory/categories/${id}`, data),
   deleteCategory: (id: string) => request<void>("DELETE", `/inventory/categories/${id}`),
-  
+
   // Brands
   getBrands: (params?: { search?: string; page?: number; page_size?: number }) =>
     request<PaginatedResponse<InventoryBrand>>("GET", "/inventory/brands", undefined, params as Record<string, any>),
   createBrand: (data: Record<string, unknown>) => request<InventoryBrand>("POST", "/inventory/brands", data),
   updateBrand: (id: string, data: Record<string, unknown>) => request<InventoryBrand>("PATCH", `/inventory/brands/${id}`, data),
   deleteBrand: (id: string) => request<void>("DELETE", `/inventory/brands/${id}`),
-  
+
   // UOMs
   getUOMs: (params?: { search?: string; page?: number; page_size?: number }) =>
     request<PaginatedResponse<InventoryUOM>>("GET", "/inventory/uoms", undefined, params as Record<string, any>),
@@ -2594,7 +2594,7 @@ export const inventoryApi = {
   getWarehouses: () => request<Warehouse[]>("GET", "/inventory/warehouses"),
   createWarehouse: (data: Record<string, unknown>) => request<Warehouse>("POST", "/inventory/warehouses", data),
   deleteWarehouse: (id: string) => request<void>("DELETE", `/inventory/warehouses/${id}`),
-  
+
   getStorageLocations: () => request<StorageLocation[]>("GET", "/inventory/locations"),
   createStorageLocation: (warehouseId: string, data: Record<string, unknown>) => request<StorageLocation>("POST", `/inventory/warehouses/${warehouseId}/locations`, data),
   deleteStorageLocation: (id: string) => request<void>("DELETE", `/inventory/locations/${id}`),

@@ -26,18 +26,19 @@ export type NavGroup = {
   group: string;
   icon: any;
   permission?: string;
+  theme?: string;
   items: NavItem[];
 };
 
 export const nav: NavGroup[] = [
   {
-    group: "Workspace", icon: Compass, items: [
+    group: "Workspace", theme: "slate", icon: Compass, items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view:dashboard" },
       { to: "/copilot", label: "Antigravity AI", icon: Sparkles, badge: "OS", permission: "view:copilot" },
     ]
   },
   {
-    group: "Core ERP", icon: Component, permission: "view:erp", items: [
+    group: "Core ERP", theme: "blue", icon: Component, permission: "view:erp", items: [
       {
         to: "/erp?tab=companies",
         label: "Organization",
@@ -121,7 +122,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Inventory & Warehouse", icon: Archive, permission: "view:inventory", items: [
+    group: "Inventory & Warehouse", theme: "cyan", icon: Archive, permission: "view:inventory", items: [
       {
         to: "/inventory?tab=products",
         label: "Product Master",
@@ -202,7 +203,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Operations", icon: Settings2, permission: "view:procurement", items: [
+    group: "Operations", theme: "teal", icon: Settings2, permission: "view:procurement", items: [
       {
         to: "/procurement?tab=suppliers",
         label: "Supplier Management",
@@ -262,7 +263,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "POS", icon: ScanLine, permission: "view:pos", items: [
+    group: "POS", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
       { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
       { 
         to: "/pos?tab=terminal", 
@@ -311,7 +312,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Sales & CRM", icon: Megaphone, permission: "view:crm", items: [
+    group: "Sales & CRM", theme: "orange", icon: Megaphone, permission: "view:crm", items: [
       {
         to: "/crm?tab=customers",
         label: "Customer Management",
@@ -380,7 +381,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Marketplace", icon: Store, permission: "view:marketplace", items: [
+    group: "Marketplace", theme: "sky", icon: Store, permission: "view:marketplace", items: [
       {
         to: "/marketplace?tab=vendors",
         label: "Vendor Management",
@@ -469,7 +470,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Accounting & Finance", icon: Banknote, permission: "view:accounting", items: [
+    group: "Accounting & Finance", theme: "emerald", icon: Banknote, permission: "view:accounting", items: [
       {
         to: "/accounting?tab=chart_of_accounts",
         label: "Accounting",
@@ -590,7 +591,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "HRMS", icon: UserCheck, permission: "view:hrms", items: [
+    group: "HRMS", theme: "rose", icon: UserCheck, permission: "view:hrms", items: [
       {
         to: "/hrms?tab=employees",
         label: "Employee Management",
@@ -720,7 +721,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "IoT", icon: RadioTower, permission: "view:iot", items: [
+    group: "IoT", theme: "zinc", icon: RadioTower, permission: "view:iot", items: [
       {
         to: "/iot?tab=connected_devices",
         label: "Devices",
@@ -786,7 +787,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Analytics & Intelligence", icon: AreaChart, permission: "view:reports", items: [
+    group: "Analytics & Intelligence", theme: "fuchsia", icon: AreaChart, permission: "view:reports", items: [
       {
         to: "/reports?tab=sales_reports",
         label: "Sales",
@@ -893,7 +894,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "System Configuration", icon: Settings, permission: "view:settings", items: [
+    group: "System Configuration", theme: "slate", icon: Settings, permission: "view:settings", items: [
       {
         to: "/settings?tab=company_profile",
         label: "Company",
