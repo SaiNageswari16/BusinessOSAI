@@ -4,13 +4,11 @@ import {
 } from "@/components/ui/command";
 import {
   LayoutDashboard, Sparkles, Boxes, ShoppingCart, Users, Calculator,
-  Plus, FileText, Settings, Sun, Moon,
+  Plus, FileText, Settings,
 } from "lucide-react";
-import { useTheme } from "@/contexts/theme-context";
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const navigate = useNavigate();
-  const { theme, toggle } = useTheme();
   const go = (to: string) => { onOpenChange(false); navigate({ to }); };
 
   return (
@@ -34,10 +32,6 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Settings">
-          <CommandItem onSelect={() => { toggle(); onOpenChange(false); }}>
-            {theme === "dark" ? <Sun className="size-4 mr-2" /> : <Moon className="size-4 mr-2" />}
-            Toggle theme
-          </CommandItem>
           <CommandItem onSelect={() => go("/settings")}><Settings className="size-4 mr-2" /> Open settings</CommandItem>
         </CommandGroup>
       </CommandList>
