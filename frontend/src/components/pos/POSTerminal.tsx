@@ -425,10 +425,10 @@ function PosTerminalInner() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-full overflow-hidden bg-slate-50 font-sans">
+    <div className="flex flex-col h-screen w-full overflow-hidden bg-[#F3F4F6] font-sans selection:bg-indigo-100 selection:text-indigo-900">
 
       {/* Terminal Header Nav */}
-      <div className="flex-shrink-0 bg-white/90 backdrop-blur-md border-b border-slate-200/60 px-4 flex items-center overflow-x-auto gap-3 py-3 shadow-sm z-50">
+      <div className="flex-shrink-0 bg-white/95 backdrop-blur-xl border-b border-slate-200/50 px-4 flex items-center overflow-x-auto gap-3 py-3 shadow-[0_4px_24px_rgba(0,0,0,0.02)] z-50">
         <button
           onClick={() => {
             if (document.fullscreenElement) {
@@ -471,7 +471,7 @@ function PosTerminalInner() {
         <div className="flex flex-1 overflow-hidden relative">
 
           {/* COL 1: Categories (15%) */}
-          <div className="w-[15%] min-w-[120px] max-w-[200px] shrink-0 bg-slate-50/50 border-r border-slate-200/60 overflow-y-auto scrollbar-none hidden md:block relative z-10">
+          <div className="w-[15%] min-w-[140px] max-w-[220px] shrink-0 bg-white border-r border-slate-200/40 overflow-y-auto scrollbar-none hidden md:block shadow-[4px_0_24px_rgba(0,0,0,0.01)] z-10">
             <div className="p-4">
               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-2">Explorer</h3>
               <button
@@ -508,7 +508,7 @@ function PosTerminalInner() {
           </div>
 
           {/* COL 2: Product Grid / Details Drawer (55%) */}
-          <div className="flex-1 bg-slate-50/50 p-4 overflow-y-auto relative">
+          <div className="flex-1 bg-[#F8FAFC] p-4 lg:p-6 overflow-y-auto relative">
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
@@ -529,7 +529,7 @@ function PosTerminalInner() {
                     id="global-search"
                     type="text"
                     placeholder="Search by name, barcode, SKU... (F2)"
-                    className="block w-full pl-11 pr-20 py-2.5 border border-slate-200/80 rounded-2xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-sm"
+                    className="block w-full pl-11 pr-20 py-3 border border-slate-200/60 rounded-full bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm shadow-[0_2px_12px_rgba(0,0,0,0.03)]"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -566,7 +566,7 @@ function PosTerminalInner() {
                   <div
                     key={product.id}
                     onClick={() => addToCart(product)}
-                    className="bg-white rounded-xl border border-slate-200/60 overflow-hidden shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer group flex flex-col relative"
+                    className="bg-white rounded-2xl border border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_24px_rgba(0,0,0,0.06)] hover:border-indigo-100 transition-all duration-300 cursor-pointer group flex flex-col relative"
                   >
                     {/* Badges */}
                     <div className="absolute top-2 left-2 right-2 flex justify-between z-10 pointer-events-none">
@@ -587,7 +587,7 @@ function PosTerminalInner() {
                     </button>
 
                     <div className="h-32 bg-slate-50 relative p-4 flex items-center justify-center">
-                      <img src={product.image} alt={product.name} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-300" />
+                      <img src={product.image || "https://placehold.co/400x400/f8fafc/94a3b8?text=No+Image"} onError={(e) => { e.currentTarget.src = "https://placehold.co/400x400/f8fafc/94a3b8?text=No+Image"; }} alt={product.name} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-300" />
                     </div>
                     <div className="p-3 flex flex-col flex-1 justify-between border-t border-slate-100">
                       <div>
@@ -633,7 +633,7 @@ function PosTerminalInner() {
                         className="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer group relative"
                       >
                         <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
-                          <img src={p.image} alt={p.name} className="w-10 h-10 rounded border border-slate-100 object-cover" />
+                          <img src={p.image || "https://placehold.co/40x40/f8fafc/94a3b8?text=Img"} onError={(e) => { e.currentTarget.src = "https://placehold.co/40x40/f8fafc/94a3b8?text=Img"; }} alt={p.name} className="w-10 h-10 rounded border border-slate-100 object-cover" />
                           <div className="flex flex-col">
                             <span>{p.name}</span>
                             <span className="text-[10px] text-slate-400 font-bold uppercase">{p.brand}</span>
@@ -709,7 +709,7 @@ function PosTerminalInner() {
                   <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
                     <div className="flex gap-6 items-start">
                       <div className="w-48 h-48 bg-slate-50 rounded-xl border border-slate-200 p-4 shrink-0 flex items-center justify-center">
-                        <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-contain mix-blend-multiply" />
+                        <img src={selectedProduct.image || "https://placehold.co/400x400/f8fafc/94a3b8?text=No+Image"} onError={(e) => { e.currentTarget.src = "https://placehold.co/400x400/f8fafc/94a3b8?text=No+Image"; }} alt={selectedProduct.name} className="w-full h-full object-contain mix-blend-multiply" />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -774,7 +774,7 @@ function PosTerminalInner() {
           </div>
 
           {/* COL 3: Billing Workspace (30%) */}
-          <div className="w-[30%] min-w-[320px] max-w-[450px] shrink-0 bg-white flex flex-col shadow-[-4px_0_24px_-8px_rgba(0,0,0,0.08)] z-20">
+          <div className="w-[30%] min-w-[350px] max-w-[480px] shrink-0 bg-white/95 backdrop-blur-3xl flex flex-col shadow-[-8px_0_32px_rgba(0,0,0,0.05)] border-l border-slate-200/50 z-20">
 
             {/* Customer Profile */}
             <div className="p-3 border-b border-slate-100 bg-slate-50/50">
@@ -812,7 +812,8 @@ function PosTerminalInner() {
             </div>
 
             {/* High-Density Cart */}
-            <div className="flex-1 overflow-y-auto p-3 bg-slate-50/50">
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/40 relative">
+              <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center space-y-4">
                   <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center border border-slate-100 shadow-sm shadow-slate-200/50">
@@ -828,7 +829,7 @@ function PosTerminalInner() {
                       onClick={() => { setDiscountModalItem(item); setDiscountInput(item.discount.toString()); }}
                       className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-sm flex items-start gap-3 relative group cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all duration-300"
                     >
-                      <img src={item.image} alt={item.name} className="w-12 h-12 rounded-xl border border-slate-100 object-contain p-1 shrink-0 bg-slate-50" />
+                      <img src={item.image || "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"} onError={(e) => { e.currentTarget.src = "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"; }} alt={item.name} className="w-12 h-12 rounded-xl border border-slate-100 object-contain p-1 shrink-0 bg-slate-50" />
                       <div className="flex-1 min-w-0">
                         <h5 className="text-[13px] font-bold text-slate-900 leading-tight truncate pr-6">{item.name}</h5>
                         <div className="text-[10px] font-bold text-slate-400 mt-0.5 tracking-wider uppercase">{item.sku}</div>
@@ -992,7 +993,7 @@ function PosTerminalInner() {
                 <button onClick={() => setDiscountModalItem(null)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"><X className="w-4 h-4" /></button>
               </div>
               <div className="flex gap-4 items-center mb-6 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <img src={discountModalItem.image} alt={discountModalItem.name} className="w-12 h-12 object-contain mix-blend-multiply bg-white rounded border border-slate-200" />
+                <img src={discountModalItem.image || "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"} onError={(e) => { e.currentTarget.src = "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"; }} alt={discountModalItem.name} className="w-12 h-12 object-contain mix-blend-multiply bg-white rounded border border-slate-200" />
                 <div>
                   <p className="font-bold text-slate-900 line-clamp-1">{discountModalItem.name}</p>
                   <p className="text-xs font-semibold text-slate-500">{formatCurrency(discountModalItem.sellingPrice)} each</p>
