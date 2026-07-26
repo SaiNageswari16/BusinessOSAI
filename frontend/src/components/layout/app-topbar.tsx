@@ -79,11 +79,28 @@ export function AppTopbar() {
     }
   };
 
+  const [pollingInterval, setPollingInterval] = useState(6000);
+
   useEffect(() => {
-    fetchLiveNotifications(true);
-    const timer = setInterval(() => fetchLiveNotifications(false), 6000);
-    return () => clearInterval(timer);
+    const loadConfig = async () => {
+      try {
+        const cfg = await liveNotificationsApi.getSettings();
+        if (cfg && cfg.enabled === false) {
+          setPollingInterval(999999999);
+        } else if (cfg && cfg.polling_interval) {
+          setPollingInterval(cfg.polling_interval * 1000);
+        }
+      } catch {}
+    };
+    loadConfig();
   }, []);
+
+  useEffect(() => {
+    if (pollingInterval > 1000000) return;
+    fetchLiveNotifications(true);
+    const timer = setInterval(() => fetchLiveNotifications(false), pollingInterval);
+    return () => clearInterval(timer);
+  }, [pollingInterval]);
 
   const handleMarkAllRead = async () => {
     try {

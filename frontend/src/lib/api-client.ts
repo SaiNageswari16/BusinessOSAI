@@ -1979,9 +1979,17 @@ export const crmCampaignsApi = {
     request<EmailTemplate>("POST", "/crm/email-templates", data),
 };
 
+export interface NotificationSettings {
+  enabled: boolean;
+  categories: string[];
+  polling_interval: number;
+}
+
 export const liveNotificationsApi = {
   list: () => request<LiveNotification[]>("GET", "/system/notifications/live"),
   readAll: () => request<{ message: string }>("POST", "/system/notifications/read-all"),
+  getSettings: () => request<NotificationSettings>("GET", "/system/notifications/settings"),
+  updateSettings: (data: NotificationSettings) => request<{ message: string; settings: NotificationSettings }>("PUT", "/system/notifications/settings", data),
 };
 
 export interface CrmTicket {
@@ -2658,4 +2666,209 @@ export const inventoryApi = {
   testZohoConnection: () => request<any>("POST", "/integrations/zoho/test"),
   publishJobToZoho: (jobId: string) => request<any>("POST", "/integrations/zoho/jobs/publish", { job_id: jobId }),
   syncJobsFromZoho: () => request<{ success: boolean; message: string; created: number; updated: number; total_from_zoho: number }>("POST", "/integrations/zoho/sync-from-zoho"),
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  ACCOUNTING & FINANCE API
+// ═══════════════════════════════════════════════════════════════
+
+export interface ChartOfAccount {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  account_type: string;
+  account_sub_type: string | null;
+  parent_id: string | null;
+  is_control_account: boolean;
+  is_active: boolean;
+  opening_balance: number;
+  allow_posting: boolean;
+  sort_order: number;
+  currency_code: string | null;
+}
+
+export interface JournalEntry {
+  id: string;
+  entry_number: string;
+  entry_type: string;
+  status: string;
+  entry_date: string;
+  reference: string | null;
+  description: string | null;
+  total_debit: number;
+  total_credit: number;
+  currency_code: string;
+  source_module: string | null;
+  lines?: JournalEntryLine[];
+}
+
+export interface JournalEntryLine {
+  id: string;
+  account_id: string;
+  account_name?: string;
+  account_code?: string;
+  debit: number;
+  credit: number;
+  description: string | null;
+  cost_center_id: string | null;
+}
+
+export interface BankAccountRecord {
+  id: string;
+  name: string;
+  account_number: string | null;
+  ifsc_code: string | null;
+  bank_name: string | null;
+  branch_name: string | null;
+  account_type: string;
+  currency_code: string;
+  opening_balance: number;
+  current_balance: number;
+  status: string;
+  is_default: boolean;
+  chart_of_account_id?: string;
+}
+
+export interface BankTransaction {
+  id: string;
+  bank_account_id: string;
+  transaction_date: string;
+  description: string;
+  transaction_type: string;
+  amount: number;
+  running_balance: number | null;
+  is_reconciled: boolean;
+  is_manual: boolean;
+}
+
+export interface Invoice {
+  id: string;
+  invoice_number: string;
+  invoice_type: string;
+  status: string;
+  customer_id: string | null;
+  customer_name?: string;
+  invoice_date: string;
+  due_date: string | null;
+  subtotal: number;
+  tax_total: number;
+  discount_total: number;
+  total_amount: number;
+  amount_paid: number;
+  balance_due: number;
+  currency_code: string;
+  notes: string | null;
+}
+
+export interface FixedAsset {
+  id: string;
+  asset_number: string;
+  name: string;
+  description: string | null;
+  status: string;
+  purchase_date: string;
+  purchase_cost: number;
+  salvage_value: number;
+  depreciation_method: string;
+  useful_life_years: number;
+  accumulated_depreciation: number;
+  book_value: number;
+  location: string | null;
+}
+
+export interface ExpenseClaim {
+  id: string;
+  expense_number: string;
+  title: string;
+  employee_id: string;
+  employee_name?: string;
+  status: string;
+  submission_date: string;
+  total_amount: number;
+  approved_amount: number | null;
+  currency_code: string;
+  description: string | null;
+}
+
+export interface Budget {
+  id: string;
+  name: string;
+  fiscal_year_id: string;
+  cost_center_id: string | null;
+  status: string;
+  total_budget_amount: number;
+  total_actual_amount: number;
+  variance: number;
+  period_type: string;
+}
+
+export const accountingApi = {
+  // Chart of Accounts
+  listAccounts: (params?: { page?: number; page_size?: number; account_type?: string; search?: string; is_active?: boolean }) =>
+    request<PaginatedResponse<ChartOfAccount>>("GET", "/accounting/accounts", undefined, params),
+  getAccount: (id: string) => request<ChartOfAccount>("GET", `/accounting/accounts/${id}`),
+  createAccount: (data: Partial<ChartOfAccount>) => request<ChartOfAccount>("POST", "/accounting/accounts", data),
+  updateAccount: (id: string, data: Partial<ChartOfAccount>) => request<ChartOfAccount>("PATCH", `/accounting/accounts/${id}`, data),
+  deleteAccount: (id: string) => request<{ message: string }>("DELETE", `/accounting/accounts/${id}`),
+
+  // Journal Entries
+  listJournalEntries: (params?: { page?: number; page_size?: number; entry_type?: string; status?: string; search?: string }) =>
+    request<PaginatedResponse<JournalEntry>>("GET", "/accounting/journal-entries", undefined, params),
+  getJournalEntry: (id: string) => request<JournalEntry>("GET", `/accounting/journal-entries/${id}`),
+  createJournalEntry: (data: any) => request<JournalEntry>("POST", "/accounting/journal-entries", data),
+  postJournalEntry: (id: string) => request<JournalEntry>("POST", `/accounting/journal-entries/${id}/post`),
+  voidJournalEntry: (id: string, reason: string) => request<JournalEntry>("POST", `/accounting/journal-entries/${id}/void`, { reason }),
+};
+
+export const bankApi = {
+  // Bank Accounts
+  listBankAccounts: (params?: { page?: number; page_size?: number; status?: string; search?: string }) =>
+    request<PaginatedResponse<BankAccountRecord>>("GET", "/bank/accounts", undefined, params),
+  getBankAccount: (id: string) => request<BankAccountRecord>("GET", `/bank/accounts/${id}`),
+  createBankAccount: (data: Partial<BankAccountRecord>) => request<BankAccountRecord>("POST", "/bank/accounts", data),
+  updateBankAccount: (id: string, data: Partial<BankAccountRecord>) => request<BankAccountRecord>("PATCH", `/bank/accounts/${id}`, data),
+
+  // Transactions
+  listTransactions: (bankAccountId: string, params?: { page?: number; page_size?: number }) =>
+    request<PaginatedResponse<BankTransaction>>("GET", `/bank/accounts/${bankAccountId}/transactions`, undefined, params),
+  createTransaction: (bankAccountId: string, data: Partial<BankTransaction>) =>
+    request<BankTransaction>("POST", `/bank/accounts/${bankAccountId}/transactions`, data),
+};
+
+export const invoicesApi = {
+  listInvoices: (params?: { page?: number; page_size?: number; status?: string; invoice_type?: string; search?: string }) =>
+    request<PaginatedResponse<Invoice>>("GET", "/invoices", undefined, params),
+  getInvoice: (id: string) => request<Invoice>("GET", `/invoices/${id}`),
+  createInvoice: (data: any) => request<Invoice>("POST", "/invoices", data),
+  sendInvoice: (id: string) => request<{ message: string }>("POST", `/invoices/${id}/send`),
+  recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string }) =>
+    request<{ message: string }>("POST", `/invoices/${id}/payments`, data),
+};
+
+export const fixedAssetsApi = {
+  listAssets: (params?: { page?: number; page_size?: number; status?: string; search?: string }) =>
+    request<PaginatedResponse<FixedAsset>>("GET", "/fixed-assets", undefined, params),
+  getAsset: (id: string) => request<FixedAsset>("GET", `/fixed-assets/${id}`),
+  createAsset: (data: any) => request<FixedAsset>("POST", "/fixed-assets", data),
+  runDepreciation: (id: string, data: { depreciation_date: string; period_months?: number }) =>
+    request<any>("POST", `/fixed-assets/${id}/depreciate`, data),
+};
+
+export const expenseClaimsApi = {
+  listExpenseClaims: (params?: { page?: number; page_size?: number; status?: string }) =>
+    request<PaginatedResponse<ExpenseClaim>>("GET", "/expense-claims", undefined, params),
+  getExpenseClaim: (id: string) => request<ExpenseClaim>("GET", `/expense-claims/${id}`),
+  createExpenseClaim: (data: any) => request<ExpenseClaim>("POST", "/expense-claims", data),
+  approveExpenseClaim: (id: string, note?: string) =>
+    request<{ message: string }>("POST", `/expense-claims/${id}/approve`, { note }),
+  rejectExpenseClaim: (id: string, reason: string) =>
+    request<{ message: string }>("POST", `/expense-claims/${id}/reject`, { reason }),
+};
+
+export const budgetsApi = {
+  listBudgets: (params?: { page?: number; page_size?: number; status?: string }) =>
+    request<PaginatedResponse<Budget>>("GET", "/budgets", undefined, params),
+  getBudget: (id: string) => request<Budget>("GET", `/budgets/${id}`),
+  createBudget: (data: any) => request<Budget>("POST", "/budgets", data),
 };

@@ -3,14 +3,48 @@ import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { MockScreen } from "@/components/mock-screen";
 import { RecruitmentIntegrations } from "@/components/recruitment-integrations";
+import { NotificationSettings } from "@/components/NotificationSettings";
+import { EmailCampaigns } from "@/components/crm/EmailCampaigns";
+import { PushNotifications } from "@/components/crm/PushNotifications";
 
 export const Route = createFileRoute("/_app/settings")({
   component: SettingsModule,
 });
 
+function SystemNotificationsTab() {
+  const [subTab, setSubTab] = React.useState<"logs" | "settings">("logs");
+  return (
+    <div className="space-y-2">
+      <div className="px-6 pt-4 flex gap-4 border-b border-border/50 bg-card">
+        <button
+          onClick={() => setSubTab("logs")}
+          className={`px-3 py-2 text-sm font-bold border-b-2 bg-transparent border-none cursor-pointer transition-colors ${
+            subTab === "logs" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Live Notifications Log
+        </button>
+        <button
+          onClick={() => setSubTab("settings")}
+          className={`px-3 py-2 text-sm font-bold border-b-2 bg-transparent border-none cursor-pointer transition-colors ${
+            subTab === "settings" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Alert Settings & Frequencies
+        </button>
+      </div>
+      <div>
+        {subTab === "logs" ? <PushNotifications /> : <NotificationSettings />}
+      </div>
+    </div>
+  );
+}
+
 const componentMap: Record<string, React.ElementType> = {
   company_profile: () => <MockScreen type="settings" title="Company Profile" />,
   recruitment_integrations: RecruitmentIntegrations,
+  notifications: SystemNotificationsTab,
+  email_integration: EmailCampaigns,
 };
 
 function SettingsModule() {

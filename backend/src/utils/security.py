@@ -179,6 +179,63 @@ DEFAULT_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ("view:ess_payroll", "View Own Payroll info", "hrms", "View and download personal payslips"),
     ("view:ess_documents", "View Own Documents", "hrms", "Upload and view personal documents"),
     ("view:ess_tasks_announcements", "View Task Updates", "hrms", "Access tasks list and announcements"),
+
+    # Granular Accounting permissions
+    ("view:chart_of_accounts", "View Chart of Accounts", "accounting", "View and manage COA"),
+    ("manage:chart_of_accounts", "Manage Chart of Accounts", "accounting", "Create/edit/delete COA entries"),
+    ("view:journal_entries", "View Journal Entries", "accounting", "View journal entry list"),
+    ("manage:journal_entries", "Manage Journal Entries", "accounting", "Create/edit journal entries"),
+    ("post:journal_entries", "Post Journal Entries", "accounting", "Post and reverse journal entries"),
+    ("view:account_balances", "View Account Balances", "accounting", "View trial balance and account balances"),
+
+    # Granular AR / Invoice permissions
+    ("view:invoices", "View Invoices", "accounting", "View invoice list"),
+    ("manage:invoices", "Manage Invoices", "accounting", "Create/edit invoices"),
+    ("approve:invoices", "Approve Invoices", "accounting", "Approve and void invoices"),
+    ("manage:invoice_payments", "Manage Invoice Payments", "accounting", "Record payments against invoices"),
+
+    # Granular Bank Management permissions
+    ("view:bank_accounts", "View Bank Accounts", "accounting", "View bank account list"),
+    ("manage:bank_accounts", "Manage Bank Accounts", "accounting", "Create/edit bank accounts"),
+    ("view:bank_transactions", "View Bank Transactions", "accounting", "View bank transaction history"),
+    ("manage:bank_transactions", "Manage Bank Transactions", "accounting", "Create/edit bank transactions"),
+    ("view:bank_reconciliations", "View Bank Reconciliations", "accounting", "View reconciliation records"),
+    ("manage:bank_reconciliations", "Manage Bank Reconciliations", "accounting", "Create and complete reconciliations"),
+
+    # Granular Fixed Assets permissions
+    ("view:fixed_assets", "View Fixed Assets", "accounting", "View asset register"),
+    ("manage:fixed_assets", "Manage Fixed Assets", "accounting", "Create/edit assets and run depreciation"),
+
+    # Granular Vouchers & Expenses permissions
+    ("view:payment_vouchers", "View Payment Vouchers", "accounting", "View payment vouchers"),
+    ("manage:payment_vouchers", "Manage Payment Vouchers", "accounting", "Create/edit payment vouchers"),
+    ("approve:payment_vouchers", "Approve Payment Vouchers", "accounting", "Approve payment vouchers"),
+    ("view:expense_claims", "View Expense Claims", "accounting", "View employee expense claims"),
+    ("manage:expense_claims", "Manage Expense Claims", "accounting", "Create/edit expense claims"),
+    ("approve:expense_claims", "Approve Expense Claims", "accounting", "Approve/reject expense claims"),
+    ("view:budgets", "View Budgets", "accounting", "View budget plans"),
+    ("manage:budgets", "Manage Budgets", "accounting", "Create/edit budgets"),
+
+    # Granular Tax Management permissions
+    ("view:tax", "View Tax", "accounting", "View tax codes, returns, and payments"),
+    ("manage:tax", "Manage Tax", "accounting", "Create/edit tax codes and returns"),
+    ("file:tax", "File Tax Returns", "accounting", "Submit tax returns"),
+
+    # Accounting — granular (needed by accounting.py, bank.py, invoices.py, fixed_assets.py routes)
+    ("view:chart_of_accounts", "View Chart of Accounts", "accounting", "View GL accounts and balances"),
+    ("manage:chart_of_accounts", "Manage Chart of Accounts", "accounting", "Create/edit GL accounts"),
+    ("view:journal_entries", "View Journal Entries", "accounting", "View posted and draft journal entries"),
+    ("manage:journal_entries", "Manage Journal Entries", "accounting", "Post, void and reverse journal entries"),
+    ("view:invoices", "View Invoices", "accounting", "View sales invoices and credit notes"),
+    ("manage:invoices", "Manage Invoices", "accounting", "Create and send invoices"),
+    ("view:accounts_receivable", "View Accounts Receivable", "accounting", "View customer outstanding balances"),
+    ("manage:accounts_receivable", "Manage Accounts Receivable", "accounting", "Record payments and manage AR"),
+    ("view:accounts_payable", "View Accounts Payable", "accounting", "View vendor outstanding balances"),
+    ("manage:accounts_payable", "Manage Accounts Payable", "accounting", "Record vendor payments and manage AP"),
+
+    # Marketplace permissions
+    ("view:marketplace", "View Marketplace", "marketplace", "Access marketplace module"),
+    ("manage:marketplace", "Manage Marketplace", "marketplace", "Manage marketplace vendors and products"),
 ]
 
 

@@ -198,6 +198,47 @@ const PERMISSION_LABELS: Record<string, string> = {
   "view:payroll": "View HRMS Payroll",
   "view:reports": "View Intelligence Reports",
   "view:settings": "Change System Settings",
+
+  // Accounting - Chart of Accounts & Journal Entries
+  "view:chart_of_accounts": "View Chart of Accounts",
+  "manage:chart_of_accounts": "Manage Chart of Accounts (CRUD)",
+  "view:journal_entries": "View Journal Entries",
+  "manage:journal_entries": "Manage Journal Entries (CRUD)",
+  "post:journal_entries": "Post & Reverse Journal Entries",
+  "view:account_balances": "View Account Balances & Trial Balance",
+
+  // Accounting - Invoices & AR
+  "view:invoices": "View Invoices",
+  "manage:invoices": "Manage Invoices (CRUD)",
+  "approve:invoices": "Approve & Void Invoices",
+  "manage:invoice_payments": "Record Invoice Payments",
+
+  // Accounting - Bank Management
+  "view:bank_accounts": "View Bank Accounts",
+  "manage:bank_accounts": "Manage Bank Accounts (CRUD)",
+  "view:bank_transactions": "View Bank Transactions",
+  "manage:bank_transactions": "Manage Bank Transactions",
+  "view:bank_reconciliations": "View Bank Reconciliations",
+  "manage:bank_reconciliations": "Manage Bank Reconciliations",
+
+  // Accounting - Fixed Assets
+  "view:fixed_assets": "View Fixed Asset Register",
+  "manage:fixed_assets": "Manage Assets & Run Depreciation",
+
+  // Accounting - Vouchers & Expenses
+  "view:payment_vouchers": "View Payment Vouchers",
+  "manage:payment_vouchers": "Manage Payment Vouchers (CRUD)",
+  "approve:payment_vouchers": "Approve Payment Vouchers",
+  "view:expense_claims": "View Expense Claims",
+  "manage:expense_claims": "Manage Expense Claims (CRUD)",
+  "approve:expense_claims": "Approve Expense Claims",
+  "view:budgets": "View Budgets",
+  "manage:budgets": "Manage Budgets (CRUD)",
+
+  // Accounting - Tax Management
+  "view:tax": "View Tax Codes, Returns & Payments",
+  "manage:tax": "Manage Tax Codes & Returns",
+  "file:tax": "File Tax Returns",
 };
 
 const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
@@ -316,7 +357,40 @@ const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
     ] 
   },
   { 
-    label: "Accounting & Settings", 
+    label: "Accounting - Chart of Accounts & Journal",
+    keys: [
+      "view:chart_of_accounts", "manage:chart_of_accounts",
+      "view:journal_entries", "manage:journal_entries",
+      "post:journal_entries", "view:account_balances"
+    ]
+  },
+  { 
+    label: "Accounting - Invoices & AR",
+    keys: [
+      "view:invoices", "manage:invoices",
+      "approve:invoices", "manage:invoice_payments"
+    ]
+  },
+  { 
+    label: "Accounting - Bank Management",
+    keys: [
+      "view:bank_accounts", "manage:bank_accounts",
+      "view:bank_transactions", "manage:bank_transactions",
+      "view:bank_reconciliations", "manage:bank_reconciliations"
+    ]
+  },
+  { 
+    label: "Accounting - Fixed Assets, Vouchers & Tax",
+    keys: [
+      "view:fixed_assets", "manage:fixed_assets",
+      "view:payment_vouchers", "manage:payment_vouchers", "approve:payment_vouchers",
+      "view:expense_claims", "manage:expense_claims", "approve:expense_claims",
+      "view:budgets", "manage:budgets",
+      "view:tax", "manage:tax", "file:tax"
+    ]
+  },
+  { 
+    label: "Modules & Settings", 
     keys: ["view:accounting", "view:reports", "view:settings"] 
   },
 ];

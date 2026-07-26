@@ -1,5 +1,4 @@
 import React from "react";
-import { motion } from "framer-motion";
 import { FileText } from "lucide-react";
 import { useAccountingData } from "@/hooks/useAccountingData";
 
@@ -7,8 +6,11 @@ interface Props {
   tab?: string;
 }
 
+function fmt(n: number) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
+}
+
 export function BalanceSheet({ tab = "balance_sheet" }: Props) {
-  const { mockFinanceStats } = useAccountingData();
   const assets = [
     { label: "Cash in Bank", amount: 1250000 },
     { label: "Petty Cash", amount: 15000 },
@@ -42,12 +44,12 @@ export function BalanceSheet({ tab = "balance_sheet" }: Props) {
         {rows.map((row: any, i: number) => (
           <div key={row.label} className="flex justify-between px-6 py-3 text-sm hover:bg-muted/10 transition-colors">
             <span className="text-muted-foreground pl-2">{row.label}</span>
-            <span className="font-medium text-foreground">${row.amount.toLocaleString()}</span>
+            <span className="font-medium text-foreground">{fmt(row.amount)}</span>
           </div>
         ))}
         <div className="flex justify-between px-6 py-4 bg-muted/20 font-semibold text-sm">
           <span>Total {title}</span>
-          <span className="text-primary">${total.toLocaleString()}</span>
+          <span className="text-primary font-semibold">{fmt(total)}</span>
         </div>
       </div>
     </div>
@@ -57,7 +59,7 @@ export function BalanceSheet({ tab = "balance_sheet" }: Props) {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Balance Sheet</h1>
+          <h1 className="text-2xl font-bold text-foreground font-bold">Balance Sheet</h1>
           <p className="text-sm text-muted-foreground">Financial position as of June 30, 2026.</p>
         </div>
         <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">

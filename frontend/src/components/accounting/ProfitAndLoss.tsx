@@ -4,6 +4,10 @@ import { FileText } from "lucide-react";
 
 interface Props { tab?: string; }
 
+function fmt(n: number) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
+}
+
 export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
 
   if (tab === "trial_balance") {
@@ -31,7 +35,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
     return (
       <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Trial Balance</h1><p className="text-sm text-muted-foreground">All account balances as of June 30, 2026 — debits must equal credits.</p></div>
+          <div><h1 className="text-2xl font-bold text-foreground font-bold">Trial Balance</h1><p className="text-sm text-muted-foreground">All account balances — debits must equal credits.</p></div>
           <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><FileText className="size-4" /> Export PDF</button>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
@@ -50,15 +54,15 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
                   <motion.tr key={row.code} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
                     className="border-b border-border/50 last:border-0 hover:bg-muted/10 transition-colors">
                     <td className="px-6 py-4 font-mono text-primary text-xs">{row.code}</td>
-                    <td className="px-6 py-4 text-foreground">{row.name}</td>
-                    <td className="px-6 py-4 text-right text-emerald-500 font-medium">{row.debit > 0 ? `$${row.debit.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : "—"}</td>
-                    <td className="px-6 py-4 text-right text-red-400 font-medium">{row.credit > 0 ? `$${row.credit.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : "—"}</td>
+                    <td className="px-6 py-4 text-foreground font-semibold">{row.name}</td>
+                    <td className="px-6 py-4 text-right text-emerald-500 font-semibold">{row.debit > 0 ? fmt(row.debit) : "—"}</td>
+                    <td className="px-6 py-4 text-right text-red-400 font-semibold">{row.credit > 0 ? fmt(row.credit) : "—"}</td>
                   </motion.tr>
                 ))}
                 <tr className="bg-muted/30 border-t border-border/50 font-bold text-sm">
                   <td className="px-6 py-4" colSpan={2}>TOTALS</td>
-                  <td className="px-6 py-4 text-right text-emerald-500">${totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  <td className="px-6 py-4 text-right text-red-400">${totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-4 text-right text-emerald-500 font-bold">{fmt(totalDebit)}</td>
+                  <td className="px-6 py-4 text-right text-red-400 font-bold">{fmt(totalCredit)}</td>
                 </tr>
               </tbody>
             </table>
@@ -83,7 +87,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
     return (
       <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Profit Forecast</h1><p className="text-sm text-muted-foreground">Quarterly actual vs. forecast profit performance for FY 2026.</p></div>
+          <div><h1 className="text-2xl font-bold text-foreground font-bold">Profit Forecast</h1><p className="text-sm text-muted-foreground">Quarterly actual vs. forecast profit performance for FY 2026.</p></div>
           <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><FileText className="size-4" /> Export Forecast</button>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
@@ -104,12 +108,12 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
                   <motion.tr key={q.period} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.08 }}
                     className={`border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors ${q.period.includes("Forecast") ? "bg-blue-500/3" : ""}`}>
                     <td className="px-6 py-4 font-semibold text-foreground">{q.period}</td>
-                    <td className="px-6 py-4 text-right font-medium text-emerald-500">${q.revenue.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right font-medium text-red-400">${q.expenses.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right font-bold text-foreground">${q.profit.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right text-blue-400">{q.margin}%</td>
+                    <td className="px-6 py-4 text-right font-semibold text-emerald-500">{fmt(q.revenue)}</td>
+                    <td className="px-6 py-4 text-right font-semibold text-red-400">{fmt(q.expenses)}</td>
+                    <td className="px-6 py-4 text-right font-bold text-foreground">{fmt(q.profit)}</td>
+                    <td className="px-6 py-4 text-right text-blue-400 font-semibold">{q.margin}%</td>
                     <td className="px-6 py-4 text-center">
-                      <span className={`px-2 py-1 rounded-md text-xs font-medium ${q.period.includes("Forecast") ? "bg-blue-500/10 text-blue-500" : "bg-emerald-500/10 text-emerald-500"}`}>
+                      <span className={`px-2 py-1 rounded-md text-xs font-semibold ${q.period.includes("Forecast") ? "bg-blue-500/10 text-blue-500" : "bg-emerald-500/10 text-emerald-500"}`}>
                         {q.period.includes("Forecast") ? "Forecast" : "Actual"}
                       </span>
                     </td>
@@ -142,7 +146,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold text-foreground">Profit & Loss Statement</h1><p className="text-sm text-muted-foreground">Income statement for the period ending June 30, 2026.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground font-bold">Profit & Loss Statement</h1><p className="text-sm text-muted-foreground">Income statement for the period ending June 30, 2026.</p></div>
         <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><FileText className="size-4" /> Export PDF</button>
       </div>
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
@@ -159,8 +163,8 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
                 "hover:bg-muted/10"
               } transition-colors`}>
               <span className={`text-sm ${row.type === "expense" || row.type === "revenue" ? "pl-4 text-muted-foreground" : ""}`}>{row.label}</span>
-              <span className={`text-sm font-medium ${row.type === "total" ? "text-primary text-base" : row.amount < 0 ? "text-red-500" : "text-foreground"}`}>
-                {row.amount < 0 ? `-$${Math.abs(row.amount).toLocaleString()}` : `$${row.amount.toLocaleString()}`}
+              <span className={`text-sm font-semibold ${row.type === "total" ? "text-primary text-base" : row.amount < 0 ? "text-red-500" : "text-foreground"}`}>
+                {fmt(row.amount)}
               </span>
             </motion.div>
           ))}

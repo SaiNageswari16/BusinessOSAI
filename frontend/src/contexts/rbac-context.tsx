@@ -52,12 +52,49 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
   // hasPermission uses the flat permissions list on the user (aggregated across all roles by /auth/me)
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
+    // Tenant owners see everything
+    if (user.isTenantOwner) return true;
+    // Direct match
     if (user.permissions.includes(permission)) return true;
+
+    // Module-group virtual permissions — only expand to the specific module's permissions
     if (permission === "view:hrms") {
       return user.permissions.some(p => p.startsWith("view:hrms_") || p.startsWith("manage:hrms_"));
     }
     if (permission === "view:erp") {
-      return user.permissions.some(p => p.startsWith("view:") && p !== "view:dashboard");
+      return user.permissions.some(p =>
+        p.startsWith("view:erp_") || p.startsWith("manage:erp_") ||
+        p.startsWith("view:accounting_") || p.startsWith("manage:accounting_")
+      );
+    }
+    if (permission === "view:crm") {
+      return user.permissions.some(p => p.startsWith("view:crm_") || p.startsWith("manage:crm_"));
+    }
+    if (permission === "view:pos") {
+      return user.permissions.some(p => p.startsWith("view:pos_") || p.startsWith("manage:pos_"));
+    }
+    if (permission === "view:inventory") {
+      return user.permissions.some(p => p.startsWith("view:inventory_") || p.startsWith("manage:inventory_"));
+    }
+    if (permission === "view:procurement") {
+      return user.permissions.some(p => p.startsWith("view:procurement_") || p.startsWith("manage:procurement_"));
+    }
+    if (permission === "view:settings") {
+      return user.permissions.some(p => p.startsWith("view:settings_") || p.startsWith("manage:settings_"));
+    }
+    if (permission === "view:marketplace") {
+      return user.permissions.some(p => p.startsWith("view:marketplace") || p.startsWith("manage:marketplace"));
+    }
+    if (permission === "view:accounting") {
+      return user.permissions.some(p => p.startsWith("view:accounting") || p.startsWith("manage:accounting") ||
+        p.startsWith("view:chart_of_accounts") || p.startsWith("view:journal") || p.startsWith("view:bank") ||
+        p.startsWith("view:fixed_assets") || p.startsWith("view:expense_claims") || p.startsWith("view:budgets") || p.startsWith("view:tax"));
+    }
+    if (permission === "view:iot") {
+      return user.permissions.some(p => p.startsWith("view:iot") || p.startsWith("manage:iot"));
+    }
+    if (permission === "view:reports") {
+      return user.permissions.some(p => p.startsWith("view:reports") || p.startsWith("manage:reports"));
     }
     return false;
   };
