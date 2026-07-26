@@ -15,6 +15,7 @@ export interface CartProduct {
   category_name?: string;
   brand?: string;
   stock?: number;
+  vendorName?: string;
 }
 
 export interface CartItem {
