@@ -2777,17 +2777,22 @@ export interface FixedAsset {
   location: string | null;
 }
 
+export interface FixedAssetCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  useful_life_years: number;
+  depreciation_method: string;
+  salvage_value_percent: number;
+  status: string;
+}
+
 export interface ExpenseClaim {
   id: string;
-  expense_number: string;
-  title: string;
-  employee_id: string;
-  employee_name?: string;
+  claim_number: string;
   status: string;
-  submission_date: string;
+  claim_date: string;
   total_amount: number;
-  approved_amount: number | null;
-  currency_code: string;
   description: string | null;
 }
 
@@ -2797,10 +2802,9 @@ export interface Budget {
   fiscal_year_id: string;
   cost_center_id: string | null;
   status: string;
-  total_budget_amount: number;
-  total_actual_amount: number;
+  budgeted_amount: number;
+  actual_amount: number;
   variance: number;
-  period_type: string;
 }
 
 export const accountingApi = {
@@ -2811,6 +2815,18 @@ export const accountingApi = {
   createAccount: (data: Partial<ChartOfAccount>) => request<ChartOfAccount>("POST", "/accounting/accounts", data),
   updateAccount: (id: string, data: Partial<ChartOfAccount>) => request<ChartOfAccount>("PATCH", `/accounting/accounts/${id}`, data),
   deleteAccount: (id: string) => request<{ message: string }>("DELETE", `/accounting/accounts/${id}`),
+
+  // General Ledger
+  getGeneralLedger: (params?: { account_id?: string; date_from?: string; date_to?: string; entry_type?: string }) =>
+    request<any[]>("GET", "/accounting/general-ledger", undefined, params),
+  getAccountTree: (params?: { account_type?: string }) =>
+    request<ChartOfAccount[]>("GET", "/accounting/accounts/tree", undefined, params),
+
+  // Opening Balances
+  getOpeningBalances: (params?: { account_type?: string; search?: string }) =>
+    request<ChartOfAccount[]>("GET", "/accounting/opening-balances", undefined, params),
+  updateOpeningBalance: (id: string, data: { opening_balance: number }) =>
+    request<ChartOfAccount>("PATCH", `/accounting/opening-balances/${id}`, data),
 
   // Journal Entries
   listJournalEntries: (params?: { page?: number; page_size?: number; entry_type?: string; status?: string; search?: string }) =>
@@ -2834,6 +2850,13 @@ export const bankApi = {
     request<PaginatedResponse<BankTransaction>>("GET", `/bank/accounts/${bankAccountId}/transactions`, undefined, params),
   createTransaction: (bankAccountId: string, data: Partial<BankTransaction>) =>
     request<BankTransaction>("POST", `/bank/accounts/${bankAccountId}/transactions`, data),
+
+  // Reconciliations
+  listReconciliations: (params?: { page?: number; page_size?: number; bank_account_id?: string; status?: string }) =>
+    request<PaginatedResponse<any>>("GET", "/bank/reconciliations", undefined, params),
+  getReconciliation: (id: string) => request<any>("GET", `/bank/reconciliations/${id}`),
+  createReconciliation: (data: any) => request<any>("POST", "/bank/reconciliations", data),
+  completeReconciliation: (id: string) => request<any>("POST", `/bank/reconciliations/${id}/complete`),
 };
 
 export const invoicesApi = {
@@ -2847,12 +2870,14 @@ export const invoicesApi = {
 };
 
 export const fixedAssetsApi = {
-  listAssets: (params?: { page?: number; page_size?: number; status?: string; search?: string }) =>
+  listAssets: (params?: { page?: number; page_size?: number; status?: string; search?: string; category_id?: string }) =>
     request<PaginatedResponse<FixedAsset>>("GET", "/fixed-assets", undefined, params),
   getAsset: (id: string) => request<FixedAsset>("GET", `/fixed-assets/${id}`),
   createAsset: (data: any) => request<FixedAsset>("POST", "/fixed-assets", data),
   runDepreciation: (id: string, data: { depreciation_date: string; period_months?: number }) =>
     request<any>("POST", `/fixed-assets/${id}/depreciate`, data),
+  listCategories: () => request<FixedAssetCategory[]>("GET", "/fixed-assets/categories"),
+  createCategory: (data: any) => request<FixedAssetCategory>("POST", "/fixed-assets/categories", data),
 };
 
 export const expenseClaimsApi = {
@@ -2871,4 +2896,126 @@ export const budgetsApi = {
     request<PaginatedResponse<Budget>>("GET", "/budgets", undefined, params),
   getBudget: (id: string) => request<Budget>("GET", `/budgets/${id}`),
   createBudget: (data: any) => request<Budget>("POST", "/budgets", data),
+};
+
+// ─── Financial Reports ──────────────────────────────────────────────────
+
+export interface ProfitAndLossReport {
+  meta: { title: string; from_date: string; to_date: string; currency: string };
+  income: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  total_income: number;
+  cogs: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  total_cogs: number;
+  gross_profit: number;
+  expenses: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  total_expenses: number;
+  net_profit: number;
+}
+
+export interface BalanceSheetReport {
+  meta: { title: string; from_date: string; to_date: string; currency: string };
+  assets: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  total_assets: number;
+  liabilities: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  total_liabilities: number;
+  equity: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  total_equity: number;
+  total_liabilities_and_equity: number;
+}
+
+export interface CashFlowReport {
+  meta: { title: string; from_date: string; to_date: string; currency: string };
+  operating: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  net_operating: number;
+  investing: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  net_investing: number;
+  financing: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  net_financing: number;
+  net_cash_flow: number;
+}
+
+export interface TrialBalanceReport {
+  meta: { title: string; from_date: string; to_date: string; currency: string };
+  entries: Array<{ account_code: string; account_name: string; account_type: string; debit: number; credit: number; net: number }>;
+  total_debit: number;
+  total_credit: number;
+}
+
+export interface ARAgingReport {
+  meta: { title: string; from_date: string; to_date: string; currency: string };
+  current: number;
+  days_1_30: number;
+  days_31_60: number;
+  days_61_90: number;
+  days_over_90: number;
+  total_outstanding: number;
+}
+
+export const financialReportsApi = {
+  profitAndLoss: (params: { from_date: string; to_date: string; company_id?: string }) =>
+    request<ProfitAndLossReport>("GET", "/financial-reports/profit-and-loss", undefined, params),
+  balanceSheet: (params: { as_of: string; company_id?: string }) =>
+    request<BalanceSheetReport>("GET", "/financial-reports/balance-sheet", undefined, params),
+  cashFlow: (params: { from_date: string; to_date: string; company_id?: string }) =>
+    request<CashFlowReport>("GET", "/financial-reports/cash-flow", undefined, params),
+  trialBalance: (params: { from_date: string; to_date: string; company_id?: string }) =>
+    request<TrialBalanceReport>("GET", "/financial-reports/trial-balance", undefined, params),
+  arAging: (params: { as_of: string; company_id?: string }) =>
+    request<ARAgingReport>("GET", "/financial-reports/ar-aging", undefined, params),
+};
+
+// ─── Tax ─────────────────────────────────────────────────────────────────
+
+export interface TaxCode {
+  id: string;
+  name: string;
+  code: string;
+  tax_type: string;
+  rate: number;
+  is_inclusive: boolean;
+  is_active: boolean;
+  effective_from: string;
+}
+
+export interface TaxReturn {
+  id: string;
+  return_number: string;
+  tax_type: string;
+  period_start: string;
+  period_end: string;
+  taxable_amount: number;
+  tax_amount: number;
+  status: string;
+  filing_date: string | null;
+}
+
+export interface TaxPayment {
+  id: string;
+  tax_return_id: string;
+  payment_date: string;
+  amount: number;
+  payment_method: string;
+  reference_number: string | null;
+  status: string;
+}
+
+export const taxApi = {
+  listTaxCodes: (params?: { tax_type?: string; is_active?: boolean }) =>
+    request<PaginatedResponse<TaxCode>>("GET", "/tax/codes", undefined, params),
+  createTaxCode: (data: Partial<TaxCode>) => request<TaxCode>("POST", "/tax/codes", data),
+  updateTaxCode: (id: string, data: Partial<TaxCode>) => request<TaxCode>("PATCH", `/tax/codes/${id}`, data),
+  deleteTaxCode: (id: string) => request<{ message: string }>("DELETE", `/tax/codes/${id}`),
+
+  listTaxReturns: (params?: { tax_type?: string; status?: string; period_start?: string; period_end?: string }) =>
+    request<PaginatedResponse<TaxReturn>>("GET", "/tax/returns", undefined, params),
+  createTaxReturn: (data: Partial<TaxReturn>) => request<TaxReturn>("POST", "/tax/returns", data),
+  updateTaxReturn: (id: string, data: Partial<TaxReturn>) => request<TaxReturn>("PATCH", `/tax/returns/${id}`, data),
+  fileTaxReturn: (id: string) => request<{ message: string }>("POST", `/tax/returns/${id}/file`),
+  deleteTaxReturn: (id: string) => request<{ message: string }>("DELETE", `/tax/returns/${id}`),
+
+  listTaxPayments: (params?: { tax_return_id?: string; status?: string }) =>
+    request<PaginatedResponse<TaxPayment>>("GET", "/tax/payments", undefined, params),
+  createTaxPayment: (data: Partial<TaxPayment>) => request<TaxPayment>("POST", "/tax/payments", data),
+  updateTaxPayment: (id: string, data: Partial<TaxPayment>) => request<TaxPayment>("PATCH", `/tax/payments/${id}`, data),
+  deleteTaxPayment: (id: string) => request<{ message: string }>("DELETE", `/tax/payments/${id}`),
 };

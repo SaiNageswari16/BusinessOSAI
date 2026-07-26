@@ -1,46 +1,116 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, DollarSign, Wallet, ArrowUpRight, ArrowDownRight,
-  LineChart, PieChart, BarChart3, Activity, CreditCard, FileText
+  CreditCard, FileText, Loader2
 } from "lucide-react";
-import { useAccountingData } from "@/hooks/useAccountingData";
+import { invoicesApi, inventoryApi, financialReportsApi } from "@/lib/api-client";
+import { toast } from "sonner";
+import { fmt } from "@/components/accounting/utils";
 
 interface Props { tab?: string; }
 
-function fmt(n: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
+interface InvoiceRow {
+  id: string;
+  customer_name: string;
+  invoice_date: string;
+  due_date: string;
+  total_amount: number;
+  paid_amount: number;
+  balance_due: number;
+  status: string;
+}
+
+interface BillRow {
+  id: string;
+  supplier_name: string;
+  bill_date: string;
+  due_date: string;
+  total_amount: number;
+  paid_amount: number;
+  balance_due: number;
+  status: string;
 }
 
 export function FinanceDashboard({ tab = "overview" }: Props) {
-  const { mockFinanceStats, mockInvoices, mockVendorBills } = useAccountingData();
-  const s = mockFinanceStats;
+  const [loading, setLoading] = useState(false);
+  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [bills, setBills] = useState<BillRow[]>([]);
+
+  const loadOverview = async () => {
+    setLoading(true);
+    try {
+      const [invRes, billRes] = await Promise.all([
+        invoicesApi.listInvoices({ page_size: 5 }),
+        inventoryApi.getVendorBills(),
+      ]);
+      const invItems = (invRes.items || []) as any[];
+      setInvoices(invItems.map(inv => ({
+        id: inv.id,
+        customer_name: inv.customer_name || "—",
+        invoice_date: inv.invoice_date,
+        due_date: inv.due_date || "—",
+        total_amount: inv.total_amount,
+        paid_amount: inv.amount_paid || 0,
+        balance_due: inv.balance_due,
+        status: inv.status,
+      })).slice(0, 5));
+      setBills((billRes || []).slice(0, 5));
+    } catch {
+      toast.error("Failed to load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === "overview") loadOverview();
+  }, [tab]);
 
   if (tab === "cash_flow" || tab === "cash_flow_statement") {
-    const cashFlows = [
-      { category: "Operating Activities", items: [
-        { label: "Net Income", amount: 1636000 },
-        { label: "Depreciation Add-back", amount: 110000 },
-        { label: "Decrease in Receivables", amount: -450000 },
-        { label: "Increase in Payables", amount: 210000 },
-      ]},
-      { category: "Investing Activities", items: [
-        { label: "Purchase of Fixed Assets", amount: -95000 },
-        { label: "Proceeds from Asset Disposal", amount: 12000 },
-      ]},
-      { category: "Financing Activities", items: [
-        { label: "Short-term Loan Drawdown", amount: 300000 },
-        { label: "Owner Drawings", amount: -200000 },
-      ]},
+    const [flowReport, setFlowReport] = useState<{
+      operating: any[];
+      net_operating: number;
+      investing: any[];
+      net_investing: number;
+      financing: any[];
+      net_financing: number;
+      net_cash_flow: number;
+    } | null>(null);
+    const [cfLoading, setCfLoading] = useState(false);
+
+    useEffect(() => {
+      if (tab !== "cash_flow" && tab !== "cash_flow_statement") return;
+      setCfLoading(true);
+      const today = new Date();
+      const start = new Date(today.getFullYear(), 0, 1).toISOString().split("T")[0];
+      financialReportsApi.cashFlow({ from_date: start, to_date: today.toISOString().split("T")[0] })
+        .then(setFlowReport)
+        .catch(() => setFlowReport(null))
+        .finally(() => setCfLoading(false));
+    }, [tab]);
+
+    if (cfLoading) {
+      return <div className="p-6 flex items-center justify-center"><Loader2 className="size-8 animate-spin text-primary" /></div>;
+    }
+    if (!flowReport) {
+      return <div className="p-6 text-center text-red-400">Failed to load cash flow report.</div>;
+    }
+
+    const sections = [
+      { category: "Operating Activities", items: flowReport.operating, total: flowReport.net_operating },
+      { category: "Investing Activities", items: flowReport.investing, total: flowReport.net_investing },
+      { category: "Financing Activities", items: flowReport.financing, total: flowReport.net_financing },
     ];
+
     return (
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground font-bold">Cash Flow Statement</h1>
           <p className="text-sm text-muted-foreground">Period: January 1, 2026 – June 30, 2026</p>
         </div>
-        {cashFlows.map((section, si) => {
-          const total = section.items.reduce((s, i) => s + i.amount, 0);
+        {sections.map((section, si) => {
+          const total = section.items.reduce((s: number, i: any) => s + i.net, 0);
           return (
             <div key={section.category} className="glass-panel rounded-xl border border-border/50 overflow-hidden">
               <div className="px-6 py-4 bg-muted/20 border-b border-border/50">
@@ -48,11 +118,16 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
               </div>
               <div className="divide-y divide-border/30">
                 {section.items.map((item, i) => (
-                  <motion.div key={item.label} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: si *section.items.length * 0.05 + i * 0.04 }}
-                    className="flex justify-between items-center px-6 py-3 hover:bg-muted/10 transition-colors">
-                    <span className="text-sm text-muted-foreground pl-4">{item.label}</span>
-                    <span className={`text-sm font-semibold ${item.amount < 0 ? "text-red-500" : "text-foreground"}`}>
-                      {fmt(item.amount)}
+                  <motion.div
+                    key={item.account_code}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: si * section.items.length * 0.05 + i * 0.04 }}
+                    className="flex justify-between items-center px-6 py-3 hover:bg-muted/10 transition-colors"
+                  >
+                    <span className="text-sm text-muted-foreground pl-4">{item.account_name}</span>
+                    <span className={`text-sm font-semibold ${item.net < 0 ? "text-red-500" : "text-foreground"}`}>
+                      {fmt(item.net)}
                     </span>
                   </motion.div>
                 ))}
@@ -68,19 +143,14 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
         })}
         <div className="glass-panel p-5 rounded-xl border border-primary/30 bg-primary/5 flex justify-between items-center">
           <span className="font-bold text-foreground">Net Change in Cash</span>
-          <span className="text-xl font-bold text-primary">{fmt(1523000)}</span>
+          <span className="text-xl font-bold text-primary">{fmt(flowReport.net_cash_flow)}</span>
         </div>
       </div>
     );
   }
 
   if (tab === "revenue") {
-    const revenueBreakdown = [
-      { channel: "Retail In-Store", amount: 1450000, pct: 45, trend: "+8.2%", pos: true },
-      { channel: "Online / eCommerce", amount: 980000, pct: 31, trend: "+22.4%", pos: true },
-      { channel: "Wholesale", amount: 450000, pct: 14, trend: "-3.1%", pos: false },
-      { channel: "Service Revenue", amount: 480000, pct: 10, trend: "+11.5%", pos: true },
-    ];
+    const totalRevenue = invoices.reduce((s, i) => s + i.total_amount, 0);
     return (
       <div className="p-6 space-y-6">
         <div><h1 className="text-2xl font-bold text-foreground font-bold">Revenue</h1><p className="text-sm text-muted-foreground">Revenue breakdown by channel — YTD 2026.</p></div>
@@ -88,12 +158,14 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
           <TrendingUp className="size-8 text-emerald-500" />
           <div>
             <p className="text-sm text-muted-foreground">Total Revenue YTD</p>
-            <p className="text-3xl font-bold text-foreground">{fmt(s.totalRevenueYTD)}</p>
+            <p className="text-3xl font-bold text-foreground">{fmt(totalRevenue)}</p>
           </div>
           <span className="ml-auto text-emerald-500 font-semibold text-lg">+12.5% YoY</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {revenueBreakdown.map((r, i) => (
+          {[
+            { channel: "Invoice Revenue", amount: totalRevenue, pct: 100, trend: "+12.5%", pos: true },
+          ].map((r, i) => (
             <motion.div key={r.channel} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
               className="glass-panel p-5 rounded-xl border border-border/50">
               <div className="flex justify-between items-start mb-3">
@@ -115,13 +187,9 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
   }
 
   if (tab === "expenses") {
+    const totalExpenses = bills.reduce((s, b) => s + b.total_amount, 0);
     const expenseBreakdown = [
-      { category: "Cost of Goods Sold", amount: 1400000, pct: 17, color: "bg-red-500" },
-      { category: "Payroll & Benefits", amount: 420000, pct: 5.1, color: "bg-amber-500" },
-      { category: "Rent & Utilities", amount: 96000, pct: 1.2, color: "bg-orange-500" },
-      { category: "Marketing", amount: 65000, pct: 0.8, color: "bg-purple-500" },
-      { category: "Depreciation", amount: 110000, pct: 1.3, color: "bg-blue-500" },
-      { category: "Other Expenses", amount: 209000, pct: 2.5, color: "bg-cyan-500" },
+      { category: "Vendor Bills", amount: totalExpenses, pct: 100, color: "bg-red-500" },
     ];
     return (
       <div className="p-6 space-y-6">
@@ -130,7 +198,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
           <TrendingDown className="size-8 text-red-500" />
           <div>
             <p className="text-sm text-muted-foreground">Total Expenses YTD</p>
-            <p className="text-3xl font-bold text-foreground">{fmt(s.totalExpensesYTD)}</p>
+            <p className="text-3xl font-bold text-foreground">{fmt(totalExpenses)}</p>
           </div>
           <span className="ml-auto text-emerald-500 font-semibold text-lg">-2.4% vs Budget</span>
         </div>
@@ -141,7 +209,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
                 <tr>
                   <th className="px-6 py-4 font-medium">Category</th>
                   <th className="px-6 py-4 text-right font-medium">Amount</th>
-                  <th className="px-6 py-4 text-right font-medium">% of Revenue</th>
+                  <th className="px-6 py-4 text-right font-medium">% of Total</th>
                   <th className="px-6 py-4 font-medium">Distribution</th>
                 </tr>
               </thead>
@@ -154,7 +222,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
                     <td className="px-6 py-4 text-right text-muted-foreground">{exp.pct}%</td>
                     <td className="px-6 py-4 w-40">
                       <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${exp.color}`} style={{ width: `${exp.pct * 5}%` }} />
+                        <div className={`h-full rounded-full ${exp.color}`} style={{ width: `${exp.pct}%` }} />
                       </div>
                     </td>
                   </motion.tr>
@@ -168,6 +236,10 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
   }
 
   if (tab === "profit") {
+    const totalRevenue = invoices.reduce((s, i) => s + i.total_amount, 0);
+    const totalExpenses = bills.reduce((s, b) => s + b.total_amount, 0);
+    const netProfit = totalRevenue - totalExpenses;
+    const profitMargin = totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0;
     const profitData = [
       { month: "Jan", revenue: 2100000, expenses: 1380000, profit: 720000, margin: 34.3 },
       { month: "Feb", revenue: 2250000, expenses: 1410000, profit: 840000, margin: 37.3 },
@@ -181,8 +253,8 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
         <div><h1 className="text-2xl font-bold text-foreground font-bold">Profit Analysis</h1><p className="text-sm text-muted-foreground">Monthly profit performance — H1 2026.</p></div>
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Net Profit (YTD)", value: fmt(s.netProfit), color: "text-emerald-500", trend: "+15.2%" },
-            { label: "Profit Margin", value: `${s.profitMargin}%`, color: "text-blue-500", trend: "+2.1pp" },
+            { label: "Net Profit (YTD)", value: fmt(netProfit), color: "text-emerald-500", trend: "+15.2%" },
+            { label: "Profit Margin", value: `${profitMargin}%`, color: "text-blue-500", trend: "+2.1pp" },
             { label: "Best Month (Jun)", value: fmt(1350000), color: "text-indigo-500", trend: "+47.9% margin" },
           ].map((s, i) => (
             <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
@@ -225,14 +297,25 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
   }
 
   // Default: overview
+  if (loading) {
+    return <div className="p-6 flex items-center justify-center"><Loader2 className="size-8 animate-spin text-primary" /></div>;
+  }
+
+  const totalRevenue = invoices.reduce((s, i) => s + i.total_amount, 0);
+  const totalExpenses = bills.reduce((s, b) => s + b.total_amount, 0);
+  const netProfit = totalRevenue - totalExpenses;
+  const totalAR = invoices.reduce((s, i) => s + (i.balance_due || 0), 0);
+  const totalAP = bills.reduce((s, b) => s + (b.balance_due || 0), 0);
+
   const kpis = [
-    { label: "Total Revenue (YTD)", value: fmt(s.totalRevenueYTD), trend: "+12.5%", pos: true, icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-    { label: "Total Expenses (YTD)", value: fmt(s.totalExpensesYTD), trend: "-2.4% vs budget", pos: true, icon: TrendingDown, color: "text-amber-500", bg: "bg-amber-500/10" },
-    { label: "Net Profit", value: fmt(s.netProfit), trend: `${s.profitMargin}% margin`, pos: true, icon: DollarSign, color: "text-blue-500", bg: "bg-blue-500/10" },
-    { label: "Cash Balance", value: fmt(s.cashBalance), trend: "+5.1%", pos: true, icon: Wallet, color: "text-indigo-500", bg: "bg-indigo-500/10" },
-    { label: "Accounts Receivable", value: fmt(s.accountsReceivable), trend: "Invoices open", pos: true, icon: CreditCard, color: "text-purple-500", bg: "bg-purple-500/10" },
-    { label: "Accounts Payable", value: fmt(s.accountsPayable), trend: "Bills pending", pos: false, icon: FileText, color: "text-orange-500", bg: "bg-orange-500/10" },
+    { label: "Total Revenue (YTD)", value: fmt(totalRevenue), trend: "+12.5%", pos: true, icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { label: "Total Expenses (YTD)", value: fmt(totalExpenses), trend: "-2.4% vs budget", pos: true, icon: TrendingDown, color: "text-amber-500", bg: "bg-amber-500/10" },
+    { label: "Net Profit", value: fmt(netProfit), trend: `${totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0}% margin`, pos: true, icon: DollarSign, color: "text-blue-500", bg: "bg-blue-500/10" },
+    { label: "Cash Balance", value: fmt(totalRevenue - totalExpenses), trend: "+5.1%", pos: true, icon: Wallet, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+    { label: "Accounts Receivable", value: fmt(totalAR), trend: "Invoices open", pos: true, icon: CreditCard, color: "text-purple-500", bg: "bg-purple-500/10" },
+    { label: "Accounts Payable", value: fmt(totalAP), trend: "Bills pending", pos: false, icon: FileText, color: "text-orange-500", bg: "bg-orange-500/10" },
   ];
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -257,29 +340,41 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
         <div className="glass-panel p-6 rounded-xl border border-border/50">
           <h3 className="font-semibold text-foreground mb-4">Recent Invoices</h3>
           <div className="space-y-3">
-            {mockInvoices.slice(0, 4).map(inv => (
+            {invoices.slice(0, 4).map(inv => (
               <div key={inv.id} className="flex justify-between items-center text-sm">
-                <div><p className="font-semibold text-foreground">{inv.customerName}</p><p className="text-xs text-muted-foreground">{inv.id} · Due {inv.dueDate}</p></div>
+                <div>
+                  <p className="font-semibold text-foreground">{inv.customer_name}</p>
+                  <p className="text-xs text-muted-foreground">{inv.id.slice(0, 12)} · Due {inv.due_date}</p>
+                </div>
                 <div className="text-right">
-                  <p className="font-bold text-foreground">{fmt(inv.amount)}</p>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${inv.status === "Paid" ? "bg-emerald-500/10 text-emerald-500" : inv.status === "Overdue" ? "bg-red-500/10 text-red-500" : "bg-amber-500/10 text-amber-500"}`}>{inv.status}</span>
+                  <p className="font-bold text-foreground">{fmt(inv.total_amount)}</p>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${inv.status === "paid" ? "bg-emerald-500/10 text-emerald-500" : inv.status === "overdue" ? "bg-red-500/10 text-red-500" : "bg-amber-500/10 text-amber-500"}`}>{inv.status}</span>
                 </div>
               </div>
             ))}
+            {invoices.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No invoices found.</p>
+            )}
           </div>
         </div>
         <div className="glass-panel p-6 rounded-xl border border-border/50">
           <h3 className="font-semibold text-foreground mb-4">Recent Vendor Bills</h3>
           <div className="space-y-3">
-            {mockVendorBills.slice(0, 4).map(bill => (
+            {bills.slice(0, 4).map(bill => (
               <div key={bill.id} className="flex justify-between items-center text-sm">
-                <div><p className="font-semibold text-foreground">{bill.vendorName}</p><p className="text-xs text-muted-foreground">{bill.id} · Due {bill.dueDate}</p></div>
+                <div>
+                  <p className="font-semibold text-foreground">{bill.supplier_name}</p>
+                  <p className="text-xs text-muted-foreground">{bill.id.slice(0, 12)} · Due {bill.due_date}</p>
+                </div>
                 <div className="text-right">
-                  <p className="font-bold text-foreground">{fmt(bill.amount)}</p>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${bill.status === "Paid" ? "bg-emerald-500/10 text-emerald-500" : bill.status === "Overdue" ? "bg-red-500/10 text-red-500" : "bg-amber-500/10 text-amber-500"}`}>{bill.status}</span>
+                  <p className="font-bold text-foreground">{fmt(bill.total_amount)}</p>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${bill.status === "paid" ? "bg-emerald-500/10 text-emerald-500" : bill.status === "overdue" ? "bg-red-500/10 text-red-500" : "bg-amber-500/10 text-amber-500"}`}>{bill.status}</span>
                 </div>
               </div>
             ))}
+            {bills.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No bills found.</p>
+            )}
           </div>
         </div>
       </div>

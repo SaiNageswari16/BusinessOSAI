@@ -1,9 +1,11 @@
-"""Accounting — Chart of Accounts & Journal Entries."""
+"""Accounting — Chart of Accounts, Journal Entries, General Ledger, Opening Balances."""
 import uuid
-from typing import Annotated
+from datetime import date
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, select
+from pydantic import BaseModel
+from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,7 +15,7 @@ from src.database.session import get_db
 from src.models.erp import (
     AccountBalance,
     ChartOfAccount,
-    EntryType,
+    EntryStatus,
     JournalEntry,
     JournalEntryLine,
 )
@@ -501,3 +503,200 @@ async def get_account_tree(
     result = await db.execute(query.order_by(ChartOfAccount.sort_order, ChartOfAccount.code))
     roots = result.scalars().all()
     return roots
+
+
+# ─── General Ledger ─────────────────────────────────────────────────────────────
+
+
+class GLLineResponse(BaseModel):
+    entry_id: str
+    entry_number: str
+    entry_date: str
+    entry_type: str
+    reference: str | None
+    description: str | None
+    status: str
+    line_number: int
+    account_id: str
+    account_code: str
+    account_name: str
+    account_type: str
+    debit: float
+    credit: float
+    currency_code: str
+
+
+class GLAccountSummary(BaseModel):
+    account_id: str
+    account_code: str
+    account_name: str
+    account_type: str
+    opening_balance: float
+    total_debit: float
+    total_credit: float
+    closing_balance: float
+    lines: list[GLLineResponse]
+
+
+@router.get("/general-ledger", response_model=list[GLAccountSummary])
+async def get_general_ledger(
+    account_id: uuid.UUID | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    entry_type: str | None = None,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:journal_entries"))] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    """General Ledger — all posted journal entry lines, optionally filtered by account or date range."""
+    account_query = select(ChartOfAccount).where(
+        ChartOfAccount.tenant_id == ctx.tenant_id,
+        ChartOfAccount.is_active == True,
+    )
+    if account_id:
+        account_query = account_query.where(ChartOfAccount.id == account_id)
+
+    accounts = (await db.execute(account_query.order_by(ChartOfAccount.code))).scalars().all()
+
+    summaries: list[GLAccountSummary] = []
+
+    for acc in accounts:
+        entry_conditions = [
+            JournalEntry.tenant_id == ctx.tenant_id,
+            JournalEntry.status == EntryStatus.POSTED,
+        ]
+        if date_from:
+            entry_conditions.append(JournalEntry.entry_date >= date_from)
+        if date_to:
+            entry_conditions.append(JournalEntry.entry_date <= date_to)
+
+        lines_result = await db.execute(
+            select(
+                JournalEntryLine,
+                JournalEntry,
+                ChartOfAccount.code.label("acc_code"),
+                ChartOfAccount.name.label("acc_name"),
+                ChartOfAccount.account_type.label("acc_type"),
+            )
+            .join(JournalEntry, JournalEntry.id == JournalEntryLine.entry_id)
+            .join(ChartOfAccount, ChartOfAccount.id == JournalEntryLine.account_id)
+            .where(
+                and_(
+                    JournalEntryLine.account_id == acc.id,
+                    *entry_conditions,
+                )
+            )
+            .order_by(JournalEntry.entry_date, JournalEntry.entry_number, JournalEntryLine.line_number)
+        )
+
+        line_rows = lines_result.all()
+        if not line_rows:
+            continue
+
+        total_debit = sum(float(r.JournalEntryLine.base_currency_debit or 0) for r in line_rows)
+        total_credit = sum(float(r.JournalEntryLine.base_currency_credit or 0) for r in line_rows)
+
+        if acc.account_type in ("asset", "expense"):
+            closing = float(acc.opening_balance or 0) + total_debit - total_credit
+        else:
+            closing = float(acc.opening_balance or 0) + total_credit - total_debit
+
+        gl_lines = [
+            GLLineResponse(
+                entry_id=str(r.JournalEntry.id),
+                entry_number=r.JournalEntry.entry_number,
+                entry_date=str(r.JournalEntry.entry_date),
+                entry_type=r.JournalEntry.entry_type,
+                reference=r.JournalEntry.reference,
+                description=r.JournalEntry.description,
+                status=r.JournalEntry.status,
+                line_number=r.JournalEntryLine.line_number,
+                account_id=str(acc.id),
+                account_code=r.acc_code,
+                account_name=r.acc_name,
+                account_type=r.acc_type,
+                debit=float(r.JournalEntryLine.base_currency_debit or 0),
+                credit=float(r.JournalEntryLine.base_currency_credit or 0),
+                currency_code=r.JournalEntryLine.currency_code or "INR",
+            )
+            for r in line_rows
+        ]
+
+        summaries.append(
+            GLAccountSummary(
+                account_id=str(acc.id),
+                account_code=acc.code,
+                account_name=acc.name,
+                account_type=acc.account_type,
+                opening_balance=float(acc.opening_balance or 0),
+                total_debit=total_debit,
+                total_credit=total_credit,
+                closing_balance=closing,
+                lines=gl_lines,
+            )
+        )
+
+    return summaries
+
+
+# ─── Opening Balances ───────────────────────────────────────────────────────────
+
+
+@router.get("/opening-balances", response_model=list[ChartOfAccountResponse])
+async def get_opening_balances(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:chart_of_accounts"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    account_type: str | None = None,
+    search: str | None = None,
+):
+    """All accounts with their opening balance amounts for editing."""
+    query = select(ChartOfAccount).where(ChartOfAccount.tenant_id == ctx.tenant_id)
+    if account_type:
+        query = query.where(ChartOfAccount.account_type == account_type)
+    if search:
+        query = query.where(
+            ChartOfAccount.name.ilike(f"%{search}%") | ChartOfAccount.code.ilike(f"%{search}%")
+        )
+
+    result = await db.execute(query.order_by(ChartOfAccount.sort_order, ChartOfAccount.code))
+    return result.scalars().all()
+
+
+@router.patch("/opening-balances/{account_id}", response_model=ChartOfAccountResponse)
+async def update_opening_balance(
+    account_id: uuid.UUID,
+    payload: ChartOfAccountUpdate,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:chart_of_accounts"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Update a single account's opening balance."""
+    account = await db.scalar(
+        select(ChartOfAccount).where(
+            ChartOfAccount.id == account_id,
+            ChartOfAccount.tenant_id == ctx.tenant_id,
+        )
+    )
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    old_balance = account.opening_balance
+    for key, value in updates.items():
+        setattr(account, key, value)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="accounting",
+        action="opening_balance_updated",
+        entity_type="chart_of_account",
+        entity_id=account.id,
+        old_values={"opening_balance": old_balance},
+        new_values={"opening_balance": updates.get("opening_balance", old_balance)},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    await db.refresh(account)
+    return account

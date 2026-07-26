@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { accountingApi, ChartOfAccount, JournalEntry, PaginatedResponse } from "@/lib/api-client";
 import { toast } from "sonner";
+import { fmt, statusStyle } from "@/components/accounting/utils";
 
 interface Props { tab?: string; }
 
@@ -16,17 +17,6 @@ const ACCOUNT_TYPE_COLORS: Record<string, string> = {
   income: "text-teal-500 bg-teal-500/10",
   expense: "text-orange-500 bg-orange-500/10",
 };
-
-const STATUS_COLORS: Record<string, string> = {
-  posted: "text-emerald-500 bg-emerald-500/10",
-  draft: "text-amber-500 bg-amber-500/10",
-  voided: "text-red-400 bg-red-400/10",
-  reversed: "text-muted-foreground bg-muted/50",
-};
-
-function fmt(n: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
-}
 
 // ─── Modal: Add Account ──────────────────────────────────────────────────
 function AccountFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -300,6 +290,7 @@ function ChartOfAccountsTab() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<ChartOfAccount | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -383,29 +374,97 @@ function ChartOfAccountsTab() {
               </thead>
               <tbody>
                 {accounts.map((acc, i) => (
-                  <motion.tr key={acc.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.025 }}
-                    className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                    <td className="px-5 py-3 font-mono text-xs text-primary font-semibold">{acc.code}</td>
-                    <td className="px-5 py-3 font-medium text-foreground">{acc.name}</td>
-                    <td className="px-5 py-3">
-                      <span className={`px-2 py-1 rounded-md text-xs font-medium capitalize ${ACCOUNT_TYPE_COLORS[acc.account_type] || "text-muted-foreground bg-muted/50"}`}>
-                        {acc.account_type}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-xs text-muted-foreground capitalize">{(acc.account_sub_type || "—").replace(/_/g, " ")}</td>
-                    <td className="px-5 py-3 text-right font-medium text-foreground">{fmt(acc.opening_balance)}</td>
-                    <td className="px-5 py-3 text-center">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${acc.is_active ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>
-                        {acc.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      <button className="text-primary hover:underline text-xs font-medium">View →</button>
-                    </td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
+                  <React.Fragment key={acc.id}>
+                    <motion.tr initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.025 }}
+                      className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                      <td className="px-5 py-3 font-mono text-xs text-primary font-semibold">{acc.code}</td>
+                      <td className="px-5 py-3 font-medium text-foreground">{acc.name}</td>
+                      <td className="px-5 py-3">
+                        <span className={`px-2 py-1 rounded-md text-xs font-medium capitalize ${ACCOUNT_TYPE_COLORS[acc.account_type] || "text-muted-foreground bg-muted/50"}`}>
+                          {acc.account_type}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-xs text-muted-foreground capitalize">{(acc.account_sub_type || "—").replace(/_/g, " ")}</td>
+                      <td className="px-5 py-3 text-right font-medium text-foreground">{fmt(acc.opening_balance)}</td>
+                      <td className="px-5 py-3 text-center">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${acc.is_active ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>
+                          {acc.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-center">
+                        <button onClick={() => setSelectedAccount(acc)} className="text-primary hover:underline text-xs font-medium flex items-center gap-1">
+                          <Eye className="size-3" /> View
+                        </button>
+                      </td>
+                    </motion.tr>
+                    {selectedAccount && selectedAccount.id === acc.id && (
+                      <motion.tr key={`detail-${acc.id}`}
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                        className="bg-primary/5 border-b border-border/50">
+                        <td colSpan={7} className="px-5 py-0">
+                            <div className="py-4 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <h4 className="font-semibold text-foreground text-sm">Account Details</h4>
+                                <button onClick={() => setSelectedAccount(null)} className="text-muted-foreground hover:text-foreground text-xs">Close</button>
+                              </div>
+                              <div className="grid grid-cols-4 gap-4">
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Account Code</p>
+                                  <p className="text-sm font-mono text-primary font-semibold">{selectedAccount.code}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Account Name</p>
+                                  <p className="text-sm font-semibold text-foreground">{selectedAccount.name}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Type / Sub-type</p>
+                                  <p className="text-sm text-foreground capitalize">{selectedAccount.account_type} / {(selectedAccount.account_sub_type || "—").replace(/_/g, " ")}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Opening Balance</p>
+                                  <p className="text-sm font-bold text-foreground">{fmt(selectedAccount.opening_balance)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Status</p>
+                                  <p className={`text-sm font-semibold ${selectedAccount.is_active ? "text-emerald-500" : "text-muted-foreground"}`}>
+                                    {selectedAccount.is_active ? "Active" : "Inactive"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Allow Posting</p>
+                                  <p className="text-sm text-foreground">{selectedAccount.allow_posting ? "Yes" : "No"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Currency</p>
+                                  <p className="text-sm text-foreground">{selectedAccount.currency_code || "INR"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Sort Order</p>
+                                  <p className="text-sm text-foreground">{selectedAccount.sort_order}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Control Account</p>
+                                  <p className="text-sm text-foreground">{selectedAccount.is_control_account ? "Yes" : "No"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Parent Account</p>
+                                  <p className="text-sm text-foreground">{selectedAccount.parent_id || "None"}</p>
+                                </div>
+                                {selectedAccount.description && (
+                                  <div className="col-span-2">
+                                    <p className="text-xs text-muted-foreground">Description</p>
+                                    <p className="text-sm text-foreground">{selectedAccount.description}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </motion.tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
           </div>
         )}
       </div>
@@ -520,7 +579,7 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
                     <td className="px-5 py-3 text-right font-semibold text-emerald-500">{entry.total_debit > 0 ? fmt(entry.total_debit) : "—"}</td>
                     <td className="px-5 py-3 text-right font-semibold text-red-400">{entry.total_credit > 0 ? fmt(entry.total_credit) : "—"}</td>
                     <td className="px-5 py-3 text-center">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${STATUS_COLORS[entry.status] || "text-muted-foreground bg-muted/50"}`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${statusStyle(entry.status)}`}>
                         {entry.status}
                       </span>
                     </td>
@@ -547,32 +606,223 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
   );
 }
 
-// ─── General Ledger placeholder ─────────────────────────────────────────────
+// ─── General Ledger ──────────────────────────────────────────────────────────
 function GeneralLedgerTab() {
+  const [glData, setGlData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [accountFilter, setAccountFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [selectedAccount, setSelectedAccount] = useState<string>("");
+
+  const loadGL = async () => {
+    setLoading(true);
+    try {
+      const params: any = {};
+      if (selectedAccount) params.account_id = selectedAccount;
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      const data = await accountingApi.getGeneralLedger(params);
+      setGlData(Array.isArray(data) ? data : []);
+    } catch {
+      setGlData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadGL(); }, [selectedAccount, dateFrom, dateTo]);
+
+  const accountOptions = glData.map(a => ({ id: a.account_id, code: a.account_code, name: a.account_name }));
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-foreground mb-1">General Ledger</h1>
-      <p className="text-sm text-muted-foreground mb-6">Detailed transaction-level view of all account postings.</p>
-      <div className="glass-panel rounded-xl border border-border/50 p-12 flex flex-col items-center justify-center text-center">
-        <TrendingUp className="size-12 text-primary/40 mb-3" />
-        <p className="text-foreground font-medium">General Ledger</p>
-        <p className="text-sm text-muted-foreground mt-1">Select an account from Chart of Accounts to drill into its GL transactions.</p>
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div><h1 className="text-2xl font-bold text-foreground">General Ledger</h1><p className="text-sm text-muted-foreground">Detailed transaction-level view of all account postings.</p></div>
       </div>
+      <div className="flex gap-3 flex-wrap items-end">
+        <div>
+          <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Account</label>
+          <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)} className="h-9 px-3 text-sm rounded-lg border bg-background outline-none">
+            <option value="">All Accounts</option>
+            {accountOptions.map(a => <option key={a.id} value={a.id}>[{a.code}] {a.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">From Date</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 px-3 text-sm rounded-lg border bg-background outline-none" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">To Date</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9 px-3 text-sm rounded-lg border bg-background outline-none" />
+        </div>
+      </div>
+      {loading ? (
+        <div className="flex items-center justify-center h-48"><Loader2 className="size-8 animate-spin text-primary" /></div>
+      ) : glData.length === 0 ? (
+        <div className="glass-panel rounded-xl border border-border/50 p-8 text-center text-muted-foreground">No ledger entries found.</div>
+      ) : (
+        <div className="space-y-4">
+          {glData.map((acct, idx) => (
+            <motion.div key={acct.account_id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} className="glass-panel rounded-xl border border-border/50 overflow-hidden">
+              <div className="p-4 bg-muted/20 border-b border-border/50 flex justify-between items-center">
+                <div>
+                  <span className="font-mono text-xs text-primary mr-2">[{acct.account_code}]</span>
+                  <span className="font-semibold text-foreground">{acct.account_name}</span>
+                  <span className="text-xs text-muted-foreground ml-2 capitalize">({acct.account_type})</span>
+                </div>
+                <div className="text-sm text-right">
+                  <span className="text-muted-foreground">Opening: </span><span className="font-semibold">{fmt(acct.opening_balance)}</span>
+                  <span className="text-muted-foreground ml-3">Closing: </span><span className={`font-bold ${acct.closing_balance >= 0 ? "text-emerald-500" : "text-red-400"}`}>{fmt(acct.closing_balance)}</span>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-muted-foreground uppercase bg-muted/10 border-b border-border/50">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Date</th>
+                      <th className="px-4 py-2 font-medium">Entry #</th>
+                      <th className="px-4 py-2 font-medium">Type</th>
+                      <th className="px-4 py-2 font-medium">Description</th>
+                      <th className="px-4 py-2 font-medium">Status</th>
+                      <th className="px-4 py-2 text-right font-medium">Debit</th>
+                      <th className="px-4 py-2 text-right font-medium">Credit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {acct.lines?.map((line: any, i: number) => (
+                      <motion.tr key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }} className="border-b border-border/30 last:border-0 hover:bg-muted/10 transition-colors">
+                        <td className="px-4 py-2 text-xs text-muted-foreground">{line.entry_date}</td>
+                        <td className="px-4 py-2 text-xs font-mono text-primary">{line.entry_number}</td>
+                        <td className="px-4 py-2"><span className="px-2 py-0.5 bg-secondary/50 rounded text-xs">{line.entry_type}</span></td>
+                        <td className="px-4 py-2 text-xs text-muted-foreground">{line.description || line.reference || "—"}</td>
+                        <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${line.status === "posted" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>{line.status}</span></td>
+                        <td className="px-4 py-2 text-right text-sm font-medium text-emerald-500">{line.debit > 0 ? fmt(line.debit) : "—"}</td>
+                        <td className="px-4 py-2 text-right text-sm font-medium text-red-400">{line.credit > 0 ? fmt(line.credit) : "—"}</td>
+                      </motion.tr>
+                    ))}
+                    {(!acct.lines || acct.lines.length === 0) && (
+                      <tr><td colSpan={7} className="px-4 py-4 text-xs text-muted-foreground text-center">No transactions in this period.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Opening Balances placeholder ────────────────────────────────────────────
+// ─── Opening Balances ────────────────────────────────────────────────────────
 function OpeningBalancesTab() {
+  const [balances, setBalances] = useState<ChartOfAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await accountingApi.getOpeningBalances({ search: search || undefined });
+      setBalances(Array.isArray(data) ? data : []);
+    } catch {
+      setBalances([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [search]);
+
+  const handleUpdate = async (id: string, field: string, value: number) => {
+    setSaving(id);
+    try {
+      await accountingApi.updateOpeningBalance(id, { opening_balance: value } as { opening_balance: number });
+      setBalances(p => p.map(b => b.id === id ? { ...b, opening_balance: value } : b));
+      toast.success("Opening balance updated");
+    } catch {
+      toast.error("Failed to update balance");
+    } finally {
+      setSaving(null);
+    }
+  };
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-foreground mb-1">Opening Balances</h1>
-      <p className="text-sm text-muted-foreground mb-6">Set account opening balances at the start of a new fiscal year.</p>
-      <div className="glass-panel rounded-xl border border-border/50 p-12 flex flex-col items-center justify-center text-center">
-        <TrendingDown className="size-12 text-primary/40 mb-3" />
-        <p className="text-foreground font-medium">Opening Balances</p>
-        <p className="text-sm text-muted-foreground mt-1">Configure this from Settings → Financial Configuration → Fiscal Years.</p>
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div><h1 className="text-2xl font-bold text-foreground">Opening Balances</h1><p className="text-sm text-muted-foreground">Set account opening balances at the start of a new fiscal year.</p></div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search accounts..." className="pl-9 pr-4 py-2 h-9 bg-background border border-border rounded-lg text-sm outline-none focus:border-primary" />
+        </div>
       </div>
+      {loading ? (
+        <div className="flex items-center justify-center h-48"><Loader2 className="size-8 animate-spin text-primary" /></div>
+      ) : (
+        <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Code</th>
+                  <th className="px-6 py-4 font-medium">Account Name</th>
+                  <th className="px-6 py-4 font-medium">Type</th>
+                  <th className="px-6 py-4 text-right font-medium">Opening Balance</th>
+                  <th className="px-6 py-4 text-center font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {balances.map((b, i) => (
+                  <motion.tr key={b.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                    <td className="px-6 py-3 font-mono text-primary text-xs">{b.code}</td>
+                    <td className="px-6 py-3 font-medium text-foreground">{b.name}</td>
+                    <td className="px-6 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${ACCOUNT_TYPE_COLORS[b.account_type] || "bg-muted text-muted-foreground"}`}>{b.account_type}</span></td>
+                    <td className="px-6 py-3 text-right">
+                      <EditableCell value={b.opening_balance || 0} onSave={(val) => handleUpdate(b.id, "opening_balance", val)} saving={saving === b.id} />
+                    </td>
+                    <td className="px-6 py-3 text-center">
+                      <button onClick={() => handleUpdate(b.id, "opening_balance", 0)} className="text-xs text-muted-foreground hover:text-red-400 transition-colors">Reset</button>
+                    </td>
+                  </motion.tr>
+                ))}
+                {balances.length === 0 && (
+                  <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No accounts found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditableCell({ value, onSave, saving }: { value: number; onSave: (v: number) => void; saving: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value || 0));
+  useEffect(() => { setDraft(String(value || 0)); }, [value]);
+
+  const commit = () => {
+    const parsed = parseFloat(draft) || 0;
+    onSave(parsed);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1 justify-end">
+        <input type="number" value={draft} onChange={e => setDraft(e.target.value)} onBlur={commit} onKeyDown={e => e.key === "Enter" && commit()} autoFocus className="w-28 h-8 px-2 text-sm text-right rounded border bg-background outline-none focus:border-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 justify-end">
+      <span className="font-semibold text-foreground">{fmt(value || 0)}</span>
+      <button onClick={() => setEditing(true)} className="p-1 hover:bg-muted/50 rounded transition-colors"><Edit className="size-3 text-muted-foreground" /></button>
+      {saving && <Loader2 className="size-3 animate-spin text-primary" />}
     </div>
   );
 }

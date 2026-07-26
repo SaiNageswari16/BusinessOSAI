@@ -2235,57 +2235,6 @@ class ExitFinalSettlementBase(BaseModel):
     employee_name: str
     last_working_day: date
     components_json: list[dict] = []
-
-
-class ExitFinalSettlementCreate(ExitFinalSettlementBase):
-    pass
-
-
-class ExitFinalSettlementResponse(ORMModel):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    employee_id: uuid.UUID
-    employee_name: str
-    last_working_day: date
-    components_json: list[dict]
-    created_at: datetime
-    updated_at: datetime
-
-
-class ExitExperienceLetterBase(BaseModel):
-    employee_id: uuid.UUID
-    employee_name: str
-    designation: str
-    from_date: date
-    to_date: date
-    issued_on: str = "—"
-    status: str = "Pending"
-
-
-class ExitExperienceLetterCreate(ExitExperienceLetterBase):
-    pass
-
-
-class ExitExperienceLetterUpdate(BaseModel):
-    status: str | None = None
-    issued_on: str | None = None
-
-
-class ExitExperienceLetterResponse(ORMModel):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    employee_id: uuid.UUID
-    employee_name: str
-    designation: str
-    from_date: date
-    to_date: date
-    issued_on: str
-    status: str
-    created_at: datetime
-    updated_at: datetime
-ponents_json: list[dict] = []
-
-
 class ExitFinalSettlementCreate(ExitFinalSettlementBase):
     pass
 

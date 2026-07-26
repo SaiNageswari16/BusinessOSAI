@@ -98,12 +98,15 @@ from src.integrations.zoho.routes import router as zoho_router
 from src.api.v1.notifications import router as notifications_router
 
 # ERP Accounting & Finance modules
+from src.api.v1.erp.financial_reports import router as financial_reports_router
 from src.api.v1.erp.accounting import router as accounting_router
 from src.api.v1.erp.invoices import router as invoices_router
 from src.api.v1.erp.bank import router as bank_router
 from src.api.v1.erp.fixed_assets import router as fixed_assets_router
 from src.api.v1.erp.vouchers import router as vouchers_router
 from src.api.v1.erp.tax import router as tax_router
+from src.api.v1.erp.budgets import router as budgets_router
+from src.api.v1.erp.expense_claims import router as expense_claims_router
 
 api_router.include_router(zoho_router)
 api_router.include_router(notifications_router)
@@ -114,3 +117,6 @@ api_router.include_router(bank_router)
 api_router.include_router(fixed_assets_router)
 api_router.include_router(vouchers_router)
 api_router.include_router(tax_router)
+api_router.include_router(budgets_router)
+api_router.include_router(expense_claims_router)
+api_router.include_router(financial_reports_router)

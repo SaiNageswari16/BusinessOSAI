@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Download, CheckCircle, Clock, XCircle, Plane, Building, Activity, X, Save, Loader2 } from "lucide-react";
+import { Plus, CheckCircle, Clock, XCircle, Plane, Building, X, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { expenseClaimsApi, ExpenseClaim } from "@/lib/api-client";
+import { fmt, statusStyle } from "@/components/accounting/utils";
 
 interface Props { tab?: string; }
 
@@ -16,42 +18,31 @@ interface ExpenseRecord {
   status: string;
 }
 
-interface OpExRecord {
-  id: string;
-  category: string;
-  description: string;
-  amount: number;
-  period: string;
-  approvedBy: string;
-  status: string;
-}
-
-function fmt(n: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
-}
-
-const statusStyle = (s: string) => {
-  const status = s.toLowerCase();
-  switch (status) {
-    case "approved": return "bg-emerald-500/10 text-emerald-500";
-    case "pending": return "bg-amber-500/10 text-amber-500";
-    case "rejected": return "bg-red-500/10 text-red-500";
-    default: return "bg-muted text-muted-foreground";
-  }
-};
-
 const StatusIcon = ({ s }: { s: string }) => {
   const status = s.toLowerCase();
-  if (status === "approved") return <CheckCircle className="size-3" />;
-  if (status === "rejected") return <XCircle className="size-3" />;
+  if (status === "approved" || status === "approve") return <CheckCircle className="size-3" />;
+  if (status === "rejected" || status === "reject") return <XCircle className="size-3" />;
   return <Clock className="size-3" />;
 };
+
+function mapClaimToRecord(c: ExpenseClaim): ExpenseRecord {
+  return {
+    id: c.claim_number || c.id.slice(0, 12),
+    employee: "—",
+    department: "—",
+    category: c.description || "General",
+    description: c.description || "",
+    date: c.claim_date,
+    amount: c.total_amount,
+    status: c.status,
+  };
+}
 
 // ─── Modal: New Expense Claim ────────────────────────────────────────────
 function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (claim: Partial<ExpenseRecord>) => void }) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    employee: "Super Admin",
+    employee: "",
     department: "Operations",
     category: "Travel",
     description: "",
@@ -59,24 +50,35 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     date: new Date().toISOString().split("T")[0],
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    setTimeout(() => {
-      onSaved({
-        id: `EXP-2026-${Math.floor(100 + Math.random() * 900)}`,
-        employee: form.employee,
-        department: form.department,
-        category: form.category,
-        description: form.description,
-        amount: form.amount,
-        date: form.date,
-        status: "Pending"
+    try {
+      const created = await expenseClaimsApi.createExpenseClaim({
+        claim_date: form.date,
+        description: form.description || form.category,
+        lines: [
+          {
+            expense_date: form.date,
+            category: form.category,
+            description: form.description,
+            amount: form.amount,
+          },
+        ],
       });
-      toast.success("Expense claim submitted successfully!");
-      setSaving(false);
+      toast.success("Expense claim submitted!");
+      onSaved({
+        ...mapClaimToRecord(created),
+        id: created.claim_number || created.id.slice(0, 12),
+        amount: created.total_amount,
+        status: created.status,
+      });
       onClose();
-    }, 400);
+    } catch {
+      toast.error("Failed to submit expense claim");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -89,9 +91,9 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Employee Name *</label>
-            <input value={form.employee} onChange={e => setForm(p => ({ ...p, employee: e.target.value }))} required
-              className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none" />
+            <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Description *</label>
+            <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} required rows={2}
+              className="w-full p-3 text-sm rounded-lg border bg-background outline-none" placeholder="Business expense details..." />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -105,8 +107,8 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Department *</label>
-              <select value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} required
+              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Department</label>
+              <select value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))}
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none">
                 <option value="Operations">Operations</option>
                 <option value="Sales">Sales</option>
@@ -127,92 +129,10 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none" />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Description *</label>
-            <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} required rows={2}
-              className="w-full p-3 text-sm rounded-lg border bg-background outline-none" placeholder="Client lunch, airline tickets..." />
-          </div>
           <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
             <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors">Cancel</button>
-            <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">
+            <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Submit Claim
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
-  );
-}
-
-// ─── Modal: Add OpEx ─────────────────────────────────────────────────────
-function OpExFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (opex: Partial<OpExRecord>) => void }) {
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    category: "Rent",
-    description: "",
-    amount: 0,
-    period: "July 2026",
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setTimeout(() => {
-      onSaved({
-        id: `OPEX-2026-${Math.floor(100 + Math.random() * 900)}`,
-        category: form.category,
-        description: form.description,
-        amount: form.amount,
-        period: form.period,
-        approvedBy: "CFO",
-        status: "Approved"
-      });
-      toast.success("Operational expense added successfully!");
-      setSaving(false);
-      onClose();
-    }, 400);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b border-border/50">
-          <h2 className="font-bold text-lg text-foreground font-semibold">Record Operational Expense</h2>
-          <button onClick={onClose} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Category *</label>
-              <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} required
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none">
-                <option value="Rent">Rent</option>
-                <option value="Utilities">Utilities</option>
-                <option value="Insurance">Insurance</option>
-                <option value="Office Maintenance">Maintenance</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Filing Period *</label>
-              <input value={form.period} onChange={e => setForm(p => ({ ...p, period: e.target.value }))} required
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none" placeholder="July 2026" />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Total Amount (INR) *</label>
-            <input type="number" step="any" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: parseFloat(e.target.value) || 0 }))} required
-              className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none font-semibold text-primary" placeholder="0.00" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Description *</label>
-            <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} required rows={2}
-              className="w-full p-3 text-sm rounded-lg border bg-background outline-none" placeholder="E.g. Q3 HQ lease payment" />
-          </div>
-          <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
-            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors">Cancel</button>
-            <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">
-              Record Expense
             </button>
           </div>
         </form>
@@ -223,48 +143,64 @@ function OpExFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (op
 
 // ─── Main Expense Claims Component ────────────────────────────────────────
 export function ExpenseClaims({ tab = "claims" }: Props) {
-  const [claims, setClaims] = useState<ExpenseRecord[]>([
-    { id: "EXP-2026-001", employee: "Ananya Sharma", department: "Sales", category: "Travel", description: "Flight tickets to client meeting in Bangalore", date: "2026-06-15", amount: 12400, status: "Approved" },
-    { id: "EXP-2026-002", employee: "Rahul Verma", department: "Marketing", category: "Office Supplies", description: "Specialty presentation boards & markers", date: "2026-06-20", amount: 4800, status: "Pending" },
-    { id: "EXP-2026-003", employee: "Ananya Sharma", department: "Sales", category: "Meals & Entertainment", description: "Business dinner with Acme team", date: "2026-06-16", amount: 9500, status: "Approved" },
-    { id: "EXP-2026-004", employee: "Siddharth Sen", department: "IT & Engineering", category: "Software", description: "GitHub Enterprise license reimbursement", date: "2026-06-25", amount: 21000, status: "Pending" },
-  ]);
-  const [opexList, setOpexList] = useState<OpExRecord[]>([
-    { id: "OPEX-001", category: "Rent", description: "Q3 2026 Head Office Lease", amount: 48000, period: "Jul–Sep 2026", approvedBy: "CFO", status: "Approved" },
-    { id: "OPEX-002", category: "Utilities", description: "Electricity, water & internet", amount: 12000, period: "June 2026", approvedBy: "Finance", status: "Approved" },
-    { id: "OPEX-003", category: "Insurance", description: "Annual business insurance renewal", amount: 24000, period: "FY2026", approvedBy: "CFO", status: "Approved" },
-  ]);
-
+  const [claims, setClaims] = useState<ExpenseRecord[]>([]);
+  const [loading, setLoading] = useState(false);
   const [showClaimModal, setShowClaimModal] = useState(false);
-  const [showOpexModal, setShowOpexModal] = useState(false);
+
+  const loadClaims = async () => {
+    setLoading(true);
+    try {
+      const res = await expenseClaimsApi.listExpenseClaims({ page_size: 100 });
+      const mapped = (res.items || []).map(mapClaimToRecord);
+      setClaims(mapped);
+    } catch {
+      toast.error("Failed to load expense claims");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (["claims", "approvals", "travel", "office_expenses", "operational_expenses"].includes(tab)) {
+      loadClaims();
+    }
+  }, [tab]);
 
   const handleAddClaim = (newC: Partial<ExpenseRecord>) => {
     setClaims(p => [newC as ExpenseRecord, ...p]);
   };
 
-  const handleAddOpex = (newO: Partial<OpExRecord>) => {
-    setOpexList(p => [newO as OpExRecord, ...p]);
+  const handleApprove = async (id: string) => {
+    try {
+      await expenseClaimsApi.approveExpenseClaim(id);
+      setClaims(p => p.map(c => c.id === id ? { ...c, status: "Approved" } : c));
+      toast.success("Expense claim approved!");
+    } catch {
+      toast.error("Failed to approve claim");
+    }
   };
 
-  const handleApprove = (id: string) => {
-    setClaims(p => p.map(c => c.id === id ? { ...c, status: "Approved" } : c));
-    toast.success("Expense claim approved successfully!");
-  };
-
-  const handleReject = (id: string) => {
-    setClaims(p => p.map(c => c.id === id ? { ...c, status: "Rejected" } : c));
-    toast.success("Expense claim rejected!");
+  const handleReject = async (id: string) => {
+    try {
+      await expenseClaimsApi.rejectExpenseClaim(id, "Rejected");
+      setClaims(p => p.map(c => c.id === id ? { ...c, status: "Rejected" } : c));
+      toast.success("Expense claim rejected!");
+    } catch {
+      toast.error("Failed to reject claim");
+    }
   };
 
   if (tab === "approvals") {
-    const pending = claims.filter(e => e.status === "Pending");
+    const pending = claims.filter(e => e.status.toLowerCase() === "pending");
     return (
       <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground font-bold">Expense Approvals</h1><p className="text-sm text-muted-foreground">Pending employee claims awaiting review.</p></div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-600 rounded-lg text-sm font-semibold">
-            <Clock className="size-4" /> {pending.length} pending
-          </div>
+          {pending.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-600 rounded-lg text-sm font-semibold">
+              <Clock className="size-4" /> {pending.length} pending
+            </div>
+          )}
         </div>
         {pending.length === 0 ? (
           <div className="glass-panel p-12 rounded-xl border border-border/50 flex flex-col items-center justify-center text-center">
@@ -337,6 +273,9 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
                     </td>
                   </motion.tr>
                 ))}
+                {travelClaims.length === 0 && (
+                  <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No travel expenses found.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -351,7 +290,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
   }
 
   if (tab === "office_expenses") {
-    const officeClaims = claims.filter(e => ["Office Supplies", "Software", "Meals & Entertainment"].includes(e.category));
+    const officeClaims = claims.filter(e => ["Office Supplies", "Software", "Meals & Entertainment", "office supplies", "software", "meals & entertainment"].includes(e.category));
     return (
       <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
@@ -388,6 +327,9 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
                     </td>
                   </motion.tr>
                 ))}
+                {officeClaims.length === 0 && (
+                  <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No office expenses found.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -402,11 +344,12 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
   }
 
   if (tab === "operational_expenses") {
+    const opexClaims = claims.filter(e => ["Rent", "Utilities", "Insurance", "Maintenance", "rent", "utilities", "insurance", "maintenance"].includes(e.category));
     return (
       <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground font-bold">Operational Expenses</h1><p className="text-sm text-muted-foreground">Rent, utilities, insurance, and recurring operational costs.</p></div>
-          <button onClick={() => setShowOpexModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Activity className="size-4" /> Add OpEx</button>
+          <button onClick={() => setShowClaimModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Building className="size-4" /> Add OpEx</button>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -416,45 +359,52 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
                   <th className="px-6 py-4 font-medium">ID</th>
                   <th className="px-6 py-4 font-medium">Category</th>
                   <th className="px-6 py-4 font-medium">Description</th>
-                  <th className="px-6 py-4 font-medium">Period</th>
-                  <th className="px-6 py-4 font-medium">Approved By</th>
+                  <th className="px-6 py-4 font-medium">Date</th>
                   <th className="px-6 py-4 text-right font-medium">Amount</th>
                   <th className="px-6 py-4 text-center font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {opexList.map((e, i) => (
-                  <motion.tr key={e.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.06 }} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                    <td className="px-6 py-4 font-mono text-primary text-xs">{e.id}</td>
-                    <td className="px-6 py-4"><span className="px-2.5 py-1 bg-secondary/50 rounded-md text-xs font-semibold">{e.category}</span></td>
-                    <td className="px-6 py-4 text-muted-foreground font-semibold">{e.description}</td>
-                    <td className="px-6 py-4 text-muted-foreground">{e.period}</td>
-                    <td className="px-6 py-4 text-muted-foreground font-semibold">{e.approvedBy}</td>
-                    <td className="px-6 py-4 text-right font-bold text-foreground">{fmt(e.amount)}</td>
-                    <td className="px-6 py-4 text-center"><span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-500">{e.status}</span></td>
+                {opexClaims.map((c, i) => (
+                  <motion.tr key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.06 }} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                    <td className="px-6 py-4 font-mono text-primary text-xs">{c.id}</td>
+                    <td className="px-6 py-4"><span className="px-2.5 py-1 bg-secondary/50 rounded-md text-xs font-semibold">{c.category}</span></td>
+                    <td className="px-6 py-4 text-muted-foreground font-semibold">{c.description}</td>
+                    <td className="px-6 py-4 text-muted-foreground">{c.date}</td>
+                    <td className="px-6 py-4 text-right font-bold text-foreground">{fmt(c.amount)}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${statusStyle(c.status)}`}>
+                        <StatusIcon s={c.status} /> {c.status}
+                      </span>
+                    </td>
                   </motion.tr>
                 ))}
+                {opexClaims.length === 0 && (
+                  <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No operational expenses found.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
         <AnimatePresence>
-          {showOpexModal && (
-            <OpExFormModal onClose={() => setShowOpexModal(false)} onSaved={handleAddOpex} />
+          {showClaimModal && (
+            <ExpenseFormModal onClose={() => setShowClaimModal(false)} onSaved={handleAddClaim} />
           )}
         </AnimatePresence>
       </div>
     );
   }
 
-  // Default: expense_claims
+  // Default: claims
+  if (loading) {
+    return <div className="p-6 text-center text-muted-foreground">Loading expense claims…</div>;
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground font-bold">Expense Claims</h1><p className="text-sm text-muted-foreground">Employee business expense reimbursements.</p></div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowClaimModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> New Claim</button>
-        </div>
+        <button onClick={() => setShowClaimModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> New Claim</button>
       </div>
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
         <div className="overflow-x-auto">
@@ -488,6 +438,9 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
                   </td>
                 </motion.tr>
               ))}
+              {claims.length === 0 && (
+                <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No expense claims found.</td></tr>
+              )}
             </tbody>
           </table>
         </div>

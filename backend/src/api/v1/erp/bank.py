@@ -149,7 +149,38 @@ async def update_bank_account(
     return account
 
 
-# ─── Bank Transactions ──────────────────────────────────────────
+# Bank Transactions (account-scoped alias for per-account view)
+@router.get("/accounts/{account_id}/transactions", response_model=PaginatedResponse[BankTransactionResponse])
+async def list_account_transactions(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:bank_transactions"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    account_id: uuid.UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    date_from: str | None = None,
+    date_to: str | None = None,
+    is_reconciled: bool | None = None,
+    search: str | None = None,
+):
+    query = select(BankTransaction).where(BankTransaction.tenant_id == ctx.tenant_id, BankTransaction.bank_account_id == account_id)
+    if date_from:
+        query = query.where(BankTransaction.transaction_date >= date_from)
+    if date_to:
+        query = query.where(BankTransaction.transaction_date <= date_to)
+    if is_reconciled is not None:
+        query = query.where(BankTransaction.is_reconciled == is_reconciled)
+    if search:
+        query = query.where(BankTransaction.description.ilike(f"%{search}%") | BankTransaction.counterparty.ilike(f"%{search}%"))
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(BankTransaction.transaction_date.desc(), BankTransaction.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return paginate(result.scalars().all(), total or 0, page, page_size)
+
+
+# ─── Transactions (global, filtered by bank_account_id param) ────────────────────
 
 @router.get("/transactions", response_model=PaginatedResponse[BankTransactionResponse])
 async def list_transactions(

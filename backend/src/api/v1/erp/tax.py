@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload
 
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
@@ -134,7 +134,6 @@ async def list_tax_returns(
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
         query.order_by(TaxReturn.period.desc())
-        .options(selectinload(TaxReturn.payments))
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -149,7 +148,6 @@ async def get_tax_return(
 ):
     tax_return = await db.scalar(
         select(TaxReturn)
-        .options(selectinload(TaxReturn.payments))
         .where(TaxReturn.id == return_id, TaxReturn.tenant_id == ctx.tenant_id)
     )
     if not tax_return:

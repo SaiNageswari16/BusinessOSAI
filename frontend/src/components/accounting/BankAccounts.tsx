@@ -312,17 +312,248 @@ function BankAccountsTab() {
   );
 }
 
-// ─── Reconciliation placeholder ────────────────────────────────────────────
+// ─── Reconciliation Tab ────────────────────────────────────────────────────
 function ReconciliationTab() {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-foreground mb-1">Bank Reconciliation</h1>
-      <p className="text-sm text-muted-foreground mb-6">Match bank statement lines to your system transactions.</p>
-      <div className="glass-panel rounded-xl border border-border/50 p-12 flex flex-col items-center justify-center text-center">
-        <CheckCircle className="size-12 text-primary/40 mb-3" />
-        <p className="font-medium text-foreground">Select an account to start reconciliation</p>
-        <p className="text-sm text-muted-foreground mt-1">Go to Bank Accounts tab, click an account, then start a new reconciliation run.</p>
+  const [reconciliations, setReconciliations] = useState<any[]>([]);
+  const [selected, setSelected] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const loadReconciliations = async () => {
+    setLoading(true);
+    try {
+      const params: any = { page_size: 100 };
+      if (filterStatus) params.status = filterStatus;
+      const res = await bankApi.listReconciliations(params);
+      setReconciliations(res.items || []);
+    } catch {
+      toast.error("Failed to load reconciliations");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadReconciliations();
+  }, [filterStatus]);
+
+  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setCreating(true);
+    const fd = new FormData(e.currentTarget);
+    try {
+      await bankApi.createReconciliation({
+        bank_account_id: fd.get("bank_account_id") as string,
+        reconciliation_date: fd.get("reconciliation_date") as string,
+        statement_balance: parseFloat(fd.get("statement_balance") as string) || 0,
+        notes: (fd.get("notes") as string) || undefined,
+      });
+      toast.success("Reconciliation created successfully!");
+      setShowCreateModal(false);
+      loadReconciliations();
+    } catch {
+      toast.error("Failed to create reconciliation");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleComplete = async (reconId: string) => {
+    setCompleting(true);
+    try {
+      await bankApi.completeReconciliation(reconId);
+      toast.success("Reconciliation completed!");
+      setSelected(null);
+      loadReconciliations();
+    } catch {
+      toast.error("Failed to complete reconciliation");
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  const filtered = reconciliations.filter((r) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return r.id?.toLowerCase().includes(q) || r.status?.toLowerCase().includes(q);
+  });
+
+  // ─── Detail View ──────────────────────────────────────────────────────
+  if (selected) {
+    const matchedItems = (selected.items || []).filter((i: any) => i.is_matched);
+    const clearedItems = (selected.items || []).filter((i: any) => i.is_cleared);
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setSelected(null)} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground">
+            ←
+          </button>
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Reconciliation Details</h1>
+            <p className="text-xs text-muted-foreground font-mono">{selected.id?.slice(0, 12)}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="glass-panel p-4 rounded-xl border border-border/50">
+            <p className="text-xs text-muted-foreground mb-1">Date</p>
+            <p className="text-sm font-semibold text-foreground">{selected.reconciliation_date}</p>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-border/50">
+            <p className="text-xs text-muted-foreground mb-1">Status</p>
+            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${selected.status === "completed" ? "bg-emerald-500/10 text-emerald-500" : selected.status === "in_progress" ? "bg-amber-500/10 text-amber-500" : "bg-muted text-muted-foreground"}`}>{selected.status}</span>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-border/50">
+            <p className="text-xs text-muted-foreground mb-1">Statement Balance</p>
+            <p className="text-sm font-semibold text-foreground">{fmt(selected.statement_balance)}</p>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-border/50">
+            <p className="text-xs text-muted-foreground mb-1">Difference</p>
+            <p className={`text-sm font-semibold ${Math.abs(selected.difference || 0) < 0.01 ? "text-emerald-500" : "text-red-500"}`}>{fmt(selected.difference || 0)}</p>
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center">
+          <h3 className="font-semibold text-foreground">Items ({selected.items?.length || 0})</h3>
+          {selected.status !== "completed" && (
+            <button onClick={() => handleComplete(selected.id)} disabled={completing} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+              {completing ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle className="size-4" />} Complete Reconciliation
+            </button>
+          )}
+        </div>
+
+        <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Matched</th>
+                  <th className="px-4 py-3 font-medium">Cleared</th>
+                  <th className="px-4 py-3 font-medium">Transaction</th>
+                  <th className="px-4 py-3 font-medium">Journal Entry</th>
+                  <th className="px-4 py-3 font-medium">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(selected.items || []).map((item: any) => (
+                  <tr key={item.id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-3">
+                      {item.is_matched ? <CheckCircle className="size-4 text-emerald-500" /> : <Clock className="size-4 text-muted-foreground" />}
+                    </td>
+                    <td className="px-4 py-3">
+                      {item.is_cleared ? <CheckCircle className="size-4 text-emerald-500" /> : <Clock className="size-4 text-muted-foreground" />}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.bank_transaction_id?.slice(0, 8) || "—"}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.journal_entry_id?.slice(0, 8) || "—"}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{item.notes || "—"}</td>
+                  </tr>
+                ))}
+                {(!selected.items || selected.items.length === 0) && (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No items in this reconciliation.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
+    );
+  }
+
+  // ─── List View ────────────────────────────────────────────────────────
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Bank Reconciliation</h1>
+          <p className="text-sm text-muted-foreground">Match bank statement lines to your system transactions.</p>
+        </div>
+        <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+          <Plus className="size-4" /> New Reconciliation
+        </button>
+      </div>
+
+      <div className="flex gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search reconciliations..." className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border bg-background outline-none" />
+        </div>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="h-9 px-3 text-sm rounded-lg border bg-background outline-none">
+          <option value="">All Statuses</option>
+          <option value="in_progress">In Progress</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground"><Loader2 className="size-6 animate-spin mr-2" /> Loading reconciliations…</div>
+      ) : filtered.length === 0 ? (
+        <div className="glass-panel p-12 rounded-xl border border-border/50 text-center text-muted-foreground">No reconciliations found. Create one to get started.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((r, i) => (
+            <motion.div key={r.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
+              onClick={() => setSelected(r)} className="glass-panel p-5 rounded-xl border border-border/50 hover:shadow-elegant transition-all cursor-pointer">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <p className="text-xs font-mono text-muted-foreground">{r.id?.slice(0, 12)}</p>
+                  <p className="text-sm font-semibold text-foreground mt-1">{r.reconciliation_date}</p>
+                </div>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === "completed" ? "bg-emerald-500/10 text-emerald-500" : r.status === "in_progress" ? "bg-amber-500/10 text-amber-500" : "bg-muted text-muted-foreground"}`}>{r.status}</span>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Statement Balance</span><span className="font-semibold text-foreground">{fmt(r.statement_balance)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Difference</span><span className={`font-semibold ${Math.abs(r.difference || 0) < 0.01 ? "text-emerald-500" : "text-red-500"}`}>{fmt(r.difference || 0)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Items</span><span className="font-semibold text-foreground">{r.items?.length || 0}</span></div>
+              </div>
+              {r.notes && <p className="text-xs text-muted-foreground mt-3 line-clamp-1">{r.notes}</p>}
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* Create Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+              <div className="flex items-center justify-between p-5 border-b border-border/50">
+                <h2 className="font-bold text-lg text-foreground">New Reconciliation</h2>
+                <button onClick={() => setShowCreateModal(false)} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
+              </div>
+              <form onSubmit={handleCreate} className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Bank Account ID *</label>
+                  <input name="bank_account_id" required className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none font-mono" placeholder="Bank account UUID" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Reconciliation Date *</label>
+                  <input name="reconciliation_date" type="date" required className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Statement Balance (INR) *</label>
+                  <input name="statement_balance" type="number" step="any" required className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none font-semibold" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Notes</label>
+                  <textarea name="notes" rows={2} className="w-full px-3 py-2 text-sm rounded-lg border bg-background outline-none resize-none" placeholder="Optional notes..." />
+                </div>
+                <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors">Cancel</button>
+                  <button type="submit" disabled={creating} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
+                    {creating ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Create
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
