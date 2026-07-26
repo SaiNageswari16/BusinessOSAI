@@ -31,15 +31,17 @@ const mockAsStorefrontProduct = (mock: MarketplaceProduct): StorefrontProduct =>
 function ProductDetail() {
   const { id } = Route.useParams();
 
-  const { data: allProducts = [] } = useQuery({
+  const { data: productData } = useQuery({
     queryKey: ['storefrontProducts'],
     queryFn: () => fetchStorefrontProducts(),
   });
+  const allProducts = productData?.items ?? [];
 
   const liveProduct = allProducts.find(p => p.id === id);
   const mockProduct = mockMarketplaceProducts.find(p => p.id === id);
 
   const product = liveProduct || (mockProduct ? mockAsStorefrontProduct(mockProduct) : undefined);
+
 
   if (!product) {
     return (

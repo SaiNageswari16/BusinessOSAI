@@ -13,10 +13,12 @@ function ShopPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
 
-  const { data: allProducts = [] } = useQuery({
+  const { data: productData } = useQuery({
     queryKey: ['storefrontProducts', selectedCategory],
     queryFn: () => fetchStorefrontProducts(selectedCategory)
   });
+  const allProducts = productData?.items ?? [];
+
 
   const { data: categories = [] } = useQuery({
     queryKey: ['storefrontCategories'],

@@ -37,6 +37,7 @@ export function ProductGrid({ products }: ProductGridProps) {
       category_name: product.category_name,
       brand: product.brand,
       stock: product.stock,
+      vendorName: product.seller_name,
     }, 1);
   };
 
@@ -119,12 +120,15 @@ export function ProductGrid({ products }: ProductGridProps) {
                 </div>
               </div>
 
-              {/* Price */}
+              {/* Seller & Price */}
+              {product.seller_name && (
+                <div className="text-xs text-gray-400 mb-1 truncate">Sold by: <span className="text-sky-600 font-medium">{product.seller_name}</span></div>
+              )}
               <div className="flex items-center justify-center space-x-2">
                 {hasDiscount && product.mrp > 0 && (
-                  <span className="text-gray-400 line-through text-sm">${product.mrp.toFixed(2)}</span>
+                  <span className="text-gray-400 line-through text-sm">₹{product.mrp.toFixed(2)}</span>
                 )}
-                <span className="text-lg font-bold text-blue-600">${(product.selling_price || product.mrp || 0).toFixed(2)}</span>
+                <span className="text-lg font-bold text-blue-600">₹{(product.selling_price || product.mrp || 0).toFixed(2)}</span>
               </div>
             </div>
           </div>

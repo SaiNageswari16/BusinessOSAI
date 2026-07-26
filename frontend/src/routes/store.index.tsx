@@ -15,11 +15,13 @@ function StoreHome() {
   const [activeTab, setActiveTab] = useState("All");
   const [dealTime, setDealTime] = useState({ days: 12, hours: 15, mins: 45, secs: 30 });
 
-  const { data: allProducts = [], isLoading, isError } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['storefrontProducts'],
     queryFn: () => fetchStorefrontProducts(),
     staleTime: 60_000, // 1 min cache
   });
+  const allProducts = data?.items ?? [];
+
 
   // Derive unique categories from actual product data
   const liveCategories = Array.from(new Set(allProducts.map(p => p.category_name).filter(Boolean))) as string[];

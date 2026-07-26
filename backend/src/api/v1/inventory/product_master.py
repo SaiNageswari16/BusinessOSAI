@@ -747,48 +747,35 @@ async def master_import_products(
 async def get_public_tenant_id(
     db: AsyncSession = Depends(get_db),
     x_tenant_id: str | None = Header(None)
-) -> uuid.UUID:
-    """Helper to resolve tenant ID for public endpoints."""
-    from src.models import Tenant
+) -> uuid.UUID | None:
+    """For multi-tenant marketplace, returns a specific tenant ID only when
+    explicitly requested via X-Tenant-Id header.  Returns None to indicate
+    'show all tenants'."""
     if x_tenant_id:
         try:
             return uuid.UUID(x_tenant_id)
         except ValueError:
             pass
-            
-    # Fallback for local development: pick the tenant that actually has products (e.g., SAHAVI TECHS)
-    from src.models.inventory import Product
-    
-    result = await db.execute(
-        select(Tenant.id)
-        .join(Product, Product.tenant_id == Tenant.id)
-        .group_by(Tenant.id)
-        .order_by(func.count(Product.id).desc())
-        .limit(1)
-    )
-    tenant_id = result.scalar_one_or_none()
-    
-    if not tenant_id:
-        tenant_res = await db.execute(select(Tenant).limit(1))
-        tenant = tenant_res.scalar_one_or_none()
-        if not tenant:
-            raise HTTPException(status_code=400, detail="No active tenants found in system")
-        return tenant.id
-        
-    return tenant_id
+    return None
 
 
 @router.get("/public/categories", response_model=PaginatedResponse[ProductCategoryResponse], tags=["Storefront Public"])
 async def list_public_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
-    tenant_id: Annotated[uuid.UUID, Depends(get_public_tenant_id)],
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    x_tenant_id: str | None = Header(None),
 ):
+    """Returns distinct active product categories across ALL tenants (or one tenant if X-Tenant-Id sent)."""
     query = select(ProductCategory).where(
-        ProductCategory.tenant_id == tenant_id,
         ProductCategory.status == EntityStatus.ACTIVE
     )
+    if x_tenant_id:
+        try:
+            query = query.where(ProductCategory.tenant_id == uuid.UUID(x_tenant_id))
+        except ValueError:
+            pass
+
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
         query.order_by(ProductCategory.name.asc()).offset((page - 1) * page_size).limit(page_size)
@@ -799,34 +786,59 @@ async def list_public_categories(
 @router.get("/public/products", response_model=PaginatedResponse[PublicProductResponse], tags=["Storefront Public"])
 async def list_public_products(
     db: Annotated[AsyncSession, Depends(get_db)],
-    tenant_id: Annotated[uuid.UUID, Depends(get_public_tenant_id)],
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     category_id: str | None = None,
+    search: str | None = None,
+    x_tenant_id: str | None = Header(None),
 ):
+    """Returns products from ALL tenants for the marketplace storefront.
+    Optionally filtered to one tenant via X-Tenant-Id header.
+    This enables the Amazon-style marketplace where every tenant's inventory
+    is visible to shoppers."""
+    from src.models import Tenant
+
     query = select(Product).options(
         selectinload(Product.category),
         selectinload(Product.brand),
         selectinload(Product.images),
         selectinload(Product.variants)
     ).where(
-        Product.tenant_id == tenant_id,
         Product.status == EntityStatus.ACTIVE
     )
-    
+
+    # Filter to specific tenant if requested
+    if x_tenant_id:
+        try:
+            query = query.where(Product.tenant_id == uuid.UUID(x_tenant_id))
+        except ValueError:
+            pass
+
     if category_id:
         try:
             query = query.where(Product.category_id == uuid.UUID(category_id))
         except ValueError:
             pass
 
+    if search:
+        query = query.where(Product.name.ilike(f"%{search}%"))
+
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
         query.order_by(Product.name.asc()).offset((page - 1) * page_size).limit(page_size)
     )
-    
+
     products = result.scalars().all()
-    
+
+    # Build a quick tenant-name lookup to avoid N+1 queries
+    tenant_ids = list({p.tenant_id for p in products if p.tenant_id})
+    tenant_names: dict[uuid.UUID, str] = {}
+    if tenant_ids:
+        t_result = await db.execute(
+            select(Tenant.id, Tenant.name).where(Tenant.id.in_(tenant_ids))
+        )
+        tenant_names = {row.id: row.name for row in t_result.all()}
+
     response_items = []
     for p in products:
         response_items.append(PublicProductResponse(
@@ -837,11 +849,13 @@ async def list_public_products(
             brand=p.brand.name if p.brand else None,
             short_description=p.short_description,
             image_url=p.image_url,
-            mrp=p.mrp,
-            selling_price=p.selling_price,
-            stock=p.initial_stock,
+            mrp=float(p.mrp or 0),
+            selling_price=float(p.selling_price or 0),
+            stock=int(p.initial_stock or 0),
+            seller_name=tenant_names.get(p.tenant_id),
+            tenant_id=p.tenant_id,
             images=p.images,
             variants=p.variants
         ))
-        
+
     return paginate(response_items, total or 0, page, page_size)
