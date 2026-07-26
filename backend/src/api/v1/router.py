@@ -95,4 +95,7 @@ api_router.include_router(reports_router)
 
 # Recruitment integrations router
 from src.integrations.zoho.routes import router as zoho_router
+from src.api.v1.notifications import router as notifications_router
+
 api_router.include_router(zoho_router)
+api_router.include_router(notifications_router)

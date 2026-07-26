@@ -21,6 +21,7 @@ from src.config import get_settings
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import JobOpening, Applicant, Interview, OfferLetter, OnboardingRecord
+from src.utils.notifications import add_system_notification
 from src.schemas.erp import (
     JobOpeningCreate,
     JobOpeningUpdate,
@@ -425,6 +426,15 @@ async def create_job(
         criteria=payload.criteria,
     )
     db.add(new_job)
+    await db.flush()
+
+    await add_system_notification(
+        db, 
+        ctx.tenant_id, 
+        f"New Job Opening: {new_job.title}", 
+        f"Job Opening '{new_job.title}' ({new_job.department}) with {new_job.openings} positions was created by {ctx.user.full_name}", 
+        "hrms"
+    )
     await db.commit()
     await db.refresh(new_job)
 
@@ -988,6 +998,14 @@ async def submit_application(
     job.applicants_count += 1
     
     db.add(new_applicant)
+    await db.flush()
+    await add_system_notification(
+        db, 
+        job.tenant_id, 
+        f"New Candidate Applied: {new_applicant.name}", 
+        f"Candidate '{new_applicant.name}' applied for '{new_applicant.job_title}' (Match Score: {new_applicant.match_score}%) via {new_applicant.source or 'Direct portal'}", 
+        "hrms"
+    )
     await db.commit()
     await db.refresh(new_applicant)
     return new_applicant

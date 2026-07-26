@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from src.api.deps import get_db, require_any_permission, require_permission, CurrentUserContext
 from src.models.inventory import GoodsReceipt, GoodsReceiptItem
 from src.schemas.inventory_operations import GoodsReceiptCreate, GoodsReceiptResponse, GoodsReceiptUpdate
+from src.utils.notifications import add_system_notification
 
 router = APIRouter()
 
@@ -69,6 +70,15 @@ async def create_goods_receipt(
             new_receipt.items.append(new_item)
             
     db.add(new_receipt)
+    await db.flush()
+
+    await add_system_notification(
+        db, 
+        ctx.tenant_id, 
+        f"Goods Receipt Submitted: {new_receipt.receipt_number}", 
+        f"Goods receipt '{new_receipt.receipt_number}' from supplier '{new_receipt.supplier or 'Unknown'}' was submitted by {ctx.user.full_name}", 
+        "inventory"
+    )
     await db.commit()
     await db.refresh(new_receipt)
     

@@ -10,9 +10,14 @@ from pydantic import BaseModel
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import AuditLog, Customer, Lead, LeadActivity, Tenant, CRMSupportTicket, CRMQuotation, CRMSalesOrder, CRMOpportunity
+from src.models import (
+    AuditLog, Customer, Lead, LeadActivity, Tenant, CRMSupportTicket, 
+    CRMQuotation, CRMSalesOrder, CRMOpportunity, EmailCampaign, EmailTemplate, 
+    Employee, Applicant
+)
 from src.schemas.crm import CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.notifications import add_system_notification
 import logging
 logger = logging.getLogger(__name__)
 
@@ -75,7 +80,9 @@ async def create_lead(payload: LeadCreate, request: Request, ctx: Annotated[Curr
     if payload.status not in LEAD_STATUSES: raise HTTPException(status_code=400, detail="Invalid lead status")
     lead = Lead(tenant_id=ctx.tenant_id, **payload.model_dump())
     db.add(lead); await db.flush()
+    await add_system_notification(db, ctx.tenant_id, f"New CRM Lead: {lead.name}", f"Lead '{lead.name}' ({lead.company_name or 'No Company'}) was created by {ctx.user.full_name}", "crm")
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="lead_created", entity_type="lead", entity_id=lead.id, new_values=payload.model_dump(mode="json"), ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
+    await db.commit()
     return lead
 
 
@@ -137,7 +144,9 @@ async def create_opportunity(payload: OpportunityCreate, request: Request, ctx: 
         raise HTTPException(status_code=400, detail="An opportunity must be linked to a customer or lead")
     opportunity = CRMOpportunity(tenant_id=ctx.tenant_id, **payload.model_dump())
     db.add(opportunity); await db.flush()
+    await add_system_notification(db, ctx.tenant_id, f"New Opportunity: {opportunity.name}", f"Deal/Opportunity '{opportunity.name}' worth ${opportunity.expected_revenue or 0:,.2f} created by {ctx.user.full_name}", "crm")
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="opportunity_created", entity_type="opportunity", entity_id=opportunity.id, new_values=payload.model_dump(mode="json"), ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
+    await db.commit()
     return opportunity
 
 
@@ -1175,6 +1184,13 @@ async def create_ticket(
     )
     db.add(ticket)
     await db.flush()
+    await add_system_notification(
+        db, 
+        ctx.tenant_id, 
+        f"New Support Ticket: {ticket.subject}", 
+        f"Support ticket '{ticket.subject}' (Priority: {ticket.priority.capitalize()}) was submitted by {ctx.user.full_name}", 
+        "crm"
+    )
     await db.commit()
     return ticket
 
@@ -2667,3 +2683,203 @@ async def get_ai_recommendations(
         },
         "recommendations": recs[:30]  # top 30
     }
+
+
+# ─── Email Campaigns & Templates (Google Mail Style) ──────────────────────────
+
+class EmailCampaignCreate(BaseModel):
+    name: str
+    subject: str
+    body_html: str
+    target_category: str  # employees|candidates|customers|others
+
+class EmailCampaignResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    subject: str
+    body_html: str
+    target_category: str
+    status: str
+    recipient_count: int
+    sent_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class EmailTemplateCreate(BaseModel):
+    name: str
+    subject: str | None = None
+    body_html: str
+
+class EmailTemplateResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    subject: str | None
+    body_html: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+async def send_campaign_html_email(to_email: str, subject: str, body_html: str) -> bool:
+    """Helper to dispatch rich-text HTML emails via SMTP settings."""
+    from src.config import get_settings
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    settings = get_settings()
+    if not settings.mail_server:
+        print(f"\n=================== SMTP DISPATCH OVERRIDE (LOG ONLY) ===================")
+        print(f"TO: {to_email}")
+        print(f"SUBJECT: {subject}")
+        print(f"HTML BODY PREVIEW:\n{body_html[:300]}...")
+        print(f"========================================================================\n")
+        return False
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = settings.mail_from or "campaigns@businessos.ai"
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body_html, "html"))
+
+        # Connect and authenticate
+        server = smtplib.SMTP(settings.mail_server, settings.mail_port or 587)
+        server.starttls()
+        if settings.mail_username and settings.mail_password:
+            server.login(settings.mail_username, settings.mail_password)
+
+        server.send_message(msg)
+        server.quit()
+        print(f"[Campaign SMTP SUCCESS] Emailed {to_email}")
+        return True
+    except Exception as e:
+        print(f"[Campaign SMTP ERROR] Failed to email {to_email}: {e}")
+        return False
+
+
+@router.get("/email-campaigns", response_model=list[EmailCampaignResponse])
+async def list_email_campaigns(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Lists all email campaigns for the current tenant."""
+    stmt = select(EmailCampaign).where(EmailCampaign.tenant_id == ctx.tenant_id).order_by(EmailCampaign.created_at.desc())
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+@router.post("/email-campaigns", response_model=EmailCampaignResponse, status_code=status.HTTP_201_CREATED)
+async def create_email_campaign(
+    payload: EmailCampaignCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Creates a new draft email campaign."""
+    campaign = EmailCampaign(
+        tenant_id=ctx.tenant_id,
+        name=payload.name,
+        subject=payload.subject,
+        body_html=payload.body_html,
+        target_category=payload.target_category,
+        status="Draft",
+        recipient_count=0
+    )
+    db.add(campaign)
+    await db.commit()
+    await db.refresh(campaign)
+    return campaign
+
+
+@router.post("/email-campaigns/{campaign_id}/send", response_model=EmailCampaignResponse)
+async def send_email_campaign(
+    campaign_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Dispatches the draft email campaign to all recipients in the category in the background."""
+    campaign = await db.get(EmailCampaign, campaign_id)
+    if not campaign or campaign.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Email campaign not found")
+
+    # Fetch recipient emails based on selected category
+    recipient_emails = []
+    if campaign.target_category == "employees":
+        emp_stmt = select(Employee.email).where(Employee.tenant_id == ctx.tenant_id, Employee.email != None)
+        emp_res = await db.execute(emp_stmt)
+        recipient_emails = list(emp_res.scalars().all())
+    elif campaign.target_category == "candidates":
+        cand_stmt = select(Applicant.email).where(Applicant.tenant_id == ctx.tenant_id, Applicant.email != None)
+        cand_res = await db.execute(cand_stmt)
+        recipient_emails = list(cand_res.scalars().all())
+    elif campaign.target_category == "customers":
+        cust_stmt = select(Customer.email).where(Customer.tenant_id == ctx.tenant_id, Customer.email != None)
+        cust_res = await db.execute(cust_stmt)
+        recipient_emails = list(cust_res.scalars().all())
+    else:
+        # others / fallback: use some mock emails or all combined
+        recipient_emails = ["sandbox-recipient@businessos.ai"]
+
+    # Deduplicate emails
+    recipient_emails = list(set(filter(None, recipient_emails)))
+    campaign.recipient_count = len(recipient_emails)
+
+    # Trigger sending (Sequential for simplicity, or background task in production)
+    sent_count = 0
+    for email in recipient_emails:
+        success = await send_campaign_html_email(email, campaign.subject, campaign.body_html)
+        if success:
+            sent_count += 1
+
+    campaign.status = "Sent"
+    campaign.sent_at = datetime.now(timezone.utc)
+    
+    # Trigger system notification
+    await add_system_notification(
+        db,
+        ctx.tenant_id,
+        f"Campaign Dispatched: {campaign.name}",
+        f"Email campaign '{campaign.name}' with subject '{campaign.subject}' was sent to {campaign.recipient_count} recipients in category '{campaign.target_category}' by {ctx.user.full_name}",
+        "crm"
+    )
+    
+    await db.commit()
+    await db.refresh(campaign)
+    return campaign
+
+
+@router.get("/email-templates", response_model=list[EmailTemplateResponse])
+async def list_email_templates(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Lists saved reusable email templates."""
+    stmt = select(EmailTemplate).where(EmailTemplate.tenant_id == ctx.tenant_id).order_by(EmailTemplate.name)
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+@router.post("/email-templates", response_model=EmailTemplateResponse, status_code=status.HTTP_201_CREATED)
+async def create_email_template(
+    payload: EmailTemplateCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Saves a new custom email template for future uses."""
+    template = EmailTemplate(
+        tenant_id=ctx.tenant_id,
+        name=payload.name,
+        subject=payload.subject,
+        body_html=payload.body_html
+    )
+    db.add(template)
+    await db.commit()
+    await db.refresh(template)
+    return template

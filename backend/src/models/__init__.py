@@ -1521,5 +1521,38 @@ class OrganizationIntegration(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     last_sync: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class EmailCampaign(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Email campaign logs and details."""
+    __tablename__ = "email_campaigns"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    subject: Mapped[str] = mapped_column(String(500), nullable=False)
+    body_html: Mapped[str] = mapped_column(Text, nullable=False)
+    target_category: Mapped[str] = mapped_column(String(50), nullable=False)  # employees|candidates|customers|others
+    status: Mapped[str] = mapped_column(String(50), default="Draft")  # Draft|Sent
+    recipient_count: Mapped[int] = mapped_column(Integer, default=0)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EmailTemplate(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Custom reusable email campaign templates."""
+    __tablename__ = "email_templates"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    body_html: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class LiveNotification(Base, UUIDPrimaryKeyMixin, TenantScopedMixin):
+    """Real-time push notifications of system events / submissions."""
+    __tablename__ = "live_notifications"
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), default="system")  # crm|hrms|pos|inventory|system
+    unread: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 from .inventory import *
 from .procurement import *

@@ -20,6 +20,8 @@ import { notifications } from "@/data/mock";
 import { CommandPalette } from "@/components/command-palette";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { liveNotificationsApi, LiveNotification } from "@/lib/api-client";
+import { toast } from "sonner";
 
 export function AppTopbar() {
   const { theme, toggle } = useTheme();
@@ -53,7 +55,56 @@ export function AppTopbar() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const unread = notifications.filter((n) => n.unread).length;
+  const [liveNotifications, setLiveNotifications] = useState<LiveNotification[]>([]);
+
+  const fetchLiveNotifications = async (isFirst = false) => {
+    try {
+      const data = await liveNotificationsApi.list();
+      setLiveNotifications((prev) => {
+        if (!isFirst && data.length > 0) {
+          const prevIds = new Set(prev.map((n) => n.id));
+          const newUnread = data.filter((n) => n.unread && !prevIds.has(n.id));
+          
+          newUnread.forEach((n) => {
+            toast.info(n.title, {
+              description: n.body,
+              duration: 5000,
+            });
+          });
+        }
+        return data;
+      });
+    } catch (err) {
+      console.error("Failed to pull live notifications:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveNotifications(true);
+    const timer = setInterval(() => fetchLiveNotifications(false), 6000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleMarkAllRead = async () => {
+    try {
+      await liveNotificationsApi.readAll();
+      setLiveNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+      toast.success("All notifications marked as read!");
+    } catch (err) {
+      toast.error("Failed to mark notifications as read");
+    }
+  };
+
+  const activeNotifs = liveNotifications.length > 0 ? liveNotifications : notifications.map(n => ({
+    id: n.id,
+    title: n.title,
+    body: n.body,
+    unread: n.unread,
+    created_at: new Date(Date.now() - 600000).toISOString(), // Mock timestamp
+    category: "system"
+  }));
+
+  const unreadCount = activeNotifs.filter((n) => n.unread).length;
 
   return (
     <header className="sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4 lg:px-6 shadow-sm">
@@ -192,9 +243,9 @@ export function AppTopbar() {
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon" className="h-9 w-9 relative">
               <Bell className="size-4" />
-              {unread > 0 && (
+              {unreadCount > 0 && (
                 <span className="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold grid place-items-center">
-                  {unread}
+                  {unreadCount}
                 </span>
               )}
             </Button>
@@ -202,21 +253,32 @@ export function AppTopbar() {
           <PopoverContent align="end" className="w-80 p-0">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold text-sm">Notifications</div>
-              <button className="text-xs text-primary hover:underline">Mark all read</button>
+              <button 
+                onClick={handleMarkAllRead}
+                className="text-xs text-primary hover:underline bg-transparent border-none cursor-pointer"
+              >
+                Mark all read
+              </button>
             </div>
             <div className="max-h-80 overflow-y-auto">
-              {notifications.map((n) => (
-                <div key={n.id} className={cn("px-4 py-3 border-b last:border-0 hover:bg-muted/40 cursor-pointer", n.unread && "bg-primary/[0.04]")}>
-                  <div className="flex items-start gap-2">
-                    {n.unread && <div className="size-1.5 rounded-full bg-primary mt-1.5" />}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{n.title}</div>
-                      <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.body}</div>
-                      <div className="text-[10px] text-muted-foreground mt-1">{n.time} ago</div>
+              {activeNotifs.map((n) => {
+                let timeStr = "recently";
+                try {
+                  timeStr = format(new Date(n.created_at), "MMM d, h:mm a");
+                } catch {}
+                return (
+                  <div key={n.id} className={cn("px-4 py-3 border-b last:border-0 hover:bg-muted/40 cursor-pointer", n.unread && "bg-primary/[0.04]")}>
+                    <div className="flex items-start gap-2">
+                      {n.unread && <div className="size-1.5 rounded-full bg-primary mt-1.5 shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold truncate">{n.title}</div>
+                        <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.body}</div>
+                        <div className="text-[10px] text-muted-foreground mt-1">{timeStr}</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </PopoverContent>
         </Popover>
