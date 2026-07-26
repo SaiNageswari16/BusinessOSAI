@@ -60,7 +60,6 @@ api_router.include_router(hrms_performance_router, prefix="/hrms/performance", t
 api_router.include_router(hrms_learning_router, prefix="/hrms/learning", tags=["HRMS Learning"])
 api_router.include_router(hrms_intelligence_router, prefix="/hrms/intelligence", tags=["HRMS Intelligence"])
 api_router.include_router(hrms_exit_router)
-
 # POS Module
 api_router.include_router(pos_transactions.router, prefix="/pos")
 api_router.include_router(pos_products.router, prefix="/pos")

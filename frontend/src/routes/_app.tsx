@@ -56,7 +56,7 @@ function AppLayout() {
         )}
 
         {/* Main Content */}
-        <main className="flex-1 min-h-0 overflow-y-auto bg-slate-50 dark:bg-background">
+        <main className="flex-1 min-h-0 overflow-y-auto bg-background">
           <Outlet />
         </main>
       </div>

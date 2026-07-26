@@ -86,6 +86,9 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     category: Mapped["ProductCategory"] = relationship(back_populates="products")
     brand: Mapped["Brand"] = relationship(back_populates="products")
     uom: Mapped["UnitOfMeasure"] = relationship(back_populates="products")
+    
+    images: Mapped[list["ProductImage"]] = relationship(back_populates="product", cascade="all, delete-orphan")
+    variants: Mapped[list["ProductVariant"]] = relationship(back_populates="product", cascade="all, delete-orphan")
 
 class ProductAttribute(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_product_attributes"
@@ -107,6 +110,8 @@ class ProductVariant(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     
     additional_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     stock_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    
+    product: Mapped["Product"] = relationship(back_populates="variants")
 
 
 class ProductBundle(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
@@ -158,6 +163,8 @@ class ProductImage(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin)
     image_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
+    
+    product: Mapped["Product"] = relationship(back_populates="images")
 
 
 # ==========================================

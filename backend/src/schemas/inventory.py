@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 # --- Enums from models ---
 from src.models import EntityStatus
@@ -384,3 +384,40 @@ class MasterCatalogSaveToLocalRequest(BaseModel):
     supplier: Optional[str] = None
     warehouse: Optional[str] = None
 
+# ==========================================
+# Public Storefront Schemas
+# ==========================================
+
+class PublicProductImageResponse(BaseModel):
+    id: uuid.UUID
+    image_url: str
+    is_primary: bool
+    display_order: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+class PublicProductVariantResponse(BaseModel):
+    id: uuid.UUID
+    variant_name: str
+    sku: str
+    additional_price: float
+    stock_override: Optional[int] = None
+    attributes: dict = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True)
+
+class PublicProductResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    sku: str
+    category_name: Optional[str] = None
+    brand: Optional[str] = None
+    short_description: Optional[str] = None
+    image_url: Optional[str] = None
+    mrp: float
+    selling_price: float
+    stock: int = 0
+    images: List[PublicProductImageResponse] = Field(default_factory=list)
+    variants: List[PublicProductVariantResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 export interface AuthRole {
   id: string;
@@ -175,11 +175,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const loadStoredAuth = async () => {
       const stored = localStorage.getItem("bos-auth");
       if (!stored) return;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      
       try {
         const parsed: StoredAuth = JSON.parse(stored);
-        const currentUser = await fetchUser(parsed.accessToken);
+        // Custom fetch with abort signal just for this initial load
+        const response = await fetch(`${API_BASE_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${parsed.accessToken}` },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) throw new Error("Invalid session");
+        const currentUser = mapUser(await response.json());
+        
         applySession(currentUser, parsed.accessToken, parsed.refreshToken);
-      } catch {
+      } catch (err) {
+        clearTimeout(timeoutId);
         localStorage.removeItem("bos-auth");
         localStorage.removeItem("bos-active-role");
       }

@@ -56,7 +56,7 @@ export function AppTopbar() {
   const unread = notifications.filter((n) => n.unread).length;
 
   return (
-    <header className="h-[56px] shrink-0 bg-card border-b border-border z-20 flex items-center gap-3 px-4 sm:px-6">
+    <header className="sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4 lg:px-6 shadow-sm">
       {/* Brand / Logo */}
       <div className="flex items-center gap-3 mr-4">
         <div className="size-8 shrink-0 rounded-lg gradient-brand grid place-items-center text-white shadow-elegant">
@@ -153,19 +153,20 @@ export function AppTopbar() {
       {/* Search */}
       <button
         onClick={() => setPaletteOpen(true)}
-        className="flex-1 max-w-xl ml-2 h-9 px-3 rounded-lg border-0 bg-muted hover:bg-muted/80 transition flex items-center gap-2 text-sm text-muted-foreground"
+        className="flex-1 max-w-xl ml-2 h-9 px-3 rounded-lg border border-border bg-white hover:border-blue-400 focus:outline-none transition-all flex items-center justify-between gap-2 text-sm text-muted-foreground shadow-sm"
       >
-        <Search className="size-4" />
-        <span className="hidden sm:inline">Search anything — orders, products, people…</span>
-        <span className="sm:hidden">Search</span>
-        <kbd className="ml-auto hidden sm:flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-background border">
-          <CommandIcon className="size-3" />K
+        <div className="flex items-center gap-2">
+          <Search className="size-4" />
+          <span className="hidden sm:inline">Search anything — orders, products, people…</span>
+        </div>
+        <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+          <span className="text-xs">⌘</span>K
         </kbd>
       </button>
 
       <div className="flex items-center gap-1">
         {/* Quick action */}
-        <Button size="sm" className="hidden md:inline-flex gradient-brand text-white border-0 hover:opacity-90 gap-1.5 h-9">
+        <Button size="sm" className="hidden md:inline-flex bg-blue-600 text-white hover:bg-blue-700 shadow-sm gap-1.5 h-9 rounded-lg border-0">
           <Plus className="size-4" /> Quick action
         </Button>
 

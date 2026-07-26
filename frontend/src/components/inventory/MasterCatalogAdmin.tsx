@@ -179,38 +179,38 @@ export function MasterCatalogAdmin() {
       {/* Header Row */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Database className="w-6 h-6 text-indigo-400" />
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <Database className="w-6 h-6 text-blue-600" />
             Global Master Catalog (Admin View)
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-blue-600 border border-blue-500/20">
               RAG Pipeline Control
             </span>
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Monitor, pause, resume, and audit specifications across the global product master data catalog.
           </p>
         </div>
       </div>
 
       {/* RAG Controller Panel */}
-      <Card className="bg-slate-900 border-slate-800 p-6 space-y-4">
+      <Card className="bg-card border-border p-6 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white ${
-              ragStatus.paused ? "bg-amber-600/20 border border-amber-500/40" : "bg-emerald-600/20 border border-emerald-500/40"
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-foreground ${
+              ragStatus.paused ? "bg-blue-50 border border-blue-200" : "bg-blue-50 border border-blue-200"
             }`}>
-              {ragStatus.paused ? <Pause className="w-5 h-5 text-amber-400 animate-pulse" /> : <Play className="w-5 h-5 text-emerald-400" />}
+              {ragStatus.paused ? <Pause className="w-5 h-5 text-blue-600 animate-pulse" /> : <Play className="w-5 h-5 text-blue-600" />}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white">RAG Sourcing Pipeline Status:</span>
+                <span className="text-sm font-bold text-foreground">RAG Sourcing Pipeline Status:</span>
                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
-                  ragStatus.paused ? "bg-amber-500/15 text-amber-400 border-amber-500/30" : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  ragStatus.paused ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-blue-50 text-blue-700 border-blue-200"
                 }`}>
                   {ragStatus.paused ? "PAUSED" : "ACTIVE & RUNNING"}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {ragStatus.paused ? "Background workers are idle. Click resume to restore parallel RAG web retrieval." : "Workers are actively pulling pending products in parallel batches."}
               </p>
             </div>
@@ -221,8 +221,8 @@ export function MasterCatalogAdmin() {
               onClick={handlePauseResume}
               className={`h-9 px-4 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition ${
                 ragStatus.paused
-                  ? "bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white"
-                  : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200"
+                  ? "bg-blue-600 hover:bg-blue-700 border-blue-600 text-white"
+                  : "bg-white hover:bg-gray-50 border-gray-200 text-gray-700"
               }`}
             >
               {ragStatus.paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
@@ -232,9 +232,9 @@ export function MasterCatalogAdmin() {
             <button
               onClick={handleTriggerBulkRAG}
               disabled={isTriggeringRAG}
-              className="h-9 px-4 rounded-xl text-xs font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white flex items-center gap-1.5 shadow-md disabled:opacity-50"
+              className="h-9 px-4 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-md disabled:opacity-50"
             >
-              <Zap className="w-4 h-4 text-amber-300" />
+              <Zap className="w-4 h-4 text-white" />
               <span>Queue All Barcodes</span>
             </button>
           </div>
@@ -242,41 +242,41 @@ export function MasterCatalogAdmin() {
 
         {/* Counter cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
-          <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 text-center">
-            <div className="text-xs text-slate-400 font-medium">Total Products</div>
-            <div className="text-2xl font-bold text-slate-100 mt-1">{ragStatus.total}</div>
+          <div className="bg-muted/50 p-4 rounded-xl border border-border text-center">
+            <div className="text-xs text-muted-foreground font-medium">Total Products</div>
+            <div className="text-2xl font-bold text-foreground mt-1">{ragStatus.total}</div>
           </div>
-          <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 text-center">
-            <div className="text-xs text-slate-400 font-medium">Pending Enrichment</div>
-            <div className="text-2xl font-bold text-amber-400 mt-1">{ragStatus.pending}</div>
+          <div className="bg-muted/50 p-4 rounded-xl border border-border text-center">
+            <div className="text-xs text-muted-foreground font-medium">Pending Enrichment</div>
+            <div className="text-2xl font-bold text-blue-600 mt-1">{ragStatus.pending}</div>
           </div>
-          <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 text-center">
-            <div className="text-xs text-slate-400 font-medium">Sourcing (Active)</div>
-            <div className="text-2xl font-bold text-indigo-400 mt-1 flex items-center justify-center gap-1.5">
-              {ragStatus.processing > 0 && !ragStatus.paused && <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />}
+          <div className="bg-muted/50 p-4 rounded-xl border border-border text-center">
+            <div className="text-xs text-muted-foreground font-medium">Sourcing (Active)</div>
+            <div className="text-2xl font-bold text-blue-600 mt-1 flex items-center justify-center gap-1.5">
+              {ragStatus.processing > 0 && !ragStatus.paused && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
               <span>{ragStatus.processing}</span>
             </div>
           </div>
-          <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 text-center">
-            <div className="text-xs text-slate-400 font-medium">Completed (Enriched)</div>
-            <div className="text-2xl font-bold text-emerald-400 mt-1">{ragStatus.completed}</div>
+          <div className="bg-muted/50 p-4 rounded-xl border border-border text-center">
+            <div className="text-xs text-muted-foreground font-medium">Completed (Enriched)</div>
+            <div className="text-2xl font-bold text-blue-600 mt-1">{ragStatus.completed}</div>
           </div>
-          <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 text-center col-span-2 md:col-span-1">
-            <div className="text-xs text-slate-400 font-medium">Failed Updates</div>
-            <div className="text-2xl font-bold text-rose-400 mt-1">{ragStatus.failed}</div>
+          <div className="bg-muted/50 p-4 rounded-xl border border-border text-center col-span-2 md:col-span-1">
+            <div className="text-xs text-muted-foreground font-medium">Failed Updates</div>
+            <div className="text-2xl font-bold text-blue-600 mt-1">{ragStatus.failed}</div>
           </div>
         </div>
 
         {/* Progress gauge */}
         {ragStatus.total > 0 && (
           <div className="space-y-1.5 pt-2">
-            <div className="flex justify-between text-xs font-semibold text-slate-300">
+            <div className="flex justify-between text-xs font-semibold text-muted-foreground">
               <span>System Sourcing Completion Rate</span>
               <span>{Math.round((ragStatus.completed / (ragStatus.total || 1)) * 100)}%</span>
             </div>
-            <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+            <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden border border-border">
               <div
-                className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500 transition-all duration-500"
+                className="h-full bg-blue-600 transition-all duration-500"
                 style={{ width: `${(ragStatus.completed / (ragStatus.total || 1)) * 100}%` }}
               />
             </div>
@@ -285,27 +285,27 @@ export function MasterCatalogAdmin() {
       </Card>
 
       {/* Grid Controller Header */}
-      <Card className="bg-slate-900 border-slate-800 p-6 space-y-6">
+      <Card className="bg-card border-border p-6 space-y-6">
         {/* Filters Toolbar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex-1 flex flex-col md:flex-row gap-3">
             <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+              <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search master database by Name, Brand, or Barcode..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-sm"
+                className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500 text-sm"
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">RAG Status:</span>
+              <span className="text-xs text-muted-foreground">RAG Status:</span>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-xl text-xs font-medium text-slate-200 py-2.5 px-4 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                className="bg-background border border-border rounded-xl text-xs font-medium text-foreground py-2.5 px-4 focus:outline-none focus:border-blue-500 cursor-pointer"
               >
                 <option value="all">All Statuses</option>
                 <option value="enriched">AI Enriched (Completed)</option>
@@ -321,9 +321,9 @@ export function MasterCatalogAdmin() {
               <button
                 onClick={handleTriggerSelectedRAG}
                 disabled={isTriggeringRAG}
-                className="h-9 px-4 rounded-xl text-xs font-semibold bg-indigo-650 hover:bg-indigo-600 text-white flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                className="h-9 px-4 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-foreground flex items-center gap-1.5 shadow-md disabled:opacity-50"
               >
-                <Sparkles className="w-4 h-4 text-indigo-300" />
+                <Sparkles className="w-4 h-4 text-white" />
                 <span>Enrich Selected ({selectedProductIds.length})</span>
               </button>
             )}
@@ -331,10 +331,10 @@ export function MasterCatalogAdmin() {
         </div>
 
         {/* Database Grid Table */}
-        <div className="overflow-x-auto border border-slate-800 rounded-xl bg-slate-950/20">
+        <div className="overflow-x-auto border border-border rounded-xl bg-card">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider bg-slate-950/40">
+              <tr className="border-b border-border text-muted-foreground font-semibold uppercase tracking-wider bg-muted/50">
                 <th className="py-3 px-4 w-12 text-center">
                   <input
                     type="checkbox"
@@ -346,7 +346,7 @@ export function MasterCatalogAdmin() {
                         setSelectedProductIds([]);
                       }
                     }}
-                    className="rounded border-slate-800 bg-slate-900 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                    className="rounded border-border bg-background text-blue-600 focus:ring-indigo-500 w-3.5 h-3.5"
                   />
                 </th>
                 <th className="py-3 px-4 w-16">Image</th>
@@ -362,20 +362,20 @@ export function MasterCatalogAdmin() {
             <tbody>
               {isLoadingList ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400 font-medium">
-                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500 mx-auto mb-2" />
+                  <td colSpan={9} className="py-16 text-center text-muted-foreground font-medium">
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mb-2" />
                     Loading Master Data Catalog...
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-500 font-semibold">
+                  <td colSpan={9} className="py-16 text-center text-muted-foreground font-semibold">
                     No products found matching query filters.
                   </td>
                 </tr>
               ) : (
                 items.map((item, idx) => (
-                  <tr key={item.id || idx} className="border-b border-slate-800/80 hover:bg-slate-900/30 transition-colors">
+                  <tr key={item.id || idx} className="border-b border-border/80 hover:bg-background/30 transition-colors">
                     <td className="py-3.5 px-4 text-center">
                       {item.id && (
                         <input
@@ -389,7 +389,7 @@ export function MasterCatalogAdmin() {
                               setSelectedProductIds(prev => prev.filter(x => x !== id));
                             }
                           }}
-                          className="rounded border-slate-800 bg-slate-900 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                          className="rounded border-border bg-background text-blue-600 focus:ring-indigo-500 w-3.5 h-3.5"
                         />
                       )}
                     </td>
@@ -398,55 +398,55 @@ export function MasterCatalogAdmin() {
                         <img
                           src={item.image_url}
                           alt={item.name}
-                          className="w-8 h-8 rounded-lg object-contain bg-slate-900 border border-slate-800 shrink-0"
+                          className="w-8 h-8 rounded-lg object-contain bg-background border border-border shrink-0"
                           onError={(e) => {
                             (e.target as HTMLElement).style.display = "none";
                           }}
                         />
                       ) : (
-                        <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600 shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center text-slate-600 shrink-0">
                           <Package className="w-4 h-4" />
                         </div>
                       )}
                     </td>
                     <td className="py-3.5 px-4 max-w-sm">
-                      <div className="font-semibold text-slate-200 line-clamp-1">{item.name}</div>
+                      <div className="font-semibold text-foreground line-clamp-1">{item.name}</div>
                       {item.short_description ? (
-                        <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1 italic">{item.short_description}</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1 italic">{item.short_description}</div>
                       ) : (
-                        <div className="text-[10px] text-slate-500 mt-0.5">No specifications sourced yet</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5">No specifications sourced yet</div>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 font-mono text-[11px] text-slate-300">
+                    <td className="py-3.5 px-4 font-mono text-[11px] text-muted-foreground">
                       {item.barcode || "—"}
                     </td>
-                    <td className="py-3.5 px-4 text-slate-300">
+                    <td className="py-3.5 px-4 text-muted-foreground">
                       {item.brand || "—"}
                     </td>
-                    <td className="py-3.5 px-4 text-slate-300">
+                    <td className="py-3.5 px-4 text-muted-foreground">
                       {item.category || "—"}
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="flex flex-col">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold w-max border ${
                           item.ai_search_done
-                            ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
                             : item.rag_status === "processing"
-                            ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/20 animate-pulse"
+                            ? "bg-blue-50 text-blue-700 border-blue-200 animate-pulse"
                             : item.rag_status === "failed"
-                            ? "bg-rose-500/15 text-rose-400 border-rose-500/20"
-                            : "bg-slate-500/10 text-slate-400 border-slate-800"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : "bg-slate-100 text-slate-600 border-border"
                         }`}>
                           {item.ai_search_done ? "Completed" : item.rag_status === "processing" ? "Sourcing" : item.rag_status === "failed" ? "Failed" : "Pending"}
                         </span>
                         {item.rag_status === "failed" && item.rag_error && (
-                          <span className="text-[9px] text-rose-400 mt-0.5 max-w-[150px] truncate" title={item.rag_error}>
+                          <span className="text-[9px] text-blue-600 mt-0.5 max-w-[150px] truncate" title={item.rag_error}>
                             {item.rag_error}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 text-right font-semibold text-slate-200">
+                    <td className="py-3.5 px-4 text-right font-semibold text-foreground">
                       {item.mrp ? `₹${item.mrp.toFixed(2)}` : "—"}
                     </td>
                     <td className="py-3.5 px-4 text-center">
@@ -454,7 +454,7 @@ export function MasterCatalogAdmin() {
                         <button
                           onClick={() => handleTriggerSingleRAG(item.id!)}
                           disabled={item.rag_status === "processing"}
-                          className="p-1.5 rounded-lg bg-slate-850 hover:bg-slate-800 text-indigo-400 border border-slate-800 disabled:opacity-50 transition"
+                          className="p-1.5 rounded-lg bg-background hover:bg-muted text-blue-600 border border-input disabled:opacity-50 transition"
                           title="Trigger single item RAG enrichment"
                         >
                           {item.rag_status === "processing" ? (
@@ -475,10 +475,10 @@ export function MasterCatalogAdmin() {
         {/* Pagination bar */}
         {!isLoadingList && totalItems > 0 && (
           <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-slate-400">
-              Showing <span className="font-semibold text-slate-200">{(page - 1) * pageSize + 1}</span> to{" "}
-              <span className="font-semibold text-slate-200">{Math.min(page * pageSize, totalItems)}</span> of{" "}
-              <span className="font-semibold text-slate-200">{totalItems}</span> products
+            <span className="text-xs text-muted-foreground">
+              Showing <span className="font-semibold text-foreground">{(page - 1) * pageSize + 1}</span> to{" "}
+              <span className="font-semibold text-foreground">{Math.min(page * pageSize, totalItems)}</span> of{" "}
+              <span className="font-semibold text-foreground">{totalItems}</span> products
             </span>
 
             <div className="flex items-center gap-2">
@@ -487,12 +487,12 @@ export function MasterCatalogAdmin() {
                 size="icon"
                 disabled={page === 1}
                 onClick={() => setPage(p => Math.max(p - 1, 1))}
-                className="w-8 h-8 rounded-lg border-slate-800 bg-slate-900 hover:bg-slate-800 hover:text-white"
+                className="w-8 h-8 rounded-lg border-input bg-background hover:bg-accent hover:text-accent-foreground"
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               
-              <span className="text-xs text-slate-300 font-semibold">
+              <span className="text-xs text-muted-foreground font-semibold">
                 Page {page} of {totalPages}
               </span>
 
@@ -501,7 +501,7 @@ export function MasterCatalogAdmin() {
                 size="icon"
                 disabled={page === totalPages}
                 onClick={() => setPage(p => Math.min(p + 1, totalPages))}
-                className="w-8 h-8 rounded-lg border-slate-800 bg-slate-900 hover:bg-slate-800 hover:text-white"
+                className="w-8 h-8 rounded-lg border-input bg-background hover:bg-accent hover:text-accent-foreground"
               >
                 <ChevronRight className="w-4 h-4" />
               </Button>

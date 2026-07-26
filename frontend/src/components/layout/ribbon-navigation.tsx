@@ -115,7 +115,7 @@ export function RibbonNavigation() {
   };
 
   return (
-    <div className="flex flex-col w-full shrink-0 bg-background z-40 relative shadow-sm">
+    <div className="flex flex-col w-full shrink-0 bg-white z-40 relative shadow-sm">
       {/* Mobile Header for drawer toggle */}
       {!isTerminal && (
         <div className="md:hidden flex items-center justify-between p-3 border-b border-border">
@@ -132,7 +132,7 @@ export function RibbonNavigation() {
       {/* Level 1: Main Modules */}
       {!isTerminal && (
         <div className={cn(
-          "md:flex md:flex-row md:items-center md:px-0 md:overflow-x-auto border-b border-border bg-background transition-all pb-1 md:pb-0",
+          "md:flex md:flex-row md:items-center md:px-0 md:overflow-x-auto border-b border-border bg-white transition-all pb-1 md:pb-0",
           mobileMenuOpen ? "flex flex-col absolute top-full left-0 right-0 bg-background shadow-xl border-b z-50 p-4 gap-2" : "hidden md:flex"
         )}>
           {nav.map((group) => {
@@ -144,7 +144,7 @@ export function RibbonNavigation() {
                 className={cn(
                   "relative flex flex-col items-center justify-center gap-1.5 min-w-[100px] h-[72px] px-3 text-[12px] font-medium transition-all whitespace-nowrap",
                   isActive 
-                    ? "text-primary bg-primary/5 dark:bg-primary/10" 
+                    ? "text-blue-600" 
                     : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                 )}
               >
@@ -153,7 +153,7 @@ export function RibbonNavigation() {
                 {isActive && (
                   <motion.div
                     layoutId="activeGroupLine"
-                    className="absolute bottom-0 left-0 right-0 h-[3px] bg-primary"
+                    className="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-600"
                     initial={false}
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
@@ -176,7 +176,7 @@ export function RibbonNavigation() {
           >
             {/* Level 2: Module Ribbon (Browser Tabs) */}
             {!isTerminal && (
-              <div className="flex items-end px-4 overflow-x-auto bg-background pt-3 pb-1.5 gap-1.5 border-b border-border/60">
+              <div className="flex items-end px-4 overflow-x-auto bg-white pt-3 pb-1.5 gap-1.5 border-b border-border/60">
                 {activeGroup.items.map((item) => {
                   const isActive = activeItem.label === item.label;
                   return (
@@ -186,17 +186,17 @@ export function RibbonNavigation() {
                       className={cn(
                         "relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap rounded-t-lg border border-transparent",
                         isActive 
-                          ? "bg-muted/40 text-foreground border-border/60 border-b-transparent z-10" 
+                          ? "bg-blue-50/50 text-blue-600 border-blue-100 border-b-transparent z-10" 
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/20"
                       )}
                       style={isActive ? { marginBottom: "-1.5px" } : {}}
                     >
-                      <item.icon className={cn("size-[18px]", isActive ? "text-primary" : "opacity-60")} />
+                      <item.icon className={cn("size-[18px]", isActive ? "text-blue-600" : "opacity-60")} />
                       {item.label}
                       {isActive && (
                         <motion.div
                           layoutId="activeItemLine"
-                          className="absolute top-0 left-0 right-0 h-[3px] bg-primary rounded-t-full"
+                          className="absolute top-0 left-0 right-0 h-[2px] bg-blue-600 rounded-t-full"
                           initial={false}
                           transition={{ type: "spring", stiffness: 400, damping: 30 }}
                         />
@@ -209,7 +209,7 @@ export function RibbonNavigation() {
 
             {/* Level 3: Feature Ribbon (Pills) */}
             {activeItem.subItems && activeItem.subItems.length > 0 && (
-              <div className="flex items-center px-5 pt-2.5 pb-3 overflow-x-auto bg-background gap-2.5 border-b border-border/40">
+              <div className="flex items-center px-5 pt-2.5 pb-3 overflow-x-auto bg-white gap-2.5 border-b border-border/40">
                 {isTerminal && (
                   <div className="flex items-center">
                     <button 
@@ -231,11 +231,11 @@ export function RibbonNavigation() {
                       className={cn(
                         "relative flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium transition-all whitespace-nowrap rounded-full border",
                         isActive 
-                          ? "bg-primary text-primary-foreground border-primary shadow-md shadow-primary/20" 
+                          ? "bg-gradient-to-r from-blue-700 to-blue-500 text-white border-transparent shadow-md shadow-blue-500/30" 
                           : "bg-muted/30 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground hover:border-border/50"
                       )}
                     >
-                      <sub.icon className={cn("size-3.5", isActive ? "text-primary-foreground" : "opacity-60")} />
+                      <sub.icon className={cn("size-3.5", isActive ? "text-white" : "opacity-60")} />
                       {sub.label}
                     </button>
                   );
