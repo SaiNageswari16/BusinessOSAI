@@ -140,7 +140,7 @@ async def create_invoice(
 
     from src.utils.number_series import generate_number
 
-    invoice_number = generate_number(db, ctx.tenant_id, "invoice", payload.company_id)
+    invoice_number = await generate_number(db, ctx.tenant_id, "invoice", payload.company_id)
 
     invoice = Invoice(
         tenant_id=ctx.tenant_id,
@@ -171,7 +171,11 @@ async def create_invoice(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(invoice)
+    invoice = await db.scalar(
+        select(Invoice)
+        .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+        .where(Invoice.id == invoice.id)
+    )
     return invoice
 
 
@@ -224,7 +228,11 @@ async def update_invoice(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(invoice)
+    invoice = await db.scalar(
+        select(Invoice)
+        .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+        .where(Invoice.id == invoice.id)
+    )
     return invoice
 
 
@@ -342,5 +350,9 @@ async def void_invoice(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(invoice)
+    invoice = await db.scalar(
+        select(Invoice)
+        .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+        .where(Invoice.id == invoice.id)
+    )
     return invoice

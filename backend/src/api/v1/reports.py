@@ -87,7 +87,10 @@ async def get_report_data(tab: str, db: AsyncSession = Depends(get_db)):
             return 0.0
 
     async def _rows(model, order=None, limit=50):
+        from sqlalchemy.orm import selectinload
         stmt = select(model)
+        if model == POSTransaction:
+            stmt = stmt.options(selectinload(POSTransaction.payments))
         if order is not None:
             stmt = stmt.order_by(order)
         stmt = stmt.limit(limit)
@@ -151,7 +154,7 @@ async def get_report_data(tab: str, db: AsyncSession = Depends(get_db)):
             {
                 "tx_id":   f"TXN-{str(r.id)[:8].upper()}",
                 "date":    r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "—",
-                "payment": (r.payment_method or "N/A").title(),
+                "payment": ", ".join([p.payment_method.value.title() for p in r.payments]) if r.payments else "N/A",
                 "discount": f"₹{float(r.discount_amount or 0):.2f}",
                 "total":   f"₹{float(r.total_amount or 0):.2f}",
             } for r in tx_rows

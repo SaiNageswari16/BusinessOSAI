@@ -105,7 +105,7 @@ async def create_payment_voucher(
 ):
     from src.utils.number_series import generate_number
 
-    voucher_number = generate_number(db, ctx.tenant_id, "voucher", payload.company_id)
+    voucher_number = await generate_number(db, ctx.tenant_id, "voucher", payload.company_id)
 
     total_amount = sum(line.amount for line in payload.lines)
 
@@ -140,7 +140,11 @@ async def create_payment_voucher(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(voucher)
+    voucher = await db.scalar(
+        select(PaymentVoucher)
+        .options(selectinload(PaymentVoucher.lines))
+        .where(PaymentVoucher.id == voucher.id)
+    )
     return voucher
 
 
@@ -189,7 +193,11 @@ async def update_payment_voucher(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(voucher)
+    voucher = await db.scalar(
+        select(PaymentVoucher)
+        .options(selectinload(PaymentVoucher.lines))
+        .where(PaymentVoucher.id == voucher.id)
+    )
     return voucher
 
 
@@ -319,7 +327,11 @@ async def create_expense_claim(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(claim)
+    claim = await db.scalar(
+        select(ExpenseClaim)
+        .options(selectinload(ExpenseClaim.lines))
+        .where(ExpenseClaim.id == claim.id)
+    )
     return claim
 
 
@@ -368,7 +380,11 @@ async def update_expense_claim(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(claim)
+    claim = await db.scalar(
+        select(ExpenseClaim)
+        .options(selectinload(ExpenseClaim.lines))
+        .where(ExpenseClaim.id == claim.id)
+    )
     return claim
 
 

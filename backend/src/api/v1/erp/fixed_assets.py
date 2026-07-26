@@ -171,7 +171,7 @@ async def create_asset(
 ):
     from src.utils.number_series import generate_number
 
-    asset_number = generate_number(db, ctx.tenant_id, "fa_asset", payload.company_id)
+    asset_number = await generate_number(db, ctx.tenant_id, "fa_asset", payload.company_id)
 
     asset = FixedAsset(
         tenant_id=ctx.tenant_id,

@@ -261,7 +261,7 @@ async def create_journal_entry(
 
     from src.utils.number_series import generate_number
 
-    entry_number = generate_number(db, ctx.tenant_id, "journal", payload.company_id)
+    entry_number = await generate_number(db, ctx.tenant_id, "journal", payload.company_id)
 
     entry = JournalEntry(
         tenant_id=ctx.tenant_id,
@@ -296,7 +296,11 @@ async def create_journal_entry(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(entry)
+    entry = await db.scalar(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(JournalEntry.id == entry.id)
+    )
     return entry
 
 
@@ -361,7 +365,11 @@ async def update_journal_entry(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(entry)
+    entry = await db.scalar(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(JournalEntry.id == entry.id)
+    )
     return entry
 
 
@@ -402,7 +410,11 @@ async def post_journal_entry(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(entry)
+    entry = await db.scalar(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(JournalEntry.id == entry_id)
+    )
     return entry
 
 
@@ -430,9 +442,10 @@ async def reverse_journal_entry(
     from src.utils.number_series import generate_number
     from datetime import datetime as dt
 
+    entry_num = await generate_number(db, ctx.tenant_id, "journal")
     reversing = JournalEntry(
         tenant_id=ctx.tenant_id,
-        entry_number=generate_number(db, ctx.tenant_id, "journal"),
+        entry_number=entry_num,
         entry_type=EntryType.CONTRA,
         status="posted",
         entry_date=dt.now().date(),
@@ -479,7 +492,11 @@ async def reverse_journal_entry(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    await db.refresh(entry)
+    entry = await db.scalar(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(JournalEntry.id == entry_id)
+    )
     return entry
 
 
