@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, Header
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,7 +17,8 @@ from src.schemas.inventory import (
     BrandCreate, BrandResponse, BrandUpdate,
     UnitOfMeasureCreate, UnitOfMeasureResponse, UnitOfMeasureUpdate,
     ProductCreate, ProductResponse, ProductUpdate,
-    MasterProductBulkCreate, MasterProductBulkResponse, MasterProductImportItem
+    MasterProductBulkCreate, MasterProductBulkResponse, MasterProductImportItem,
+    PublicProductResponse
 )
 from src.utils.pagination import PaginatedResponse, paginate
 
@@ -738,3 +739,109 @@ async def master_import_products(
         skipped_count=skipped_count,
         errors=errors
     )
+
+# ==========================================
+# Public Storefront Endpoints
+# ==========================================
+
+async def get_public_tenant_id(
+    db: AsyncSession = Depends(get_db),
+    x_tenant_id: str | None = Header(None)
+) -> uuid.UUID:
+    """Helper to resolve tenant ID for public endpoints."""
+    from src.models import Tenant
+    if x_tenant_id:
+        try:
+            return uuid.UUID(x_tenant_id)
+        except ValueError:
+            pass
+            
+    # Fallback for local development: pick the tenant that actually has products (e.g., SAHAVI TECHS)
+    from src.models.inventory import Product
+    
+    result = await db.execute(
+        select(Tenant.id)
+        .join(Product, Product.tenant_id == Tenant.id)
+        .group_by(Tenant.id)
+        .order_by(func.count(Product.id).desc())
+        .limit(1)
+    )
+    tenant_id = result.scalar_one_or_none()
+    
+    if not tenant_id:
+        tenant_res = await db.execute(select(Tenant).limit(1))
+        tenant = tenant_res.scalar_one_or_none()
+        if not tenant:
+            raise HTTPException(status_code=400, detail="No active tenants found in system")
+        return tenant.id
+        
+    return tenant_id
+
+
+@router.get("/public/categories", response_model=PaginatedResponse[ProductCategoryResponse], tags=["Storefront Public"])
+async def list_public_categories(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[uuid.UUID, Depends(get_public_tenant_id)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+):
+    query = select(ProductCategory).where(
+        ProductCategory.tenant_id == tenant_id,
+        ProductCategory.status == EntityStatus.ACTIVE
+    )
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(ProductCategory.name.asc()).offset((page - 1) * page_size).limit(page_size)
+    )
+    return paginate(result.scalars().all(), total or 0, page, page_size)
+
+
+@router.get("/public/products", response_model=PaginatedResponse[PublicProductResponse], tags=["Storefront Public"])
+async def list_public_products(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[uuid.UUID, Depends(get_public_tenant_id)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    category_id: str | None = None,
+):
+    query = select(Product).options(
+        selectinload(Product.category),
+        selectinload(Product.brand),
+        selectinload(Product.images),
+        selectinload(Product.variants)
+    ).where(
+        Product.tenant_id == tenant_id,
+        Product.status == EntityStatus.ACTIVE
+    )
+    
+    if category_id:
+        try:
+            query = query.where(Product.category_id == uuid.UUID(category_id))
+        except ValueError:
+            pass
+
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(Product.name.asc()).offset((page - 1) * page_size).limit(page_size)
+    )
+    
+    products = result.scalars().all()
+    
+    response_items = []
+    for p in products:
+        response_items.append(PublicProductResponse(
+            id=p.id,
+            name=p.name,
+            sku=p.sku,
+            category_name=p.category.name if p.category else None,
+            brand=p.brand.name if p.brand else None,
+            short_description=p.short_description,
+            image_url=p.image_url,
+            mrp=p.mrp,
+            selling_price=p.selling_price,
+            stock=p.initial_stock,
+            images=p.images,
+            variants=p.variants
+        ))
+        
+    return paginate(response_items, total or 0, page, page_size)

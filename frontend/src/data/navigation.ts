@@ -1,10 +1,16 @@
 import {
-  LayoutDashboard, Sparkles, Boxes, Warehouse, ShoppingCart, ShoppingBag,
-  Users, Store, Calculator, UserCog, Radio, BarChart3, Settings, Building2, Truck, ShieldCheck, MapPin,
-  Briefcase, Target, Network, CreditCard, Calendar, Laptop, History, Activity, Clock, FileCheck,
-  Package, FolderTree, Layers, Tags, Scale, SlidersHorizontal, Combine, PackagePlus, Blocks, Image, ArrowRightLeft,
-  Sliders, RotateCw, RefreshCw, ClipboardCheck, Grid, Columns, Inbox, ArrowDownToLine, ListChecks, Hash, Barcode, CalendarX,
-  CalendarClock, ScanBarcode, QrCode, AlertTriangle, TrendingUp, Snail, Rocket, Skull, PieChart, LineChart, BrainCircuit, Database, Banknote, Lock, Monitor, Factory, Search, Tag, Heart, Wallet, Gift, Plus
+  Activity, AlertTriangle, Archive, AreaChart, ArrowDownToLine, ArrowRightLeft, Banknote, BarChart3, Barcode, Blocks,
+  BookOpen, Boxes, BrainCircuit, Briefcase, BriefcaseBusiness, Building, Building2, Calculator, Calendar, CalendarClock,
+  CalendarRange, CalendarX, ChartPie, ChartSpline, CircleDollarSign, ClipboardCheck, ClipboardList, Clock, Cog, Columns,
+  Combine, Compass, Component, Contact, CreditCard, Crosshair, Database, DoorOpen, Factory, FileCheck,
+  FileText, Fingerprint, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
+  Heart, HeartHandshake, History, Image, Inbox, Laptop, Layers, LayoutDashboard, LibraryBig, LineChart,
+  ListChecks, Lock, Map, MapPin, Megaphone, MessageSquare, MessagesSquare, Microscope, Monitor, Navigation,
+  Network, Package, PackageOpen, PackagePlus, PieChart, Plus, QrCode, Radio, RadioTower, Receipt,
+  RefreshCcw, RefreshCw, Rocket, RotateCw, Scale, ScanBarcode, ScanLine, Search, Settings, Settings2,
+  ShieldCheck, ShoppingBag, ShoppingBasket, ShoppingCart, Signal, Skull, Sliders, SlidersHorizontal, Snail, Sparkles,
+  Store, Tag, Tags, Target, Terminal, Ticket, Timer, TrendingUp, Truck, UserCheck,
+  UserCircle2, UserCog, Users, UsersRound, Wallet, Warehouse, Waypoints, Webcam, Workflow
 } from "lucide-react";
 
 export type NavItem = {
@@ -25,26 +31,26 @@ export type NavGroup = {
 
 export const nav: NavGroup[] = [
   {
-    group: "Workspace", icon: LayoutDashboard, items: [
+    group: "Workspace", icon: Compass, items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view:dashboard" },
       { to: "/copilot", label: "Antigravity AI", icon: Sparkles, badge: "OS", permission: "view:copilot" },
     ]
   },
   {
-    group: "Core ERP", icon: Building2, permission: "view:erp", items: [
+    group: "Core ERP", icon: Component, permission: "view:erp", items: [
       {
         to: "/erp?tab=companies",
         label: "Organization",
         icon: Building2,
         subItems: [
-          { to: "/erp?tab=companies", label: "Companies", icon: Building2 },
+          { to: "/erp?tab=companies", label: "Companies", icon: Building },
           { to: "/erp?tab=business_units", label: "Business Units", icon: Network },
           { to: "/erp?tab=regions", label: "Regions", icon: MapPin },
           { to: "/erp?tab=zones", label: "Zones", icon: MapPin },
           { to: "/erp?tab=branches", label: "Branches", icon: MapPin },
-          { to: "/erp?tab=departments", label: "Departments", icon: Briefcase },
+          { to: "/erp?tab=departments", label: "Departments", icon: LibraryBig },
           { to: "/erp?tab=designations", label: "Designations", icon: Target },
-          { to: "/erp?tab=teams", label: "Teams", icon: Users },
+          { to: "/erp?tab=teams", label: "Teams", icon: UsersRound },
           { to: "/erp?tab=org_structure", label: "Organization Structure", icon: Network },
         ]
       },
@@ -67,9 +73,9 @@ export const nav: NavGroup[] = [
         icon: ShieldCheck,
         subItems: [
           { to: "/erp?tab=users", label: "Users", icon: Users },
-          { to: "/erp?tab=roles", label: "Roles", icon: ShieldCheck },
+          { to: "/erp?tab=roles", label: "Roles", icon: Contact },
           { to: "/erp?tab=permission_matrix", label: "Permission Matrix", icon: ShieldCheck },
-          { to: "/erp?tab=workspaces", label: "Workspaces", icon: Laptop },
+          { to: "/erp?tab=workspaces", label: "Workspaces", icon: Terminal },
           { to: "/erp?tab=subscriptions", label: "Subscription & License", icon: ShieldCheck },
           { to: "/erp?tab=api_keys", label: "API Keys", icon: Network },
           { to: "/erp?tab=mfa_policies", label: "MFA Policies", icon: ShieldCheck },
@@ -115,14 +121,14 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Inventory & Warehouse", icon: Boxes, permission: "view:inventory", items: [
+    group: "Inventory & Warehouse", icon: Archive, permission: "view:inventory", items: [
       {
         to: "/inventory?tab=products",
         label: "Product Master",
         icon: Boxes,
         subItems: [
-          { to: "/inventory?tab=products", label: "Products", icon: Package },
-          { to: "/inventory?tab=categories", label: "Categories", icon: FolderTree },
+          { to: "/inventory?tab=products", label: "Products", icon: PackageOpen },
+          { to: "/inventory?tab=categories", label: "Categories", icon: LibraryBig },
           { to: "/inventory?tab=brands", label: "Brands", icon: Tags },
           { to: "/inventory?tab=units", label: "Units of Measure", icon: Scale },
           { to: "/inventory?tab=attributes", label: "Product Attributes", icon: SlidersHorizontal },
@@ -139,7 +145,7 @@ export const nav: NavGroup[] = [
         icon: Activity,
         subItems: [
           { to: "/inventory?tab=stock_overview", label: "Stock Overview", icon: BarChart3 },
-          { to: "/inventory?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: Boxes },
+          { to: "/inventory?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList },
           { to: "/inventory?tab=goods_issue", label: "Goods Issue", icon: Truck },
           { to: "/inventory?tab=stock_movement", label: "Stock Movement", icon: ArrowRightLeft },
           { to: "/inventory?tab=stock_adjustment", label: "Stock Adjustment", icon: Sliders },
@@ -196,7 +202,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Operations", icon: Factory, permission: "view:procurement", items: [
+    group: "Operations", icon: Settings2, permission: "view:procurement", items: [
       {
         to: "/procurement?tab=suppliers",
         label: "Supplier Management",
@@ -233,7 +239,7 @@ export const nav: NavGroup[] = [
         permission: "view:procurement",
         subItems: [
           { to: "/procurement?tab=vendor_bills", label: "Bills", icon: CreditCard },
-          { to: "/procurement?tab=pending_payments", label: "Pending Payments", icon: Clock },
+          { to: "/procurement?tab=pending_payments", label: "Pending Payments", icon: Timer },
           { to: "/procurement?tab=payment_history", label: "Payment History", icon: History },
           { to: "/procurement?tab=credit_notes", label: "Credit Notes", icon: FileCheck },
           { to: "/procurement?tab=debit_notes", label: "Debit Notes", icon: FileCheck },
@@ -256,7 +262,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "POS", icon: Store, permission: "view:pos", items: [
+    group: "POS", icon: ScanLine, permission: "view:pos", items: [
       { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
       { 
         to: "/pos?tab=terminal", 
@@ -305,13 +311,13 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Sales & CRM", icon: Target, permission: "view:crm", items: [
+    group: "Sales & CRM", icon: Megaphone, permission: "view:crm", items: [
       {
         to: "/crm?tab=customers",
         label: "Customer Management",
         icon: Users,
         subItems: [
-          { to: "/crm?tab=customers", label: "Customers", icon: Users },
+          { to: "/crm?tab=customers", label: "Customers", icon: UsersRound },
           { to: "/crm?tab=customer_groups", label: "Customer Groups", icon: Network },
           { to: "/crm?tab=customer_segments", label: "Customer Segments", icon: Target },
           { to: "/crm?tab=membership_plans", label: "Membership Plans", icon: ShieldCheck },
@@ -327,8 +333,8 @@ export const nav: NavGroup[] = [
         subItems: [
           { to: "/crm?tab=ad_generator", label: "Marketing Ad Generator", icon: Sparkles },
           { to: "/crm?tab=ad_history", label: "Ad Post History", icon: History },
-          { to: "/crm?tab=leads", label: "Leads", icon: UserCog },
-          { to: "/crm?tab=opportunities", label: "Opportunities", icon: Rocket },
+          { to: "/crm?tab=leads", label: "Leads", icon: Crosshair },
+          { to: "/crm?tab=opportunities", label: "Opportunities", icon: Goal },
           { to: "/crm?tab=deals", label: "Deals", icon: Target },
           { to: "/crm?tab=sales_pipeline", label: "Sales Pipeline", icon: BarChart3 },
           { to: "/crm?tab=quotations", label: "Quotations", icon: FileCheck },
@@ -374,7 +380,7 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Marketplace", icon: ShoppingBag, permission: "view:marketplace", items: [
+    group: "Marketplace", icon: Store, permission: "view:marketplace", items: [
       {
         to: "/marketplace?tab=vendors",
         label: "Vendor Management",
@@ -415,7 +421,7 @@ export const nav: NavGroup[] = [
           { to: "/marketplace?tab=refunds", label: "Refunds", icon: CreditCard },
           { to: "/marketplace?tab=cancellations", label: "Cancellations", icon: AlertTriangle },
           { to: "/marketplace?tab=order_timeline", label: "Order Timeline", icon: History },
-          { to: "/marketplace?tab=invoices", label: "Invoices", icon: FileCheck },
+          { to: "/marketplace?tab=invoices", label: "Invoices", icon: ClipboardList },
           { to: "/marketplace?tab=order_tracking", label: "Order Tracking", icon: MapPin },
         ]
       },
@@ -442,7 +448,7 @@ export const nav: NavGroup[] = [
           { to: "/marketplace?tab=offers", label: "Offers", icon: Target },
           { to: "/marketplace?tab=campaigns", label: "Campaigns", icon: Radio },
           { to: "/marketplace?tab=flash_sales", label: "Flash Sales", icon: Sparkles },
-          { to: "/marketplace?tab=wallet", label: "Wallet", icon: CreditCard },
+          { to: "/marketplace?tab=wallet", label: "Wallet", icon: Wallet },
           { to: "/marketplace?tab=loyalty", label: "Loyalty", icon: Users },
           { to: "/marketplace?tab=gift_cards", label: "Gift Cards", icon: CreditCard },
         ]
@@ -463,14 +469,14 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "Accounting & Finance", icon: Calculator, permission: "view:accounting", items: [
+    group: "Accounting & Finance", icon: Banknote, permission: "view:accounting", items: [
       {
         to: "/accounting?tab=chart_of_accounts",
         label: "Accounting",
         icon: Calculator,
         subItems: [
-          { to: "/accounting?tab=chart_of_accounts", label: "Chart of Accounts", icon: FolderTree },
-          { to: "/accounting?tab=general_ledger", label: "General Ledger", icon: FileCheck },
+          { to: "/accounting?tab=chart_of_accounts", label: "Chart of Accounts", icon: LibraryBig },
+          { to: "/accounting?tab=general_ledger", label: "General Ledger", icon: ClipboardList },
           { to: "/accounting?tab=journal_entries", label: "Journal Entries", icon: FileCheck },
           { to: "/accounting?tab=opening_balances", label: "Opening Balances", icon: Calculator },
           { to: "/accounting?tab=closing_entries", label: "Closing Entries", icon: FileCheck },
@@ -481,9 +487,9 @@ export const nav: NavGroup[] = [
         label: "Receivables",
         icon: CreditCard,
         subItems: [
-          { to: "/accounting?tab=customers", label: "Customers", icon: Users },
-          { to: "/accounting?tab=invoices", label: "Invoices", icon: FileCheck },
-          { to: "/accounting?tab=payments", label: "Payments", icon: CreditCard },
+          { to: "/accounting?tab=customers", label: "Customers", icon: UsersRound },
+          { to: "/accounting?tab=invoices", label: "Invoices", icon: ClipboardList },
+          { to: "/accounting?tab=payments", label: "Payments", icon: Wallet },
           { to: "/accounting?tab=outstanding", label: "Outstanding", icon: Clock },
           { to: "/accounting?tab=collections", label: "Collections", icon: Target },
         ]
@@ -494,7 +500,7 @@ export const nav: NavGroup[] = [
         icon: CreditCard,
         subItems: [
           { to: "/accounting?tab=vendor_bills", label: "Vendor Bills", icon: FileCheck },
-          { to: "/accounting?tab=payments_made", label: "Payments", icon: CreditCard },
+          { to: "/accounting?tab=payments_made", label: "Payments", icon: Wallet },
           { to: "/accounting?tab=credit_notes", label: "Credit Notes", icon: FileCheck },
           { to: "/accounting?tab=debit_notes", label: "Debit Notes", icon: FileCheck },
           { to: "/accounting?tab=vendor_aging", label: "Vendor Aging", icon: Clock },
@@ -566,7 +572,7 @@ export const nav: NavGroup[] = [
           { to: "/accounting?tab=balance_sheet", label: "Balance Sheet", icon: FileCheck },
           { to: "/accounting?tab=trial_balance", label: "Trial Balance", icon: FileCheck },
           { to: "/accounting?tab=cash_flow_statement", label: "Cash Flow", icon: FileCheck },
-          { to: "/accounting?tab=gl_statement", label: "General Ledger", icon: FileCheck },
+          { to: "/accounting?tab=gl_statement", label: "General Ledger", icon: ClipboardList },
         ]
       },
       {
@@ -584,16 +590,16 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "HRMS", icon: Users, permission: "view:hrms", items: [
+    group: "HRMS", icon: UserCheck, permission: "view:hrms", items: [
       {
         to: "/hrms?tab=employees",
         label: "Employee Management",
         icon: Users,
         subItems: [
-          { to: "/hrms?tab=employees", label: "Employees", icon: Users },
-          { to: "/hrms?tab=departments", label: "Departments", icon: Briefcase },
+          { to: "/hrms?tab=employees", label: "Employees", icon: UsersRound },
+          { to: "/hrms?tab=departments", label: "Departments", icon: LibraryBig },
           { to: "/hrms?tab=designations", label: "Designations", icon: Target },
-          { to: "/hrms?tab=teams", label: "Teams", icon: Users },
+          { to: "/hrms?tab=teams", label: "Teams", icon: UsersRound },
           { to: "/hrms?tab=documents", label: "Documents", icon: FileCheck },
           { to: "/hrms?tab=employee_profile", label: "Employee Profile", icon: UserCog },
         ]
@@ -604,8 +610,8 @@ export const nav: NavGroup[] = [
         icon: Clock,
         subItems: [
           { to: "/hrms?tab=daily_attendance", label: "Daily Attendance", icon: Clock },
-          { to: "/hrms?tab=biometric", label: "Biometric", icon: Radio },
-          { to: "/hrms?tab=face_recognition", label: "Face Recognition", icon: ScanBarcode },
+          { to: "/hrms?tab=biometric", label: "Biometric", icon: Fingerprint },
+          { to: "/hrms?tab=face_recognition", label: "Face Recognition", icon: Webcam },
           { to: "/hrms?tab=gps_attendance", label: "GPS Attendance", icon: MapPin },
           { to: "/hrms?tab=shift_attendance", label: "Shift Attendance", icon: Clock },
           { to: "/hrms?tab=attendance_corrections", label: "Attendance Corrections", icon: FileCheck },
@@ -644,7 +650,7 @@ export const nav: NavGroup[] = [
         label: "Recruitment",
         icon: Briefcase,
         subItems: [
-          { to: "/hrms?tab=job_openings", label: "Job Openings", icon: Briefcase },
+          { to: "/hrms?tab=job_openings", label: "Job Openings", icon: BriefcaseBusiness },
           { to: "/hrms?tab=applicants", label: "Applicants", icon: Users },
           { to: "/hrms?tab=interviews", label: "Interviews", icon: Clock },
           { to: "/hrms?tab=offer_letters", label: "Offer Letters", icon: FileCheck },
@@ -714,19 +720,19 @@ export const nav: NavGroup[] = [
     ]
   },
   {
-    group: "IoT", icon: Radio, permission: "view:iot", items: [
+    group: "IoT", icon: RadioTower, permission: "view:iot", items: [
       {
         to: "/iot?tab=connected_devices",
         label: "Devices",
         icon: Radio,
         subItems: [
-          { to: "/iot?tab=connected_devices", label: "Connected Devices", icon: Radio },
+          { to: "/iot?tab=connected_devices", label: "Connected Devices", icon: Signal },
           { to: "/iot?tab=biometric_devices", label: "Biometric Devices", icon: ScanBarcode },
           { to: "/iot?tab=barcode_scanners", label: "Barcode Scanners", icon: Barcode },
           { to: "/iot?tab=rfid_readers", label: "RFID Readers", icon: Radio },
-          { to: "/iot?tab=face_recognition", label: "Face Recognition", icon: ScanBarcode },
+          { to: "/iot?tab=face_recognition", label: "Face Recognition", icon: Webcam },
           { to: "/iot?tab=gps_devices", label: "GPS Devices", icon: MapPin },
-          { to: "/iot?tab=sensors", label: "Sensors", icon: Activity },
+          { to: "/iot?tab=sensors", label: "Sensors", icon: Microscope },
         ]
       },
       {
@@ -736,7 +742,7 @@ export const nav: NavGroup[] = [
         subItems: [
           { to: "/iot?tab=device_status", label: "Device Status", icon: Activity },
           { to: "/iot?tab=health", label: "Health", icon: Activity },
-          { to: "/iot?tab=alerts", label: "Alerts", icon: AlertTriangle },
+          { to: "/iot?tab=alerts", label: "Alerts", icon: Signal },
           { to: "/iot?tab=device_logs", label: "Device Logs", icon: History },
           { to: "/iot?tab=firmware", label: "Firmware", icon: Settings },
           { to: "/iot?tab=connectivity", label: "Connectivity", icon: Network },
@@ -774,13 +780,13 @@ export const nav: NavGroup[] = [
           { to: "/iot?tab=device_health", label: "Device Health", icon: LineChart },
           { to: "/iot?tab=heatmaps", label: "Heatmaps", icon: MapPin },
           { to: "/iot?tab=movement_analytics", label: "Movement Analytics", icon: Activity },
-          { to: "/iot?tab=analytics_alerts", label: "Alerts", icon: AlertTriangle },
+          { to: "/iot?tab=analytics_alerts", label: "Alerts", icon: Signal },
         ]
       },
     ]
   },
   {
-    group: "Analytics & Intelligence", icon: BarChart3, permission: "view:reports", items: [
+    group: "Analytics & Intelligence", icon: AreaChart, permission: "view:reports", items: [
       {
         to: "/reports?tab=sales_reports",
         label: "Sales",

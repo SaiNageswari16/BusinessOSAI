@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  Search, Bell, MessageSquare, Sun, Moon, Settings, LogOut, Plus,
+  Search, Bell, MessageSquare, Settings, LogOut, Plus,
   Command as CommandIcon, ChevronDown, Building2, GitBranch, Sparkles, ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
@@ -24,7 +23,6 @@ import { liveNotificationsApi, LiveNotification } from "@/lib/api-client";
 import { toast } from "sonner";
 
 export function AppTopbar() {
-  const { theme, toggle } = useTheme();
   const { user, logout } = useAuth();
   const {
     tenant: company,
@@ -124,9 +122,9 @@ export function AppTopbar() {
   const unreadCount = activeNotifs.filter((n) => n.unread).length;
 
   return (
-    <header className="h-[56px] shrink-0 bg-card border-b border-border z-20 flex items-center gap-3 px-4 sm:px-6">
+    <header className="sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4 lg:px-6 shadow-sm">
       {/* Brand / Logo */}
-      <div className="flex items-center gap-3 mr-4">
+      <div className="flex items-center gap-2 mr-2">
         <div className="size-8 shrink-0 rounded-lg gradient-brand grid place-items-center text-white shadow-elegant">
           <Sparkles className="size-4" />
         </div>
@@ -139,7 +137,7 @@ export function AppTopbar() {
       {/* Company / Branch switcher */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="gap-2 px-2 h-10">
+          <Button variant="ghost" className="gap-1.5 px-1.5 h-10">
             <div className="size-7 rounded-md gradient-brand grid place-items-center text-white text-xs font-bold">
               {company.logo}
             </div>
@@ -170,7 +168,7 @@ export function AppTopbar() {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="hidden lg:inline-flex gap-2 px-2 h-10 text-sm font-medium">
+          <Button variant="ghost" className="hidden lg:inline-flex gap-1.5 px-1.5 h-10 text-sm font-medium">
             <GitBranch className="size-3.5 text-muted-foreground" />
             {activeBranch ? `${activeBranch.name} (${activeBranch.code})` : "Select Branch"}
             <ChevronDown className="size-3.5 text-muted-foreground" />
@@ -197,7 +195,7 @@ export function AppTopbar() {
       {/* Role Switcher */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="hidden lg:inline-flex gap-2 px-2 h-10 text-sm font-medium">
+          <Button variant="ghost" className="hidden lg:inline-flex gap-1.5 px-1.5 h-10 text-sm font-medium">
             <ShieldCheck className="size-3.5 text-primary" />
             {activeRole?.name || "Select Role"}
             <ChevronDown className="size-3.5 text-muted-foreground" />
@@ -221,32 +219,25 @@ export function AppTopbar() {
       {/* Search */}
       <button
         onClick={() => setPaletteOpen(true)}
-        className="flex-1 max-w-xl ml-2 h-9 px-3 rounded-lg border-0 bg-muted hover:bg-muted/80 transition flex items-center gap-2 text-sm text-muted-foreground"
+        className="flex-1 max-w-3xl ml-4 h-9 px-3 rounded-lg border border-border bg-white hover:border-blue-400 focus:outline-none transition-all flex items-center justify-between gap-2 text-sm text-muted-foreground shadow-sm"
       >
-        <Search className="size-4" />
-        <span className="hidden sm:inline">Search anything — orders, products, people…</span>
-        <span className="sm:hidden">Search</span>
-        <kbd className="ml-auto hidden sm:flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-background border">
-          <CommandIcon className="size-3" />K
+        <div className="flex items-center gap-2">
+          <Search className="size-4" />
+          <span className="hidden sm:inline">Search anything — orders, products, people…</span>
+        </div>
+        <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+          <span className="text-xs">⌘</span>K
         </kbd>
       </button>
 
       <div className="flex items-center gap-1">
-        {/* Quick action */}
-        <Button size="sm" className="hidden md:inline-flex gradient-brand text-white border-0 hover:opacity-90 gap-1.5 h-9">
-          <Plus className="size-4" /> Quick action
-        </Button>
+
 
         {/* Date/Time */}
         <div className="hidden xl:flex flex-col items-end px-3 border-l ml-2">
           <div className="text-xs font-semibold">{format(now, "EEE, MMM d")}</div>
           <div className="text-[10px] text-muted-foreground">{format(now, "h:mm a")} · UTC−7</div>
         </div>
-
-        {/* Theme toggle */}
-        <Button variant="ghost" size="icon" onClick={toggle} className="h-9 w-9">
-          {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-        </Button>
 
         {/* Messages */}
         <Button variant="ghost" size="icon" className="h-9 w-9 relative">
@@ -298,11 +289,6 @@ export function AppTopbar() {
             </div>
           </PopoverContent>
         </Popover>
-
-        {/* Settings */}
-        <Button variant="ghost" size="icon" className="h-9 w-9">
-          <Settings className="size-4" />
-        </Button>
 
         {/* User */}
         <DropdownMenu>

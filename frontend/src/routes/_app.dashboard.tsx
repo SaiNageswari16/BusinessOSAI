@@ -96,14 +96,30 @@ function Dashboard() {
 
       {/* ── Welcome Banner ── */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="relative overflow-hidden border-0 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white p-5 shadow-md shadow-teal-500/10">
-          <div className="absolute -top-24 -right-24 size-72 rounded-full bg-emerald-400/20 blur-3xl" />
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-r from-blue-700 via-blue-600 to-blue-500 text-white p-5 shadow-sm">
+          
+          {/* Beautiful, clean abstract wave - Lightened */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <svg width="100%" height="100%" viewBox="0 0 1440 200" preserveAspectRatio="none">
+              <ellipse cx="720" cy="100" rx="400" ry="100" fill="#ffffff" opacity="0.05" filter="blur(40px)" />
+              
+              {/* Thick soft background sweep */}
+              <path d="M-100,150 C300,-50 600,250 1540,50" fill="none" stroke="#ffffff" strokeWidth="6" opacity="0.05" filter="blur(4px)" />
+              
+              {/* Clean crossing wave 1 */}
+              <path d="M-100,100 C400,-20 800,250 1540,80" fill="none" stroke="#ffffff" strokeWidth="2.5" opacity="0.07" />
+              
+              {/* Sharp bright glowing streak */}
+              <path d="M-100,180 C500,0 900,200 1540,40" fill="none" stroke="#ffffff" strokeWidth="1.5" opacity="0.1" />
+              <path d="M-100,180 C500,0 900,200 1540,40" fill="none" stroke="#e0f2fe" strokeWidth="5" opacity="0.05" filter="blur(3px)" />
+            </svg>
+          </div>
           
           <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-50 font-medium">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-blue-50 font-medium">
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/20 text-white shadow-sm">
-                  <span className="size-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                  <span className="size-1.5 rounded-full bg-blue-300" />
                   All systems operational
                 </span>
                 {isPlatformAdmin ? (
@@ -117,9 +133,9 @@ function Dashboard() {
               </div>
 
               <h1 className="text-2xl font-bold mt-2 tracking-tight">
-                {greeting}, {firstName}
+                {greeting}, {firstName} 👋
               </h1>
-              <p className="text-emerald-50/90 mt-1 text-sm max-w-xl">
+              <p className="text-blue-50/90 mt-1 text-sm max-w-xl">
                 Your business is up{" "}
                 <span className="font-semibold text-white">+12.4%</span> this month.
                 Here's your workspace overview for today.
@@ -130,7 +146,7 @@ function Dashboard() {
               <Button variant="outline" className="gap-1.5 bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white transition-colors">
                 <FileText className="size-4" /> Export brief
               </Button>
-              <Button asChild className="gap-1.5 bg-white text-teal-700 hover:bg-white/90 shadow-sm border-0 transition-colors">
+              <Button asChild className="gap-1.5 bg-white text-blue-700 hover:bg-white/90 shadow-sm border-0 transition-colors">
                 <Link to="/copilot">
                   <Sparkles className="size-4" /> Ask Antigravity AI
                 </Link>

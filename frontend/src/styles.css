@@ -53,10 +53,10 @@
 
 :root {
   --radius: 0.75rem;
-  --background: oklch(0.985 0.005 250); /* Cool frosty light-gray */
-  --foreground: oklch(0.20 0.02 250);
+  --background: oklch(1 0 0); /* Pure White */
+  --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.20 0.02 250);
+  --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.20 0.02 250);
   --primary: oklch(0.60 0.15 250); /* Smooth Slate Blue */
@@ -185,14 +185,14 @@
 }
 
 @utility gradient-brand {
-  background-image: linear-gradient(135deg, var(--brand-violet), var(--brand-cyan));
+  background-image: linear-gradient(135deg, #1d4ed8, #3b82f6);
 }
 
 @utility text-gradient-brand {
-  background-image: linear-gradient(135deg, var(--brand-violet), var(--brand-cyan));
+  background-image: linear-gradient(135deg, #1d4ed8, #3b82f6);
   -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   background-clip: text;
-  color: transparent;
 }
 
 @utility shadow-elegant {
