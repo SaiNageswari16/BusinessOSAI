@@ -6,6 +6,21 @@ import { cn } from "@/lib/utils";
 import { Menu, X, ArrowLeft } from "lucide-react";
 import { useRbac } from "@/contexts/rbac-context";
 
+const themeMap: Record<string, { text: string; indicator: string; bgL2: string; borderL2: string; bgL3: string; shadowL3: string; }> = {
+  slate: { text: "text-slate-600", indicator: "bg-slate-600", bgL2: "bg-slate-50/50", borderL2: "border-slate-100", bgL3: "bg-gradient-to-r from-slate-700 to-slate-500", shadowL3: "shadow-slate-500/30" },
+  blue: { text: "text-blue-600", indicator: "bg-blue-600", bgL2: "bg-blue-50/50", borderL2: "border-blue-100", bgL3: "bg-gradient-to-r from-blue-700 to-blue-500", shadowL3: "shadow-blue-500/30" },
+  emerald: { text: "text-emerald-600", indicator: "bg-emerald-600", bgL2: "bg-emerald-50/50", borderL2: "border-emerald-100", bgL3: "bg-gradient-to-r from-emerald-700 to-emerald-500", shadowL3: "shadow-emerald-500/30" },
+  teal: { text: "text-teal-600", indicator: "bg-teal-600", bgL2: "bg-teal-50/50", borderL2: "border-teal-100", bgL3: "bg-gradient-to-r from-teal-700 to-teal-500", shadowL3: "shadow-teal-500/30" },
+  rose: { text: "text-rose-600", indicator: "bg-rose-600", bgL2: "bg-rose-50/50", borderL2: "border-rose-100", bgL3: "bg-gradient-to-r from-rose-700 to-rose-500", shadowL3: "shadow-rose-500/30" },
+  orange: { text: "text-orange-600", indicator: "bg-orange-600", bgL2: "bg-orange-50/50", borderL2: "border-orange-100", bgL3: "bg-gradient-to-r from-orange-700 to-orange-500", shadowL3: "shadow-orange-500/30" },
+  violet: { text: "text-violet-600", indicator: "bg-violet-600", bgL2: "bg-violet-50/50", borderL2: "border-violet-100", bgL3: "bg-gradient-to-r from-violet-700 to-violet-500", shadowL3: "shadow-violet-500/30" },
+  sky: { text: "text-sky-600", indicator: "bg-sky-600", bgL2: "bg-sky-50/50", borderL2: "border-sky-100", bgL3: "bg-gradient-to-r from-sky-700 to-sky-500", shadowL3: "shadow-sky-500/30" },
+  indigo: { text: "text-indigo-600", indicator: "bg-indigo-600", bgL2: "bg-indigo-50/50", borderL2: "border-indigo-100", bgL3: "bg-gradient-to-r from-indigo-700 to-indigo-500", shadowL3: "shadow-indigo-500/30" },
+  cyan: { text: "text-cyan-600", indicator: "bg-cyan-600", bgL2: "bg-cyan-50/50", borderL2: "border-cyan-100", bgL3: "bg-gradient-to-r from-cyan-700 to-cyan-500", shadowL3: "shadow-cyan-500/30" },
+  zinc: { text: "text-zinc-600", indicator: "bg-zinc-600", bgL2: "bg-zinc-50/50", borderL2: "border-zinc-100", bgL3: "bg-gradient-to-r from-zinc-700 to-zinc-500", shadowL3: "shadow-zinc-500/30" },
+  fuchsia: { text: "text-fuchsia-600", indicator: "bg-fuchsia-600", bgL2: "bg-fuchsia-50/50", borderL2: "border-fuchsia-100", bgL3: "bg-gradient-to-r from-fuchsia-700 to-fuchsia-500", shadowL3: "shadow-fuchsia-500/30" }
+};
+
 export function RibbonNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -148,6 +163,7 @@ export function RibbonNavigation() {
         )}>
           {visibleNav.map((group) => {
             const isActive = activeGroup.group === group.group;
+            const themeObj = themeMap[group.theme || "blue"] || themeMap.blue;
             return (
               <button
                 key={group.group}
@@ -155,16 +171,16 @@ export function RibbonNavigation() {
                 className={cn(
                   "relative flex flex-col items-center justify-center gap-1.5 min-w-[100px] h-[72px] px-3 text-[12px] font-medium transition-all whitespace-nowrap",
                   isActive 
-                    ? "text-blue-600" 
+                    ? themeObj.text 
                     : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                 )}
               >
-                <group.icon className={cn("size-[22px]", isActive && "text-primary")} strokeWidth={isActive ? 2 : 1.5} />
+                <group.icon className={cn("size-[22px]", isActive && themeObj.text)} strokeWidth={isActive ? 2 : 1.5} />
                 {group.group}
                 {isActive && (
                   <motion.div
                     layoutId="activeGroupLine"
-                    className="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-600"
+                    className={cn("absolute bottom-0 left-0 right-0 h-[3px]", themeObj.indicator)}
                     initial={false}
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
@@ -190,6 +206,7 @@ export function RibbonNavigation() {
               <div className="flex items-end px-4 overflow-x-auto bg-white pt-3 pb-1.5 gap-1.5 border-b border-border/60">
                 {activeGroup.items.map((item) => {
                   const isActive = activeItem.label === item.label;
+                  const themeObj = themeMap[activeGroup.theme || "blue"] || themeMap.blue;
                   return (
                     <button
                       key={item.label}
@@ -197,17 +214,17 @@ export function RibbonNavigation() {
                       className={cn(
                         "relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap rounded-t-lg border border-transparent",
                         isActive 
-                          ? "bg-blue-50/50 text-blue-600 border-blue-100 border-b-transparent z-10" 
+                          ? `${themeObj.bgL2} ${themeObj.text} ${themeObj.borderL2} border-b-transparent z-10` 
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/20"
                       )}
                       style={isActive ? { marginBottom: "-1.5px" } : {}}
                     >
-                      <item.icon className={cn("size-[18px]", isActive ? "text-blue-600" : "opacity-60")} />
+                      <item.icon className={cn("size-[18px]", isActive ? themeObj.text : "opacity-60")} />
                       {item.label}
                       {isActive && (
                         <motion.div
                           layoutId="activeItemLine"
-                          className="absolute top-0 left-0 right-0 h-[2px] bg-blue-600 rounded-t-full"
+                          className={cn("absolute top-0 left-0 right-0 h-[2px] rounded-t-full", themeObj.indicator)}
                           initial={false}
                           transition={{ type: "spring", stiffness: 400, damping: 30 }}
                         />
@@ -235,6 +252,7 @@ export function RibbonNavigation() {
                 )}
                 {activeItem.subItems.map((sub: any) => {
                   const isActive = activeSubItem?.label === sub.label;
+                  const themeObj = themeMap[activeGroup.theme || "blue"] || themeMap.blue;
                   return (
                     <button
                       key={sub.label}
@@ -242,7 +260,7 @@ export function RibbonNavigation() {
                       className={cn(
                         "relative flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium transition-all whitespace-nowrap rounded-full border",
                         isActive 
-                          ? "bg-gradient-to-r from-blue-700 to-blue-500 text-white border-transparent shadow-md shadow-blue-500/30" 
+                          ? `${themeObj.bgL3} text-white border-transparent shadow-md ${themeObj.shadowL3}` 
                           : "bg-muted/30 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground hover:border-border/50"
                       )}
                     >

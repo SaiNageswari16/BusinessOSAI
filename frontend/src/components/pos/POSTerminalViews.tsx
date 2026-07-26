@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import {
   ScanBarcode, Search, Clock, Combine, Truck, RefreshCw, CreditCard,
   Tag, Heart, History, Sparkles, AlertCircle, ShoppingCart, ArrowRightLeft,
@@ -8,9 +9,124 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { posProducts, posTransactions, posCustomers, posCategories } from "../../lib/pos-fallback";
 import { posApi, POSTransactionHistory } from "../../lib/api-client";
+import { useTenant } from "../../contexts/tenant-context";
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
+
+const PrintableReceipt = ({ bill, allBills }: { bill: any, allBills: any[] }) => {
+  const { tenant } = useTenant();
+  
+  if (!bill) return null;
+
+  const totalQty = bill.items?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
+  const totalItems = bill.items?.length || 0;
+
+  const companyName = tenant?.name || "";
+  const address = (tenant?.raw as any)?.address || "";
+  const taxId = (tenant?.raw as any)?.tax_id || "";
+  const cin = (tenant?.raw as any)?.registration_number || "";
+  const email = (tenant?.raw as any)?.email || "";
+
+  return createPortal(
+    <div id="printable-receipt-portal" className="w-[300px] ml-0 mr-auto p-4 font-mono text-black text-[11px] leading-tight" style={{ fontFamily: 'monospace' }}>
+      <div className="text-center mb-1">
+        <h2 className="text-sm font-bold mb-0">{companyName}</h2>
+        <p className="text-[10px] whitespace-pre-line">{address}</p>
+        <p className="text-[10px]">GSTIN/UIN: {taxId}<br/>CIN: {cin}<br/>E-Mail: {email}</p>
+      </div>
+      
+      <div className="text-center font-bold border-y border-black py-0.5 my-1 text-xs">
+        TAX INVOICE
+      </div>
+
+      <div className="text-[10px] mb-1">
+        <div className="flex justify-between">
+          <span>Bill No. : {bill.id || bill.rawId?.substring(0,8)}</span>
+          <span>Time : {new Date(bill.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>Date : {new Date(bill.date).toLocaleDateString()}</span>
+          <span>User : Admin</span>
+        </div>
+        <div>Party Name: Cash Customer</div>
+      </div>
+      
+      <div className="flex justify-between font-bold border-y border-black py-0.5 mb-1">
+        <span className="w-1/12 text-left">Sl</span>
+        <span className="w-5/12 text-left pl-1">Description</span>
+        <span className="w-2/12 text-center">Qty</span>
+        <span className="w-2/12 text-right">Rate</span>
+        <span className="w-2/12 text-right">Amount</span>
+      </div>
+      
+      <div className="min-h-[40px]">
+        {bill.items?.map((item: any, idx: number) => {
+          const childRefunds = allBills.filter(b => b.parentTxId === bill.rawId);
+          const refundedQty = childRefunds.reduce((sum, child) => {
+            const childItem = child.items.find((i: any) => i.product_id === item.product_id);
+            return sum + (childItem ? Math.abs(childItem.quantity) : 0);
+          }, 0);
+
+          const rate = item.price ? item.price : (item.quantity > 0 ? item.subtotal / item.quantity : 0);
+
+          return (
+            <div key={idx} className="flex justify-between mb-0.5 items-start">
+              <span className="w-1/12 text-left">{idx + 1}</span>
+              <span className="w-5/12 text-left break-words pl-1 pr-1">{item.name || `Product ${item.product_id.substring(0,4)}`}</span>
+              <span className="w-2/12 text-center">{item.quantity} {refundedQty > 0 && `(-${refundedQty})`}</span>
+              <span className="w-2/12 text-right">{rate.toFixed(2)}</span>
+              <span className="w-2/12 text-right">{Number(item.subtotal).toFixed(2)}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="border-t border-black mt-1"></div>
+      
+      <div className="flex justify-between items-center mb-1 py-0.5">
+        <span className="w-6/12 text-center font-bold">Total</span>
+        <span className="w-2/12 text-center font-bold">{totalQty}</span>
+        <span className="w-4/12 text-right font-bold">₹ {bill.subtotal?.toFixed(2) || 0}</span>
+      </div>
+
+      <div className="border-t border-black mb-1"></div>
+
+      <div className="flex justify-between mb-0.5">
+        <span>CGST @{(bill.tax/2 / bill.subtotal * 100).toFixed(0)}%</span>
+        <span>{(bill.tax/2 || 0).toFixed(2)}</span>
+      </div>
+      <div className="flex justify-between mb-0.5">
+        <span>SGST @{(bill.tax/2 / bill.subtotal * 100).toFixed(0)}%</span>
+        <span>{(bill.tax/2 || 0).toFixed(2)}</span>
+      </div>
+      
+      <div className="border-t border-black my-1"></div>
+
+      <div className="flex justify-between font-bold text-sm border-y border-black py-1 mb-2">
+        <span>Total Final Amount :</span>
+        <span>{bill.total?.toFixed(2)}</span>
+      </div>
+      
+      <div className="text-[9px] mb-2 text-justify">
+        <span className="font-bold underline">Declaration :</span><br/>
+        We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
+      </div>
+
+      <div className="text-center font-bold text-[10px] mt-2 mb-2">
+        <p>THANK YOU FOR SHOPPING WITH US</p>
+        <p>VISIT AGAIN | HAVE A NICE DAY</p>
+      </div>
+
+      {/* QR Code Placeholder */}
+      <div className="flex flex-col items-center mt-2 mb-2">
+        <span className="font-bold mb-1 text-[10px]">e-Invoice</span>
+        <QrCode className="w-20 h-20 text-black mb-1" strokeWidth={1.5} />
+      </div>
+    </div>,
+    document.body
+  );
+};
 
 const PlaceholderView = ({ title, icon: Icon, description }: any) => (
   <div className="flex-1 bg-slate-50/50 flex flex-col items-center justify-center p-8">
@@ -1150,18 +1266,26 @@ export const RecentBillsView = ({ onRefund }: { onRefund?: (id: string) => void 
         </table>
       </div>
 
-      {/* Bill Details Slideover */}
+      {/* Bill Details Modal */}
       <AnimatePresence>
         {selectedBill && (
           <motion.div
-            initial={{ x: "100%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "100%", opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="absolute -top-6 -bottom-6 -right-6 w-full md:w-[450px] bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
+            onClick={() => setSelectedBill(null)}
           >
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
-              <div className="flex items-center gap-3 text-slate-900">
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
+                <div className="flex items-center gap-3 text-slate-900">
                 <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
                   <History className="w-5 h-5" />
                 </div>
@@ -1297,8 +1421,10 @@ export const RecentBillsView = ({ onRefund }: { onRefund?: (id: string) => void 
               )}
             </div>
           </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
+      <PrintableReceipt bill={selectedBill} allBills={bills} />
     </div>
   );
 };

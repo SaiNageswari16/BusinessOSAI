@@ -824,7 +824,7 @@ async def seed_crm_features(db: AsyncSession) -> None:
             CRMQuotation(
                 tenant_id=tenant_id,
                 customer_id=customers[0].id,
-                quote_number="QT-2026-0001",
+                quote_number=f"QT-2026-{tenant.slug.upper()}-001",
                 items={"items": [{"name": "Enterprise POS Subscription", "qty": 10, "price": 1200}]},
                 subtotal=12000.0,
                 tax=2160.0,
@@ -834,7 +834,7 @@ async def seed_crm_features(db: AsyncSession) -> None:
             CRMQuotation(
                 tenant_id=tenant_id,
                 customer_id=customers[1].id,
-                quote_number="QT-2026-0002",
+                quote_number=f"QT-2026-{tenant.slug.upper()}-002",
                 items={"items": [{"name": "Hardware Terminal Pro", "qty": 5, "price": 450}]},
                 subtotal=2250.0,
                 tax=405.0,
@@ -852,7 +852,7 @@ async def seed_crm_features(db: AsyncSession) -> None:
             CRMSalesOrder(
                 tenant_id=tenant_id,
                 customer_id=customers[0].id,
-                order_number="SO-2026-0001",
+                order_number=f"SO-2026-{tenant.slug.upper()}-001",
                 items={"items": [{"name": "Enterprise Subscription", "qty": 1, "price": 8500}]},
                 total=8500.0,
                 status="Processing",
