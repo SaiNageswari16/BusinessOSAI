@@ -262,7 +262,7 @@ export function RecruitmentIntegrations() {
                   </>
                 ) : (
                   <p className="text-xs text-muted-foreground py-2 leading-relaxed">
-                    Connect Zoho Recruit to automatically publish job openings from BusinessOS AI and sync applicants back to your candidate master database in real time.
+                    Connect Zoho Recruit to automatically publish job openings from IOTRONCS Retail and sync applicants back to your candidate master database in real time.
                   </p>
                 )}
               </div>

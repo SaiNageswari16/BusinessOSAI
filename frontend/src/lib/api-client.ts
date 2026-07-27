@@ -1,5 +1,5 @@
 /**
- * BusinessOS AI â€” Central API Client
+ * IOTRONCS Retail â€” Central API Client
  * All backend API calls go through this module.
  * Auth token is injected from localStorage (set by AuthProvider).
  */

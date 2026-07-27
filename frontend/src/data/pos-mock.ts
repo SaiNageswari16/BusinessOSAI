@@ -6,7 +6,7 @@ import {
 
 // --- STORE & SESSION ---
 export const posStore = {
-  name: "BusinessOS Enterprise Store",
+  name: "IOTRONCS Retail Store",
   code: "BOS-HQ-01",
   branch: "San Francisco Flagship",
   address: "Market Street, SF, CA 94103",

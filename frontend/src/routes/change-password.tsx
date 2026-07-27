@@ -78,7 +78,7 @@ function ChangePasswordPage() {
             <Sparkles className="size-6" />
           </div>
           <div>
-            <div className="font-bold text-lg tracking-tight">BusinessOS AI</div>
+            <div className="font-bold text-lg tracking-tight">IOTRONCS Retail</div>
             <div className="text-xs text-white/70">Secure workspace access</div>
           </div>
         </div>
@@ -108,7 +108,7 @@ function ChangePasswordPage() {
         </div>
 
         <div className="relative z-10 text-xs text-white/40">
-          © {new Date().getFullYear()} BusinessOS AI. All rights reserved.
+          © {new Date().getFullYear()} IOTRONCS Retail. All rights reserved.
         </div>
 
         {/* decorative blobs */}
@@ -127,7 +127,7 @@ function ChangePasswordPage() {
             <div className="size-10 rounded-xl gradient-brand grid place-items-center text-white">
               <Sparkles className="size-5" />
             </div>
-            <span className="font-bold text-lg">BusinessOS AI</span>
+            <span className="font-bold text-lg">IOTRONCS Retail</span>
           </div>
 
           <div className="flex items-center gap-3 mb-2">

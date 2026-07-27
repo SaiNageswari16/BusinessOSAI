@@ -32,7 +32,7 @@ export type NavGroup = {
 
 export const nav: NavGroup[] = [
   {
-    group: "Workspace", theme: "slate", icon: Compass, items: [
+    group: "Workspace", theme: "indigo", icon: Package, items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view:dashboard" },
       { to: "/copilot", label: "Antigravity AI", icon: Sparkles, badge: "OS", permission: "view:copilot" },
     ]

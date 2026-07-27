@@ -1102,7 +1102,7 @@ function PosAiAssistant() {
         <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center"><Sparkles className="w-5 h-5" /></div>
         <div>
           <h2 className="text-2xl font-bold">{view && panels[view] ? panel.title : "POS AI Copilot"}</h2>
-          <p className="text-slate-500 text-sm">Powered by BusinessOS AI · Realtime</p>
+          <p className="text-slate-500 text-sm">Powered by IOTRONCS Retail · Realtime</p>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-4 mb-6 shrink-0">

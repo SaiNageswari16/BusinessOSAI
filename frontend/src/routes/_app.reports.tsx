@@ -293,7 +293,7 @@ function ReportsModule() {
             <BrainCircuit className="size-6 text-white" />
           </div>
           <div>
-            <h2 className="font-extrabold text-base tracking-tight text-foreground">BusinessOS AI</h2>
+            <h2 className="font-extrabold text-base tracking-tight text-foreground">IOTRONCS Retail</h2>
             <span className="text-xs font-semibold text-primary">Analytics & Intelligence</span>
           </div>
         </div>

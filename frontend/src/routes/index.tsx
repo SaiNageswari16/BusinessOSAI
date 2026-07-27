@@ -114,7 +114,7 @@ function LoginPage() {
             <Sparkles className="size-6 text-indigo-600" />
           </div>
           <div>
-            <div className="font-bold text-xl tracking-tight text-slate-900">BusinessOS AI</div>
+            <div className="font-bold text-xl tracking-tight text-slate-900">IOTRONCS Retail</div>
             <div className="text-xs text-indigo-600 uppercase tracking-wider font-semibold mt-0.5">Enterprise Operating System</div>
           </div>
         </div>
@@ -158,7 +158,7 @@ function LoginPage() {
             <div className="size-10 rounded-xl bg-indigo-600 grid place-items-center text-white shadow-md shadow-indigo-600/20">
               <Sparkles className="size-5" />
             </div>
-            <span className="font-bold text-xl tracking-tight">BusinessOS AI</span>
+            <span className="font-bold text-xl tracking-tight">IOTRONCS Retail</span>
           </div>
 
           <h2 className="text-3xl font-bold tracking-tight text-foreground">{mode === "login" ? "Welcome back" : "Create your workspace"}</h2>

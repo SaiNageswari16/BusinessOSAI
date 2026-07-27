@@ -127,7 +127,7 @@ function Dashboard() {
                     Platform Admin Console
                   </span>
                 ) : (
-                  <span>{company?.name ?? "BusinessOS"} Workspace</span>
+                  <span>{company?.name ?? "IOTRONCS Retail"} Workspace</span>
                 )}
                 <span>· {today}</span>
               </div>

@@ -119,7 +119,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "BusinessOS AI — Enterprise Operating System" },
+      { title: "IOTRONCS Retail — Enterprise Operating System" },
       { name: "description", content: "AI-powered Business Operating System unifying ERP, POS, Inventory, Accounting, CRM, HRMS, IoT and Analytics." },
     ],
     links: [

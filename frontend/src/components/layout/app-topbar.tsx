@@ -129,7 +129,7 @@ export function AppTopbar() {
           <Sparkles className="size-4" />
         </div>
         <div className="hidden lg:block overflow-hidden">
-          <div className="font-bold tracking-tight text-foreground leading-none">BusinessOS AI</div>
+          <div className="font-bold tracking-tight text-foreground leading-none">IOTRONCS Retail</div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">AI Edition</div>
         </div>
       </div>

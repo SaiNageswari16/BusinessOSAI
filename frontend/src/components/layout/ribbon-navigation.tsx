@@ -7,18 +7,18 @@ import { Menu, X, ArrowLeft } from "lucide-react";
 import { useRbac } from "@/contexts/rbac-context";
 
 const themeMap: Record<string, { text: string; indicator: string; bgL2: string; borderL2: string; bgL3: string; shadowL3: string; }> = {
-  slate: { text: "text-slate-600", indicator: "bg-slate-600", bgL2: "bg-slate-50/50", borderL2: "border-slate-100", bgL3: "bg-gradient-to-r from-slate-700 to-slate-500", shadowL3: "shadow-slate-500/30" },
-  blue: { text: "text-blue-600", indicator: "bg-blue-600", bgL2: "bg-blue-50/50", borderL2: "border-blue-100", bgL3: "bg-gradient-to-r from-blue-700 to-blue-500", shadowL3: "shadow-blue-500/30" },
-  emerald: { text: "text-emerald-600", indicator: "bg-emerald-600", bgL2: "bg-emerald-50/50", borderL2: "border-emerald-100", bgL3: "bg-gradient-to-r from-emerald-700 to-emerald-500", shadowL3: "shadow-emerald-500/30" },
-  teal: { text: "text-teal-600", indicator: "bg-teal-600", bgL2: "bg-teal-50/50", borderL2: "border-teal-100", bgL3: "bg-gradient-to-r from-teal-700 to-teal-500", shadowL3: "shadow-teal-500/30" },
-  rose: { text: "text-rose-600", indicator: "bg-rose-600", bgL2: "bg-rose-50/50", borderL2: "border-rose-100", bgL3: "bg-gradient-to-r from-rose-700 to-rose-500", shadowL3: "shadow-rose-500/30" },
-  orange: { text: "text-orange-600", indicator: "bg-orange-600", bgL2: "bg-orange-50/50", borderL2: "border-orange-100", bgL3: "bg-gradient-to-r from-orange-700 to-orange-500", shadowL3: "shadow-orange-500/30" },
-  violet: { text: "text-violet-600", indicator: "bg-violet-600", bgL2: "bg-violet-50/50", borderL2: "border-violet-100", bgL3: "bg-gradient-to-r from-violet-700 to-violet-500", shadowL3: "shadow-violet-500/30" },
-  sky: { text: "text-sky-600", indicator: "bg-sky-600", bgL2: "bg-sky-50/50", borderL2: "border-sky-100", bgL3: "bg-gradient-to-r from-sky-700 to-sky-500", shadowL3: "shadow-sky-500/30" },
-  indigo: { text: "text-indigo-600", indicator: "bg-indigo-600", bgL2: "bg-indigo-50/50", borderL2: "border-indigo-100", bgL3: "bg-gradient-to-r from-indigo-700 to-indigo-500", shadowL3: "shadow-indigo-500/30" },
-  cyan: { text: "text-cyan-600", indicator: "bg-cyan-600", bgL2: "bg-cyan-50/50", borderL2: "border-cyan-100", bgL3: "bg-gradient-to-r from-cyan-700 to-cyan-500", shadowL3: "shadow-cyan-500/30" },
-  zinc: { text: "text-zinc-600", indicator: "bg-zinc-600", bgL2: "bg-zinc-50/50", borderL2: "border-zinc-100", bgL3: "bg-gradient-to-r from-zinc-700 to-zinc-500", shadowL3: "shadow-zinc-500/30" },
-  fuchsia: { text: "text-fuchsia-600", indicator: "bg-fuchsia-600", bgL2: "bg-fuchsia-50/50", borderL2: "border-fuchsia-100", bgL3: "bg-gradient-to-r from-fuchsia-700 to-fuchsia-500", shadowL3: "shadow-fuchsia-500/30" }
+  slate: { text: "text-slate-600", indicator: "bg-slate-600", bgL2: "bg-slate-50/50", borderL2: "border-slate-100", bgL3: "bg-gradient-to-br from-slate-400 to-slate-600", shadowL3: "shadow-slate-500/30" },
+  blue: { text: "text-blue-600", indicator: "bg-blue-600", bgL2: "bg-blue-50/50", borderL2: "border-blue-100", bgL3: "bg-gradient-to-br from-blue-400 to-blue-600", shadowL3: "shadow-blue-500/30" },
+  emerald: { text: "text-emerald-600", indicator: "bg-emerald-600", bgL2: "bg-emerald-50/50", borderL2: "border-emerald-100", bgL3: "bg-gradient-to-br from-emerald-400 to-emerald-600", shadowL3: "shadow-emerald-500/30" },
+  teal: { text: "text-teal-600", indicator: "bg-teal-600", bgL2: "bg-teal-50/50", borderL2: "border-teal-100", bgL3: "bg-gradient-to-br from-teal-400 to-teal-600", shadowL3: "shadow-teal-500/30" },
+  rose: { text: "text-rose-600", indicator: "bg-rose-600", bgL2: "bg-rose-50/50", borderL2: "border-rose-100", bgL3: "bg-gradient-to-br from-rose-400 to-rose-600", shadowL3: "shadow-rose-500/30" },
+  orange: { text: "text-orange-600", indicator: "bg-orange-600", bgL2: "bg-orange-50/50", borderL2: "border-orange-100", bgL3: "bg-gradient-to-br from-orange-400 to-orange-600", shadowL3: "shadow-orange-500/30" },
+  violet: { text: "text-violet-600", indicator: "bg-violet-600", bgL2: "bg-violet-50/50", borderL2: "border-violet-100", bgL3: "bg-gradient-to-br from-violet-400 to-violet-600", shadowL3: "shadow-violet-500/30" },
+  sky: { text: "text-sky-600", indicator: "bg-sky-600", bgL2: "bg-sky-50/50", borderL2: "border-sky-100", bgL3: "bg-gradient-to-br from-sky-400 to-sky-600", shadowL3: "shadow-sky-500/30" },
+  indigo: { text: "text-indigo-600", indicator: "bg-indigo-600", bgL2: "bg-indigo-50/50", borderL2: "border-indigo-100", bgL3: "bg-gradient-to-br from-indigo-400 to-indigo-600", shadowL3: "shadow-indigo-500/30" },
+  cyan: { text: "text-cyan-600", indicator: "bg-cyan-600", bgL2: "bg-cyan-50/50", borderL2: "border-cyan-100", bgL3: "bg-gradient-to-br from-cyan-400 to-cyan-600", shadowL3: "shadow-cyan-500/30" },
+  zinc: { text: "text-zinc-600", indicator: "bg-zinc-600", bgL2: "bg-zinc-50/50", borderL2: "border-zinc-100", bgL3: "bg-gradient-to-br from-zinc-500 to-zinc-800", shadowL3: "shadow-zinc-500/30" },
+  fuchsia: { text: "text-fuchsia-600", indicator: "bg-fuchsia-600", bgL2: "bg-fuchsia-50/50", borderL2: "border-fuchsia-100", bgL3: "bg-gradient-to-br from-fuchsia-400 to-fuchsia-600", shadowL3: "shadow-fuchsia-500/30" }
 };
 
 export function RibbonNavigation() {
@@ -169,22 +169,17 @@ export function RibbonNavigation() {
                 key={group.group}
                 onClick={() => handleGroupClick(group)}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-1.5 min-w-[100px] h-[72px] px-3 text-[12px] font-medium transition-all whitespace-nowrap",
-                  isActive 
-                    ? themeObj.text 
-                    : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                  "relative flex flex-col items-center justify-center gap-1.5 min-w-[100px] h-[72px] px-3 text-[13px] font-bold text-black dark:text-white transition-all whitespace-nowrap",
+                  !isActive && "hover:bg-black/5 dark:hover:bg-white/5 opacity-90 hover:opacity-100"
                 )}
               >
-                <group.icon className={cn("size-[22px]", isActive && themeObj.text)} strokeWidth={isActive ? 2 : 1.5} />
-                {group.group}
-                {isActive && (
-                  <motion.div
-                    layoutId="activeGroupLine"
-                    className={cn("absolute bottom-0 left-0 right-0 h-[3px]", themeObj.indicator)}
-                    initial={false}
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  />
-                )}
+                <div className={cn(
+                  "flex items-center justify-center size-[28px] rounded-[8px] shadow-sm transition-all",
+                  themeObj.bgL3
+                )}>
+                  <group.icon className="size-[16px] text-white" strokeWidth={isActive ? 2 : 1.5} />
+                </div>
+                <span>{group.group}</span>
               </button>
             );
           })}
@@ -219,16 +214,11 @@ export function RibbonNavigation() {
                       )}
                       style={isActive ? { marginBottom: "-1.5px" } : {}}
                     >
-                      <item.icon className={cn("size-[18px]", isActive ? themeObj.text : "opacity-60")} />
+                      <item.icon 
+                        strokeWidth={2.5}
+                        className={cn("size-[22px]", themeObj.text, !isActive && "opacity-80")} 
+                      />
                       {item.label}
-                      {isActive && (
-                        <motion.div
-                          layoutId="activeItemLine"
-                          className={cn("absolute top-0 left-0 right-0 h-[2px] rounded-t-full", themeObj.indicator)}
-                          initial={false}
-                          transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                        />
-                      )}
                     </button>
                   );
                 })}
