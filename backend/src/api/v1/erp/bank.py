@@ -233,13 +233,18 @@ async def create_transaction(
     db.add(txn)
 
     account = await db.scalar(
-        select(BankAccount).where(BankAccount.id == payload.bank_account_id)
+        select(BankAccount).where(
+            BankAccount.id == payload.bank_account_id,
+            BankAccount.tenant_id == ctx.tenant_id,
+        )
     )
-    if account:
-        if txn.transaction_type in ("credit", "deposit", "transfer_in"):
-            account.current_balance += txn.amount
-        else:
-            account.current_balance -= txn.amount
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    if txn.transaction_type in ("credit", "deposit", "transfer_in"):
+        account.current_balance += txn.amount
+    else:
+        account.current_balance -= txn.amount
 
     await write_audit_log(
         db,

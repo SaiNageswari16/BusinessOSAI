@@ -1,0 +1,40 @@
+# Deep system folders (Critical to ignore)
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Heavy dependency directories
+node_modules/
+bower_components/
+vendor/
+.venv/
+env/
+venv/
+ENV/
+packages/
+
+# Build, output, and cache folders
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+target/
+bin/
+obj/
+
+# Media, assets, and database dumps
+*.mp4
+*.mp3
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.pdf
+*.sql
+*.sqlite

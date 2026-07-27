@@ -62,9 +62,9 @@ async def create_expense_claim(
     obj = ExpenseClaim(tenant_id=ctx.tenant_id, **data)
     db.add(obj)
     await db.flush()
-    for line in lines_data:
+    for idx, line in enumerate(lines_data):
         from src.models.erp import ExpenseClaimLine
-        db.add(ExpenseClaimLine(claim_id=obj.id, **line))
+        db.add(ExpenseClaimLine(claim_id=obj.id, line_number=idx + 1, **line))
     obj.total_amount = sum(l["amount"] for l in lines_data)
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="expense_claims", action="created", entity_type="expense_claim", entity_id=obj.id, new_values={"total_amount": str(obj.total_amount)}, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     await db.commit()

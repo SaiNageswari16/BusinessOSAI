@@ -62,7 +62,6 @@ export function ModalShell({
               </button>
               <button
                 type="submit"
-                onClick={(e) => { if (onSubmit) { e.preventDefault(); onSubmit(e); } }}
                 disabled={submitting}
                 className="px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
               >

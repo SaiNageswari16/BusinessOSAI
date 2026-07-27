@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
-from src.models.erp import AccountType, ChartOfAccount, EntryStatus, JournalEntry, JournalEntryLine
+from src.models.erp import AccountSubType, AccountType, ChartOfAccount, EntryStatus, JournalEntry, JournalEntryLine
 
 logger = logging.getLogger("financial_reports_api")
 

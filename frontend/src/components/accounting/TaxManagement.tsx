@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Download, X, Save, Loader2, Calculator, CheckCircle, Clock, AlertTriangle } from "lucide-react";
+import { Plus, AlertTriangle, X, Save, Loader2, CheckCircle, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { taxApi, TaxReturn, TaxCode, TaxPayment } from "@/lib/api-client";
 import { fmt, statusStyle, typeStyle } from "@/components/accounting/utils";
@@ -44,7 +44,7 @@ function TaxRuleFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
       });
       toast.success("Tax Rule created!");
       onSaved({
-        id: created.id.slice(0, 12),
+        id: created.id,
         name: created.name,
         type: created.tax_type,
         rate: created.rate,
@@ -108,7 +108,6 @@ export function TaxManagement({ tab = "gst" }: Props) {
   const [payments, setPayments] = useState<TaxPayment[]>([]);
   const [loading, setLoading] = useState(false);
   const [showRuleModal, setShowRuleModal] = useState(false);
-  const [showFileModal, setShowFileModal] = useState(false);
 
   const handleAddRule = (newRule: Partial<TaxRule>) => {
     setRules(p => [newRule as TaxRule, ...p]);
@@ -122,16 +121,16 @@ export function TaxManagement({ tab = "gst" }: Props) {
         taxApi.listTaxCodes(),
         taxApi.listTaxPayments(),
       ]);
-      setReturns((returnsRes.items || []).map(r => ({ ...r, id: r.id?.slice(0, 12) || r.id })));
+      setReturns(returnsRes.items || []);
       setRules((codesRes.items || []).map(r => ({
-        id: r.id.slice(0, 12),
+        id: r.id,
         name: r.name,
         type: r.tax_type,
         rate: r.rate,
         appliesTo: r.code,
         status: r.is_active ? "Active" : "Inactive",
       })));
-      setPayments((paymentsRes.items || []).map(p => ({ ...p, id: p.id?.slice(0, 12) || p.id })));
+      setPayments(paymentsRes.items || []);
     } catch {
       toast.error("Failed to load tax data");
     } finally {
@@ -151,7 +150,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
 
   const typeFilter: Record<string, string> = { gst: "GST", tds: "TDS", vat: "VAT" };
   const targetType = typeFilter[tab];
-  const filteredReturns = targetType ? returns.filter(r => r.tax_type === targetType) : returns;
+  const filteredReturns = targetType ? returns.filter(r => r.return_type === targetType) : returns;
   const titleMap: Record<string, string> = { gst: "GST Returns", tds: "TDS (Tax Deducted at Source)", vat: "VAT Management", tax_rules: "Tax Rules", tax_filing: "Tax Filing Calendar" };
   const title = titleMap[tab] || "Tax Management";
 
@@ -209,7 +208,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
                   {r.status === "filed" ? <CheckCircle className="size-5 text-emerald-500" /> : <Clock className="size-5 text-amber-500" />}
                 </div>
                 <div>
-                  <p className="font-semibold text-foreground">{r.tax_type} — {r.return_number || r.id.slice(0, 12)}</p>
+                  <p className="font-semibold text-foreground">{r.return_type} — {r.id.slice(0, 12)}</p>
                   <p className="text-sm text-muted-foreground">{r.period_start} to {r.period_end}</p>
                 </div>
               </div>
@@ -224,8 +223,15 @@ export function TaxManagement({ tab = "gst" }: Props) {
     );
   }
 
-  const totalPaid = filteredReturns.reduce((s, r) => s + r.tax_amount, 0);
+  const totalPaid = filteredReturns.reduce((s, r) => s + Number(r.total_tax_amount || 0), 0);
   const pendingCount = filteredReturns.filter(r => r.status === "pending").length;
+
+  const paidByReturn = payments.reduce((acc, p) => {
+    if (p.tax_return_id) {
+      acc[p.tax_return_id] = (acc[p.tax_return_id] || 0) + Number(p.amount || 0);
+    }
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
     <div className="p-6 space-y-6">
@@ -272,12 +278,12 @@ export function TaxManagement({ tab = "gst" }: Props) {
               {filteredReturns.map((tax, i) => (
                 <motion.tr key={tax.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.05 }}
                   className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-6 py-4 font-mono text-primary text-xs">{tax.return_number || tax.id.slice(0, 12)}</td>
-                  <td className="px-6 py-4 text-muted-foreground font-semibold">{tax.period_start}</td>
-                  <td className="px-6 py-4"><span className={`px-2 py-1 rounded-md text-xs font-semibold ${typeStyle(tax.tax_type)}`}>{tax.tax_type}</span></td>
-                  <td className="px-6 py-4 text-right font-semibold text-foreground">{fmt(tax.taxable_amount)}</td>
-                  <td className="px-6 py-4 text-right font-semibold text-foreground">{fmt(tax.tax_amount)}</td>
-                  <td className="px-6 py-4 text-right font-semibold text-emerald-500">{fmt(tax.tax_amount)}</td>
+                  <td className="px-6 py-4 font-mono text-primary text-xs">{tax.id}</td>
+                  <td className="px-6 py-4 text-muted-foreground font-semibold">{tax.period}</td>
+                  <td className="px-6 py-4"><span className={`px-2 py-1 rounded-md text-xs font-semibold ${typeStyle(tax.return_type)}`}>{tax.return_type}</span></td>
+                  <td className="px-6 py-4 text-right font-semibold text-foreground">{fmt(tax.total_taxable_value)}</td>
+                  <td className="px-6 py-4 text-right font-semibold text-foreground">{fmt(tax.total_tax_amount)}</td>
+                  <td className="px-6 py-4 text-right font-semibold text-emerald-500">{fmt(paidByReturn[tax.id] || 0)}</td>
                   <td className="px-6 py-4 text-muted-foreground font-semibold">{tax.period_end}</td>
                   <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusStyle(tax.status)}`}>{tax.status}</span></td>
                 </motion.tr>

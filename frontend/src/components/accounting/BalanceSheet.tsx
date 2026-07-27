@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { FileText } from "lucide-react";
-import { financialReportsApi, BalanceSheetReport } from "@/lib/api-client";
+import { financialReportsApi, BalanceSheetReport, downloadCsv } from "@/lib/api-client";
 import { fmt } from "@/components/accounting/utils";
+import { toast } from "sonner";
 
 interface Props { tab?: string; }
 
@@ -20,6 +21,20 @@ export function BalanceSheet({ tab = "balance_sheet" }: Props) {
         .finally(() => setLoading(false));
     }
   }, [tab, asOf]);
+
+  const exportBS = () => {
+    if (!report) { toast.error("No Balance Sheet data to export"); return; }
+    const rows: (string | number)[][] = [];
+    rows.push(["Section", "Account Code", "Account Name", "Amount"]);
+    report.assets.forEach((r: any) => rows.push(["Assets", r.account_code, r.account_name, Math.abs(r.net)]));
+    rows.push(["", "", "Total Assets", report.total_assets]);
+    report.liabilities.forEach((r: any) => rows.push(["Liabilities", r.account_code, r.account_name, Math.abs(r.net)]));
+    rows.push(["", "", "Total Liabilities", report.total_liabilities]);
+    report.equity.forEach((r: any) => rows.push(["Equity", r.account_code, r.account_name, Math.abs(r.net)]));
+    rows.push(["", "", "Total Equity", report.total_equity]);
+    downloadCsv("balance_sheet.csv", rows[0], rows.slice(1));
+    toast.success("Balance Sheet exported");
+  };
 
   if (loading) {
     return <div className="p-6 text-center text-muted-foreground">Loading report…</div>;
@@ -58,7 +73,7 @@ export function BalanceSheet({ tab = "balance_sheet" }: Props) {
         <div className="flex items-center gap-3">
           <input type="date" value={asOf} onChange={e => setAsOf(e.target.value)}
             className="h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
-          <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+          <button onClick={exportBS} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
             <FileText className="size-4" /> Export PDF
           </button>
         </div>

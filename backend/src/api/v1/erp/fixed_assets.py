@@ -135,7 +135,6 @@ async def list_assets(
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
         query.order_by(FixedAsset.purchase_date.desc())
-        .options(selectinload(FixedAsset.category))
         .offset((page - 1) * page_size)
         .limit(page_size)
     )

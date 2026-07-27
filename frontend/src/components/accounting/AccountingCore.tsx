@@ -487,6 +487,20 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
   const [statusFilter, setStatusFilter] = useState("");
   const [total, setTotal] = useState(0);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [viewingEntry, setViewingEntry] = useState<JournalEntry | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+
+  const handleView = async (id: string) => {
+    setViewLoading(true);
+    try {
+      const entry = await accountingApi.getJournalEntry(id);
+      setViewingEntry(entry);
+    } catch {
+      toast.error("Failed to load journal entry details");
+    } finally {
+      setViewLoading(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -587,7 +601,7 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
                       {entry.status === "draft" && (
                         <button onClick={() => handlePost(entry.id)} className="px-2 py-1 bg-primary/10 text-primary rounded text-xs font-medium hover:bg-primary/20 transition-colors">Post</button>
                       )}
-                      <button className="p-1 hover:bg-muted/50 rounded transition-colors"><Eye className="size-3.5 text-muted-foreground" /></button>
+                      <button onClick={() => handleView(entry.id)} className="p-1 hover:bg-muted/50 rounded transition-colors" title="View details"><Eye className="size-3.5 text-muted-foreground" /></button>
                     </td>
                   </motion.tr>
                 ))}
@@ -600,6 +614,69 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
       <AnimatePresence>
         {showAddModal && (
           <JournalEntryFormModal onClose={() => setShowAddModal(false)} onSaved={load} accounts={accounts} />
+        )}
+        {viewingEntry && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setViewingEntry(null)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b border-border/50">
+                <h2 className="font-bold text-lg text-foreground">Journal Entry Details</h2>
+                <button onClick={() => setViewingEntry(null)} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"><X className="size-4" /></button>
+              </div>
+              <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                {viewLoading ? (
+                  <div className="flex items-center justify-center py-8"><Loader2 className="size-8 animate-spin text-primary" /></div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><p className="text-xs text-muted-foreground">Entry Number</p><p className="font-mono font-semibold text-sm">{viewingEntry.entry_number}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Date</p><p className="text-sm font-semibold">{viewingEntry.entry_date}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Type</p><p className="text-sm capitalize">{viewingEntry.entry_type.replace(/_/g, " ")}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Status</p><span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${statusStyle(viewingEntry.status)}`}>{viewingEntry.status}</span></div>
+                      {viewingEntry.reference && <div><p className="text-xs text-muted-foreground">Reference</p><p className="font-mono text-sm">{viewingEntry.reference}</p></div>}
+                      {viewingEntry.description && <div className="col-span-2"><p className="text-xs text-muted-foreground">Description</p><p className="text-sm">{viewingEntry.description}</p></div>}
+                    </div>
+                    <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
+                      <div className="px-4 py-3 bg-muted/20 border-b border-border/50"><h3 className="font-semibold text-sm">Entry Lines</h3></div>
+                      <table className="w-full text-sm">
+                        <thead className="text-xs text-muted-foreground bg-muted/10 border-b border-border/50">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium">#</th>
+                            <th className="px-4 py-2 text-left font-medium">Account</th>
+                            <th className="px-4 py-2 text-right font-medium">Debit</th>
+                            <th className="px-4 py-2 text-right font-medium">Credit</th>
+                            <th className="px-4 py-2 text-left font-medium">Description</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/30">
+                          {(viewingEntry.lines || []).map((line, idx) => (
+                            <tr key={line.id} className="hover:bg-muted/10 transition-colors">
+                              <td className="px-4 py-2.5 text-xs text-muted-foreground">{idx + 1}</td>
+                              <td className="px-4 py-2.5 font-medium">{line.account_name}{line.account_code ? <span className="text-muted-foreground ml-1 font-mono text-xs">({line.account_code})</span> : ""}</td>
+                              <td className="px-4 py-2.5 text-right font-semibold text-emerald-500">{line.debit > 0 ? fmt(line.debit) : "—"}</td>
+                              <td className="px-4 py-2.5 text-right font-semibold text-red-400">{line.credit > 0 ? fmt(line.credit) : "—"}</td>
+                              <td className="px-4 py-2.5 text-xs text-muted-foreground">{line.description || "—"}</td>
+                            </tr>
+                          ))}
+                          {(!viewingEntry.lines || viewingEntry.lines.length === 0) && (
+                            <tr><td colSpan={5} className="px-4 py-4 text-center text-xs text-muted-foreground">No line items</td></tr>
+                          )}
+                        </tbody>
+                        <tfoot className="bg-muted/20 font-semibold text-xs border-t border-border/50">
+                          <tr>
+                            <td colSpan={2} className="px-4 py-3 text-right">Totals</td>
+                            <td className="px-4 py-3 text-right text-emerald-500">{fmt(viewingEntry.total_debit)}</td>
+                            <td className="px-4 py-3 text-right text-red-400">{fmt(viewingEntry.total_credit)}</td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

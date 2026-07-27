@@ -36,12 +36,13 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [bills, setBills] = useState<BillRow[]>([]);
+  const [dateRange, setDateRange] = useState({ from: "", to: "" });
 
   const loadOverview = async () => {
     setLoading(true);
     try {
       const [invRes, billRes] = await Promise.all([
-        invoicesApi.listInvoices({ page_size: 5 }),
+        invoicesApi.listInvoices({ page_size: 50 }),
         inventoryApi.getVendorBills(),
       ]);
       const invItems = (invRes.items || []) as any[];
@@ -54,8 +55,14 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
         paid_amount: inv.amount_paid || 0,
         balance_due: inv.balance_due,
         status: inv.status,
-      })).slice(0, 5));
-      setBills((billRes || []).slice(0, 5));
+      })));
+      setBills((billRes || []).map(b => ({
+        ...b,
+        balance_due: (b.total_amount || 0) - (b.amount_paid || 0),
+      })));
+      const today = new Date();
+      const fyStart = new Date(today.getFullYear(), 3, 1);
+      setDateRange({ from: fyStart.toISOString().split("T")[0], to: today.toISOString().split("T")[0] });
     } catch {
       toast.error("Failed to load dashboard data");
     } finally {
@@ -78,13 +85,16 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
       net_cash_flow: number;
     } | null>(null);
     const [cfLoading, setCfLoading] = useState(false);
+    const [cfRange, setCfRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
 
     useEffect(() => {
       if (tab !== "cash_flow" && tab !== "cash_flow_statement") return;
       setCfLoading(true);
       const today = new Date();
       const start = new Date(today.getFullYear(), 0, 1).toISOString().split("T")[0];
-      financialReportsApi.cashFlow({ from_date: start, to_date: today.toISOString().split("T")[0] })
+      const end = today.toISOString().split("T")[0];
+      setCfRange({ from: start, to: end });
+      financialReportsApi.cashFlow({ from_date: start, to_date: end })
         .then(setFlowReport)
         .catch(() => setFlowReport(null))
         .finally(() => setCfLoading(false));
@@ -107,7 +117,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground font-bold">Cash Flow Statement</h1>
-          <p className="text-sm text-muted-foreground">Period: January 1, 2026 – June 30, 2026</p>
+          <p className="text-sm text-muted-foreground">Period: {cfRange.from && cfRange.to ? `${cfRange.from} to ${cfRange.to}` : "loading…"}</p>
         </div>
         {sections.map((section, si) => {
           const total = section.items.reduce((s: number, i: any) => s + i.net, 0);
@@ -151,36 +161,20 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
 
   if (tab === "revenue") {
     const totalRevenue = invoices.reduce((s, i) => s + i.total_amount, 0);
+    const paidRevenue = invoices.reduce((s, i) => s + i.paid_amount, 0);
+    const channelBreakdown = [
+      { channel: "Invoice Revenue", amount: totalRevenue, pct: totalRevenue > 0 ? 100 : 0 },
+    ];
     return (
       <div className="p-6 space-y-6">
-        <div><h1 className="text-2xl font-bold text-foreground font-bold">Revenue</h1><p className="text-sm text-muted-foreground">Revenue breakdown by channel — YTD 2026.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground font-bold">Revenue</h1><p className="text-sm text-muted-foreground">Revenue breakdown by channel — {dateRange.from ? `YTD ${dateRange.from.slice(0,4)}` : "YTD"}.</p></div>
         <div className="glass-panel p-5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex items-center gap-4">
           <TrendingUp className="size-8 text-emerald-500" />
           <div>
-            <p className="text-sm text-muted-foreground">Total Revenue YTD</p>
+            <p className="text-sm text-muted-foreground">Total Revenue</p>
             <p className="text-3xl font-bold text-foreground">{fmt(totalRevenue)}</p>
           </div>
-          <span className="ml-auto text-emerald-500 font-semibold text-lg">+12.5% YoY</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            { channel: "Invoice Revenue", amount: totalRevenue, pct: 100, trend: "+12.5%", pos: true },
-          ].map((r, i) => (
-            <motion.div key={r.channel} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
-              className="glass-panel p-5 rounded-xl border border-border/50">
-              <div className="flex justify-between items-start mb-3">
-                <h3 className="font-semibold text-foreground">{r.channel}</h3>
-                <span className={`text-xs font-semibold px-2 py-1 rounded-md flex items-center gap-1 ${r.pos ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>
-                  {r.pos ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}{r.trend}
-                </span>
-              </div>
-              <p className="text-2xl font-bold text-foreground mb-2">{fmt(r.amount)}</p>
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${r.pct}%` }} />
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">{r.pct}% of total revenue</p>
-            </motion.div>
-          ))}
+          <span className="ml-auto text-emerald-500 font-semibold text-lg">{fmt(paidRevenue)} received</span>
         </div>
       </div>
     );
@@ -188,19 +182,20 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
 
   if (tab === "expenses") {
     const totalExpenses = bills.reduce((s, b) => s + b.total_amount, 0);
+    const paidExpenses = bills.reduce((s, b) => s + (b.amount_paid || 0), 0);
     const expenseBreakdown = [
-      { category: "Vendor Bills", amount: totalExpenses, pct: 100, color: "bg-red-500" },
+      { category: "Vendor Bills", amount: totalExpenses, pct: totalExpenses > 0 ? 100 : 0, color: "bg-red-500" },
     ];
     return (
       <div className="p-6 space-y-6">
-        <div><h1 className="text-2xl font-bold text-foreground font-bold">Expenses</h1><p className="text-sm text-muted-foreground">Expense breakdown by category — YTD 2026.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground font-bold">Expenses</h1><p className="text-sm text-muted-foreground">Expense breakdown by category — {dateRange.from ? `from ${dateRange.from}` : "YTD"}.</p></div>
         <div className="glass-panel p-5 rounded-xl border border-red-500/30 bg-red-500/5 flex items-center gap-4">
           <TrendingDown className="size-8 text-red-500" />
           <div>
-            <p className="text-sm text-muted-foreground">Total Expenses YTD</p>
+            <p className="text-sm text-muted-foreground">Total Expenses</p>
             <p className="text-3xl font-bold text-foreground">{fmt(totalExpenses)}</p>
           </div>
-          <span className="ml-auto text-emerald-500 font-semibold text-lg">-2.4% vs Budget</span>
+          <span className="ml-auto text-emerald-500 font-semibold text-lg">{fmt(paidExpenses)} paid</span>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -240,56 +235,39 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
     const totalExpenses = bills.reduce((s, b) => s + b.total_amount, 0);
     const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0;
-    const profitData = [
-      { month: "Jan", revenue: 2100000, expenses: 1380000, profit: 720000, margin: 34.3 },
-      { month: "Feb", revenue: 2250000, expenses: 1410000, profit: 840000, margin: 37.3 },
-      { month: "Mar", revenue: 2400000, expenses: 1350000, profit: 1050000, margin: 43.8 },
-      { month: "Apr", revenue: 2350000, expenses: 1290000, profit: 1060000, margin: 45.1 },
-      { month: "May", revenue: 2580000, expenses: 1300000, profit: 1280000, margin: 49.6 },
-      { month: "Jun", revenue: 2820000, expenses: 1470000, profit: 1350000, margin: 47.9 },
-    ];
     return (
       <div className="p-6 space-y-6">
-        <div><h1 className="text-2xl font-bold text-foreground font-bold">Profit Analysis</h1><p className="text-sm text-muted-foreground">Monthly profit performance — H1 2026.</p></div>
+        <div><h1 className="text-2xl font-bold text-foreground font-bold">Profit Analysis</h1><p className="text-sm text-muted-foreground">Aggregated profit from invoices and bills — {dateRange.from ? `${dateRange.from} to ${dateRange.to}` : "all time"}.</p></div>
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Net Profit (YTD)", value: fmt(netProfit), color: "text-emerald-500", trend: "+15.2%" },
-            { label: "Profit Margin", value: `${profitMargin}%`, color: "text-blue-500", trend: "+2.1pp" },
-            { label: "Best Month (Jun)", value: fmt(1350000), color: "text-indigo-500", trend: "+47.9% margin" },
+            { label: "Net Profit", value: fmt(netProfit), color: netProfit >= 0 ? "text-emerald-500" : "text-red-500" },
+            { label: "Profit Margin", value: `${profitMargin}%`, color: "text-blue-500" },
+            { label: "Revenue", value: fmt(totalRevenue), color: "text-indigo-500" },
           ].map((s, i) => (
             <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
               className="glass-panel p-5 rounded-xl border border-border/50">
               <p className="text-xs text-muted-foreground mb-2">{s.label}</p>
               <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-              <p className="text-xs text-emerald-500 mt-1 font-semibold">{s.trend}</p>
             </motion.div>
           ))}
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Month</th>
-                  <th className="px-6 py-4 text-right font-medium">Revenue</th>
-                  <th className="px-6 py-4 text-right font-medium">Expenses</th>
-                  <th className="px-6 py-4 text-right font-medium">Net Profit</th>
-                  <th className="px-6 py-4 text-right font-medium">Margin %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {profitData.map((row, i) => (
-                  <motion.tr key={row.month} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.05 }}
-                    className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-foreground">{row.month} 2026</td>
-                    <td className="px-6 py-4 text-right font-semibold">{fmt(row.revenue)}</td>
-                    <td className="px-6 py-4 text-right text-red-400 font-semibold">{fmt(row.expenses)}</td>
-                    <td className="px-6 py-4 text-right font-bold text-emerald-500">{fmt(row.profit)}</td>
-                    <td className="px-6 py-4 text-right text-blue-400 font-semibold">{row.margin}%</td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="px-6 py-4 bg-muted/20 border-b border-border/50">
+            <h3 className="font-semibold text-foreground">Revenue vs Expenses</h3>
+          </div>
+          <div className="divide-y divide-border/30">
+            <div className="flex justify-between items-center px-6 py-3">
+              <span className="text-sm text-muted-foreground">Total Revenue</span>
+              <span className="text-sm font-semibold text-emerald-500">{fmt(totalRevenue)}</span>
+            </div>
+            <div className="flex justify-between items-center px-6 py-3">
+              <span className="text-sm text-muted-foreground">Total Expenses</span>
+              <span className="text-sm font-semibold text-red-400">{fmt(totalExpenses)}</span>
+            </div>
+            <div className="flex justify-between px-6 py-4 bg-muted/20 font-semibold text-sm">
+              <span>Net Profit</span>
+              <span className={`font-bold ${netProfit >= 0 ? "text-primary" : "text-red-500"}`}>{fmt(netProfit)}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -308,10 +286,10 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
   const totalAP = bills.reduce((s, b) => s + (b.balance_due || 0), 0);
 
   const kpis = [
-    { label: "Total Revenue (YTD)", value: fmt(totalRevenue), trend: "+12.5%", pos: true, icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-    { label: "Total Expenses (YTD)", value: fmt(totalExpenses), trend: "-2.4% vs budget", pos: true, icon: TrendingDown, color: "text-amber-500", bg: "bg-amber-500/10" },
+    { label: "Total Revenue (YTD)", value: fmt(totalRevenue), trend: `${invoices.length} invoices`, pos: true, icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { label: "Total Expenses (YTD)", value: fmt(totalExpenses), trend: `${bills.length} bills`, pos: true, icon: TrendingDown, color: "text-amber-500", bg: "bg-amber-500/10" },
     { label: "Net Profit", value: fmt(netProfit), trend: `${totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0}% margin`, pos: true, icon: DollarSign, color: "text-blue-500", bg: "bg-blue-500/10" },
-    { label: "Cash Balance", value: fmt(totalRevenue - totalExpenses), trend: "+5.1%", pos: true, icon: Wallet, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+    { label: "Cash Balance", value: fmt(totalRevenue - totalExpenses), trend: "Net P&L", pos: true, icon: Wallet, color: "text-indigo-500", bg: "bg-indigo-500/10" },
     { label: "Accounts Receivable", value: fmt(totalAR), trend: "Invoices open", pos: true, icon: CreditCard, color: "text-purple-500", bg: "bg-purple-500/10" },
     { label: "Accounts Payable", value: fmt(totalAP), trend: "Bills pending", pos: false, icon: FileText, color: "text-orange-500", bg: "bg-orange-500/10" },
   ];

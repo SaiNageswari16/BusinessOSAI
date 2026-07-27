@@ -16,6 +16,7 @@ from src.models.erp import (
     AccountBalance,
     ChartOfAccount,
     EntryStatus,
+    EntryType,
     JournalEntry,
     JournalEntryLine,
 )
@@ -557,12 +558,12 @@ class GLAccountSummary(BaseModel):
 
 @router.get("/general-ledger", response_model=list[GLAccountSummary])
 async def get_general_ledger(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:journal_entries"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
     account_id: uuid.UUID | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     entry_type: str | None = None,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:journal_entries"))] = None,
-    db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
     """General Ledger — all posted journal entry lines, optionally filtered by account or date range."""
     account_query = select(ChartOfAccount).where(

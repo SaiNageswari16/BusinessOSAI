@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Download, FolderTree, X, Save, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
-import { fixedAssetsApi, FixedAsset, FixedAssetCategory } from "@/lib/api-client";
+import { fixedAssetsApi, FixedAsset, FixedAssetCategory, downloadCsv } from "@/lib/api-client";
 import { fmt, statusStyle } from "@/components/accounting/utils";
 
 interface Props { tab?: string; }
@@ -296,6 +296,13 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
         : Math.round(a.bookValue * a.depreciationRate / 100);
       return { ...a, annualDep, monthlyDep: Math.round(annualDep / 12), accumulatedDep: a.purchaseCost - a.bookValue };
     });
+
+    const handleExport = () => {
+      const rows = schedule.map(a => [a.name, a.depreciationMethod, a.purchaseCost, a.bookValue, a.accumulatedDep, a.annualDep, a.monthlyDep]);
+      downloadCsv("depreciation_schedule.csv", ["Asset Name", "Method", "Purchase Cost", "Book Value", "Accum. Dep.", "Annual Dep.", "Monthly Dep."], rows);
+      toast.success("Schedule exported");
+    };
+
     return (
       <div className="p-6 space-y-6">
         <div className="flex justify-between items-center">
@@ -303,7 +310,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
             <h1 className="text-2xl font-bold text-foreground">Depreciation Schedule</h1>
             <p className="text-sm text-muted-foreground">Annual and monthly depreciation calculations.</p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-muted text-foreground rounded-lg text-sm font-medium border border-border/50 hover:bg-muted/80"><Download className="size-4" /> Export Schedule</button>
+          <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-muted text-foreground rounded-lg text-sm font-medium border border-border/50 hover:bg-muted/80"><Download className="size-4" /> Export Schedule</button>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <table className="w-full text-sm text-left">

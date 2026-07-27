@@ -15,6 +15,26 @@ export function resolveImageUrl(url: string | null | undefined): string {
   return url;
 }
 
+// Client-side CSV export. Headers + rows; triggers a browser download.
+export function downloadCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]): void {
+  const escape = (v: string | number | null | undefined): string => {
+    if (v === null || v === undefined) return "";
+    const s = String(v);
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  const csv = [headers, ...rows].map(r => r.map(escape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
@@ -2979,14 +2999,15 @@ export interface TaxCode {
 
 export interface TaxReturn {
   id: string;
-  return_number: string;
-  tax_type: string;
-  period_start: string;
-  period_end: string;
-  taxable_amount: number;
-  tax_amount: number;
+  return_type: string;
+  period: string;
+  period_start: string | null;
+  period_end: string | null;
+  total_taxable_value: number;
+  total_tax_amount: number;
   status: string;
-  filing_date: string | null;
+  filed_at: string | null;
+  acknowledgment_number: string | null;
 }
 
 export interface TaxPayment {
