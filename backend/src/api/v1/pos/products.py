@@ -118,7 +118,7 @@ async def list_products(
             id=p.id, tenant_id=p.tenant_id, name=p.name, brand=p.brand.name if p.brand else None,
             sku=p.sku, barcode=p.barcode, description=p.short_description, image_url=p.image_url,
             category_id=p.category_id, category_name=p.category.name if p.category else None,
-            purchase_price=p.purchase_price, mrp=p.mrp, selling_price=p.selling_price,
+            purchase_price=p.purchase_price, mrp=p.mrp, selling_price=p.selling_price or p.mrp or 0.0,
             tax_percent=p.tax_percent, discount=p.discount_limit, stock=p.initial_stock,
             reorder_level=p.reorder_level, is_active=(p.status == EntityStatus.ACTIVE),
             created_at=p.created_at, updated_at=p.updated_at
@@ -150,7 +150,7 @@ async def create_product(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
         sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
         category_id=product.category_id, category_name=product.category.name if product.category else None,
-        purchase_price=product.purchase_price, mrp=product.mrp, selling_price=product.selling_price,
+        purchase_price=product.purchase_price, mrp=product.mrp, selling_price=product.selling_price or product.mrp or 0.0,
         tax_percent=product.tax_percent, discount=product.discount_limit, stock=product.initial_stock,
         reorder_level=product.reorder_level, is_active=(product.status == "active"),
         created_at=product.created_at, updated_at=product.updated_at
@@ -233,7 +233,7 @@ async def get_product(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
         sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
         category_id=product.category_id, category_name=product.category.name if product.category else None,
-        purchase_price=product.purchase_price, mrp=product.mrp, selling_price=product.selling_price,
+        purchase_price=product.purchase_price, mrp=product.mrp, selling_price=product.selling_price or product.mrp or 0.0,
         tax_percent=product.tax_percent, discount=product.discount_limit, stock=product.initial_stock,
         reorder_level=product.reorder_level, is_active=(product.status == "active"),
         created_at=product.created_at, updated_at=product.updated_at
@@ -274,7 +274,7 @@ async def update_product(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
         sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
         category_id=product.category_id, category_name=product.category.name if product.category else None,
-        purchase_price=product.purchase_price, mrp=product.mrp, selling_price=product.selling_price,
+        purchase_price=product.purchase_price, mrp=product.mrp, selling_price=product.selling_price or product.mrp or 0.0,
         tax_percent=product.tax_percent, discount=product.discount_limit, stock=product.initial_stock,
         reorder_level=product.reorder_level, is_active=(product.status == "active"),
         created_at=product.created_at, updated_at=product.updated_at

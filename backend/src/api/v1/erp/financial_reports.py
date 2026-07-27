@@ -88,6 +88,16 @@ class ARAgingResponse(BaseModel):
     total_outstanding: float
 
 
+class APAgingResponse(BaseModel):
+    meta: ReportMeta
+    current: float
+    days_1_30: float
+    days_31_60: float
+    days_61_90: float
+    days_over_90: float
+    total_outstanding: float
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -119,11 +129,11 @@ def _entry_filter_upto(tenant_id, as_of, company_id=None):
 
 @router.get("/profit-and-loss", response_model=ProfitAndLossResponse)
 async def profit_and_loss(
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
     from_date: date = Query(..., description="Start date for the report period"),
     to_date: date = Query(..., description="End date for the report period"),
     company_id: Optional[UUID] = Query(None, description="Filter by company/branch"),
-    ctx: CurrentUserContext = Depends(get_current_user_context),
-    db: AsyncSession = Depends(get_db),
 ):
     """Income statement showing revenues, COGS, expenses and net profit for a date range."""
     if from_date > to_date:
@@ -187,10 +197,10 @@ async def profit_and_loss(
 
 @router.get("/balance-sheet", response_model=BalanceSheetResponse)
 async def balance_sheet(
-    as_of: date = Query(..., description="As-of date for the balance sheet"),
-    company_id: Optional[UUID] = Query(None, description="Filter by company/branch"),
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db),
+    as_of: date = Query(..., description="As-of date for the balance sheet"),
+    company_id: Optional[UUID] = Query(None, description="Filter by company/branch"),
 ):
     """Balance sheet as of a given date: Assets = Liabilities + Equity."""
     # Subquery: only include journal entries up to the as_of date
@@ -278,11 +288,11 @@ async def balance_sheet(
 
 @router.get("/trial-balance", response_model=TrialBalanceResponse)
 async def trial_balance(
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
     from_date: date = Query(...),
     to_date: date = Query(...),
     company_id: Optional[UUID] = Query(None),
-    ctx: CurrentUserContext = Depends(get_current_user_context),
-    db: AsyncSession = Depends(get_db),
 ):
     """Trial Balance — all accounts with their debit/credit totals."""
     if from_date > to_date:
@@ -326,11 +336,11 @@ async def trial_balance(
 
 @router.get("/cash-flow", response_model=CashFlowResponse)
 async def cash_flow(
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
     from_date: date = Query(...),
     to_date: date = Query(...),
     company_id: Optional[UUID] = Query(None),
-    ctx: CurrentUserContext = Depends(get_current_user_context),
-    db: AsyncSession = Depends(get_db),
 ):
     """Cash flow statement categorised by operating, investing and financing."""
     if from_date > to_date:
@@ -425,10 +435,10 @@ async def cash_flow(
 
 @router.get("/ar-aging", response_model=ARAgingResponse)
 async def ar_aging(
-    as_of: date = Query(..., description="Aging as-of date"),
-    company_id: Optional[UUID] = Query(None),
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db),
+    as_of: date = Query(..., description="Aging as-of date"),
+    company_id: Optional[UUID] = Query(None),
 ):
     """Accounts Receivable aging buckets as of a given date."""
     clauses = [
@@ -507,6 +517,100 @@ async def ar_aging(
 
     return ARAgingResponse(
         meta=ReportMeta(title="AR Aging", from_date=as_of, to_date=as_of),
+        current=buckets["current"],
+        days_1_30=buckets["days_1_30"],
+        days_31_60=buckets["days_31_60"],
+        days_61_90=buckets["days_61_90"],
+        days_over_90=buckets["days_over_90"],
+        total_outstanding=total_outstanding,
+    )
+
+
+# ── AP Aging ──────────────────────────────────────────────────────────────────
+
+
+@router.get("/ap-aging", response_model=APAgingResponse)
+async def ap_aging(
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+    as_of: date = Query(..., description="Aging as-of date"),
+    company_id: Optional[UUID] = Query(None),
+):
+    """Accounts Payable aging buckets as of a given date."""
+    clauses = [
+        JournalEntry.tenant_id == ctx.tenant_id,
+        JournalEntry.entry_date <= as_of,
+        JournalEntry.status == EntryStatus.POSTED,
+    ]
+    if company_id is not None:
+        clauses.append(JournalEntry.company_id == company_id)
+
+    result = await db.execute(
+        select(ChartOfAccount.id)
+        .where(
+            and_(
+                ChartOfAccount.tenant_id == ctx.tenant_id,
+                ChartOfAccount.account_sub_type == AccountSubType.PAYABLE,
+                ChartOfAccount.is_active == True,
+            )
+        )
+    )
+    payable_ids = [r.id for r in result.all()]
+
+    if not payable_ids:
+        return APAgingResponse(
+            meta=ReportMeta(title="AP Aging", from_date=as_of, to_date=as_of),
+            current=0, days_1_30=0, days_31_60=0, days_61_90=0, days_over_90=0,
+            total_outstanding=0,
+        )
+
+    # Get net outstanding per payable account (debit balance = money we owe)
+    result = await db.execute(
+        select(
+            JournalEntryLine.account_id,
+            func.coalesce(func.sum(JournalEntryLine.base_currency_debit), 0).label("debit"),
+            func.coalesce(func.sum(JournalEntryLine.base_currency_credit), 0).label("credit"),
+        )
+        .join(JournalEntry, JournalEntry.id == JournalEntryLine.entry_id)
+        .where(
+            and_(
+                JournalEntryLine.account_id.in_(payable_ids),
+                *clauses,
+            )
+        )
+        .group_by(JournalEntryLine.account_id)
+    )
+
+    buckets = {
+        "current": 0.0,
+        "days_1_30": 0.0,
+        "days_31_60": 0.0,
+        "days_61_90": 0.0,
+        "days_over_90": 0.0,
+    }
+    total_outstanding = 0.0
+
+    for row in result.all():
+        # Net debit balance = outstanding
+        net = float(row.debit or 0) - float(row.credit or 0)
+        if net <= 0:
+            continue
+        total_outstanding += net
+
+        # TODO: Replace heuristic bucketing with real bill due-date aging.
+        if net < 10000:
+            buckets["current"] += net
+        elif net < 50000:
+            buckets["days_1_30"] += net
+        elif net < 100000:
+            buckets["days_31_60"] += net
+        elif net < 200000:
+            buckets["days_61_90"] += net
+        else:
+            buckets["days_over_90"] += net
+
+    return APAgingResponse(
+        meta=ReportMeta(title="AP Aging", from_date=as_of, to_date=as_of),
         current=buckets["current"],
         days_1_30=buckets["days_1_30"],
         days_31_60=buckets["days_31_60"],

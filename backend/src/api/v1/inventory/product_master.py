@@ -446,6 +446,16 @@ async def create_product(
 
     await db.commit()
     
+    product = await db.scalar(
+        select(Product)
+        .options(
+            selectinload(Product.category),
+            selectinload(Product.brand),
+            selectinload(Product.uom)
+        )
+        .where(Product.id == product.id)
+    )
+    
     res = ProductResponse.model_validate(product)
     res.category_name = product.category.name if product.category else None
     res.brand_name = product.brand.name if product.brand else None
@@ -524,7 +534,16 @@ async def update_product(
             db.add(new_mc)
 
     await db.commit()
-    await db.refresh(product, ["category", "brand", "uom"])
+    
+    product = await db.scalar(
+        select(Product)
+        .options(
+            selectinload(Product.category),
+            selectinload(Product.brand),
+            selectinload(Product.uom)
+        )
+        .where(Product.id == product.id)
+    )
     
     res = ProductResponse.model_validate(product)
     res.category_name = product.category.name if product.category else None
