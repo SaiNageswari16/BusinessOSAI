@@ -285,83 +285,9 @@ function ReportsModule() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground overflow-hidden font-sans">
-      {/* 1. SIDEBAR SUB-NAVIGATION */}
-      <aside className="w-80 border-r border-border bg-card/65 backdrop-blur-md flex flex-col h-full shrink-0">
-        <div className="p-6 border-b border-border flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/20">
-            <BrainCircuit className="size-6 text-white" />
-          </div>
-          <div>
-            <h2 className="font-extrabold text-base tracking-tight text-foreground">IOTRONCS Retail</h2>
-            <span className="text-xs font-semibold text-primary">Analytics & Intelligence</span>
-          </div>
-        </div>
-
-        {/* Scrollable Accordion Categories list */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {REPORT_CATEGORIES.map(category => {
-            const IconComponent = category.icon;
-            const isExpanded = expandedCategory === category.id;
-            const hasActiveSub = category.items.some(sub => sub.id === activeTab);
-
-            return (
-              <div key={category.id} className="rounded-xl overflow-hidden border border-border/40 bg-card/30">
-                <button
-                  onClick={() => toggleCategory(category.id)}
-                  className={cn(
-                    "w-full px-4 py-3 flex items-center justify-between text-sm font-semibold transition-all hover:bg-muted/40",
-                    hasActiveSub ? "text-primary bg-primary/5" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <IconComponent className="size-4.5 shrink-0" />
-                    <span>{category.label}</span>
-                  </div>
-                  {isExpanded ? <ChevronDown className="size-4 text-muted-foreground/60" /> : <ChevronRight className="size-4 text-muted-foreground/60" />}
-                </button>
-
-                <AnimatePresence initial={false}>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: "auto" }}
-                      exit={{ height: 0 }}
-                      className="overflow-hidden bg-background/40 border-t border-border/30"
-                    >
-                      <div className="p-1.5 space-y-1">
-                        {category.items.map(subItem => {
-                          const SubIcon = subItem.icon;
-                          const isActive = activeTab === subItem.id;
-                          
-                          return (
-                            <button
-                              key={subItem.id}
-                              onClick={() => selectSubTab(subItem.id)}
-                              className={cn(
-                                "w-full text-left px-3.5 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all",
-                                isActive 
-                                  ? "bg-gradient-to-r from-primary to-primary/80 text-white shadow-md shadow-primary/10" 
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
-                              )}
-                            >
-                              <SubIcon className="size-4 shrink-0" />
-                              <span>{subItem.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            );
-          })}
-        </div>
-      </aside>
-
-      {/* 2. MAIN REPORT PAGE AREA */}
-      <main className="flex-1 overflow-y-auto flex flex-col h-full bg-background/50 relative">
+    <div className="flex flex-col min-h-screen bg-background text-foreground overflow-x-hidden font-sans w-full">
+      {/* MAIN REPORT PAGE AREA */}
+      <main className="flex-1 flex flex-col h-full bg-background/50 relative w-full">
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center space-y-3">
             <RefreshCw className="size-10 text-primary animate-spin" />

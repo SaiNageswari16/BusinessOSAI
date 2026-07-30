@@ -22,6 +22,8 @@ backend/.venv/
 backend/venv/
 backend/**/__pycache__/
 backend/**/*.pyc
+*.csv
+*.tsv
 
 # Wrangler / Cloudflare
 .wrangler/

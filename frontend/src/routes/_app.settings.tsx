@@ -7,6 +7,30 @@ import { NotificationSettings } from "@/components/NotificationSettings";
 import { EmailCampaigns } from "@/components/crm/EmailCampaigns";
 import { PushNotifications } from "@/components/crm/PushNotifications";
 
+// ERP & Enterprise System Settings Components
+import { CompanyProfile } from "@/components/erp/CompanyProfile";
+import { BranchManagement } from "@/components/erp/BranchManagement";
+import { UserManagement } from "@/components/erp/UserManagement";
+import { RolesPermissions } from "@/components/erp/RolesPermissions";
+import { MfaPolicies } from "@/components/erp/MfaPolicies";
+import { AuditLogs } from "@/components/erp/AuditLogs";
+import { SystemHealth } from "@/components/erp/SystemHealth";
+import { GlobalSettings } from "@/components/erp/GlobalSettings";
+import { ApiKeys } from "@/components/erp/ApiKeys";
+import { NotificationTemplates } from "@/components/erp/NotificationTemplates";
+import { DocumentTemplates } from "@/components/erp/DocumentTemplates";
+import { CustomFields } from "@/components/erp/CustomFields";
+import { AutomationRules } from "@/components/erp/AutomationRules";
+import { BackupRestore } from "@/components/erp/BackupRestore";
+import { ErrorLogs } from "@/components/erp/ErrorLogs";
+import { ActivityLogs } from "@/components/erp/ActivityLogs";
+import { WorkspaceManagement } from "@/components/erp/WorkspaceManagement";
+import { SubscriptionManagement } from "@/components/erp/SubscriptionManagement";
+import { PermissionMatrix } from "@/components/erp/PermissionMatrix";
+import { NumberSeries } from "@/components/erp/NumberSeries";
+import { TaxConfiguration } from "@/components/erp/TaxConfiguration";
+import { CurrencyManagement } from "@/components/erp/CurrencyManagement";
+
 export const Route = createFileRoute("/_app/settings")({
   component: SettingsModule,
 });
@@ -41,10 +65,54 @@ function SystemNotificationsTab() {
 }
 
 const componentMap: Record<string, React.ElementType> = {
-  company_profile: () => <MockScreen type="settings" title="Company Profile" />,
-  recruitment_integrations: RecruitmentIntegrations,
+  // Company & Branch Management
+  company_profile: CompanyProfile,
+  branch_settings: BranchManagement,
+  branding: GlobalSettings,
+  workspaces: WorkspaceManagement,
+  subscription: SubscriptionManagement,
+  
+  // Users, Roles & Security
+  user_preferences: UserManagement,
   notifications: SystemNotificationsTab,
+  password_policies: RolesPermissions,
+  mfa: MfaPolicies,
+  session_policies: MfaPolicies,
+  device_policies: MfaPolicies,
+  login_history: ActivityLogs,
+  roles: RolesPermissions,
+  permissions: PermissionMatrix,
+  audit_logs: AuditLogs,
+  
+  // Integrations & API Connections
+  payment_gateways: CurrencyManagement,
+  recruitment_integrations: RecruitmentIntegrations,
+  whatsapp_integration: NotificationTemplates,
+  sms_integration: NotificationTemplates,
   email_integration: EmailCampaigns,
+  google_integration: GlobalSettings,
+  microsoft_integration: GlobalSettings,
+  webhooks: AutomationRules,
+  api_connections: ApiKeys,
+  
+  // AI & Systems Configuration
+  antigravity_settings: GlobalSettings,
+  ai_models: GlobalSettings,
+  ai_credits: SubscriptionManagement,
+  ai_permissions: PermissionMatrix,
+  prompt_templates: DocumentTemplates,
+  system_health: SystemHealth,
+  backup_restore: BackupRestore,
+  error_logs: ErrorLogs,
+  custom_fields: CustomFields,
+  number_series: NumberSeries,
+  tax_configuration: TaxConfiguration,
+  
+  // Templates & Communication
+  email_templates: DocumentTemplates,
+  sms_templates: NotificationTemplates,
+  whatsapp_templates: NotificationTemplates,
+  push_notifications_settings: PushNotifications,
 };
 
 function SettingsModule() {

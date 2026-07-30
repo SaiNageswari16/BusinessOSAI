@@ -8,7 +8,8 @@ export default defineConfig({
     tailwindcss(),
     tanstackStart({
       server: {
-        entry: "server",
+        entry: "src/server.ts",
+        preset: "node-server",
       },
     }),
     viteReact(),
