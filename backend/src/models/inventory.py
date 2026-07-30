@@ -1,8 +1,9 @@
+from __future__ import annotations
 import uuid
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, JSON
+from sqlalchemy import Boolean, Column, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from datetime import datetime
+from datetime import datetime, date
 
 from src.database.base import Base, TenantScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from src.models import EntityStatus
@@ -200,9 +201,149 @@ class StorageLocation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     warehouse: Mapped["Warehouse"] = relationship(back_populates="locations")
 
 
-# ==========================================
-# Inventory Operations Models
-# ==========================================
+class PutAwayRule(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Rule that decides where incoming stock is placed inside a warehouse.
+
+    Conditions and special requirements are stored as JSONB arrays so the
+    schema can evolve without further migrations.
+    """
+    __tablename__ = "erp_put_away_rules"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    destination_zone: Mapped[str | None] = mapped_column(String(100))
+    destination_rack: Mapped[str | None] = mapped_column(String(100))
+    bin_assignment: Mapped[str] = mapped_column(String(50), default="first_available")
+    stacking_limit: Mapped[int] = mapped_column(Integer, default=5)
+    special_requirements: Mapped[list] = mapped_column(JSONB, default=list)
+    conditions: Mapped[list] = mapped_column(JSONB, default=list)
+    description: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PickingRule(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Rule that decides how orders are picked from inventory.
+
+    `zone_priority` is an ordered list of zone names.
+    """
+    __tablename__ = "erp_picking_rules"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    strategy: Mapped[str] = mapped_column(String(50), default="discrete")
+    order_rule: Mapped[str] = mapped_column(String(50), default="by_aging")
+    batch_size: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    zone_priority: Mapped[list] = mapped_column(JSONB, default=list)
+    exclude_hazmat: Mapped[bool] = mapped_column(Boolean, default=True)
+    allow_partial: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_release: Mapped[bool] = mapped_column(Boolean, default=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class InventoryBatch(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Inventory batch / lot number — the unit of traceability for perishable
+    or regulated goods. A batch groups serials and stock movements together.
+    """
+    __tablename__ = "erp_inventory_batches"
+    __table_args__ = (
+        # One batch number per tenant
+    )
+
+    batch_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="SET NULL"), nullable=True
+    )
+    product_name: Mapped[str | None] = mapped_column(String(255))
+    sku: Mapped[str | None] = mapped_column(String(100), index=True)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True
+    )
+    warehouse_name: Mapped[str | None] = mapped_column(String(150))
+    supplier: Mapped[str | None] = mapped_column(String(255))
+    quantity: Mapped[int] = mapped_column(Integer, default=0)
+    remaining_quantity: Mapped[int] = mapped_column(Integer, default=0)
+    manufacturing_date: Mapped[date | None] = mapped_column(Date)
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="Active")  # Active | Quarantined | Expired | Consumed
+
+    product: Mapped["Product | None"] = relationship()
+    warehouse: Mapped["Warehouse | None"] = relationship()
+    events: Mapped[list["TraceabilityEvent"]] = relationship(
+        back_populates="batch", cascade="all, delete-orphan"
+    )
+
+
+class InventorySerial(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Individual serial number for high-value / warranty-tracked units."""
+    __tablename__ = "erp_inventory_serials"
+
+    serial_number: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_inventory_batches.id", ondelete="SET NULL"), nullable=True
+    )
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="SET NULL"), nullable=True
+    )
+    product_name: Mapped[str | None] = mapped_column(String(255))
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True
+    )
+    warehouse_name: Mapped[str | None] = mapped_column(String(150))
+    manufacturing_date: Mapped[date | None] = mapped_column(Date)
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="In Stock")
+    # In Stock | Reserved | Sold | In Transit | Returned | Damaged | Written-off
+
+    batch: Mapped["InventoryBatch | None"] = relationship()
+    product: Mapped["Product | None"] = relationship()
+    warehouse: Mapped["Warehouse | None"] = relationship()
+
+
+class TraceabilityEvent(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Immutable event log: every movement and lifecycle change for a batch
+    or serial. Forms the genealogy chain for forward + backward traceability.
+    """
+    __tablename__ = "erp_traceability_events"
+
+    event_type: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    # received | produced | packed | shipped | delivered | returned | recalled |
+    # quarantined | released | consumed | adjusted | transferred
+
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_inventory_batches.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    serial_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_inventory_serials.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Locations involved (free text + warehouse FK where known)
+    source_location: Mapped[str | None] = mapped_column(String(255))
+    destination_location: Mapped[str | None] = mapped_column(String(255))
+    source_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True
+    )
+    destination_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Counterparty in the event (supplier, customer, carrier, etc.)
+    party_type: Mapped[str | None] = mapped_column(String(50))  # supplier|customer|carrier|internal
+    party_name: Mapped[str | None] = mapped_column(String(255))
+    reference_document: Mapped[str | None] = mapped_column(String(150))  # GRN, PO, SO, Invoice #
+
+    quantity: Mapped[int | None] = mapped_column(Integer)
+    unit: Mapped[str | None] = mapped_column(String(30))
+    notes: Mapped[str | None] = mapped_column(Text)
+    event_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    batch: Mapped["InventoryBatch | None"] = relationship(back_populates="events")
 
 class GoodsReceipt(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_goods_receipts"
@@ -356,4 +497,40 @@ class MasterCatalogProduct(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     rag_status: Mapped[str | None] = mapped_column(String(50), default="pending", index=True)
     rag_enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rag_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+
+class ProductQRCode(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_product_qr_codes"
+
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    qr_data: Mapped[str] = mapped_column(String, nullable=False)
+    qr_type: Mapped[str] = mapped_column(String(50), default="product")  # product | batch | serial | location
+    format: Mapped[str | None] = mapped_column(String(20))  # EAN-13 | QR | Code-128 | GS1-128
+    version: Mapped[str | None] = mapped_column(String(20))
+    error_correction: Mapped[str | None] = mapped_column(String(10), default="M")
+    print_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_printed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class ProductRFID(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_product_rfids"
+
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    tag_uid: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    tag_type: Mapped[str | None] = mapped_column(String(50))  # passive | active | semi-passive
+    frequency: Mapped[str | None] = mapped_column(String(20))  # LF 125kHz | HF 13.56MHz | UHF 860-960MHz
+    protocol: Mapped[str | None] = mapped_column(String(30))  # ISO 15693 | EPC Gen2 | etc.
+    memory_bits: Mapped[int | None] = mapped_column(Integer)
+    write_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_seen_location: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(50), default="active")  # active | deactivated | lost
+    notes: Mapped[str | None] = mapped_column(Text)
 

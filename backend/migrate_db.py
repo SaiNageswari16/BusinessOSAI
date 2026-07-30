@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from pathlib import Path
+
 from sqlalchemy import text
 from src.database.session import engine
 from src.database.base import Base
@@ -129,6 +131,128 @@ async def migrate():
                 logger.info(f"Successfully widened 'job_openings.{col_name}' column.")
             except Exception as e:
                 logger.info(f"'job_openings.{col_name}' alter skipped or already widened: {e}")
+
+    # ─── Add missing timestamp columns to erp_traceability_events ────────────
+    # TraceabilityEvent got TimestampMixin added after the table was first created
+    trace_ts_cols = [
+        ("created_at", "TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL"),
+        ("updated_at", "TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL"),
+    ]
+    for name, col_type in trace_ts_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE erp_traceability_events ADD COLUMN {name} {col_type}"))
+                logger.info(f"Added '{name}' to 'erp_traceability_events'.")
+            except Exception as e:
+                if "already exists" in str(e).lower():
+                    logger.info(f"'{name}' already exists in 'erp_traceability_events'.")
+                else:
+                    logger.error(f"Error adding '{name}' to traceability_events: {e}")
+
+    # ─── Ensure new inventory tables exist ──────────────────────────────────
+    # create_all handles new tables but won't alter existing ones
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        logger.info("Ensured all new inventory tables exist.")
+
+    # ─── Customer 360: extend crm_customers columns ──────────────────────────
+    async with engine.begin() as conn:
+        customer_cols = [
+            ("customer_code",           "VARCHAR(50)"),
+            ("first_name",              "VARCHAR(150)"),
+            ("last_name",               "VARCHAR(150)"),
+            ("gender",                  "VARCHAR(20)"),
+            ("date_of_birth",           "DATE"),
+            ("anniversary_date",        "DATE"),
+            ("alternate_phone",         "VARCHAR(30)"),
+            ("whatsapp_number",         "VARCHAR(30)"),
+            ("website",                 "VARCHAR(255)"),
+            ("designation",             "VARCHAR(150)"),
+            ("industry",                "VARCHAR(100)"),
+            ("company_size",            "VARCHAR(50)"),
+            ("annual_revenue",          "NUMERIC(18,2)"),
+            ("customer_category",       "VARCHAR(30) DEFAULT 'B2C'"),
+            ("lifecycle_stage",         "VARCHAR(30) DEFAULT 'Lead'"),
+            ("source",                  "VARCHAR(100)"),
+            ("referred_by",             "VARCHAR(255)"),
+            ("pan_number",              "VARCHAR(20)"),
+            ("gst_treatment",           "VARCHAR(50)"),
+            ("billing_address",         "TEXT"),
+            ("shipping_address",        "TEXT"),
+            ("city",                    "VARCHAR(100)"),
+            ("state",                   "VARCHAR(100)"),
+            ("country",                 "VARCHAR(100)"),
+            ("postal_code",             "VARCHAR(20)"),
+            ("credit_limit",            "NUMERIC(18,2)"),
+            ("payment_terms",           "VARCHAR(100)"),
+            ("outstanding_balance",     "NUMERIC(18,2) DEFAULT 0"),
+            ("lifetime_value",          "NUMERIC(18,2) DEFAULT 0"),
+            ("total_orders",            "INTEGER DEFAULT 0"),
+            ("total_returns",           "INTEGER DEFAULT 0"),
+            ("average_order_value",     "NUMERIC(18,2) DEFAULT 0"),
+            ("last_purchase_date",      "DATE"),
+            ("first_purchase_date",     "DATE"),
+            ("loyalty_points_balance",  "INTEGER DEFAULT 0"),
+            ("loyalty_tier",            "VARCHAR(50)"),
+            ("loyalty_tier_progress",   "NUMERIC(5,2) DEFAULT 0"),
+            ("wallet_balance",          "NUMERIC(18,2) DEFAULT 0"),
+            ("wallet_lifetime_credited", "NUMERIC(18,2) DEFAULT 0"),
+            ("wallet_lifetime_debited", "NUMERIC(18,2) DEFAULT 0"),
+            ("preferred_language",      "VARCHAR(20) DEFAULT 'en'"),
+            ("preferred_channel",       "VARCHAR(30)"),
+            ("preferred_currency",      "VARCHAR(10) DEFAULT 'INR'"),
+            ("timezone",                "VARCHAR(50)"),
+            ("marketing_opt_in",        "BOOLEAN DEFAULT TRUE"),
+            ("sms_opt_in",              "BOOLEAN DEFAULT TRUE"),
+            ("email_opt_in",            "BOOLEAN DEFAULT TRUE"),
+            ("whatsapp_opt_in",         "BOOLEAN DEFAULT TRUE"),
+            ("do_not_disturb",          "BOOLEAN DEFAULT FALSE"),
+            ("facebook_id",             "VARCHAR(100)"),
+            ("instagram_handle",        "VARCHAR(100)"),
+            ("twitter_handle",          "VARCHAR(100)"),
+            ("linkedin_handle",         "VARCHAR(100)"),
+            ("rfm_recency_days",        "INTEGER"),
+            ("rfm_frequency_score",     "INTEGER"),
+            ("rfm_monetary_score",      "INTEGER"),
+            ("rfm_segment",             "VARCHAR(50)"),
+            ("churn_risk_score",        "NUMERIC(5,2)"),
+            ("notes",                   "TEXT"),
+            ("tags",                    "JSONB DEFAULT '[]'::jsonb"),
+            ("custom_fields",           "JSONB DEFAULT '{}'::jsonb"),
+        ]
+        for name, col_type in customer_cols:
+            try:
+                await conn.execute(text(f"ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS {name} {col_type}"))
+                logger.info(f"Added customer column: {name}")
+            except Exception as e:
+                if "already exists" not in str(e).lower() and "duplicate column" not in str(e).lower():
+                    logger.warning(f"Error adding customer column {name}: {e}")
+
+    # Run the full SQL migration for all new tables
+    async with engine.begin() as conn:
+        migration_path = Path(__file__).parent / "database" / "customer_360_migration.sql"
+        if migration_path.exists():
+            try:
+                raw_sql = migration_path.read_text(encoding="utf-8")
+                # Execute each statement separately to handle mixed DDL gracefully
+                for stmt in raw_sql.split(";"):
+                    stmt = stmt.strip()
+                    if not stmt:
+                        continue
+                    try:
+                        await conn.execute(text(stmt))
+                    except Exception as e:
+                        # Ignore "already exists" errors silently
+                        if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                            logger.warning(f"Migration stmt skipped: {e}")
+                logger.info("Customer 360 SQL migration applied.")
+            except Exception as e:
+                logger.error(f"Customer 360 migration error: {e}")
+
+    # ─── Ensure all new SQLAlchemy tables exist ──────────────────────────────
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        logger.info("Ensured all new CRM module tables exist.")
 
 if __name__ == "__main__":
     asyncio.run(migrate())

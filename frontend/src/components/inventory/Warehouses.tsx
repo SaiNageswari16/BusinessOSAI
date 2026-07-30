@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { inventoryApi, type Warehouse } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Plus, Warehouse as WarehouseIcon, Users, Loader2, X, Trash2 } from "lucide-react";
+import { Plus, Warehouse as WarehouseIcon, Users, Loader2, X, Trash2, Eye, Pencil, Copy } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const WAREHOUSE_TYPES = ["Distribution Center", "Fulfillment Center", "Cold Storage", "Retail Store", "Transit Hub", "Dark Store"];
@@ -105,13 +105,44 @@ export function Warehouses() {
                     <span className="text-[10px] uppercase font-bold text-muted-foreground mt-1 block">{wh.warehouse_type}</span>
                   </div>
                 </div>
-                <Button
-                  variant="ghost" size="icon"
-                  className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                  onClick={() => handleDelete(wh.id)}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <button
+                    onClick={() => alert(`Warehouse: ${wh.name}\nType: ${wh.warehouse_type}\nCapacity: ${wh.capacity || '-'}\nTemperature: ${wh.temperature_control || '-'}\nManager: ${wh.manager_name || '-'}\nStaff: ${wh.employees ?? 0}\nAddress: ${wh.address || '-'}\nStatus: ${wh.status}`)}
+                    className="h-8 w-8 rounded-lg text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 inline-flex items-center justify-center transition"
+                    title="View details"
+                  >
+                    <Eye className="size-4" />
+                  </button>
+                  <button
+                    onClick={() => alert("Edit warehouse form coming soon — use the existing backend mutation if needed.")}
+                    className="h-8 w-8 rounded-lg text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 inline-flex items-center justify-center transition"
+                    title="Edit"
+                  >
+                    <Pencil className="size-4" />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const dup = { ...wh };
+                      // @ts-ignore
+                      delete dup.id; delete dup.created_at; delete dup.updated_at; delete dup.locations;
+                      try {
+                        const created = await inventoryApi.createWarehouse(dup);
+                        setWarehouses(prev => [created, ...prev]);
+                      } catch { alert("Duplicate failed."); }
+                    }}
+                    className="h-8 w-8 rounded-lg text-slate-500 hover:bg-amber-50 hover:text-amber-600 inline-flex items-center justify-center transition"
+                    title="Duplicate"
+                  >
+                    <Copy className="size-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(wh.id)}
+                    className="h-8 w-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center transition"
+                    title="Delete"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">

@@ -1,4 +1,4 @@
-# QUICK START GUIDE - BusinessOS AI Backend
+# QUICK START GUIDE - IOTRONCS Retail Backend
 
 Get the backend running in 5 minutes! 🚀
 
@@ -100,7 +100,7 @@ Copy the output and paste into `.env` as `SECRET_KEY` value.
 
 ### Example `.env`:
 ```
-APP_NAME=BusinessOS AI
+APP_NAME=IOTRONCS Retail
 APP_ENV=development
 APP_DEBUG=true
 APP_PORT=8000

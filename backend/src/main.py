@@ -34,7 +34,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="Multi-tenant Core ERP API for BusinessOS AI",
+    description="Multi-tenant Core ERP API for IOTRONCS Retail",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs" if not settings.is_production else None,

@@ -717,177 +717,393 @@ async def seed_crm_features(db: AsyncSession) -> None:
 
         from src.models import Customer, Lead, CRMSupportTicket, CRMQuotation, CRMSalesOrder
 
-        # 1. Seed Leads
+        # 1. Seed Leads & Customers — only once
         lead_count = await db.scalar(select(func.count()).select_from(Lead).where(Lead.tenant_id == tenant_id))
-        if lead_count > 0:
-            logger.info(f"CRM & Sales features already seeded for tenant {tenant.slug}. Skipping.")
-            continue
+        cust_count = await db.scalar(select(func.count()).select_from(Customer).where(Customer.tenant_id == tenant_id))
+        if lead_count == 0 and cust_count == 0:
+            logger.info(f"Seeding CRM Leads for tenant {tenant.slug}...")
+            leads = [
+                Lead(
+                    tenant_id=tenant_id,
+                    name="David Chen",
+                    company_name="Chen Technologies",
+                    email="david@chentech.com",
+                    phone="+91 9123456780",
+                    status="New",
+                    source="Social Media",
+                    estimated_value=15000.0,
+                    notes="Inquired about corporate licenses. Seems highly interested.",
+                    ai_score=85,
+                    ai_sentiment="Positive"
+                ),
+                Lead(
+                    tenant_id=tenant_id,
+                    name="Sarah Jenkins",
+                    company_name="Jenkins Logistics",
+                    email="sarah@jenkinslog.com",
+                    phone="+91 9123456781",
+                    status="Contacted",
+                    source="Website Inquiry",
+                    estimated_value=8500.0,
+                    notes="Needs a custom shipping integration demo asap.",
+                    ai_score=92,
+                    ai_sentiment="Urgent"
+                ),
+                Lead(
+                    tenant_id=tenant_id,
+                    name="Robert Johnson",
+                    company_name="Johnson & Co",
+                    email="robert@johnsonco.com",
+                    phone="+91 9123456782",
+                    status="Qualified",
+                    source="Referral",
+                    estimated_value=25000.0,
+                    notes="Decision maker is warm. Wants to schedule a pilot run next month.",
+                    ai_score=78,
+                    ai_sentiment="Neutral"
+                )
+            ]
+            for l in leads:
+                db.add(l)
+            await db.flush()
 
-        logger.info(f"Seeding CRM Leads for tenant {tenant.slug}...")
-        leads = [
-            Lead(
-                tenant_id=tenant_id,
-                name="David Chen",
-                company_name="Chen Technologies",
-                email="david@chentech.com",
-                phone="+91 9123456780",
-                status="New",
-                source="Social Media",
-                estimated_value=15000.0,
-                notes="Inquired about corporate licenses. Seems highly interested.",
-                ai_score=85,
-                ai_sentiment="Positive"
-            ),
-            Lead(
-                tenant_id=tenant_id,
-                name="Sarah Jenkins",
-                company_name="Jenkins Logistics",
-                email="sarah@jenkinslog.com",
-                phone="+91 9123456781",
-                status="Contacted",
-                source="Website Inquiry",
-                estimated_value=8500.0,
-                notes="Needs a custom shipping integration demo asap.",
-                ai_score=92,
-                ai_sentiment="Urgent"
-            ),
-            Lead(
-                tenant_id=tenant_id,
-                name="Robert Johnson",
-                company_name="Johnson & Co",
-                email="robert@johnsonco.com",
-                phone="+91 9123456782",
-                status="Qualified",
-                source="Referral",
-                estimated_value=25000.0,
-                notes="Decision maker is warm. Wants to schedule a pilot run next month.",
-                ai_score=78,
-                ai_sentiment="Neutral"
-            )
+            # 2. Seed Customers
+            logger.info(f"Seeding CRM Customers for tenant {tenant.slug}...")
+            customers = [
+                Customer(
+                    tenant_id=tenant_id,
+                    name="Acme Corporation",
+                    email="billing@acme.com",
+                    phone="+1 555-0199",
+                    status="Active",
+                    customer_type="Corporate",
+                    address="456 Acme Industrial Boulevard, Mumbai"
+                ),
+                Customer(
+                    tenant_id=tenant_id,
+                    name="Globex Biotech",
+                    email="procurement@globex.org",
+                    phone="+1 555-0144",
+                    status="Active",
+                    customer_type="Corporate",
+                    address="789 Trade Tower, BKC, Mumbai"
+                )
+            ]
+            for c in customers:
+                db.add(c)
+            await db.flush()
+
+            # 3. Seed Support Tickets
+            logger.info(f"Seeding CRM Support Tickets for tenant {tenant.slug}...")
+            tickets = [
+                CRMSupportTicket(
+                    tenant_id=tenant_id,
+                    customer_id=customers[0].id,
+                    subject="API webhook payload delay",
+                    description="Webhooks for POS checkouts are arriving 4-5 seconds late. Please check broker latency.",
+                    priority="High",
+                    status="Open"
+                ),
+                CRMSupportTicket(
+                    tenant_id=tenant_id,
+                    customer_id=customers[1].id,
+                    subject="Missing billing invoice copy",
+                    description="We did not receive the automated PDF invoice for June 2026 renewal. Please send manually.",
+                    priority="Medium",
+                    status="Resolved"
+                )
+            ]
+            for t in tickets:
+                db.add(t)
+            
+            # 4. Seed Quotations
+            logger.info(f"Seeding CRM Quotations for tenant {tenant.slug}...")
+            quotations = [
+                CRMQuotation(
+                    tenant_id=tenant_id,
+                    customer_id=customers[0].id,
+                    quote_number=f"QT-2026-{tenant.slug.upper()}-001",
+                    items={"items": [{"name": "Enterprise POS Subscription", "qty": 10, "price": 1200}]},
+                    subtotal=12000.0,
+                    tax=2160.0,
+                    total=14160.0,
+                    status="Sent"
+                ),
+                CRMQuotation(
+                    tenant_id=tenant_id,
+                    customer_id=customers[1].id,
+                    quote_number=f"QT-2026-{tenant.slug.upper()}-002",
+                    items={"items": [{"name": "Hardware Terminal Pro", "qty": 5, "price": 450}]},
+                    subtotal=2250.0,
+                    tax=405.0,
+                    total=2655.0,
+                    status="Draft"
+                )
+            ]
+            for q in quotations:
+                db.add(q)
+            await db.flush()
+
+            # 5. Seed Sales Orders
+            logger.info(f"Seeding CRM Sales Orders for tenant {tenant.slug}...")
+            orders = [
+                CRMSalesOrder(
+                    tenant_id=tenant_id,
+                    customer_id=customers[0].id,
+                    order_number=f"SO-2026-{tenant.slug.upper()}-001",
+                    items={"items": [{"name": "Enterprise Subscription", "qty": 1, "price": 8500}]},
+                    total=8500.0,
+                    status="Processing",
+                    payment_status="Paid"
+                )
+            ]
+            for o in orders:
+                db.add(o)
+            
+            # 6. Seed Opportunities
+            logger.info(f"Seeding CRM Opportunities for tenant {tenant.slug}...")
+            from src.models import CRMOpportunity
+            opportunities = [
+                CRMOpportunity(
+                    tenant_id=tenant_id,
+                    customer_id=customers[0].id,
+                    name="Nimbus Retail POS Expansion",
+                    stage="Value Proposition",
+                    amount=45000.0,
+                    probability=70,
+                    expected_close_date=date(2026, 9, 30)
+                ),
+                CRMOpportunity(
+                    tenant_id=tenant_id,
+                    lead_id=leads[2].id,
+                    name="Johnson & Co Q3 Enterprise Rollout",
+                    stage="Needs Analysis",
+                    amount=85000.0,
+                    probability=40,
+                    expected_close_date=date(2026, 11, 15)
+                )
+            ]
+            for opp in opportunities:
+                db.add(opp)
+
+        from src.models import (
+            CustomerGroup, CustomerGroupMember, CustomerSegment,
+            MembershipPlan, LoyaltyProgram, LoyaltyTransaction, Discount,
+        )
+
+    # Customer Groups
+    group_count = await db.scalar(select(func.count()).select_from(CustomerGroup).where(CustomerGroup.tenant_id == tenant_id))
+    if group_count == 0:
+        logger.info("Seeding Customer Groups...")
+        groups = [
+            CustomerGroup(tenant_id=tenant_id, name="VIP Customers", group_code="VIP",
+                description="Top-tier preferred customers", color="#f59e0b",
+                default_discount_percent=10.0, default_payment_terms="Net-30",
+                status="Active"),
+            CustomerGroup(tenant_id=tenant_id, name="Wholesale Buyers", group_code="WS",
+                description="Bulk purchase accounts", color="#3b82f6",
+                default_discount_percent=15.0, default_payment_terms="Net-60",
+                status="Active"),
+            CustomerGroup(tenant_id=tenant_id, name="Corporate Accounts", group_code="CORP",
+                description="B2B business accounts", color="#8b5cf6",
+                default_discount_percent=20.0, default_payment_terms="Net-45",
+                status="Active"),
+            CustomerGroup(tenant_id=tenant_id, name="Walk-in Retail", group_code="WALK",
+                description="Individual retail shoppers", color="#10b981",
+                default_discount_percent=0.0, default_payment_terms="Immediate",
+                status="Active"),
         ]
-        for l in leads:
-            db.add(l)
+        for g in groups:
+            db.add(g)
         await db.flush()
 
-        # 2. Seed Customers
-        logger.info(f"Seeding CRM Customers for tenant {tenant.slug}...")
-        customers = [
-            Customer(
-                tenant_id=tenant_id,
-                name="Acme Corporation",
-                email="billing@acme.com",
-                phone="+1 555-0199",
+    # Customer Segments
+    seg_count = await db.scalar(select(func.count()).select_from(CustomerSegment).where(CustomerSegment.tenant_id == tenant_id))
+    if seg_count == 0:
+        logger.info("Seeding Customer Segments...")
+        segments = [
+            CustomerSegment(
+                tenant_id=tenant_id, name="High-Value Champions",
+                description="Customers with LTV > ₹100k",
+                color="#10b981",
+                mode="rules", is_auto_computed=True,
+                member_count=0,
+                rules=[
+                    {"field": "lifetime_value", "operator": "gte", "value": 100000},
+                ],
                 status="Active",
-                customer_type="Corporate",
-                address="456 Acme Industrial Boulevard, Mumbai"
             ),
-            Customer(
-                tenant_id=tenant_id,
-                name="Globex Biotech",
-                email="procurement@globex.org",
-                phone="+1 555-0144",
+            CustomerSegment(
+                tenant_id=tenant_id, name="At-Risk / Churning",
+                description="No purchases in 90+ days",
+                color="#ef4444",
+                mode="rules", is_auto_computed=True,
+                member_count=0,
+                rules=[
+                    {"field": "last_order_at", "operator": "older_than_days", "value": 90},
+                ],
                 status="Active",
-                customer_type="Corporate",
-                address="789 Trade Tower, BKC, Mumbai"
-            )
+            ),
+            CustomerSegment(
+                tenant_id=tenant_id, name="Loyalty Tier: Gold+",
+                description="Gold and Platinum loyalty-tier customers",
+                color="#f59e0b",
+                mode="rules", is_auto_computed=True,
+                member_count=0,
+                rules=[
+                    {"field": "loyalty_tier", "operator": "in", "value": ["Gold", "Platinum"]},
+                ],
+                status="Active",
+            ),
+            CustomerSegment(
+                tenant_id=tenant_id, name="Newsletter Subscribers",
+                description="Customers who opted in to email marketing",
+                color="#3b82f6",
+                mode="rules", is_auto_computed=True,
+                member_count=0,
+                rules=[
+                    {"field": "email_opt_in", "operator": "eq", "value": True},
+                ],
+                status="Active",
+            ),
         ]
-        for c in customers:
-            db.add(c)
-        await db.flush()
+        for s in segments:
+            db.add(s)
 
-        # 3. Seed Support Tickets
-        logger.info(f"Seeding CRM Support Tickets for tenant {tenant.slug}...")
-        tickets = [
-            CRMSupportTicket(
-                tenant_id=tenant_id,
-                customer_id=customers[0].id,
-                subject="API webhook payload delay",
-                description="Webhooks for POS checkouts are arriving 4-5 seconds late. Please check broker latency.",
-                priority="High",
-                status="Open"
+    # Membership Plans
+    plan_count = await db.scalar(select(func.count()).select_from(MembershipPlan).where(MembershipPlan.tenant_id == tenant_id))
+    if plan_count == 0:
+        logger.info("Seeding Membership Plans...")
+        plans = [
+            MembershipPlan(
+                tenant_id=tenant_id, name="Silver", plan_code="SILVER",
+                description="Entry-level membership with 5% rewards and discounts",
+                price=999.0, currency="INR", cycle="Yearly",
+                points_multiplier=1.0, discount_percent=5.0,
+                free_shipping=False, priority_support=False, early_access=False,
+                max_active_members=None, max_duration_months=12,
+                status="Active", is_visible=True,
+                tiers=[
+                    {"name": "Silver", "min_points": 0, "max_points": 999, "earn_multiplier": 1.0, "color": "#9ca3af"},
+                ],
             ),
-            CRMSupportTicket(
-                tenant_id=tenant_id,
-                customer_id=customers[1].id,
-                subject="Missing billing invoice copy",
-                description="We did not receive the automated PDF invoice for June 2026 renewal. Please send manually.",
-                priority="Medium",
-                status="Resolved"
-            )
-        ]
-        for t in tickets:
-            db.add(t)
-            
-        # 4. Seed Quotations
-        logger.info(f"Seeding CRM Quotations for tenant {tenant.slug}...")
-        quotations = [
-            CRMQuotation(
-                tenant_id=tenant_id,
-                customer_id=customers[0].id,
-                quote_number=f"QT-2026-{tenant.slug.upper()}-001",
-                items={"items": [{"name": "Enterprise POS Subscription", "qty": 10, "price": 1200}]},
-                subtotal=12000.0,
-                tax=2160.0,
-                total=14160.0,
-                status="Sent"
+            MembershipPlan(
+                tenant_id=tenant_id, name="Gold", plan_code="GOLD",
+                description="Mid-tier membership with 10% rewards and priority support",
+                price=2499.0, currency="INR", cycle="Yearly",
+                points_multiplier=1.5, discount_percent=10.0,
+                free_shipping=True, priority_support=True, early_access=False,
+                max_active_members=None, max_duration_months=12,
+                status="Active", is_visible=True,
+                tiers=[
+                    {"name": "Gold", "min_points": 1000, "max_points": 4999, "earn_multiplier": 1.5, "color": "#f59e0b"},
+                ],
             ),
-            CRMQuotation(
-                tenant_id=tenant_id,
-                customer_id=customers[1].id,
-                quote_number=f"QT-2026-{tenant.slug.upper()}-002",
-                items={"items": [{"name": "Hardware Terminal Pro", "qty": 5, "price": 450}]},
-                subtotal=2250.0,
-                tax=405.0,
-                total=2655.0,
-                status="Draft"
-            )
+            MembershipPlan(
+                tenant_id=tenant_id, name="Platinum", plan_code="PLAT",
+                description="Premium membership with 15% rewards and exclusive perks",
+                price=4999.0, currency="INR", cycle="Yearly",
+                points_multiplier=2.0, discount_percent=15.0,
+                free_shipping=True, priority_support=True, early_access=True,
+                max_active_members=500, max_duration_months=12,
+                status="Active", is_visible=True,
+                tiers=[
+                    {"name": "Platinum", "min_points": 5000, "max_points": None, "earn_multiplier": 2.0, "color": "#a855f7"},
+                ],
+            ),
+            MembershipPlan(
+                tenant_id=tenant_id, name="Corporate", plan_code="CORP",
+                description="B2B corporate membership with bulk benefits",
+                price=14999.0, currency="INR", cycle="Yearly",
+                points_multiplier=2.5, discount_percent=20.0,
+                free_shipping=True, priority_support=True, early_access=True,
+                max_active_members=100, max_duration_months=12,
+                status="Active", is_visible=True,
+                tiers=[
+                    {"name": "Corporate", "min_points": 10000, "max_points": None, "earn_multiplier": 2.5, "color": "#1e40af"},
+                ],
+            ),
         ]
-        for q in quotations:
-            db.add(q)
-        await db.flush()
+        for p in plans:
+            db.add(p)
 
-        # 5. Seed Sales Orders
-        logger.info(f"Seeding CRM Sales Orders for tenant {tenant.slug}...")
-        orders = [
-            CRMSalesOrder(
-                tenant_id=tenant_id,
-                customer_id=customers[0].id,
-                order_number=f"SO-2026-{tenant.slug.upper()}-001",
-                items={"items": [{"name": "Enterprise Subscription", "qty": 1, "price": 8500}]},
-                total=8500.0,
-                status="Processing",
-                payment_status="Paid"
-            )
-        ]
-        for o in orders:
-            db.add(o)
-            
-        # 6. Seed Opportunities
-        logger.info(f"Seeding CRM Opportunities for tenant {tenant.slug}...")
-        from src.models import CRMOpportunity
-        opportunities = [
-            CRMOpportunity(
-                tenant_id=tenant_id,
-                customer_id=customers[0].id,
-                name="Nimbus Retail POS Expansion",
-                stage="Value Proposition",
-                amount=45000.0,
-                probability=70,
-                expected_close_date=date(2026, 9, 30)
+    # Loyalty Program
+    lp_count = await db.scalar(select(func.count()).select_from(LoyaltyProgram).where(LoyaltyProgram.tenant_id == tenant_id))
+    if lp_count == 0:
+        logger.info("Seeding Loyalty Program...")
+        program = LoyaltyProgram(
+            tenant_id=tenant_id,
+            name="Nimbus Rewards",
+            description="Earn points on every purchase, redeem for discounts and free products",
+            is_active=True,
+            points_per_currency_unit=1.0,
+            points_per_referral=500,
+            bonus_points_on_birthday=100,
+            bonus_points_on_anniversary=200,
+            redemption_rate=0.25,
+            min_redemption_points=100,
+            max_redemption_per_order_percent=50.0,
+            tier_definitions=[
+                {"name": "Bronze", "min_points": 0, "max_points": 999, "earn_multiplier": 1.0, "color": "#cd7f32"},
+                {"name": "Silver", "min_points": 1000, "max_points": 4999, "earn_multiplier": 1.25, "color": "#c0c0c0"},
+                {"name": "Gold", "min_points": 5000, "max_points": 9999, "earn_multiplier": 1.5, "color": "#ffd700"},
+                {"name": "Platinum", "min_points": 10000, "max_points": None, "earn_multiplier": 2.0, "color": "#a855f7"},
+            ],
+        )
+        db.add(program)
+
+    # Discounts / Coupons
+    disc_count = await db.scalar(select(func.count()).select_from(Discount).where(Discount.tenant_id == tenant_id))
+    if disc_count == 0:
+        logger.info("Seeding Discounts...")
+        discounts = [
+            Discount(
+                tenant_id=tenant_id, code="WELCOME10", name="Welcome 10% Off",
+                description="10% off first order for new customers",
+                discount_type="percentage", value=10.0,
+                min_order_amount=500.0, max_discount_amount=200.0,
+                valid_from=date(2026, 1, 1), valid_until=date(2026, 12, 31),
+                usage_limit_total=1000, usage_limit_per_customer=1,
+                applies_to="all_customers",
             ),
-            CRMOpportunity(
-                tenant_id=tenant_id,
-                lead_id=leads[2].id,
-                name="Johnson & Co Q3 Enterprise Rollout",
-                stage="Needs Analysis",
-                amount=85000.0,
-                probability=40,
-                expected_close_date=date(2026, 11, 15)
-            )
+            Discount(
+                tenant_id=tenant_id, code="FESTIVE500", name="Festive Season ₹500 Off",
+                description="Flat ₹500 off on orders over ₹3000",
+                discount_type="fixed_amount", value=500.0,
+                min_order_amount=3000.0,
+                valid_from=date(2026, 10, 1), valid_until=date(2026, 11, 30),
+                usage_limit_total=5000, usage_limit_per_customer=2,
+                applies_to="all_customers",
+            ),
+            Discount(
+                tenant_id=tenant_id, code="VIP20", name="VIP Exclusive 20% Off",
+                description="20% off for VIP-tier customers",
+                discount_type="percentage", value=20.0,
+                min_order_amount=2000.0, max_discount_amount=1000.0,
+                valid_from=date(2026, 1, 1), valid_until=date(2027, 12, 31),
+                usage_limit_per_customer=5,
+                applies_to="customer_group",
+            ),
+            Discount(
+                tenant_id=tenant_id, code="BUY2GET1", name="Buy 2 Get 1 Free",
+                description="Buy 2 items, get 1 free (cheapest)",
+                discount_type="bogof", value=1.0,
+                valid_from=date(2026, 1, 1), valid_until=date(2026, 12, 31),
+                usage_limit_total=2000, usage_limit_per_customer=1,
+                applies_to="product_category",
+            ),
+            Discount(
+                tenant_id=tenant_id, code="FREESHIP", name="Free Shipping",
+                description="Free shipping on any order",
+                discount_type="free_shipping", value=99.0,
+                valid_from=date(2026, 1, 1), valid_until=date(2026, 12, 31),
+                usage_limit_per_customer=999,
+                applies_to="all_customers",
+            ),
         ]
-        for opp in opportunities:
-            db.add(opp)
-            
+        for d in discounts:
+            db.add(d)
+
     await db.commit()
     logger.info("CRM & Sales seeds created successfully.")
 

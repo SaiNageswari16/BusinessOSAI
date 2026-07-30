@@ -34,6 +34,7 @@ import { PickingRules } from "../components/inventory/PickingRules";
 // Batch & Traceability
 import { BatchNumbers } from "../components/inventory/BatchNumbers";
 import { SerialNumbers } from "../components/inventory/SerialNumbers";
+import { Traceability } from "../components/inventory/Traceability";
 import { ExpiryManagement } from "../components/inventory/ExpiryManagement";
 import { ManufacturingDates } from "../components/inventory/ManufacturingDates";
 import { BarcodeManagement } from "../components/inventory/BarcodeManagement";
@@ -42,6 +43,7 @@ import { RfidManagement } from "../components/inventory/RfidManagement";
 
 // Inventory Intelligence
 import { AiInventoryHealth } from "../components/inventory/AiInventoryHealth";
+import { InventoryIntelligence } from "../components/inventory/InventoryIntelligence";
 import { LowStockAlerts } from "../components/inventory/LowStockAlerts";
 import { ReorderPlanning } from "../components/inventory/ReorderPlanning";
 import { SlowMoving } from "../components/inventory/SlowMoving";
@@ -92,6 +94,7 @@ const componentMap: Record<string, React.ElementType> = {
   // Batch
   batches: BatchNumbers,
   serials: SerialNumbers,
+  traceability: Traceability,
   expiry: ExpiryManagement,
   mfg_dates: ManufacturingDates,
   barcodes: BarcodeManagement,
@@ -99,7 +102,8 @@ const componentMap: Record<string, React.ElementType> = {
   rfid: RfidManagement,
 
   // Intelligence
-  ai_health: AiInventoryHealth,
+  ai_health: InventoryIntelligence,
+  intelligence: InventoryIntelligence,
   low_stock: LowStockAlerts,
   reorder_planning: ReorderPlanning,
   slow_moving: SlowMoving,

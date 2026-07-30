@@ -72,6 +72,55 @@ async def delete_product_kit(
     kit = result.scalar_one_or_none()
     if not kit:
         raise HTTPException(status_code=404, detail="Product kit not found")
-    
+
     await db.delete(kit)
     await db.commit()
+
+
+@router.patch("/{kit_id}", response_model=ProductKitResponse)
+async def update_product_kit(
+    kit_id: uuid.UUID,
+    kit_in: ProductKitUpdate,
+    ctx: CurrentUserContext = Depends(require_permission("manage:erp")),
+    db: AsyncSession = Depends(get_db)
+) -> Any:
+    result = await db.execute(
+        select(ProductKit)
+        .where(ProductKit.id == kit_id, ProductKit.tenant_id == ctx.tenant_id)
+        .options(selectinload(ProductKit.items))
+    )
+    kit = result.scalar_one_or_none()
+    if not kit:
+        raise HTTPException(status_code=404, detail="Product kit not found")
+
+    if kit_in.name is not None:
+        kit.name = kit_in.name
+    if kit_in.sku is not None:
+        kit.sku = kit_in.sku
+    if kit_in.kit_type is not None:
+        kit.kit_type = kit_in.kit_type
+    if kit_in.description is not None:
+        kit.description = kit_in.description
+
+    if kit_in.items is not None:
+        for item in list(kit.items):
+            await db.delete(item)
+        await db.flush()
+        for item in kit_in.items:
+            new_item = ProductKitItem(
+                id=uuid.uuid4(),
+                tenant_id=ctx.tenant_id,
+                kit_id=kit.id,
+                component_name=item.component_name,
+                quantity=item.quantity,
+            )
+            db.add(new_item)
+
+    await db.commit()
+
+    result = await db.execute(
+        select(ProductKit)
+        .where(ProductKit.id == kit_id)
+        .options(selectinload(ProductKit.items))
+    )
+    return result.scalar_one()

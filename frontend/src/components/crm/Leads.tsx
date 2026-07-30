@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle, Calendar, Mail, Phone, Plus, Search,
   Facebook, RefreshCw, Sparkles, X, Trash2, Key,
-  PhoneCall, PhoneOff, Mic, Loader2
+  PhoneCall, PhoneOff, Mic, Loader2, Target, Megaphone, Layers, Briefcase
 } from "lucide-react";
 import { toast } from "sonner";
-import { crmLeadsApi, type CrmLead } from "@/lib/api-client";
+import { crmLeadsApi, type CrmLead, type LeadAttribution } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 
 const stages: CrmLead["status"][] = ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"];
@@ -33,6 +33,11 @@ export function Leads() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [calling, setCalling] = useState(false);
   const [activeCall, setActiveCall] = useState<{ leadId: string; roomName: string } | null>(null);
+
+  // Ad Attribution Drawer
+  const [attrLead, setAttrLead] = useState<CrmLead | null>(null);
+  const [attribution, setAttribution] = useState<LeadAttribution | null>(null);
+  const [loadingAttr, setLoadingAttr] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -196,6 +201,24 @@ export function Leads() {
     toast("Call session ended.", { icon: "📵" });
   };
 
+  const openAttribution = async (lead: CrmLead) => {
+    if (!lead.meta?.ad_id) {
+      toast.info("No ad attribution data for this lead (may have been created manually).");
+      return;
+    }
+    setAttrLead(lead);
+    setAttribution(null);
+    setLoadingAttr(true);
+    try {
+      const data = await crmLeadsApi.getAttribution(lead.id);
+      setAttribution(data);
+    } catch {
+      toast.error("Could not load attribution data");
+    } finally {
+      setLoadingAttr(false);
+    }
+  };
+
   return (
     <div className="p-6 min-h-[calc(100vh-6rem)] flex flex-col space-y-6">
 
@@ -338,6 +361,16 @@ export function Leads() {
                           title="Score with AI"
                         >
                           <Sparkles className="size-3 text-indigo-500" />
+                        </button>
+                      )}
+
+                      {lead.meta?.ad_id && (
+                        <button
+                          onClick={() => openAttribution(lead)}
+                          className="absolute right-2 top-9 p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="View ad attribution"
+                        >
+                          <Target className="size-3 text-blue-500" />
                         </button>
                       )}
 
@@ -567,6 +600,131 @@ export function Leads() {
                   </div>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Ad Attribution Drawer ───────────────────────────────────── */}
+      <AnimatePresence>
+        {attrLead && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, x: 20 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95, x: 20 }}
+              className="bg-card border rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden"
+            >
+              <div className="p-5 border-b flex justify-between items-center bg-gradient-to-r from-blue-500/10 to-violet-500/10">
+                <div className="flex items-center gap-2">
+                  <div className="size-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
+                    <Target className="size-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm">Ad Attribution</h3>
+                    <p className="text-xs text-muted-foreground">{attrLead.name}</p>
+                  </div>
+                </div>
+                <button onClick={() => { setAttrLead(null); setAttribution(null); }}><X className="size-4" /></button>
+              </div>
+
+              <div className="p-5 space-y-3">
+                {loadingAttr ? (
+                  <div className="py-8 text-center text-muted-foreground flex items-center justify-center gap-2">
+                    <Loader2 className="size-4 animate-spin" /> Resolving ad data...
+                  </div>
+                ) : attribution ? (
+                  <>
+                    {/* Ad Account */}
+                    {attribution.ad_account_id && (
+                      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3 flex gap-3">
+                        <Briefcase className="size-4 text-blue-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Ad Account</p>
+                          <p className="text-sm font-semibold">{attribution.ad_account_name || attribution.ad_account_id}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{attribution.ad_account_id}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Campaign */}
+                    {attribution.campaign ? (
+                      <div className="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/20 p-3 flex gap-3">
+                        <Megaphone className="size-4 text-violet-500 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider">Campaign</p>
+                          <p className="text-sm font-semibold truncate">{attribution.campaign.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{attribution.campaign_id}</p>
+                          <span className="text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 border border-violet-500/20">{attribution.campaign.status}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-border bg-muted/20 p-3 flex gap-3">
+                        <Megaphone className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Campaign</p>
+                          <p className="text-xs text-muted-foreground">No local mirror — {attribution.campaign_id ? "ad was created outside this app" : "not available"}</p>
+                          {attribution.campaign_id && <p className="text-xs text-muted-foreground font-mono">{attribution.campaign_id}</p>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Ad Set */}
+                    {attribution.adset ? (
+                      <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20 p-3 flex gap-3">
+                        <Layers className="size-4 text-indigo-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Ad Set</p>
+                          <p className="text-sm font-semibold">{attribution.adset.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{attribution.adset_id}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-border bg-muted/20 p-3 flex gap-3">
+                        <Layers className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ad Set</p>
+                          <p className="text-xs text-muted-foreground">{attribution.adset_id ? "Created outside this app" : "Not available"}</p>
+                          {attribution.adset_id && <p className="text-xs text-muted-foreground font-mono">{attribution.adset_id}</p>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Ad */}
+                    {attribution.ad ? (
+                      <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 flex gap-3">
+                        <Target className="size-4 text-emerald-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Ad</p>
+                          <p className="text-sm font-semibold">{attribution.ad.headline || attribution.ad.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{attribution.ad_id}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-border bg-muted/20 p-3 flex gap-3">
+                        <Target className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ad</p>
+                          <p className="text-xs text-muted-foreground">{attribution.ad_id ? "Created outside this app" : "Not available"}</p>
+                          {attribution.ad_id && <p className="text-xs text-muted-foreground font-mono">{attribution.ad_id}</p>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Form */}
+                    {attribution.form_id && (
+                      <div className="rounded-lg border border-border bg-muted/20 p-3 flex gap-3">
+                        <Mail className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Lead Form</p>
+                          <p className="text-sm font-semibold">{attribution.form_name || attribution.form_id}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{attribution.form_id}</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </div>
             </motion.div>
           </div>
         )}

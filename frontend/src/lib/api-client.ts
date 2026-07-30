@@ -185,6 +185,7 @@ export interface InventoryUOM {
 
 export interface Warehouse {
   id: string;
+  tenant_id: string;
   name: string;
   warehouse_type: string;
   capacity: string | null;
@@ -198,6 +199,7 @@ export interface Warehouse {
 
 export interface StorageLocation {
   id: string;
+  tenant_id: string;
   warehouse_id: string;
   zone: string | null;
   aisle: string | null;
@@ -207,7 +209,192 @@ export interface StorageLocation {
   barcode: string;
   status: string;
   created_at: string;
+  updated_at: string;
 }
+
+export interface PutAwayRule {
+  id: string;
+  tenant_id: string;
+  name: string;
+  priority: number;
+  destination_zone: string | null;
+  destination_rack: string | null;
+  bin_assignment: string;
+  stacking_limit: number;
+  special_requirements: string[];
+  conditions: Array<Record<string, any>>;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PickingRule {
+  id: string;
+  tenant_id: string;
+  name: string;
+  strategy: string;
+  order_rule: string;
+  batch_size: number;
+  zone_priority: string[];
+  exclude_hazmat: boolean;
+  allow_partial: boolean;
+  auto_release: boolean;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+
+export interface InventoryBatch {
+  id: string;
+  tenant_id: string;
+  batch_number: string;
+  product_id: string | null;
+  product_name: string | null;
+  sku: string | null;
+  warehouse_id: string | null;
+  warehouse_name: string | null;
+  supplier: string | null;
+  quantity: number;
+  remaining_quantity: number;
+  manufacturing_date: string | null;
+  expiry_date: string | null;
+  notes: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventorySerial {
+  id: string;
+  tenant_id: string;
+  serial_number: string;
+  batch_id: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  warehouse_id: string | null;
+  warehouse_name: string | null;
+  manufacturing_date: string | null;
+  expiry_date: string | null;
+  notes: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TraceabilityEvent {
+  id: string;
+  tenant_id: string;
+  event_type: string;
+  batch_id: string | null;
+  serial_id: string | null;
+  source_location: string | null;
+  destination_location: string | null;
+  source_warehouse_id: string | null;
+  destination_warehouse_id: string | null;
+  party_type: string | null;
+  party_name: string | null;
+  reference_document: string | null;
+  quantity: number | null;
+  unit: string | null;
+  notes: string | null;
+  event_at: string;
+  actor_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BatchGenealogy {
+  batch: {
+    id: string;
+    batch_number: string;
+    product_name: string | null;
+    quantity: number;
+    remaining_quantity: number;
+    manufacturing_date: string | null;
+    expiry_date: string | null;
+    status: string;
+  };
+  events: TraceabilityEvent[];
+  serial_count: number;
+  serials: Array<{ id: string; serial_number: string; status: string; warehouse_name: string | null }>;
+}
+
+export interface ProductQRCode {
+  id: string;
+  tenant_id: string;
+  product_id: string | null;
+  qr_data: string;
+  qr_type: string;
+  format: string | null;
+  version: string | null;
+  error_correction: string | null;
+  print_count: number;
+  last_printed_at: string | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductRFID {
+  id: string;
+  tenant_id: string;
+  product_id: string | null;
+  tag_uid: string;
+  tag_type: string | null;
+  frequency: string | null;
+  protocol: string | null;
+  memory_bits: number | null;
+  write_count: number;
+  last_seen_at: string | null;
+  last_seen_location: string | null;
+  status: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExpirySummary {
+  today: string;
+  expired: { count: number; units: number };
+  expiring_30: { count: number; units: number };
+  expiring_90: { count: number; units: number };
+}
+
+export interface ExpiryBatchItem {
+  id: string;
+  batch_number: string;
+  product_name: string | null;
+  sku: string | null;
+  warehouse_name: string | null;
+  quantity: number;
+  remaining_quantity: number;
+  manufacturing_date: string | null;
+  expiry_date: string | null;
+  status: string;
+  days_to_expiry: number | null;
+}
+
+export interface ManufacturingCohorts {
+  today: string;
+  cohorts: Record<string, { count: number; units: number }>;
+  serials_tracked: number;
+}
+
+export interface ProductBarcode {
+  id: string;
+  product_name: string;
+  sku: string;
+  barcode: string;
+  format: string | null;
+  selling_price: number | null;
+  image_url: string | null;
+  category_name: string | null;
+}
+
 
 // â”€â”€â”€ CRM Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1683,11 +1870,83 @@ export interface CrmCustomer {
   name: string;
   email: string | null;
   phone: string | null;
+  alternate_phone: string | null;
+  whatsapp_number: string | null;
   company_name: string | null;
+  contact_person?: string | null;
   customer_type: string;
   status: string;
+  source: string | null;
   address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  postal_code: string | null;
+  pincode?: string | null;
   gst_number: string | null;
+  pan_number: string | null;
+  date_of_birth: string | null;
+  anniversary_date: string | null;
+  gender: string | null;
+  preferred_language: string | null;
+  customer_code?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  website?: string | null;
+  designation?: string | null;
+  industry?: string | null;
+  company_size?: string | null;
+  annual_revenue?: number | null;
+  customer_category?: string;
+  lifecycle_stage?: string;
+  referred_by?: string | null;
+  gst_treatment?: string | null;
+  billing_address?: string | null;
+  shipping_address?: string | null;
+  payment_terms?: string | null;
+  credit_limit: number;
+  outstanding_balance: number;
+  lifetime_value: number;
+  total_orders: number;
+  total_returns?: number;
+  average_order_value?: number;
+  last_purchase_date?: string | null;
+  first_purchase_date?: string | null;
+  last_order_at?: string | null;
+  loyalty_points_balance: number;
+  loyalty_tier?: string | null;
+  loyalty_tier_progress?: number;
+  loyalty_points?: number;
+  wallet_balance: number;
+  wallet_lifetime_credited?: number;
+  wallet_lifetime_debited?: number;
+  preferred_currency?: string | null;
+  preferred_channel: string | null;
+  timezone?: string | null;
+  sms_opt_in?: boolean;
+  email_opt_in?: boolean;
+  whatsapp_opt_in?: boolean;
+  do_not_disturb?: boolean;
+  do_not_contact?: boolean;
+  marketing_opt_in: boolean;
+  facebook_id?: string | null;
+  instagram_handle?: string | null;
+  twitter_handle?: string | null;
+  linkedin_handle?: string | null;
+  rfm_recency_days?: number | null;
+  rfm_frequency_score?: number | null;
+  rfm_monetary_score?: number | null;
+  rfm_segment?: string | null;
+  churn_risk_score?: number | null;
+  rating?: number;
+  tags: string[] | null;
+  custom_fields?: Record<string, unknown> | null;
+  notes: string | null;
+  preferred_category?: string | null;
+  assigned_segment_ids?: string[];
+  membership_plan_id?: string | null;
+  membership_status?: string | null;
+  membership_end_at?: string | null;
   owner_user_id: string | null;
   lead_id: string | null;
   created_at: string;
@@ -1709,6 +1968,9 @@ export interface CrmLead {
   next_follow_up_at: string | null;
   notes: string | null;
   lost_reason: string | null;
+  external_id?: string | null;
+  external_source?: string | null;
+  meta?: Record<string, any> | null;
   ai_score: number | null;
   ai_sentiment: string | null;
   created_at: string;
@@ -1726,11 +1988,330 @@ export interface CrmLeadActivity {
   updated_at: string;
 }
 
+export interface LeadAttribution {
+  form_id: string;
+  form_name: string | null;
+  ad_id: string;
+  adset_id: string;
+  campaign_id: string;
+  ad: { id: string; name: string; status: string; headline: string | null; lead_form_id: string | null } | null;
+  adset: { id: string; name: string; status: string } | null;
+  campaign: { id: string; name: string; status: string; objective: string } | null;
+  ad_account_id: string | null;
+  ad_account_name: string | null;
+  source: string | null;
+}
+
+export interface OrganicPost {
+  post_id: string;
+  message: string;
+  image_url: string | null;
+  created_time: string;
+  permalink_url: string | null;
+  likes: number;
+  reactions: number;
+  comments: number;
+  shares: number;
+  engagement: number;
+}
+
+export interface FacebookAdItem {
+  id: string;
+  name: string;
+  status: string;
+  spend: string;
+  impressions: string;
+  clicks: string;
+  ctr: string;
+  reach: string;
+  frequency: string;
+  image_url?: string | null;
+}
+
+export interface FacebookCampaign {
+  id: string;
+  name: string;
+  status: string;
+  objective: string;
+  start_time: string | null;
+  stop_time: string | null;
+  spend: string | null;
+  impressions: string | null;
+  clicks: string | null;
+  ctr: string | null;
+  reach: string | null;
+  frequency: string | null;
+  ad_image_url?: string | null;
+  ad_name?: string;
+  ads?: FacebookAdItem[];
+}
+
 export const crmCustomersApi = {
   list: (page = 1, pageSize = 20, search?: string, customerType?: string) =>
     request<PaginatedResponse<CrmCustomer>>("GET", "/crm/customers", undefined, { page, page_size: pageSize, search, customer_type: customerType }),
   create: (data: Record<string, unknown>) => request<CrmCustomer>("POST", "/crm/customers", data),
   update: (id: string, data: Record<string, unknown>) => request<CrmCustomer>("PATCH", `/crm/customers/${id}`, data),
+};
+
+// ── CRM Modules ──────────────────────────────────────────────────────────────
+
+export interface CustomerGroup {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  is_active: boolean;
+  auto_join_rules: Record<string, unknown> | null;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerGroupMember {
+  id: string;
+  group_id: string;
+  customer_id: string;
+  joined_at: string;
+  added_by_user_id: string | null;
+  notes: string | null;
+  customer_name?: string;
+  customer_email?: string;
+}
+
+export interface CrmSegment {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  criteria: Record<string, unknown>;
+  is_dynamic: boolean;
+  is_active: boolean;
+  member_count: number;
+  last_recalculated_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MembershipPlan {
+  id: string;
+  tenant_id: string;
+  name: string;
+  tier: string;
+  description: string | null;
+  duration_months: number;
+  price: number;
+  currency: string;
+  benefits: string[];
+  discount_percentage: number;
+  points_multiplier: number;
+  auto_renewal: boolean;
+  is_active: boolean;
+  max_members: number;
+  current_members: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerMembership {
+  id: string;
+  tenant_id: string;
+  customer_id: string;
+  plan_id: string;
+  status: string;
+  started_at: string;
+  expires_at: string;
+  auto_renewal: boolean;
+  cancelled_at: string | null;
+  customer_name?: string;
+  plan_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  tenant_id: string;
+  customer_id: string;
+  transaction_type: string;
+  amount: number;
+  balance_after: number;
+  description: string;
+  reference_id: string | null;
+  reference_type: string | null;
+  created_at: string;
+  customer_name?: string;
+}
+
+export interface LoyaltyRule {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  rule_type: string;
+  trigger_value: number;
+  reward_type: string;
+  reward_value: number;
+  cooldown_days: number;
+  is_active: boolean;
+  priority: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LoyaltyTransaction {
+  id: string;
+  tenant_id: string;
+  customer_id: string;
+  rule_id: string | null;
+  points_earned: number;
+  points_redeemed: number;
+  transaction_type: string;
+  description: string;
+  reference_id: string | null;
+  created_at: string;
+  customer_name?: string;
+  rule_name?: string;
+}
+
+export interface Discount {
+  id: string;
+  tenant_id: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  discount_type: string;
+  value: number;
+  min_order_value: number;
+  max_discount: number | null;
+  applicable_scope: string;
+  applicable_products: string[] | null;
+  applicable_categories: string[] | null;
+  applicable_customer_groups: string[] | null;
+  applicable_segments: string[] | null;
+  usage_limit: number | null;
+  usage_count: number;
+  per_customer_limit: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  stackable: boolean;
+  requires_coupon: boolean;
+  is_active: boolean;
+  applicable_tiers: string[] | null;
+  bundle_ids: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiscountUsage {
+  id: string;
+  tenant_id: string;
+  discount_id: string;
+  customer_id: string;
+  order_id: string | null;
+  discount_amount: number;
+  created_at: string;
+  customer_name?: string;
+  discount_name?: string;
+}
+
+// ── Groups API ───────────────────────────────────────────────────────────────
+
+export const crmGroupsApi = {
+  list: (page = 1, pageSize = 20, search?: string) =>
+    request<PaginatedResponse<CustomerGroup>>("GET", "/crm/groups", undefined, { page, page_size: pageSize, search }),
+  get: (id: string) => request<CustomerGroup>("GET", `/crm/groups/${id}`),
+  create: (data: Record<string, unknown>) => request<CustomerGroup>("POST", "/crm/groups", data),
+  update: (id: string, data: Record<string, unknown>) => request<CustomerGroup>("PATCH", `/crm/groups/${id}`, data),
+  delete: (id: string) => request<void>("DELETE", `/crm/groups/${id}`),
+  toggle: (id: string, isActive: boolean) => request<CustomerGroup>("PATCH", `/crm/groups/${id}/toggle`, { is_active: isActive }),
+  addMembers: (id: string, data: { customer_ids: string[] }) =>
+    request<{ added: number }>("POST", `/crm/groups/${id}/members`, data),
+  removeMember: (groupId: string, customerId: string) =>
+    request<void>("DELETE", `/crm/groups/${groupId}/members/${customerId}`),
+  getMembers: (groupId: string, page = 1, pageSize = 20) =>
+    request<PaginatedResponse<CustomerGroupMember>>("GET", `/crm/groups/${groupId}/members`, undefined, { page, page_size: pageSize }),
+};
+
+// ── Segments API ─────────────────────────────────────────────────────────────
+
+export const crmSegmentsApi = {
+  list: (page = 1, pageSize = 20, search?: string) =>
+    request<PaginatedResponse<CrmSegment>>("GET", "/crm/segments", undefined, { page, page_size: pageSize, search }),
+  get: (id: string) => request<CrmSegment>("GET", `/crm/segments/${id}`),
+  create: (data: Record<string, unknown>) => request<CrmSegment>("POST", "/crm/segments", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmSegment>("PATCH", `/crm/segments/${id}`, data),
+  delete: (id: string) => request<void>("DELETE", `/crm/segments/${id}`),
+  toggle: (id: string, isActive: boolean) => request<CrmSegment>("PATCH", `/crm/segments/${id}/toggle`, { is_active: isActive }),
+  recalculate: (id: string) => request<{ member_count: number; recalculated_at: string }>("POST", `/crm/segments/${id}/recalculate`),
+  preview: (id: string) => request<{ member_count: number }>("POST", `/crm/segments/${id}/preview`),
+};
+
+// ── Memberships API ──────────────────────────────────────────────────────────
+
+export const crmMembershipsApi = {
+  listPlans: (page = 1, pageSize = 20, search?: string) =>
+    request<PaginatedResponse<MembershipPlan>>("GET", "/crm/membership-plans", undefined, { page, page_size: pageSize, search }),
+  getPlan: (id: string) => request<MembershipPlan>("GET", `/crm/membership-plans/${id}`),
+  createPlan: (data: Record<string, unknown>) => request<MembershipPlan>("POST", "/crm/membership-plans", data),
+  updatePlan: (id: string, data: Record<string, unknown>) => request<MembershipPlan>("PATCH", `/crm/membership-plans/${id}`, data),
+  deletePlan: (id: string) => request<void>("DELETE", `/crm/membership-plans/${id}`),
+  listSubscriptions: (page = 1, pageSize = 20, customerId?: string, planId?: string, status?: string) =>
+    request<PaginatedResponse<CustomerMembership>>("GET", "/crm/membership-subscriptions", undefined, { page, page_size: pageSize, customer_id: customerId, plan_id: planId, status }),
+  getSubscription: (id: string) => request<CustomerMembership>("GET", `/crm/membership-subscriptions/${id}`),
+  createSubscription: (data: { customer_id: string; plan_id: string }) =>
+    request<CustomerMembership>("POST", "/crm/membership-subscriptions", data),
+  cancelSubscription: (id: string) => request<CustomerMembership>("POST", `/crm/membership-subscriptions/${id}/cancel`),
+  renewSubscription: (id: string) => request<CustomerMembership>("POST", `/crm/membership-subscriptions/${id}/renew`),
+};
+
+// ── Wallet API ───────────────────────────────────────────────────────────────
+
+export const crmWalletApi = {
+  listTransactions: (customerId: string, page = 1, pageSize = 20) =>
+    request<PaginatedResponse<WalletTransaction>>("GET", `/crm/wallet/transactions`, undefined, { customer_id: customerId, page, page_size: pageSize }),
+  credit: (customerId: string, amount: number, description: string, referenceId?: string) =>
+    request<WalletTransaction>("POST", `/crm/wallet/credit`, { customer_id: customerId, amount, description, reference_id: referenceId }),
+  debit: (customerId: string, amount: number, description: string, referenceId?: string) =>
+    request<WalletTransaction>("POST", `/crm/wallet/debit`, { customer_id: customerId, amount, description, reference_id: referenceId }),
+  adjust: (customerId: string, amount: number, description: string) =>
+    request<WalletTransaction>("POST", `/crm/wallet/adjust`, { customer_id: customerId, amount, description }),
+  getBalance: (customerId: string) =>
+    request<{ customer_id: string; balance: number }>("GET", `/crm/wallet/balance/${customerId}`),
+};
+
+// ── Loyalty API ──────────────────────────────────────────────────────────────
+
+export const crmLoyaltyApi = {
+  listRules: (page = 1, pageSize = 20, search?: string) =>
+    request<PaginatedResponse<LoyaltyRule>>("GET", "/crm/loyalty/rules", undefined, { page, page_size: pageSize, search }),
+  getRule: (id: string) => request<LoyaltyRule>("GET", `/crm/loyalty/rules/${id}`),
+  createRule: (data: Record<string, unknown>) => request<LoyaltyRule>("POST", "/crm/loyalty/rules", data),
+  updateRule: (id: string, data: Record<string, unknown>) => request<LoyaltyRule>("PATCH", `/crm/loyalty/rules/${id}`, data),
+  deleteRule: (id: string) => request<void>("DELETE", `/crm/loyalty/rules/${id}`),
+  toggleRule: (id: string, isActive: boolean) => request<LoyaltyRule>("PATCH", `/crm/loyalty/rules/${id}/toggle`, { is_active: isActive }),
+  listTransactions: (customerId?: string, page = 1, pageSize = 20) =>
+    request<PaginatedResponse<LoyaltyTransaction>>("GET", "/crm/loyalty/transactions", undefined, { customer_id: customerId, page, page_size: pageSize }),
+  addPoints: (customerId: string, points: number, description: string, referenceId?: string) =>
+    request<LoyaltyTransaction>("POST", "/crm/loyalty/points/add", { customer_id: customerId, points, description, reference_id: referenceId }),
+  redeemPoints: (customerId: string, points: number, description: string, referenceId?: string) =>
+    request<LoyaltyTransaction>("POST", "/crm/loyalty/points/redeem", { customer_id: customerId, points, description, reference_id: referenceId }),
+};
+
+// ── Discounts API ────────────────────────────────────────────────────────────
+
+export const crmDiscountsApi = {
+  list: (page = 1, pageSize = 20, search?: string) =>
+    request<PaginatedResponse<Discount>>("GET", "/crm/discounts", undefined, { page, page_size: pageSize, search }),
+  get: (id: string) => request<Discount>("GET", `/crm/discounts/${id}`),
+  create: (data: Record<string, unknown>) => request<Discount>("POST", "/crm/discounts", data),
+  update: (id: string, data: Record<string, unknown>) => request<Discount>("PATCH", `/crm/discounts/${id}`, data),
+  delete: (id: string) => request<void>("DELETE", `/crm/discounts/${id}`),
+  toggle: (id: string, isActive: boolean) => request<Discount>("PATCH", `/crm/discounts/${id}/toggle`, { is_active: isActive }),
+  validateCoupon: (code: string, customerId?: string, orderValue?: number) =>
+    request<{ valid: boolean; discount_id?: string; discount_amount?: number; message?: string }>("POST", "/crm/discounts/validate", { code, customer_id: customerId, order_value: orderValue }),
+  listUsage: (discountId?: string, page = 1, pageSize = 20) =>
+    request<PaginatedResponse<DiscountUsage>>("GET", "/crm/discounts/usage", undefined, { discount_id: discountId, page, page_size: pageSize }),
 };
 
 export const crmLeadsApi = {
@@ -1741,6 +2322,8 @@ export const crmLeadsApi = {
   listActivities: (id: string) => request<CrmLeadActivity[]>("GET", `/crm/leads/${id}/activities`),
   addActivity: (id: string, data: Record<string, unknown>) => request<CrmLeadActivity>("POST", `/crm/leads/${id}/activities`, data),
   convert: (id: string) => request<CrmCustomer>("POST", `/crm/leads/${id}/convert`),
+  getAttribution: (id: string) =>
+    request<LeadAttribution>("GET", `/crm/leads/${id}/attribution`),
 
   // ── Facebook OAuth page connection (proper flow) ─────────────────────────────
   /** Get this tenant's Meta App configuration status */
@@ -1777,6 +2360,13 @@ export const crmLeadsApi = {
   /** Disconnects the connected FB page. */
   disconnectFbPage: () =>
     request<{ success: boolean }>("DELETE", "/crm/facebook/disconnect"),
+
+  getOrganicPosts: (limit = 25) =>
+    request<{ posts: OrganicPost[]; total: number; page_id: string }>(
+      "GET", "/crm/facebook/organic-posts", undefined, { limit }
+    ),
+  getCampaigns: () =>
+    request<FacebookCampaign[]>("GET", "/crm/facebook/campaigns"),
 
   // ── Legacy credential endpoints (for lead import form backward-compat) ───────
   saveFacebookCredentials: (data: { fb_access_token: string; fb_page_or_form_id?: string; fb_api_version?: string }) =>
@@ -1997,6 +2587,215 @@ export const crmCampaignsApi = {
   listEmailTemplates: () => request<EmailTemplate[]>("GET", "/crm/email-templates"),
   createEmailTemplate: (data: { name: string; subject?: string; body_html: string }) =>
     request<EmailTemplate>("POST", "/crm/email-templates", data),
+};
+
+export interface LeadFormInfo {
+  id: string;
+  name: string;
+  status: string;
+  leads_count: number;
+}
+
+export interface MetaAdCampaignResponse {
+  id: string;
+  tenant_id: string;
+  meta_campaign_id: string;
+  name: string;
+  objective: string;
+  status: string;
+  special_ad_categories: string[];
+  daily_budget_cents: number | null;
+  lifetime_budget_cents: number | null;
+  spend_cents: number;
+  impressions: number;
+  clicks: number;
+  ctr: number | null;
+  reach: number;
+  frequency: number | null;
+  meta_payload: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MetaAdSetResponse {
+  id: string;
+  campaign_id: string;
+  meta_adset_id: string;
+  name: string;
+  targeting: Record<string, any> | null;
+  status: string;
+  meta_payload: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MetaAdResponse {
+  id: string;
+  adset_id: string;
+  meta_ad_id: string;
+  meta_creative_id: string;
+  meta_image_hash: string;
+  name: string;
+  lead_form_id: string | null;
+  destination_url: string | null;
+  headline: string | null;
+  body: string | null;
+  cta_type: string | null;
+  status: string;
+  meta_payload: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MetaAdInsights {
+  spend: string;
+  impressions: string;
+  clicks: string;
+  ctr: string;
+  reach: string;
+  frequency: string;
+  cpc?: string;
+  cpm?: string;
+}
+
+export interface PaidCampaignListResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: MetaAdCampaignResponse[];
+}
+
+export interface CreatePaidAdRequest {
+  campaign_name: string;
+  adset_name: string;
+  ad_name: string;
+  objective: "OUTCOME_ENGAGEMENT" | "OUTCOME_TRAFFIC" | "OUTCOME_LEADS" | "OUTCOME_SALES" | "OUTCOME_AWARENESS" | "OUTCOME_APP_INSTALLS" | "REACH";
+  special_ad_categories?: string[];
+  image_url: string;
+  caption: string;
+  headline: string;
+  destination_url: string;
+  lead_form_id?: string;
+  cta_type?: string;
+  daily_budget_cents?: number;
+  lifetime_budget_cents?: number;
+  targeting?: Record<string, any>;
+  start_time?: string;
+  end_time?: string;
+}
+
+export interface ActivateAdRequest {
+  status: "ACTIVE" | "PAUSED";
+}
+
+export interface AssetLibraryItem {
+  id: string;
+  filename: string;
+  public_url: string;
+  thumbnail_url: string | null;
+  aspect_ratio: string;
+  width: number | null;
+  height: number | null;
+  source: string;
+  provider_model: string | null;
+  original_prompt: string | null;
+  enhanced_prompt: string | null;
+  style: string | null;
+  approval_status: string;
+  used_in_organic_post: boolean;
+  used_in_paid_campaign: boolean;
+  organic_post_id: string | null;
+  tags: string[];
+  notes: string | null;
+  created_at: string;
+}
+
+export interface SaveAssetPayload {
+  filename: string;
+  public_url: string;
+  aspect_ratio?: string;
+  width?: number;
+  height?: number;
+  file_size_bytes?: number;
+  source?: "claude" | "gemini" | "openai" | "upload";
+  provider_model?: string;
+  original_prompt?: string;
+  enhanced_prompt?: string;
+  style?: string;
+  tags?: string[];
+  notes?: string;
+}
+
+export interface AssetLibraryListResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: AssetLibraryItem[];
+}
+
+export const assetLibraryApi = {
+  save: (data: SaveAssetPayload) =>
+    request<{ id: string; public_url: string; approval_status: string }>(
+      "POST", "/crm/ads/save-asset", data
+    ),
+  list: (status?: string, source?: string, page = 1, pageSize = 20) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (source) params.set("source", source);
+    params.set("page", String(page));
+    params.set("page_size", String(pageSize));
+    return request<AssetLibraryListResponse>(
+      "GET", `/crm/ads/asset-library?${params.toString()}`
+    );
+  },
+  approve: (assetId: string, status: "approved" | "rejected" | "draft", rejectionReason?: string) =>
+    request<{ id: string; approval_status: string }>(
+      "PUT", `/crm/ads/assets/${assetId}/approve`, {
+        status,
+        rejection_reason: rejectionReason,
+      }
+    ),
+};
+
+export const paidAdsApi = {
+  /** List lead-gen forms on the connected Page for destination dropdown. */
+  listLeadForms: () =>
+    request<LeadFormInfo[]>("POST", "/crm/ads/lead-forms"),
+
+  /** Create a full paid-ad pipeline (campaign → adset → creative → ad). */
+  createCampaign: (data: CreatePaidAdRequest) =>
+    request<{
+      success: boolean;
+      local_campaign_id: string;
+      local_adset_id: string;
+      local_ad_id: string;
+      meta_campaign_id: string;
+      meta_adset_id: string;
+      meta_ad_id: string;
+      meta_creative_id: string;
+      image_hash: string;
+      message: string;
+    }>("POST", "/crm/ads/campaigns", data),
+
+  /** Activate (submit) or pause a paid ad. */
+  activateAd: (adId: string, data: { status: "ACTIVE" | "PAUSED" }) =>
+    request<{ success: boolean; meta_ad_id: string; status: string }>(
+      "POST", `/crm/ads/${adId}/activate`, data
+    ),
+
+  /** Paginated list of paid-ad campaigns. */
+  listCampaigns: (page = 1, pageSize = 20) =>
+    request<PaidCampaignListResponse>(
+      "GET", `/crm/ads/campaigns?page=${page}&page_size=${pageSize}`
+    ),
+
+  /** Live performance insights for a campaign. */
+  getCampaignInsights: (campaignId: string) =>
+    request<MetaAdInsights>("GET", `/crm/ads/campaigns/${campaignId}/insights`),
+
+  /** Archive (delete) a paid-ad campaign. */
+  archiveCampaign: (campaignId: string) =>
+    request<{ success: boolean }>("DELETE", `/crm/ads/campaigns/${campaignId}`),
 };
 
 export interface NotificationSettings {
@@ -2478,6 +3277,100 @@ export interface CycleCount {
   items: any[];
 }
 
+export interface HealthComponent {
+  key: string;
+  label: string;
+  score: number;
+  weight: number;
+  signal: string;
+}
+
+export interface HealthScore {
+  overall: number;
+  grade: string;
+  grade_color: string;
+  components: HealthComponent[];
+  total_products: number;
+  total_value: number;
+  total_units: number;
+  stocked_out_count: number;
+  dead_stock_count: number;
+  expiry_at_risk_value: number;
+}
+
+export interface DeadStockItem {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  on_hand: number;
+  stock_value: number;
+  selling_price: number;
+  purchase_price: number;
+  no_movement_for: string;
+  recommendation: string;
+  recommendation_severity: string;
+  days_to_expiry: number | null;
+  next_expiry: string | null;
+}
+
+export interface ReorderItem {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  on_hand: number;
+  reorder_level: number;
+  urgency: string;
+  reason: string;
+  suggested_order_qty: number;
+  suggested_order_value: number;
+}
+
+export interface AnomalyItem {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  anomaly_type: string;
+  severity: string;
+  title: string;
+  message: string;
+  metric: string;
+  context: string;
+  ts: string;
+}
+
+export interface Insight {
+  tone: "success" | "warning" | "critical" | "info";
+  icon: string;
+  title: string;
+  body: string;
+}
+
+export interface CategoryBreakdownItem {
+  category: string;
+  units: number;
+  value: number;
+  potential_revenue: number;
+  potential_margin: number;
+  margin_pct: number;
+  product_count: number;
+  expiring_value: number;
+  dead_value: number;
+  avg_value_per_sku: number;
+  value_share_pct: number;
+}
+
+export interface IntelligenceSummary {
+  health: HealthScore;
+  dead_stock: { items: DeadStockItem[]; total_count: number; total_dead_value: number; total_units: number };
+  reorder: { items: ReorderItem[]; total_count: number; critical: number; high: number; medium: number; low: number; estimated_total_value: number };
+  insights: { insights: Insight[]; summary: string };
+  categories: { items: CategoryBreakdownItem[]; total_value: number };
+  anomalies: { items: AnomalyItem[]; counts: Record<string, number> };
+  generated_at: string;
+}
+
 export const inventoryApi = {
   // Products
   getProducts: (params?: { category_id?: string; brand_id?: string; search?: string; page?: number; page_size?: number }) =>
@@ -2555,35 +3448,53 @@ export const inventoryApi = {
   getUOMs: (params?: { search?: string; page?: number; page_size?: number }) =>
     request<PaginatedResponse<InventoryUOM>>("GET", "/inventory/uoms", undefined, params as Record<string, any>),
   createUOM: (data: Record<string, unknown>) => request<InventoryUOM>("POST", "/inventory/uoms", data),
+  updateUOM: (id: string, data: Record<string, unknown>) => request<InventoryUOM>("PATCH", `/inventory/uoms/${id}`, data),
   deleteUOM: (id: string) => request<void>("DELETE", `/inventory/uoms/${id}`),
 
   // Attributes
   getProductAttributes: () => request<ProductAttribute[]>("GET", "/inventory/product-attributes"),
   createProductAttribute: (data: Record<string, unknown>) => request<ProductAttribute>("POST", "/inventory/product-attributes", data),
+  updateProductAttribute: (id: string, data: Record<string, unknown>) => request<ProductAttribute>("PATCH", `/inventory/product-attributes/${id}`, data),
   deleteProductAttribute: (id: string) => request<void>("DELETE", `/inventory/product-attributes/${id}`),
 
   // Variants
   getProductVariants: () => request<ProductVariant[]>("GET", "/inventory/product-variants"),
   createProductVariant: (data: Record<string, unknown>) => request<ProductVariant>("POST", "/inventory/product-variants", data),
+  updateProductVariant: (id: string, data: Record<string, unknown>) => request<ProductVariant>("PATCH", `/inventory/product-variants/${id}`, data),
   deleteProductVariant: (id: string) => request<void>("DELETE", `/inventory/product-variants/${id}`),
 
   // Bundles
   getProductBundles: () => request<ProductBundle[]>("GET", "/inventory/product-bundles"),
   createProductBundle: (data: Record<string, unknown>) => request<ProductBundle>("POST", "/inventory/product-bundles", data),
+  updateProductBundle: (id: string, data: Record<string, unknown>) => request<ProductBundle>("PATCH", `/inventory/product-bundles/${id}`, data),
   deleteProductBundle: (id: string) => request<void>("DELETE", `/inventory/product-bundles/${id}`),
 
   // Kits
   getProductKits: () => request<ProductKit[]>("GET", "/inventory/product-kits"),
   createProductKit: (data: Record<string, unknown>) => request<ProductKit>("POST", "/inventory/product-kits", data),
+  updateProductKit: (id: string, data: Record<string, unknown>) => request<ProductKit>("PATCH", `/inventory/product-kits/${id}`, data),
   deleteProductKit: (id: string) => request<void>("DELETE", `/inventory/product-kits/${id}`),
 
   // Images
   getProductImages: () => request<ProductImage[]>("GET", "/inventory/product-images"),
   createProductImage: (data: Record<string, unknown>) => request<ProductImage>("POST", "/inventory/product-images", data),
+  updateProductImage: (id: string, data: Record<string, unknown>) => request<ProductImage>("PATCH", `/inventory/product-images/${id}`, data),
   deleteProductImage: (id: string) => request<void>("DELETE", `/inventory/product-images/${id}`),
-
-  // Operations - Overview
-  getOperationsOverview: () => request<any>("GET", "/inventory/operations/overview"),
+  uploadProductImageFile: (productId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return fetch(`${API_BASE_URL}/inventory/product-images/upload?product_id=${encodeURIComponent(productId)}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken() || ""}` },
+      body: form,
+    }).then(async (r) => {
+      if (!r.ok) {
+        const detail = await r.text();
+        throw { detail, status: r.status };
+      }
+      return r.json() as Promise<ProductImage>;
+    });
+  },
 
   // Operations - GRN
   getGoodsReceipts: () => request<GoodsReceipt[]>("GET", "/inventory/grn"),
@@ -2610,6 +3521,19 @@ export const inventoryApi = {
   createCycleCount: (data: Record<string, unknown>) => request<CycleCount>("POST", "/inventory/cycle-counts", data),
   deleteCycleCount: (id: string) => request<void>("DELETE", `/inventory/cycle-counts/${id}`),
 
+  // Operations - Overview
+  getOperationsOverview: () => request<{
+    available: number;
+    reserved: number;
+    damaged: number;
+    transit: number;
+    expired: number;
+    valuation: Record<string, { value: string; pct: number }>;
+  }>("GET", "/inventory/operations/overview"),
+
+  // Intelligence
+  getIntelligence: () => request<IntelligenceSummary>("GET", "/inventory/intelligence/summary"),
+
   // Warehouse Management
   getWarehouses: () => request<Warehouse[]>("GET", "/inventory/warehouses"),
   createWarehouse: (data: Record<string, unknown>) => request<Warehouse>("POST", "/inventory/warehouses", data),
@@ -2618,6 +3542,68 @@ export const inventoryApi = {
   getStorageLocations: () => request<StorageLocation[]>("GET", "/inventory/locations"),
   createStorageLocation: (warehouseId: string, data: Record<string, unknown>) => request<StorageLocation>("POST", `/inventory/warehouses/${warehouseId}/locations`, data),
   deleteStorageLocation: (id: string) => request<void>("DELETE", `/inventory/locations/${id}`),
+
+  // Put-Away Rules
+  getPutAwayRules: () => request<PutAwayRule[]>("GET", "/inventory/put-away-rules"),
+  createPutAwayRule: (data: Record<string, unknown>) => request<PutAwayRule>("POST", "/inventory/put-away-rules", data),
+  updatePutAwayRule: (id: string, data: Record<string, unknown>) => request<PutAwayRule>("PATCH", `/inventory/put-away-rules/${id}`, data),
+  deletePutAwayRule: (id: string) => request<void>("DELETE", `/inventory/put-away-rules/${id}`),
+
+  // Picking Rules
+  getPickingRules: () => request<PickingRule[]>("GET", "/inventory/picking-rules"),
+  createPickingRule: (data: Record<string, unknown>) => request<PickingRule>("POST", "/inventory/picking-rules", data),
+  updatePickingRule: (id: string, data: Record<string, unknown>) => request<PickingRule>("PATCH", `/inventory/picking-rules/${id}`, data),
+  deletePickingRule: (id: string) => request<void>("DELETE", `/inventory/picking-rules/${id}`),
+
+
+  // Batch & Serial Numbers
+  getBatches: (params?: { search?: string; product_id?: string; warehouse_id?: string; status?: string }) =>
+    request<InventoryBatch[]>("GET", "/inventory/batches", undefined, params as Record<string, any>),
+  createBatch: (data: Record<string, unknown>) => request<InventoryBatch>("POST", "/inventory/batches", data),
+  updateBatch: (id: string, data: Record<string, unknown>) => request<InventoryBatch>("PATCH", `/inventory/batches/${id}`, data),
+  deleteBatch: (id: string) => request<void>("DELETE", `/inventory/batches/${id}`),
+
+  getSerials: (params?: { batch_id?: string; warehouse_id?: string; status?: string; search?: string }) =>
+    request<InventorySerial[]>("GET", "/inventory/serials", undefined, params as Record<string, any>),
+  createSerial: (data: Record<string, unknown>) => request<InventorySerial>("POST", "/inventory/serials", data),
+  updateSerial: (id: string, data: Record<string, unknown>) => request<InventorySerial>("PATCH", `/inventory/serials/${id}`, data),
+  deleteSerial: (id: string) => request<void>("DELETE", `/inventory/serials/${id}`),
+
+  // Traceability
+  getTraceabilityEvents: (params?: { batch_id?: string; serial_id?: string; event_type?: string }) =>
+    request<TraceabilityEvent[]>("GET", "/inventory/traceability/events", undefined, params as Record<string, any>),
+  createTraceabilityEvent: (data: Record<string, unknown>) => request<TraceabilityEvent>("POST", "/inventory/traceability/events", data),
+  getBatchGenealogy: (batchId: string) => request<BatchGenealogy>("GET", `/inventory/traceability/genealogy/${batchId}`),
+
+  // Expiry Management
+  getExpirySummary: () => request<ExpirySummary>("GET", "/inventory/expiry/summary"),
+  getExpiryList: (bucket?: string) => request<ExpiryBatchItem[]>("GET", `/inventory/expiry/list${bucket ? `?bucket=${bucket}` : ''}`),
+  applyExpiryDiscount: (batchId: string, discountPercent: number) => request<any>("POST", `/inventory/expiry/apply-discount?batch_id=${batchId}&discount_percent=${discountPercent}`),
+  writeOffExpired: (batchId: string, reason?: string) => request<any>("POST", `/inventory/expiry/write-off?batch_id=${batchId}${reason ? `&reason=${encodeURIComponent(reason)}` : ""}`),
+
+  // Manufacturing Dates
+  getManufacturingCohorts: () => request<ManufacturingCohorts>("GET", "/inventory/manufacturing/cohorts"),
+  getManufacturingList: () => request<any[]>("GET", "/inventory/manufacturing/list"),
+
+  // Barcodes
+  getBarcodes: (search?: string) => request<ProductBarcode[]>("GET", `/inventory/barcodes${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  generateBarcode: (productId: string) => request<any>("POST", `/inventory/barcodes/generate?product_id=${productId}`),
+  batchPrintBarcodes: (productIds: string[]) => request<any>("POST", "/inventory/barcodes/batch-print", undefined, { product_ids: productIds } as Record<string, any>),
+
+  // QR Codes
+  getQRCodes: (params?: { product_id?: string; search?: string }) => request<ProductQRCode[]>("GET", "/inventory/qrcodes", undefined, params as Record<string, any>),
+  createQRCode: (data: Record<string, unknown>) => request<ProductQRCode>("POST", "/inventory/qrcodes", data),
+  updateQRCode: (id: string, data: Record<string, unknown>) => request<ProductQRCode>("PATCH", `/inventory/qrcodes/${id}`, data),
+  deleteQRCode: (id: string) => request<void>("DELETE", `/inventory/qrcodes/${id}`),
+  printQRCode: (id: string) => request<any>("POST", `/inventory/qrcodes/${id}/print`),
+
+  // RFID
+  getRFIDs: (params?: { product_id?: string; status?: string; search?: string }) => request<ProductRFID[]>("GET", "/inventory/rfids", undefined, params as Record<string, any>),
+  createRFID: (data: Record<string, unknown>) => request<ProductRFID>("POST", "/inventory/rfids", data),
+  updateRFID: (id: string, data: Record<string, unknown>) => request<ProductRFID>("PATCH", `/inventory/rfids/${id}`, data),
+  deleteRFID: (id: string) => request<void>("DELETE", `/inventory/rfids/${id}`),
+  scanRFID: (id: string, location: string) => request<ProductRFID>("POST", `/inventory/rfids/${id}/scan?location=${encodeURIComponent(location)}`),
+
 
   // --- Procurement & Supplier Management ---
   getSuppliers: (params?: { search?: string; status?: string }) => request<any[]>("GET", "/inventory/procurement/suppliers", undefined, params),

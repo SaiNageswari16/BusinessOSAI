@@ -623,7 +623,7 @@ async def consult_ai_report(tab: str, payload: Dict[str, Any], db: AsyncSession 
     table_summary = json.dumps(table_rows[:20], indent=2)
 
     prompt = (
-        f"You are an elite business analyst and retail AI officer for BusinessOS AI ERP.\n"
+        f"You are an elite business analyst and retail AI officer for IOTRONCS Retail ERP.\n"
         f"The user is viewing the '{tab.replace('_', ' ').title()}' intelligence page and has a question.\n\n"
         f"=== CURRENT LIVE REPORT METRICS ===\n"
         f"{kpi_text}\n\n"

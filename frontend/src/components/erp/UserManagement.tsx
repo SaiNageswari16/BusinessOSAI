@@ -618,7 +618,28 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
                       >
                         <Edit2 className="size-4" />
                       </button>
-                      <button className="p-1.5 rounded-lg hover:bg-destructive/10 transition text-muted-foreground hover:text-destructive">
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Delete user "${user.full_name}"? This cannot be undone.`)) return;
+                          const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}`, {
+                            method: "DELETE",
+                            headers: { Authorization: `Bearer ${accessToken}` },
+                          });
+                          if (!res.ok) {
+                            const body = await res.text();
+                            let msg = "Failed to delete user";
+                            try {
+                              const json = JSON.parse(body);
+                              if (typeof json.detail === "string") msg = json.detail;
+                            } catch {}
+                            toast.error(msg);
+                            return;
+                          }
+                          toast.success("User deleted");
+                          await loadUsers();
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-destructive/10 transition text-muted-foreground hover:text-destructive"
+                      >
                         <Trash2 className="size-4" />
                       </button>
                     </div>

@@ -12,11 +12,13 @@ import { CustomerSegments } from "@/components/crm/CustomerSegments";
 import { MembershipPlans } from "@/components/crm/MembershipPlans";
 import { CustomerWallet } from "@/components/crm/CustomerWallet";
 import { LoyaltyProgram } from "@/components/crm/LoyaltyProgram";
+import { Discounts } from "@/components/crm/Discounts";
 import { CustomerDocuments } from "@/components/crm/CustomerDocuments";
 
 // Sales CRM
 import { AdGenerator } from "@/components/crm/AdGenerator";
 import { AdHistory } from "@/components/crm/AdHistory";
+import { SocialMediaDashboard } from "@/components/crm/SocialMediaDashboard";
 import { Leads } from "@/components/crm/Leads";
 import { Opportunities } from "@/components/crm/Opportunities";
 import { Deals } from "@/components/crm/Deals";
@@ -57,11 +59,13 @@ const componentMap: Record<string, React.ElementType> = {
   membership_plans: MembershipPlans,
   customer_wallet: CustomerWallet,
   loyalty_program: LoyaltyProgram,
+  discounts: Discounts,
   customer_documents: CustomerDocuments,
 
   // Sales CRM
   ad_generator: AdGenerator,
   ad_history: AdHistory,
+  social_media_dashboard: SocialMediaDashboard,
   leads: Leads,
   opportunities: Opportunities,
   deals: Deals,
@@ -125,10 +129,38 @@ function CrmModule() {
             transition={{ duration: 0.2 }}
             className="min-h-full"
           >
-            <ActiveComponent />
+            <ComponentErrorBoundary componentName={activeTab}>
+              <ActiveComponent />
+            </ComponentErrorBoundary>
           </motion.div>
         </AnimatePresence>
       </div>
     </div>
   );
+}
+
+class ComponentErrorBoundary extends React.Component<
+  { componentName: string; children: React.ReactNode },
+  { error: Error | null; stack: string | null }
+> {
+  state = { error: null as Error | null, stack: null as string | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error, stack: error.stack || null };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // eslint-disable-next-line no-console
+    console.error(`[ComponentErrorBoundary:${this.props.componentName}]`, error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 space-y-3">
+          <h2 className="text-lg font-bold text-red-600">Component Error: {this.props.componentName}</h2>
+          <p className="text-sm text-foreground font-mono">{this.state.error.message}</p>
+          <pre className="text-[10px] bg-muted p-3 rounded overflow-auto max-h-60">{this.state.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }

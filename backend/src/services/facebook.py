@@ -142,7 +142,11 @@ class FacebookClient:
     def _fetch_leads_from_form(self, form_id: str) -> list[dict]:
         page_token = self._get_page_token(self.page_or_form_id)
         leads: list[dict] = []
-        params = {"access_token": page_token, "limit": 100}
+        params = {
+            "access_token": page_token,
+            "fields": "id,created_time,field_data,ad_id,adset_id,campaign_id,form_id",
+            "limit": 100,
+        }
         while True:
             data  = self._graph_get(f"{form_id}/leads", params)
             batch = data.get("data", [])

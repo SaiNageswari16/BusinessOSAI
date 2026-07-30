@@ -8,6 +8,8 @@ import {
   DollarSign, Eye, MousePointerClick, Layers
 } from "lucide-react";
 import { crmLeadsApi } from "@/lib/api-client";
+import PaidCampaignBuilder from "./PaidCampaignBuilder";
+import PaidAdsSection from "./PaidAdsSection";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/tenant-context";
 
@@ -34,6 +36,7 @@ type TokenInfo = {
   expires_at?: number | null;
   scopes?: string[];
   error?: string | null;
+  ad_account_id?: string;
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -301,7 +304,7 @@ export function AdHistory() {
   const [tokenLoading, setTokenLoading] = useState(true);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<"published" | "campaigns" | "sync">("published");
+  const [activeTab, setActiveTab] = useState<"published" | "campaigns" | "paid" | "sync">("published");
 
   // Ad Campaigns RAG states
   const [adAccounts, setAdAccounts] = useState<any[]>([]);
@@ -351,7 +354,7 @@ export function AdHistory() {
         const savedId = (tokenInfo as any)?.ad_account_id;
         const exists = accounts.some((acc: any) => acc.account_id === savedId);
         const targetId = exists ? savedId : accounts[0].account_id;
-        
+
         setSelectedAdAccount(targetId);
         if (targetId !== savedId) {
           await handleSelectAdAccount(targetId);
@@ -507,6 +510,16 @@ export function AdHistory() {
           }`}
         >
           Meta Campaigns & Insights
+        </button>
+        <button
+          onClick={() => setActiveTab("paid")}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
+            activeTab === "paid"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Paid Ads Builder
         </button>
         <button
           onClick={() => setActiveTab("sync")}
@@ -733,6 +746,12 @@ export function AdHistory() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === "paid" && (
+        <div className="space-y-6">
+          <PaidAdsSection tokenInfo={tokenInfo} />
         </div>
       )}
 

@@ -1,4 +1,4 @@
-# BusinessOS AI - Backend Documentation & Architecture Guide
+# IOTRONCS Retail - Backend Documentation & Architecture Guide
 
 > **Last Updated**: July 3, 2026  
 > **Version**: 1.0.0 - CORE ERP Foundation  
@@ -28,7 +28,7 @@
 
 ### What's Been Delivered
 
-The BusinessOS AI backend provides a **production-ready foundation** for an enterprise multi-tenant ERP system. The current build includes:
+The IOTRONCS Retail backend provides a **production-ready foundation** for an enterprise multi-tenant ERP system. The current build includes:
 
 ✅ **Multi-Tenant Core Infrastructure**
 - Complete tenant isolation at database level
@@ -1020,7 +1020,7 @@ db = get_regional_db_session(tenant.data_region)
 
 ```bash
 # ─── Application ───────────────────────────────────────────────
-APP_NAME=BusinessOS AI
+APP_NAME=IOTRONCS Retail
 APP_ENV=development                    # development, staging, production
 APP_DEBUG=true                         # Set to false in production
 APP_HOST=0.0.0.0                       # Listen on all interfaces

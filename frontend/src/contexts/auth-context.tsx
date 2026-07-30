@@ -294,35 +294,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("bos-active-role");
   };
 
-  // Inactivity timeout of 30 minutes (30 * 60 * 1000 ms)
+  // Auto-refresh the access token periodically so the session never expires as
+  // long as the user is logged in. No inactivity logout — sessions persist
+  // until the user clicks "Log out" themselves.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !refreshToken) return;
 
-    let lastActive = Date.now();
-
-    const handleActivity = () => {
-      lastActive = Date.now();
-    };
-
-    // Events that count as user activity
-    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
-    events.forEach(event => window.addEventListener(event, handleActivity));
-
-    // Check inactivity every 10 seconds
-    const interval = setInterval(() => {
-      const inactiveMs = Date.now() - lastActive;
-      if (inactiveMs >= 30 * 60 * 1000) {
-        console.log("Session expired due to inactivity");
-        logout();
-        window.location.href = "/"; // Redirect back to login screen
+    const refreshSession = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!response.ok) {
+          // Refresh token rejected — leave the current session alone, do NOT
+          // log the user out. The user can decide to log out themselves.
+          return;
+        }
+        const tokenData: TokenResponse = await response.json();
+        try {
+          const refreshedUser = await fetchUser(tokenData.access_token);
+          applySession(refreshedUser, tokenData.access_token, tokenData.refresh_token);
+        } catch {
+          // /me failed — still keep the new tokens so the session survives
+          setAccessToken(tokenData.access_token);
+          setRefreshToken(tokenData.refresh_token);
+          persistAuth(user, tokenData.access_token, tokenData.refresh_token);
+        }
+      } catch {
+        /* network hiccup — keep the existing session */
       }
-    }, 10000);
-
-    return () => {
-      events.forEach(event => window.removeEventListener(event, handleActivity));
-      clearInterval(interval);
     };
-  }, [user]);
+
+    // Refresh every 14 minutes so a long-lived tab always has a fresh token
+    const interval = setInterval(refreshSession, 14 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [user, refreshToken]);
 
   return (
     <Ctx.Provider

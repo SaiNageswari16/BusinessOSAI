@@ -912,15 +912,29 @@ export function RolesPermissions() {
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">{selectedRole.description}</p>
                   </div>
-                  <button
-                    onClick={() => {
-                      setEditRole(selectedRole);
-                      setShowModal(true);
-                    }}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm hover:bg-muted transition shrink-0"
-                  >
-                    <Edit2 className="size-3.5" /> Edit
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        setEditRole(selectedRole);
+                        setShowModal(true);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm hover:bg-muted transition"
+                    >
+                      <Edit2 className="size-3.5" /> Edit
+                    </button>
+                    {!selectedRole.is_system && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Delete role "${selectedRole.name}"? This cannot be undone.`)) {
+                            void deleteRole(selectedRole);
+                          }
+                        }}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition"
+                      >
+                        <Trash2 className="size-3.5" /> Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Users with this role */}

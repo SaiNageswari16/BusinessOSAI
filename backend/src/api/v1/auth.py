@@ -193,7 +193,7 @@ async def register_tenant(
                     f"Hello {admin.full_name},\n\n"
                     f"Your tenant '{tenant.name}' has been created.\n"
                     "Use the admin account to log in and configure your workspace.\n\n"
-                    "— BusinessOS AI"
+                    "— IOTRONCS Retail"
                 ),
             )
         )

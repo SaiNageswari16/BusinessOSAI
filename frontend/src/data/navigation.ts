@@ -3,10 +3,10 @@ import {
   BookOpen, Boxes, BrainCircuit, Briefcase, BriefcaseBusiness, Building, Building2, Calculator, Calendar, CalendarClock,
   CalendarRange, CalendarX, ChartPie, ChartSpline, CircleDollarSign, ClipboardCheck, ClipboardList, Clock, Cog, Columns,
   Combine, Compass, Component, Contact, CreditCard, Crosshair, Database, DoorOpen, Factory, FileCheck,
-  FileText, Fingerprint, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
+  FileText, Fingerprint, FlaskConical, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
   Heart, HeartHandshake, History, Image, Inbox, Laptop, Layers, LayoutDashboard, LibraryBig, LineChart,
   ListChecks, Lock, Map, MapPin, Megaphone, MessageSquare, MessagesSquare, Microscope, Monitor, Navigation,
-  Network, Package, PackageOpen, PackagePlus, PieChart, Plus, QrCode, Radio, RadioTower, Receipt,
+  Network, Package, PackageOpen, PackagePlus, Percent, PieChart, Plus, QrCode, Radio, RadioTower, Receipt,
   RefreshCcw, RefreshCw, Rocket, RotateCw, Scale, ScanBarcode, ScanLine, Search, Settings, Settings2,
   ShieldCheck, ShoppingBag, ShoppingBasket, ShoppingCart, Signal, Skull, Sliders, SlidersHorizontal, Snail, Sparkles,
   Store, Tag, Tags, Target, Terminal, Ticket, Timer, TrendingUp, Truck, UserCheck,
@@ -177,6 +177,7 @@ export const nav: NavGroup[] = [
         subItems: [
           { to: "/inventory?tab=batches", label: "Batch Numbers", icon: Hash },
           { to: "/inventory?tab=serials", label: "Serial Numbers", icon: Barcode },
+          { to: "/inventory?tab=traceability", label: "Traceability", icon: FlaskConical },
           { to: "/inventory?tab=expiry", label: "Expiry Management", icon: CalendarX },
           { to: "/inventory?tab=mfg_dates", label: "Manufacturing Dates", icon: CalendarClock },
           { to: "/inventory?tab=barcodes", label: "Barcode Management", icon: ScanBarcode },
@@ -333,6 +334,7 @@ export const nav: NavGroup[] = [
         icon: TrendingUp,
         subItems: [
           { to: "/crm?tab=ad_generator", label: "Marketing Ad Generator", icon: Sparkles },
+          { to: "/crm?tab=social_media_dashboard", label: "Social Media Dashboard", icon: BarChart3 },
           { to: "/crm?tab=ad_history", label: "Ad Post History", icon: History },
           { to: "/crm?tab=leads", label: "Leads", icon: Crosshair },
           { to: "/crm?tab=opportunities", label: "Opportunities", icon: Goal },
@@ -340,6 +342,7 @@ export const nav: NavGroup[] = [
           { to: "/crm?tab=sales_pipeline", label: "Sales Pipeline", icon: BarChart3 },
           { to: "/crm?tab=quotations", label: "Quotations", icon: FileCheck },
           { to: "/crm?tab=sales_orders", label: "Sales Orders", icon: ShoppingCart },
+          { to: "/crm?tab=discounts", label: "Discounts", icon: Percent },
         ]
       },
       {

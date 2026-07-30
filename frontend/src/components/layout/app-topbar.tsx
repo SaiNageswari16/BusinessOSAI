@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Search, Bell, MessageSquare, Settings, LogOut, Plus,
-  Command as CommandIcon, ChevronDown, Building2, GitBranch, Sparkles, ShieldCheck,
+  Command as CommandIcon, ChevronDown, Building2, GitBranch, Sparkles, ShieldCheck, Sun, Moon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
+import { useTheme } from "@/contexts/theme-context";
 import { notifications } from "@/data/mock";
 import { CommandPalette } from "@/components/command-palette";
 import { format } from "date-fns";
@@ -33,6 +34,7 @@ export function AppTopbar() {
     branchesList,
   } = useTenant();
   const { activeRole, availableRoles, setActiveRole } = useRbac();
+  const { theme, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [now, setNow] = useState(new Date());
@@ -238,6 +240,21 @@ export function AppTopbar() {
           <div className="text-xs font-semibold">{format(now, "EEE, MMM d")}</div>
           <div className="text-[10px] text-muted-foreground">{format(now, "h:mm a")} · UTC−7</div>
         </div>
+
+        {/* Theme Toggle */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9"
+          onClick={toggleTheme}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+        >
+          {theme === "dark" ? (
+            <Sun className="size-4 text-amber-400" />
+          ) : (
+            <Moon className="size-4 text-muted-foreground" />
+          )}
+        </Button>
 
         {/* Messages */}
         <Button variant="ghost" size="icon" className="h-9 w-9 relative">

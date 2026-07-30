@@ -1,6 +1,6 @@
-# BusinessOS AI - Server Deployment & Requirement Specifications
+# IOTRONCS Retail - Server Deployment & Requirement Specifications
 
-This document outlines the software requirements, frameworks, versions, database settings, and deployment steps necessary to host BusinessOS AI on a production server.
+This document outlines the software requirements, frameworks, versions, database settings, and deployment steps necessary to host IOTRONCS Retail on a production server.
 
 ---
 

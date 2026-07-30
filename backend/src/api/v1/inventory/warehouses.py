@@ -42,7 +42,13 @@ async def create_warehouse(
     db.add(warehouse)
     await db.commit()
     await db.refresh(warehouse)
-    return warehouse
+    # Eager-load locations to avoid MissingGreenlet on async response serialization
+    result = await db.execute(
+        select(Warehouse)
+        .where(Warehouse.id == warehouse.id)
+        .options(selectinload(Warehouse.locations))
+    )
+    return result.scalar_one()
 
 @router.delete("/warehouses/{warehouse_id}")
 async def delete_warehouse(

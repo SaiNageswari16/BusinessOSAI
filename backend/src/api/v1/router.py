@@ -33,6 +33,10 @@ from src.api.v1.inventory.product_images import router as inventory_images_route
 
 # Warehouse Management
 from src.api.v1.inventory.warehouses import router as inventory_warehouses_router
+from src.api.v1.inventory.warehouse_rules import router as warehouse_rules_router
+from src.api.v1.inventory.traceability import router as traceability_router
+from src.api.v1.inventory.identifiers import router as identifiers_router
+from src.api.v1.inventory.intelligence import router as intelligence_router
 
 # Inventory Operations
 from src.api.v1.inventory.operations_overview import router as inventory_overview_router
@@ -68,6 +72,22 @@ api_router.include_router(pos_sessions.router, prefix="/pos")
 api_router.include_router(system_admin_router)
 api_router.include_router(crm_router)
 
+# CRM sub-modules (Groups, Segments, Memberships, Wallet, Loyalty, Discounts)
+from src.api.v1.crm_modules import (
+    groups_router,
+    segments_router,
+    memberships_router,
+    wallet_router,
+    loyalty_router,
+    discounts_router,
+)
+api_router.include_router(groups_router)
+api_router.include_router(segments_router)
+api_router.include_router(memberships_router)
+api_router.include_router(wallet_router)
+api_router.include_router(loyalty_router)
+api_router.include_router(discounts_router)
+
 # Inventory Module
 api_router.include_router(inventory_master_catalog_router)
 api_router.include_router(inventory_product_master_router, prefix="/inventory", tags=["Inventory - Product Master"])
@@ -79,6 +99,10 @@ api_router.include_router(inventory_images_router, prefix="/inventory")
 
 # Warehouse Management
 api_router.include_router(inventory_warehouses_router, prefix="/inventory", tags=["Inventory - Warehouse Management"])
+api_router.include_router(warehouse_rules_router, prefix="/inventory", tags=["Inventory - Warehouse Rules"])
+api_router.include_router(traceability_router, prefix="/inventory", tags=["Inventory - Traceability"])
+api_router.include_router(identifiers_router, prefix="/inventory", tags=["Inventory - Barcode/QR/RFID & Expiry"])
+api_router.include_router(intelligence_router, prefix="/inventory", tags=["Inventory - Intelligence"])
 
 # Inventory Operations Routes
 from src.api.v1.procurement import router as procurement_router

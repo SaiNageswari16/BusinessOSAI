@@ -324,6 +324,32 @@ async def delete_uom(
     await db.commit()
 
 
+@router.patch("/uoms/{uom_id}", response_model=UnitOfMeasureResponse)
+async def update_uom(
+    uom_id: uuid.UUID,
+    payload: UnitOfMeasureUpdate,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    uom = await db.scalar(select(UnitOfMeasure).where(
+        UnitOfMeasure.id == uom_id, UnitOfMeasure.tenant_id == ctx.tenant_id
+    ))
+    if not uom:
+        raise HTTPException(status_code=404, detail="UOM not found")
+    if payload.name is not None:
+        uom.name = payload.name
+    if payload.abbreviation is not None:
+        uom.abbreviation = payload.abbreviation
+    if payload.description is not None:
+        uom.description = payload.description
+    if payload.status is not None:
+        uom.status = _parse_status(payload.status)
+    await db.commit()
+    await db.refresh(uom)
+    return uom
+
+
 # ==========================================
 # Products
 # ==========================================
