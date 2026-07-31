@@ -2573,7 +2573,7 @@ export interface LiveNotification {
 export const crmCampaignsApi = {
   generateCopy: (data: { prompt: string; channel: string; provider?: string; reference_image?: string }) =>
     request<{ copy: string }>("POST", "/crm/campaigns/generate-copy", data),
-  generatePoster: (data: { prompt: string; style?: string; aspect_ratio?: string; provider?: string }) =>
+  generatePoster: (data: { prompt: string; style?: string; aspect_ratio?: string; provider?: string; reference_image?: string }) =>
     request<{ image_url: string; enhanced_prompt: string; aspect_ratio: string }>("POST", "/crm/campaigns/generate-poster", data),
   publishFacebook: (data: { image_url: string; caption: string }) =>
     request<{ status: string; post_id?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),

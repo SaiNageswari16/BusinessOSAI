@@ -946,7 +946,13 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
     raise Exception(f"AI Service unavailable. Attempted providers failed: {'; '.join(errors)}")
 
 
-def call_ai_image(prompt: str, aspect_ratio: str = "1:1", style: str = "Photorealistic", prefer_provider: str | None = None) -> tuple[bytes, str]:
+def call_ai_image(
+    prompt: str,
+    aspect_ratio: str = "1:1",
+    style: str = "Photorealistic",
+    prefer_provider: str | None = None,
+    reference_image: str | None = None
+) -> tuple[bytes, str]:
     from src.config import get_settings
     settings = get_settings()
     import requests
@@ -954,12 +960,51 @@ def call_ai_image(prompt: str, aspect_ratio: str = "1:1", style: str = "Photorea
     import logging
     logger = logging.getLogger("CRM_AI_Image_Helper")
 
-    enhancement_instruction = (
-        f"Expand this prompt into a detailed image generation prompt: '{prompt}'. "
-        f"Style: {style}. Focus on lighting, textures, and cinematic quality. "
-        f"Ensure it is optimized for a {aspect_ratio} aspect ratio. "
-        "Output ONLY the descriptive prompt text."
-    )
+    # If a reference image is provided, extract its visual features with Gemini 2.5 Flash vision
+    brand_visual_details = ""
+    if reference_image and settings.gemini_api_key:
+        try:
+            b64_str = reference_image
+            mime_type = "image/jpeg"
+            if "," in reference_image:
+                header, b64_str = reference_image.split(",", 1)
+                if "png" in header:
+                    mime_type = "image/png"
+                elif "webp" in header:
+                    mime_type = "image/webp"
+
+            vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
+            vision_payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": "Analyze this brand reference image. Describe the EXACT primary character, mascot (e.g. monkey with sunglasses), logo, colors, and laptop/tech elements so an AI image generator can reproduce this exact character and mascot in a new marketing poster. Be specific about the character's appearance, sunglasses, pose, colors (purple/blue), and branding text."},
+                        {"inline_data": {"mime_type": mime_type, "data": b64_str}}
+                    ]
+                }]
+            }
+            v_res = requests.post(vision_url, json=vision_payload, headers={"Content-Type": "application/json"}, timeout=15)
+            if v_res.status_code == 200:
+                v_json = v_res.json()
+                brand_visual_details = v_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+                logger.info(f"Extracted reference image visual details: {brand_visual_details}")
+        except Exception as v_err:
+            logger.warning(f"Reference image analysis failed: {v_err}")
+
+    if brand_visual_details:
+        enhancement_instruction = (
+            f"Create a commercial marketing poster prompt. The central hero subject MUST BE the brand mascot/character described here: '{brand_visual_details}'. "
+            f"Campaign concept: '{prompt}'. "
+            f"Style: {style}, high resolution, professional commercial illustration/3D render, vibrant purple and neon blue AI tech aesthetic. "
+            f"Ensure the mascot character is the primary focus of the image, NOT a crowd or concert hall. "
+            f"Aspect ratio: {aspect_ratio}. Output ONLY the image generation prompt text."
+        )
+    else:
+        enhancement_instruction = (
+            f"Expand this prompt into a detailed image generation prompt: '{prompt}'. "
+            f"Style: {style}. Focus on lighting, textures, crisp branding, and high visual realism. "
+            f"Ensure it is optimized for a {aspect_ratio} aspect ratio. "
+            "Output ONLY the descriptive prompt text."
+        )
     enhanced_prompt = prompt
     try:
         enhanced_prompt = call_ai_text(enhancement_instruction, prefer_provider=prefer_provider).strip()
@@ -1508,6 +1553,7 @@ class GeneratePosterRequest(BaseModel):
     style: str = "Photorealistic" # Changed default to be more descriptive
     aspect_ratio: str = "1:1"     # "1:1" for Posts, "9:16" for Reels
     provider: str = "gemini"
+    reference_image: str | None = None
 
 class PublishFacebookRequest(BaseModel):
     image_url: str
@@ -1531,7 +1577,8 @@ async def generate_campaign_poster(
             prompt=payload.prompt,
             aspect_ratio=payload.aspect_ratio,
             style=payload.style,
-            prefer_provider=payload.provider
+            prefer_provider=payload.provider,
+            reference_image=payload.reference_image
         )
         with open(filepath, "wb") as f:
             f.write(image_bytes)
@@ -1573,12 +1620,35 @@ async def publish_to_facebook(
     import base64
     import os
     
+    # Auto-resolve specific Page Access Token if a User Token was provided
+    target_token = fb_token
+    try:
+        page_tok_res = requests.get(
+            f"https://graph.facebook.com/v25.0/{page_id}",
+            params={"fields": "access_token", "access_token": fb_token},
+            timeout=10
+        )
+        if page_tok_res.status_code == 200 and page_tok_res.json().get("access_token"):
+            target_token = page_tok_res.json()["access_token"]
+        else:
+            acc_res = requests.get(
+                "https://graph.facebook.com/v25.0/me/accounts",
+                params={"access_token": fb_token},
+                timeout=10
+            )
+            if acc_res.status_code == 200:
+                for acc in acc_res.json().get("data", []):
+                    if str(acc.get("id")) == str(page_id) and acc.get("access_token"):
+                        target_token = acc["access_token"]
+                        break
+    except Exception as tok_err:
+        logger.warning(f"Could not auto-resolve Page Access Token: {tok_err}")
+
     try:
         url = f"https://graph.facebook.com/v25.0/{page_id}/photos"
         
         # Check if the image is hosted locally on the static server path
-        # and upload it directly as raw binary to bypass external fetch loops
-        if "http://localhost:8000/images/" in payload.image_url:
+        if "/images/" in payload.image_url:
             filename = payload.image_url.split("/images/")[1]
             local_path = os.path.join("images", filename)
             if os.path.exists(local_path):
@@ -1586,7 +1656,7 @@ async def publish_to_facebook(
                     image_bytes = f.read()
                 files = {"source": ("poster.jpeg", image_bytes, "image/jpeg")}
                 data = {"message": payload.caption}
-                res = requests.post(url, files=files, data=data, params={"access_token": fb_token}, timeout=25)
+                res = requests.post(url, files=files, data=data, params={"access_token": target_token}, timeout=25)
             else:
                 raise HTTPException(status_code=404, detail="Image file not found locally")
         elif payload.image_url.startswith("data:image/"):
@@ -1594,16 +1664,20 @@ async def publish_to_facebook(
             image_bytes = base64.b64decode(base64_data)
             files = {"source": ("poster.jpeg", image_bytes, "image/jpeg")}
             data = {"message": payload.caption}
-            res = requests.post(url, files=files, data=data, params={"access_token": fb_token}, timeout=25)
+            res = requests.post(url, files=files, data=data, params={"access_token": target_token}, timeout=25)
         else:
-            # Public image URL
             params = {
                 "url": payload.image_url,
                 "caption": payload.caption,
-                "access_token": fb_token
+                "access_token": target_token
             }
             res = requests.post(url, params=params, timeout=25)
             
+        if res.status_code == 403:
+            # Fallback to feed text/caption posting if photo endpoint is restricted
+            feed_url = f"https://graph.facebook.com/v25.0/{page_id}/feed"
+            res = requests.post(feed_url, data={"message": payload.caption}, params={"access_token": target_token}, timeout=25)
+
         res.raise_for_status()
         post_data = res.json()
         
@@ -2080,6 +2154,85 @@ async def sync_facebook_leads(
     except Exception as e:
         logger.error(f"Error syncing Meta leads: {e}")
         raise HTTPException(status_code=502, detail=f"Meta leads sync error: {str(e)}")
+
+
+@router.get("/facebook/organic-posts")
+async def get_facebook_organic_posts(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = Query(25, ge=1, le=100),
+):
+    """Fetch organic (non-paid) posts from the connected FB Page with engagement metrics."""
+    import requests as req_lib
+    import logging
+    logger = logging.getLogger(__name__)
+
+    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+    settings_dict = tenant.settings or {}
+    fb_page_cfg = settings_dict.get("facebook_page", {})
+    fb_legacy_cfg = settings_dict.get("facebook", {})
+
+    token = (
+        fb_page_cfg.get("page_access_token")
+        or fb_page_cfg.get("user_access_token")
+        or fb_legacy_cfg.get("fb_access_token")
+        or fb_legacy_cfg.get("access_token")
+        or getattr(settings, "facebook_access_token", None)
+    )
+    page_id = (
+        fb_page_cfg.get("page_id")
+        or fb_legacy_cfg.get("fb_page_or_form_id")
+        or fb_legacy_cfg.get("page_id")
+        or getattr(settings, "facebook_page_id", None)
+    )
+
+    if not token or not page_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Facebook integration is not connected. Please connect it first.",
+        )
+
+    try:
+        url = f"https://graph.facebook.com/v25.0/{page_id}/posts"
+        params = {
+            "access_token": token,
+            "fields": "id,message,full_picture,created_time,permalink_url,likes.summary(true),comments.summary(true),shares",
+            "limit": limit,
+        }
+        resp = req_lib.get(url, params=params, timeout=20)
+        data = resp.json()
+
+        if "error" in data:
+            # Fall back to /{page_id}/feed if /posts errors
+            feed_url = f"https://graph.facebook.com/v25.0/{page_id}/feed"
+            resp = req_lib.get(feed_url, params={"access_token": token, "fields": "id,message,full_picture,created_time,permalink_url", "limit": limit}, timeout=20)
+            data = resp.json()
+
+        posts = []
+        for post in data.get("data", []):
+            likes = (post.get("likes") or {}).get("summary", {}).get("total_count", 0)
+            comments = (post.get("comments") or {}).get("summary", {}).get("total_count", 0)
+            shares = (post.get("shares") or {}).get("count", 0)
+
+            posts.append({
+                "post_id": post.get("id"),
+                "message": post.get("message", ""),
+                "image_url": post.get("full_picture"),
+                "created_time": post.get("created_time"),
+                "permalink_url": post.get("permalink_url") or f"https://www.facebook.com/{post.get('id')}",
+                "likes": likes,
+                "reactions": likes,
+                "comments": comments,
+                "shares": shares,
+                "engagement": likes + comments + shares,
+            })
+
+        return {"posts": posts, "total": len(posts), "page_id": page_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Meta API error: {str(e)}")
 
 
 # ─── Customer Intelligence Endpoints ─────────────────────────────────────────

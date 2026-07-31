@@ -5,6 +5,22 @@ import { nav, NavGroup, NavItem } from "@/data/navigation";
 import { cn } from "@/lib/utils";
 import { Menu, X, ArrowLeft } from "lucide-react";
 import { useRbac } from "@/contexts/rbac-context";
+import { useI18n } from "@/contexts/i18n-context";
+
+const navGroupKeys: Record<string, string> = {
+  "Workspace": "nav.workspace",
+  "Core ERP": "nav.core_erp",
+  "Inventory & Warehouse": "nav.inventory",
+  "Operations": "nav.operations",
+  "POS": "nav.pos",
+  "Sales & CRM": "nav.sales_crm",
+  "Marketplace": "nav.marketplace",
+  "Accounting & Finance": "nav.accounting",
+  "HRMS": "nav.hrms",
+  "IoT": "nav.iot",
+  "Analytics & Intelligence": "nav.analytics",
+  "System Configuration": "nav.system",
+};
 
 const themeMap: Record<string, { text: string; indicator: string; bgL2: string; borderL2: string; bgL3: string; shadowL3: string; }> = {
   slate: { text: "text-slate-600", indicator: "bg-slate-600", bgL2: "bg-slate-50/50", borderL2: "border-slate-100", bgL3: "bg-gradient-to-br from-slate-400 to-slate-600", shadowL3: "shadow-slate-500/30" },
@@ -25,6 +41,7 @@ export function RibbonNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
   const { hasPermission } = useRbac();
+  const { t } = useI18n();
 
   // Filter nav groups to only those the user is permitted to see
   const visibleNav = useMemo(() => {
@@ -141,7 +158,7 @@ export function RibbonNavigation() {
   };
 
   return (
-    <div className="flex flex-col w-full shrink-0 bg-white z-40 relative shadow-sm">
+    <div className="flex flex-col w-full shrink-0 bg-white z-40 relative shadow-sm no-print">
       {/* Mobile Header for drawer toggle */}
       {!isTerminal && (
         <div className="md:hidden flex items-center justify-between p-3 border-b border-border">
@@ -179,7 +196,12 @@ export function RibbonNavigation() {
                 )}>
                   <group.icon className="size-[16px] text-white" strokeWidth={isActive ? 2 : 1.5} />
                 </div>
-                <span>{group.group}</span>
+                <span className={cn(
+                  "tracking-tight leading-none text-black dark:text-white font-bold",
+                  isActive ? "opacity-100 font-extrabold" : "opacity-90"
+                )}>
+                  {t(navGroupKeys[group.group] || group.group, group.group)}
+                </span>
               </button>
             );
           })}

@@ -277,6 +277,7 @@ export function AdGenerator() {
         style,
         aspect_ratio: aspectRatio,
         provider,
+        reference_image: refImageBase64 || undefined,
       });
       setImageUrl(res.image_url);
       setEnhancedPrompt(res.enhanced_prompt);
@@ -600,8 +601,14 @@ export function AdGenerator() {
                   </div>
                   <span className="truncate font-semibold">{refImageName}</span>
                 </div>
-                <button onClick={() => { setRefImageBase64(""); setRefImageName(""); if (fileInputRef.current) fileInputRef.current.value = ""; }}
-                  className="text-red-500 hover:text-red-600 bg-transparent border-none cursor-pointer">Remove</button>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => { setImageUrl(refImageBase64); setPipelineStatus("review"); toast.success("Reference asset set directly as post creative!"); }}
+                    className="text-[11px] font-bold px-2.5 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors cursor-pointer">
+                    Use Direct Graphic
+                  </button>
+                  <button type="button" onClick={() => { setRefImageBase64(""); setRefImageName(""); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                    className="text-red-500 hover:text-red-600 text-xs font-medium bg-transparent border-none cursor-pointer">Remove</button>
+                </div>
               </div>
             )}
           </div>

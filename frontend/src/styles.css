@@ -203,21 +203,37 @@
   box-shadow: 0 0 0 1px var(--glass-border), 0 8px 40px -12px color-mix(in oklab, var(--brand-violet) 30%, transparent);
 }
 
-/* Print Receipt Styles */
+/* Print & PDF Export Styles */
 @media print {
-  body > *:not(#printable-receipt-portal) {
+  /* Hide navigation, topbar, and elements marked with no-print */
+  header, nav, .no-print, [data-no-print] {
     display: none !important;
   }
   
+  /* Standard page margin & sizing for PDF export */
   @page {
-    margin: 0;
-    size: 80mm auto;
+    margin: 12mm;
+    size: auto;
   }
   
   body, html {
     background-color: white !important;
-    margin: 0 !important;
-    padding: 0 !important;
     color: black !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  main, section, div {
+    overflow: visible !important;
+  }
+
+  /* Specific 80mm POS Thermal Receipt Printing when thermal receipt is active */
+  body.printing-receipt body > *:not(#printable-receipt-portal) {
+    display: none !important;
+  }
+  
+  body.printing-receipt @page {
+    margin: 0;
+    size: 80mm auto;
   }
 }

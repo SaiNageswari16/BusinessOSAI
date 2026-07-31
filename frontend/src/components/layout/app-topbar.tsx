@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Search, Bell, MessageSquare, Settings, LogOut, Plus,
-  Command as CommandIcon, ChevronDown, Building2, GitBranch, Sparkles, ShieldCheck, Sun, Moon,
+  Command as CommandIcon, ChevronDown, Building2, GitBranch, Sparkles, ShieldCheck, Sun, Moon, Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
 import { useTheme } from "@/contexts/theme-context";
+import { useI18n } from "@/contexts/i18n-context";
 import { notifications } from "@/data/mock";
 import { CommandPalette } from "@/components/command-palette";
 import { format } from "date-fns";
@@ -25,6 +26,7 @@ import { toast } from "sonner";
 
 export function AppTopbar() {
   const { user, logout } = useAuth();
+  const { language, setLanguage } = useI18n();
   const {
     tenant: company,
     setTenant: setCompany,
@@ -124,7 +126,7 @@ export function AppTopbar() {
   const unreadCount = activeNotifs.filter((n) => n.unread).length;
 
   return (
-    <header className="sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4 lg:px-6 shadow-sm">
+    <header className="sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4 lg:px-6 shadow-sm no-print">
       {/* Brand / Logo */}
       <div className="flex items-center gap-2 mr-2">
         <div className="size-8 shrink-0 rounded-lg gradient-brand grid place-items-center text-white shadow-elegant">
@@ -240,6 +242,29 @@ export function AppTopbar() {
           <div className="text-xs font-semibold">{format(now, "EEE, MMM d")}</div>
           <div className="text-[10px] text-muted-foreground">{format(now, "h:mm a")} · UTC−7</div>
         </div>
+
+        {/* Language Switcher (Arabic RTL / English) */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 px-2.5 gap-1.5 font-semibold text-xs border-border bg-background hover:bg-accent">
+              <Globe className="size-3.5 text-primary" />
+              <span>{language === "ar" ? "العربية" : "English"}</span>
+              <ChevronDown className="size-3 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuLabel className="text-xs">Language / اللغة</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setLanguage("en")} className="flex items-center justify-between cursor-pointer text-xs">
+              <span className="flex items-center gap-2">🇺🇸 English</span>
+              {language === "en" && <div className="size-1.5 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLanguage("ar")} className="flex items-center justify-between cursor-pointer text-xs font-bold">
+              <span className="flex items-center gap-2">🇦🇪 العربية (Arabic)</span>
+              {language === "ar" && <div className="size-1.5 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Theme Toggle */}
         <Button

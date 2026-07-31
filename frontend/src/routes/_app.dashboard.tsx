@@ -19,6 +19,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
+import { useI18n } from "@/contexts/i18n-context";
 import { KpiTile } from "@/components/dashboard/kpi-tile";
 import { AiInsightsPanel } from "@/components/dashboard/ai-insights-panel";
 import { Section } from "@/components/dashboard/section";
@@ -69,6 +70,28 @@ const tooltipStyle: React.CSSProperties = {
   boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
 };
 
+const kpiTranslationMap: Record<string, string> = {
+  "Total Revenue": "kpi.total_revenue",
+  "Net Sales": "kpi.net_sales",
+  "Active Orders": "kpi.active_orders",
+  "Total Products": "kpi.total_products",
+  "Active Customers": "kpi.active_customers",
+  "Total Staff": "kpi.total_staff",
+  "Low Stock Items": "kpi.low_stock",
+  "Cash Balance": "kpi.cash_balance",
+};
+
+const qaTranslationMap: Record<string, string> = {
+  "Generate Invoice": "qa.generate_invoice",
+  "Create PO": "qa.create_po",
+  "Add Product": "qa.add_product",
+  "Register Employee": "qa.register_employee",
+  "Approve Leave": "qa.approve_leave",
+  "View Inventory": "qa.view_inventory",
+  "Open Marketplace": "qa.open_marketplace",
+  "Run Payroll": "qa.run_payroll",
+};
+
 const fmt = (n: number) =>
   n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` :
   n >= 1_000     ? `$${(n / 1_000).toFixed(0)}K`     : `$${n}`;
@@ -76,6 +99,7 @@ const fmt = (n: number) =>
 function Dashboard() {
   const { user } = useAuth();
   const { tenant: company } = useTenant();
+  const { language, t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [salesRange, setSalesRange] = useState("month");
 
@@ -85,9 +109,12 @@ function Dashboard() {
   }, []);
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const greeting = language === "ar" 
+    ? (hour < 12 ? "صباح الخير" : "مساء الخير")
+    : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
+  
   const today = useMemo(() =>
-    new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }), []);
+    new Date().toLocaleDateString(language === "ar" ? "ar-AE" : "en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }), [language]);
   const firstName = user?.name?.split(" ")[0] ?? "there";
   const isPlatformAdmin = user?.tenantSlug === "system" && user?.isTenantOwner;
 
@@ -98,20 +125,12 @@ function Dashboard() {
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="relative overflow-hidden border-0 bg-gradient-to-r from-blue-700 via-blue-600 to-blue-500 text-white p-5 shadow-sm">
           
-          {/* Beautiful, clean abstract wave - Lightened */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <svg width="100%" height="100%" viewBox="0 0 1440 200" preserveAspectRatio="none">
               <ellipse cx="720" cy="100" rx="400" ry="100" fill="#ffffff" opacity="0.05" filter="blur(40px)" />
-              
-              {/* Thick soft background sweep */}
               <path d="M-100,150 C300,-50 600,250 1540,50" fill="none" stroke="#ffffff" strokeWidth="6" opacity="0.05" filter="blur(4px)" />
-              
-              {/* Clean crossing wave 1 */}
               <path d="M-100,100 C400,-20 800,250 1540,80" fill="none" stroke="#ffffff" strokeWidth="2.5" opacity="0.07" />
-              
-              {/* Sharp bright glowing streak */}
               <path d="M-100,180 C500,0 900,200 1540,40" fill="none" stroke="#ffffff" strokeWidth="1.5" opacity="0.1" />
-              <path d="M-100,180 C500,0 900,200 1540,40" fill="none" stroke="#e0f2fe" strokeWidth="5" opacity="0.05" filter="blur(3px)" />
             </svg>
           </div>
           
@@ -120,14 +139,14 @@ function Dashboard() {
               <div className="flex flex-wrap items-center gap-2 text-xs text-blue-50 font-medium">
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/20 text-white shadow-sm">
                   <span className="size-1.5 rounded-full bg-blue-300" />
-                  All systems operational
+                  {t("banner.live_badge", "Live Workspace Updates")}
                 </span>
                 {isPlatformAdmin ? (
                   <span className="px-2 py-0.5 rounded-full bg-white/20 text-white">
                     Platform Admin Console
                   </span>
                 ) : (
-                  <span>{company?.name ?? "IOTRONCS Retail"} Workspace</span>
+                  <span>{company?.name ?? "IOTRONCS Retail"} {language === "ar" ? "مكان العمل" : "Workspace"}</span>
                 )}
                 <span>· {today}</span>
               </div>
@@ -136,19 +155,17 @@ function Dashboard() {
                 {greeting}, {firstName} 👋
               </h1>
               <p className="text-blue-50/90 mt-1 text-sm max-w-xl">
-                Your business is up{" "}
-                <span className="font-semibold text-white">+12.4%</span> this month.
-                Here's your workspace overview for today.
+                {t("banner.subtitle", "Here is what is happening across your business today in the UAE region.")}
               </p>
             </div>
 
             <div className="flex items-center gap-3 shrink-0">
               <Button variant="outline" className="gap-1.5 bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white transition-colors">
-                <FileText className="size-4" /> Export brief
+                <FileText className="size-4" /> {language === "ar" ? "تصدير التقرير" : "Export brief"}
               </Button>
               <Button asChild className="gap-1.5 bg-white text-blue-700 hover:bg-white/90 shadow-sm border-0 transition-colors">
                 <Link to="/copilot">
-                  <Sparkles className="size-4" /> Ask Antigravity AI
+                  <Sparkles className="size-4" /> {language === "ar" ? "اسأل الذكاء الاصطناعي" : "Ask Antigravity AI"}
                 </Link>
               </Button>
             </div>
@@ -160,13 +177,15 @@ function Dashboard() {
       <section>
         <div className="flex items-end justify-between mb-4">
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Key Performance Indicators</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
+              {language === "ar" ? "مؤشرات الأداء الرئيسية" : "Key Performance Indicators"}
+            </h2>
           </div>
           <Tabs defaultValue="month">
             <TabsList className="h-8">
-              <TabsTrigger value="today" className="text-xs">Today</TabsTrigger>
-              <TabsTrigger value="week"  className="text-xs">Week</TabsTrigger>
-              <TabsTrigger value="month" className="text-xs">Month</TabsTrigger>
+              <TabsTrigger value="today" className="text-xs">{language === "ar" ? "اليوم" : "Today"}</TabsTrigger>
+              <TabsTrigger value="week"  className="text-xs">{language === "ar" ? "الأسبوع" : "Week"}</TabsTrigger>
+              <TabsTrigger value="month" className="text-xs">{language === "ar" ? "الشهر" : "Month"}</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -175,9 +194,10 @@ function Dashboard() {
             ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
             : kpis.slice(0, 8).map((k, i) => {
                 const Icon = KPI_ICONS[i] ?? DollarSign;
+                const translatedLabel = t(kpiTranslationMap[k.label] || k.label, k.label);
                 return (
                   <motion.div key={k.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                    <KpiTile {...k} icon={<Icon className="size-4" />} delay={0} />
+                    <KpiTile {...k} label={translatedLabel} icon={<Icon className="size-4" />} delay={0} />
                   </motion.div>
                 );
               })}
@@ -190,18 +210,23 @@ function Dashboard() {
           <AiInsightsPanel />
         </div>
         <div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Quick Actions</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
+            {t("qa.title", "Quick Actions")}
+          </h2>
           <div className="grid grid-cols-2 gap-3">
-            {QUICK_ACTIONS.map((action, i) => (
-              <Link key={i} to={action.to}>
-                <div className="group flex flex-col items-center justify-center gap-2 p-4 rounded-xl border bg-card hover:bg-muted/30 hover:border-primary/30 transition-all cursor-pointer h-full">
-                  <div className={`size-10 rounded-xl grid place-items-center transition-transform group-hover:scale-110 ${QA_TONES[action.tone]}`}>
-                    <action.icon className="size-5" />
+            {QUICK_ACTIONS.map((action, i) => {
+              const translatedQaLabel = t(qaTranslationMap[action.label] || action.label, action.label);
+              return (
+                <Link key={i} to={action.to}>
+                  <div className="group flex flex-col items-center justify-center gap-2 p-4 rounded-xl border bg-card hover:bg-muted/30 hover:border-primary/30 transition-all cursor-pointer h-full">
+                    <div className={`size-10 rounded-xl grid place-items-center transition-transform group-hover:scale-110 ${QA_TONES[action.tone]}`}>
+                      <action.icon className="size-5" />
+                    </div>
+                    <span className="text-[11px] font-bold text-center leading-tight">{translatedQaLabel}</span>
                   </div>
-                  <span className="text-[11px] font-bold text-center leading-tight">{action.label}</span>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         </div>
       </div>
