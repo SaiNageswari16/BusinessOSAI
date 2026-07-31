@@ -1435,7 +1435,7 @@ export const AISuggestionsView = () => (
       <div className="w-20 h-20 bg-indigo-500/20 text-indigo-300 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-indigo-400/30">
         <Sparkles className="w-10 h-10" />
       </div>
-      <h2 className="text-4xl font-black text-white tracking-tight mb-4">IOTRONCS Retail Copilot</h2>
+      <h2 className="text-4xl font-black text-white tracking-tight mb-4">LazyMonkeyAI Copilot</h2>
       <p className="text-indigo-100 text-lg font-medium max-w-2xl mx-auto mb-10">
         The AI is analyzing real-time cart data, customer history, and local weather patterns to suggest high-conversion cross-sells.
       </p>

@@ -110,19 +110,19 @@ function LoginPage() {
         <div className="absolute top-[40%] right-[10%] w-[40%] h-[40%] rounded-full bg-violet-300/40 blur-[100px] pointer-events-none" />
 
         <div className="relative z-10 flex items-center gap-3">
-          <div className="size-12 rounded-2xl bg-white backdrop-blur-md grid place-items-center ring-1 ring-slate-200 shadow-xl">
-            <Sparkles className="size-6 text-indigo-600" />
+          <div className="size-12 shrink-0 flex items-center justify-center transition-transform hover:scale-105">
+            <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
           </div>
           <div>
-            <div className="font-bold text-xl tracking-tight text-slate-900">IOTRONCS Retail</div>
-            <div className="text-xs text-indigo-600 uppercase tracking-wider font-semibold mt-0.5">Enterprise Operating System</div>
+            <div className="font-bold text-xl tracking-tight text-slate-900">LazyMonkeyAI</div>
+            <div className="text-xs text-amber-600 uppercase tracking-wider font-semibold mt-0.5">Smart AI for Lazy Geniuses</div>
           </div>
         </div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="relative z-10 max-w-lg">
           <h1 className="text-5xl font-bold leading-[1.1] tracking-tight">
             One platform.<br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-emerald-600">Every part of your business.</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-900 to-amber-600">Every part of your business.</span>
           </h1>
           <p className="mt-6 text-slate-600 text-lg leading-relaxed">
             ERP, POS, Inventory, CRM, HRMS, IoT and Accounting — unified by an AI copilot that thinks across your entire operation.
@@ -136,7 +136,7 @@ function LoginPage() {
             ].map((f, i) => (
               <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.1 }}
                 className="flex items-center gap-4 rounded-xl bg-white/60 backdrop-blur-sm px-5 py-3.5 ring-1 ring-slate-200/80 shadow-sm hover:bg-white/80 transition-colors">
-                <f.icon className="size-5 shrink-0 text-indigo-600" />
+                <f.icon className="size-5 shrink-0 text-amber-600" />
                 <span className="text-sm font-medium text-slate-700">{f.t}</span>
               </motion.div>
             ))}
@@ -154,11 +154,11 @@ function LoginPage() {
         <div className="absolute inset-0 bg-slate-50/80 -z-10" />
         
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md rounded-2xl bg-card p-8 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-border/60">
-          <div className="lg:hidden flex items-center gap-3 mb-8">
-            <div className="size-10 rounded-xl bg-indigo-600 grid place-items-center text-white shadow-md shadow-indigo-600/20">
-              <Sparkles className="size-5" />
+          <div className="flex flex-col items-center justify-center text-center space-y-6 mb-12">
+            <div className="size-20 shrink-0 flex items-center justify-center transition-transform hover:scale-105">
+              <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
             </div>
-            <span className="font-bold text-xl tracking-tight">IOTRONCS Retail</span>
+            <span className="font-bold text-xl tracking-tight">LazyMonkeyAI</span>
           </div>
 
           <h2 className="text-3xl font-bold tracking-tight text-foreground">{mode === "login" ? "Welcome back" : "Create your workspace"}</h2>

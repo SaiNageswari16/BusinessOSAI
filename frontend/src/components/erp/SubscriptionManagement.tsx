@@ -365,7 +365,7 @@ export function SubscriptionManagement() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Subscription & Licenses</h2>
-          <p className="text-muted-foreground text-sm mt-1">Manage your IOTRONCS Retail plan, modules, and billing.</p>
+          <p className="text-muted-foreground text-sm mt-1">Manage your LazyMonkeyAI plan, modules, and billing.</p>
         </div>
         <Button size="sm" className="h-9 gap-2 gradient-brand text-white border-0"><Zap className="size-4" /> Upgrade Plan</Button>
       </div>

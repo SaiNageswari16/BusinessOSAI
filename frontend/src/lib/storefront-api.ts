@@ -94,3 +94,13 @@ export const fetchStorefrontProducts = async (
   }
   return response.json();
 };
+
+export const fetchStorefrontNotifications = async (): Promise<any[]> => {
+  return [
+    { id: 1, title: 'Welcome to LazyMonkeyAI', body: 'Explore our new smart features!', is_read: false, action_url: '/store' }
+  ];
+};
+
+export const markStorefrontNotificationsRead = async (): Promise<{ success: boolean }> => {
+  return { success: true };
+};

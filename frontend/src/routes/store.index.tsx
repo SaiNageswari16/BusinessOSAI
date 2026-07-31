@@ -82,8 +82,10 @@ function StoreHome() {
         </div>
         <div className="container mx-auto px-4 relative z-10 flex justify-between items-center">
           <div className="max-w-xl text-white">
-            <h4 className="text-xl md:text-2xl font-medium mb-2 text-blue-600">Premium Quality Products</h4>
-            <h2 className="text-5xl md:text-7xl font-black mb-6 leading-tight">TOP RATED <br/> BRANDS</h2>
+              <span className="bg-white/20 text-white px-3 py-1 rounded-full text-sm font-medium border border-white/20 backdrop-blur-md">
+                Smart AI for Lazy Geniuses 🚀
+              </span>
+              <h1 className="text-3xl md:text-5xl lg:text-6xl font-black text-white leading-tight">TOP RATED <br/> BRANDS</h1>
             <p className="text-lg mb-8 opacity-90">Discover the best electronics, fashion, and home goods all in one place.</p>
             <Link to="/store/shop" className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold uppercase tracking-wider transition-colors inline-block">
               Shop Now
@@ -180,7 +182,7 @@ function StoreHome() {
         <section className="relative w-full h-[350px] rounded-xl overflow-hidden flex items-center">
           <img src="https://images.unsplash.com/photo-1550009158-9effb64fda70?q=80&w=1920&auto=format&fit=crop" className="absolute inset-0 w-full h-full object-cover" alt="Deal Background" />
           <div className="absolute inset-0 bg-black/40"></div>
-          <div className="relative z-10 container mx-auto px-12 md:w-1/2 ml-0 text-white">
+          <div className="bg-gradient-to-r from-purple-900 via-[#361471] to-amber-600 py-12 md:py-20 relative overflow-hidden">
             <h4 className="text-blue-600 font-bold uppercase tracking-widest mb-2">Special Offer</h4>
             <h2 className="text-4xl md:text-5xl font-black mb-6">Deal of the Day</h2>
             <p className="mb-8 opacity-90 max-w-md">Get up to 50% off on selected electronics and gadgets. Limited time offer!</p>

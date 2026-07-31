@@ -15,6 +15,8 @@ import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as StoreIndexRouteImport } from './routes/store.index'
+import { Route as StoreWishlistRouteImport } from './routes/store.wishlist'
+import { Route as StoreWalletRouteImport } from './routes/store.wallet'
 import { Route as StoreShopRouteImport } from './routes/store.shop'
 import { Route as StoreSecurityRouteImport } from './routes/store.security'
 import { Route as StoreSearchRouteImport } from './routes/store.search'
@@ -70,6 +72,16 @@ const IndexRoute = IndexRouteImport.update({
 const StoreIndexRoute = StoreIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => StoreRoute,
+} as any)
+const StoreWishlistRoute = StoreWishlistRouteImport.update({
+  id: '/wishlist',
+  path: '/wishlist',
+  getParentRoute: () => StoreRoute,
+} as any)
+const StoreWalletRoute = StoreWalletRouteImport.update({
+  id: '/wallet',
+  path: '/wallet',
   getParentRoute: () => StoreRoute,
 } as any)
 const StoreShopRoute = StoreShopRouteImport.update({
@@ -239,6 +251,8 @@ export interface FileRoutesByFullPath {
   '/store/search': typeof StoreSearchRoute
   '/store/security': typeof StoreSecurityRoute
   '/store/shop': typeof StoreShopRoute
+  '/store/wallet': typeof StoreWalletRoute
+  '/store/wishlist': typeof StoreWishlistRoute
   '/store/': typeof StoreIndexRoute
   '/store/product/$id': typeof StoreProductIdRoute
 }
@@ -272,6 +286,8 @@ export interface FileRoutesByTo {
   '/store/search': typeof StoreSearchRoute
   '/store/security': typeof StoreSecurityRoute
   '/store/shop': typeof StoreShopRoute
+  '/store/wallet': typeof StoreWalletRoute
+  '/store/wishlist': typeof StoreWishlistRoute
   '/store': typeof StoreIndexRoute
   '/store/product/$id': typeof StoreProductIdRoute
 }
@@ -308,6 +324,8 @@ export interface FileRoutesById {
   '/store/search': typeof StoreSearchRoute
   '/store/security': typeof StoreSecurityRoute
   '/store/shop': typeof StoreShopRoute
+  '/store/wallet': typeof StoreWalletRoute
+  '/store/wishlist': typeof StoreWishlistRoute
   '/store/': typeof StoreIndexRoute
   '/store/product/$id': typeof StoreProductIdRoute
 }
@@ -344,6 +362,8 @@ export interface FileRouteTypes {
     | '/store/search'
     | '/store/security'
     | '/store/shop'
+    | '/store/wallet'
+    | '/store/wishlist'
     | '/store/'
     | '/store/product/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -377,6 +397,8 @@ export interface FileRouteTypes {
     | '/store/search'
     | '/store/security'
     | '/store/shop'
+    | '/store/wallet'
+    | '/store/wishlist'
     | '/store'
     | '/store/product/$id'
   id:
@@ -412,6 +434,8 @@ export interface FileRouteTypes {
     | '/store/search'
     | '/store/security'
     | '/store/shop'
+    | '/store/wallet'
+    | '/store/wishlist'
     | '/store/'
     | '/store/product/$id'
   fileRoutesById: FileRoutesById
@@ -466,6 +490,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/store/'
       preLoaderRoute: typeof StoreIndexRouteImport
+      parentRoute: typeof StoreRoute
+    }
+    '/store/wishlist': {
+      id: '/store/wishlist'
+      path: '/wishlist'
+      fullPath: '/store/wishlist'
+      preLoaderRoute: typeof StoreWishlistRouteImport
+      parentRoute: typeof StoreRoute
+    }
+    '/store/wallet': {
+      id: '/store/wallet'
+      path: '/wallet'
+      fullPath: '/store/wallet'
+      preLoaderRoute: typeof StoreWalletRouteImport
       parentRoute: typeof StoreRoute
     }
     '/store/shop': {
@@ -709,6 +747,8 @@ interface StoreRouteChildren {
   StoreSearchRoute: typeof StoreSearchRoute
   StoreSecurityRoute: typeof StoreSecurityRoute
   StoreShopRoute: typeof StoreShopRoute
+  StoreWalletRoute: typeof StoreWalletRoute
+  StoreWishlistRoute: typeof StoreWishlistRoute
   StoreIndexRoute: typeof StoreIndexRoute
   StoreProductIdRoute: typeof StoreProductIdRoute
 }
@@ -726,6 +766,8 @@ const StoreRouteChildren: StoreRouteChildren = {
   StoreSearchRoute: StoreSearchRoute,
   StoreSecurityRoute: StoreSecurityRoute,
   StoreShopRoute: StoreShopRoute,
+  StoreWalletRoute: StoreWalletRoute,
+  StoreWishlistRoute: StoreWishlistRoute,
   StoreIndexRoute: StoreIndexRoute,
   StoreProductIdRoute: StoreProductIdRoute,
 }

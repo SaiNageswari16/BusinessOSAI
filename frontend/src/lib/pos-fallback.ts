@@ -1,5 +1,5 @@
 export const posStore = {
-    name: "IOTRONCS Retail Store",
+    name: "LazyMonkeyAI Store",
     code: "BOS-HQ-01",
     branch: "San Francisco Flagship",
     address: "Market Street, SF, CA 94103",

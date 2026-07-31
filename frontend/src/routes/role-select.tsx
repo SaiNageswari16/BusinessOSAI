@@ -96,7 +96,7 @@ function RoleSelectPage() {
             <div className="size-10 rounded-xl gradient-brand grid place-items-center text-white">
               <Sparkles className="size-5" />
             </div>
-            <span className="font-bold text-lg text-foreground">IOTRONCS Retail</span>
+            <span className="font-bold text-lg text-foreground">LazyMonkeyAI</span>
           </div>
 
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Select your workspace</h1>

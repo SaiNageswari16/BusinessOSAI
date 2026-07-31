@@ -9,8 +9,8 @@ import { toast } from "sonner";
 export function CompanyProfile() {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    companyName: "IOTRONCS Retail Private Limited",
-    tradingName: "IOTRONCS AI Store",
+    companyName: "LazyMonkeyAI Private Limited",
+    tradingName: "LazyMonkeyAI AI Store",
     businessType: "Private Limited Company",
     gstin: "36AAACI1234F1Z9",
     panNumber: "AAACI1234F",
@@ -18,9 +18,9 @@ export function CompanyProfile() {
     currency: "INR (₹)",
     timezone: "Asia/Kolkata (IST +5:30)",
     fiscalYearStart: "April 1",
-    email: "support@iotroncs.com",
+    email: "support@lazymonkeyai.com",
     phone: "+91 98765 43210",
-    website: "https://iotroncs.com",
+    website: "https://lazymonkeyai.com",
     addressLine1: "Suite 402, High-Tech City Tech Park",
     addressLine2: "Madhapur, Phase II",
     city: "Hyderabad",
@@ -310,7 +310,7 @@ export function CompanyProfile() {
             <div className="p-4 rounded-xl bg-gradient-to-br from-primary/10 to-indigo-500/10 border border-primary/20 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Edition</span>
-                <strong className="text-primary font-bold">Enterprise AI Edition</strong>
+                <strong className="text-primary font-bold">Enterprise Smart AI for Lazy Geniuses</strong>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Status</span>

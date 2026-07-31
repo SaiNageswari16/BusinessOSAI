@@ -15,7 +15,7 @@ export function OrganizationStructure() {
           <div className="size-12 rounded-xl gradient-brand text-white grid place-items-center shadow-sm mb-3">
             <Building2 className="size-6" />
           </div>
-          <h3 className="font-bold text-center">IOTRONCS Retail Global</h3>
+          <h3 className="font-bold text-center">LazyMonkeyAI Global</h3>
           <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1">Holding Company</p>
         </Card>
 

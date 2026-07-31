@@ -21,13 +21,13 @@ const standardTemplates = [
 <p>Beat the rains with our exclusive monsoon discount! Get <strong>20% off</strong> all product categories using the coupon code <strong>RAIN20</strong> at checkout.</p>
 <p>This is a limited-time offer valid until the end of the month. Don't miss out on these premium savings!</p>
 <hr/>
-<p>Best regards,<br/>Sales & Marketing Team<br/>IOTRONCS Retail</p>`,
+<p>Best regards,<br/>Sales & Marketing Team<br/>LazyMonkeyAI</p>`,
     preview: "Bold layout for monsoon sales and customer discount offers" 
   },
   { 
     id: "ST-02",
     name: "Corporate Update & Newsletter", 
-    subject: "IOTRONCS Retail Newsletter: Q3 Milestones & Feature Updates 🚀", 
+    subject: "LazyMonkeyAI Newsletter: Q3 Milestones & Feature Updates 🚀", 
     body_html: `<h1>Q3 Corporate Update</h1>
 <p>Hello Team,</p>
 <p>We are excited to share key updates on our corporate milestones and newest integrations (including our real-time Zoho Recruit integration!).</p>
@@ -44,13 +44,13 @@ const standardTemplates = [
   { 
     id: "ST-03",
     name: "Candidate Welcome Letter", 
-    subject: "Welcome to IOTRONCS Retail Recruitment: Let's build together! 💼", 
+    subject: "Welcome to LazyMonkeyAI Recruitment: Let's build together! 💼", 
     body_html: `<h1>Welcome to our Talent Network!</h1>
 <p>Dear Candidate,</p>
 <p>Thank you for submitting your application to join our engineering and delivery team. We have received your resume and are currently matching it against our active roles.</p>
 <p>You can track the status of your application directly on our careers portal. Our recruitment managers will reach out to you within 3 business days.</p>
 <hr/>
-<p>Warm regards,<br/>HR & Talent Acquisition<br/>IOTRONCS Retail</p>`,
+<p>Warm regards,<br/>HR & Talent Acquisition<br/>LazyMonkeyAI</p>`,
     preview: "Simple, welcoming format for candidate applications onboarding" 
   }
 ];

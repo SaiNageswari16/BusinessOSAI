@@ -146,7 +146,7 @@ function Dashboard() {
                     Platform Admin Console
                   </span>
                 ) : (
-                  <span>{company?.name ?? "IOTRONCS Retail"} {language === "ar" ? "مكان العمل" : "Workspace"}</span>
+                  <span>{company?.name ?? "LazyMonkeyAI"} {language === "ar" ? "مكان العمل" : "Workspace"}</span>
                 )}
                 <span>· {today}</span>
               </div>

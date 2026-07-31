@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 const smsCampaigns = [
   { id: "SMS-501", name: "Flash Sale Alert", type: "Marketing", recipients: 8450, delivered: 8201, status: "Sent", date: "2026-07-01", message: "🔥 Flash Sale! Get 30% off all items for the next 4 hours..." },
-  { id: "SMS-502", name: "OTP — Order Verification", type: "OTP", recipients: 1, delivered: 1, status: "Sent", date: "2026-07-01", message: "Your IOTRONCS Retail verification code is 847291. Valid for 5 mins." },
+  { id: "SMS-502", name: "OTP — Order Verification", type: "OTP", recipients: 1, delivered: 1, status: "Sent", date: "2026-07-01", message: "Your LazyMonkeyAI verification code is 847291. Valid for 5 mins." },
   { id: "SMS-503", name: "Delivery Confirmation", type: "Transactional", recipients: 342, delivered: 340, status: "Sent", date: "2026-06-30", message: "Your order SO-10039 has been delivered. Thank you for shopping!" },
   { id: "SMS-504", name: "Loyalty Points Expiry", type: "Marketing", recipients: 2300, delivered: 0, status: "Scheduled", date: "2026-07-05", message: "⏰ Reminder: Your 1,200 loyalty points expire on July 15th." },
   { id: "SMS-505", name: "Abandoned Cart Reminder", type: "Marketing", recipients: 1200, delivered: 0, status: "Draft", date: "2026-07-10", message: "Hey! You left something in your cart. Complete your purchase now." },

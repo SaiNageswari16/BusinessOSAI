@@ -129,12 +129,12 @@ export function AppTopbar() {
     <header className="sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4 lg:px-6 shadow-sm no-print">
       {/* Brand / Logo */}
       <div className="flex items-center gap-2 mr-2">
-        <div className="size-8 shrink-0 rounded-lg gradient-brand grid place-items-center text-white shadow-elegant">
-          <Sparkles className="size-4" />
+        <div className="size-8 shrink-0 rounded-lg flex items-center justify-center transition-transform hover:scale-105">
+          <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
         </div>
         <div className="hidden lg:block overflow-hidden">
-          <div className="font-bold tracking-tight text-foreground leading-none">IOTRONCS Retail</div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">AI Edition</div>
+          <div className="font-bold tracking-tight text-foreground leading-none">LazyMonkeyAI</div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">Smart AI for Lazy Geniuses</div>
         </div>
       </div>
 
