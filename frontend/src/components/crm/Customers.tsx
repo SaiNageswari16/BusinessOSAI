@@ -114,7 +114,7 @@ export function Customers() {
     const active = customers.filter((c) => c.status === "Active").length;
     const vip = customers.filter((c) => c.customer_type === "VIP").length;
     const totalLtv = customers.reduce((sum, c) => sum + (c.lifetime_value || 0), 0);
-    return { active, vip, totalLtv, totalOrders: customers.reduce((s, c) => s + c.total_orders, 0) };
+    return { active, vip, totalLtv, totalOrders: customers.reduce((s, c) => s + (c.total_orders || 0), 0) };
   }, [customers]);
 
   const resetForm = () => {
@@ -411,8 +411,8 @@ export function Customers() {
                         {customer.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-medium">₹{customer.lifetime_value.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{customer.total_orders}</td>
+                    <td className="px-4 py-3 font-medium">₹{(customer.lifetime_value || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{customer.total_orders ?? 0}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={(e) => { e.stopPropagation(); openEdit(customer); }} className="p-1.5 hover:bg-muted rounded-md" title="Edit">

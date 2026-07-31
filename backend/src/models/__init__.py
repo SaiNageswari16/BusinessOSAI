@@ -1548,6 +1548,32 @@ class LiveNotification(Base, UUIDPrimaryKeyMixin, TenantScopedMixin):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+
+class AdAsset(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """AI-generated creative assets stored in the Ad Asset Library."""
+    __tablename__ = "crm_ad_assets"
+
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    public_url: Mapped[str] = mapped_column(Text, nullable=False)
+    thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    aspect_ratio: Mapped[str] = mapped_column(String(10), default="1:1")
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="gemini")     # gemini | openai | claude | upload
+    provider_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    original_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enhanced_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    style: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    approval_status: Mapped[str] = mapped_column(String(20), default="approved")  # draft | approved | rejected
+    used_in_organic_post: Mapped[bool] = mapped_column(Boolean, default=False)
+    used_in_paid_campaign: Mapped[bool] = mapped_column(Boolean, default=False)
+    organic_post_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tags: Mapped[list | None] = mapped_column(JSONB, default=list)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 from .erp import *
 from .inventory import *
 from .procurement import *

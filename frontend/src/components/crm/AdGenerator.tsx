@@ -260,6 +260,27 @@ export function AdGenerator() {
     reader.readAsDataURL(file);
   };
 
+  // ── Helper: Resolve image URL to point to the correct backend origin ──────────
+  const resolveImageUrl = (url: string): string => {
+    if (!url) return url;
+    // Get backend base URL from env (e.g. http://localhost:8001/api/v1)
+    const apiBase = import.meta.env.VITE_API_BASE_URL as string || "http://localhost:8001/api/v1";
+    const backendOrigin = apiBase.replace(/\/api\/v1.*$/, ""); // e.g. http://localhost:8001
+    // If it's a relative /images/... path, prefix with backend origin
+    if (url.startsWith("/images/")) {
+      return `${backendOrigin}${url}`;
+    }
+    // If it has a wrong port (e.g. :8000), replace with the correct origin
+    if (url.includes("localhost:") || url.includes("127.0.0.1:")) {
+      const urlObj = new URL(url);
+      const correctUrl = new URL(backendOrigin);
+      urlObj.hostname = correctUrl.hostname;
+      urlObj.port = correctUrl.port;
+      return urlObj.toString();
+    }
+    return url;
+  };
+
   // ── STEP 1: Generate Image ───────────────────────────────────────────────────
 
   const handleGeneratePoster = async (e: React.FormEvent) => {
@@ -279,7 +300,7 @@ export function AdGenerator() {
         provider,
         reference_image: refImageBase64 || undefined,
       });
-      setImageUrl(res.image_url);
+      setImageUrl(resolveImageUrl(res.image_url));
       setEnhancedPrompt(res.enhanced_prompt);
       setPipelineStatus("review");
       setCaptionPrompt(`Write a highly engaging Facebook post with hashtags and search tags about: ${posterPrompt}`);
@@ -317,9 +338,28 @@ export function AdGenerator() {
 
   // ── STEP 3: Approval Actions ────────────────────────────────────────────────
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     setPipelineStatus("approved");
-    toast.success("Image approved! Choose your next action below.");
+    toast.success("Image approved! Saving to Asset Library...");
+    if (imageUrl) {
+      try {
+        const res = await assetLibraryApi.save({
+          filename: `poster_${Date.now()}.jpg`,
+          public_url: imageUrl,
+          aspect_ratio: aspectRatio,
+          source: provider,
+          provider_model: provider === "gemini" ? "imagen-3.0-generate-002" : provider === "openai" ? "dall-e-3" : "claude/gemini",
+          original_prompt: posterPrompt,
+          enhanced_prompt: enhancedPrompt,
+          style,
+          tags: [posterPrompt.split(" ").slice(0, 5).join(" ").toLowerCase()],
+        });
+        setSavedAssetId(res.id);
+        toast.success("Saved to Asset Library! Reusable in future campaigns.");
+      } catch (err: any) {
+        console.error("Auto-save to asset library error:", err);
+      }
+    }
   };
 
   const handleReject = () => {

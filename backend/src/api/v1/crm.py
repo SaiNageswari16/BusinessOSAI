@@ -13,7 +13,7 @@ from src.database.session import get_db
 from src.models import (
     AuditLog, Customer, Lead, LeadActivity, Tenant, CRMSupportTicket, 
     CRMQuotation, CRMSalesOrder, CRMOpportunity, EmailCampaign, EmailTemplate, 
-    Employee, Applicant
+    Employee, Applicant, AdAsset
 )
 from src.schemas.crm import CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate
 from src.utils.pagination import PaginatedResponse, paginate
@@ -1074,8 +1074,44 @@ def call_ai_image(
                 logger.error(f"OpenAI DALL-E 3 failed: {e}")
                 errors.append(f"OpenAI DALL-E failed: {str(e)}")
 
-    logger.warning(f"Cloud image generation unavailable ({'; '.join(errors)}). Returning fallback placeholder poster.")
-    # Safe base64 100x100 placeholder image
+    # Fallback 1: Pollinations AI (Free synchronous high-quality AI image generation)
+    try:
+        import urllib.parse
+        clean_prompt = urllib.parse.quote(enhanced_prompt[:300])
+        width, height = (1024, 1024) if aspect_ratio == "1:1" else (1024, 1792)
+        poll_url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width={width}&height={height}&nologo=true&seed=42"
+        logger.info(f"Attempting Pollinations AI generation: {poll_url}")
+        p_res = requests.get(poll_url, timeout=25)
+        if p_res.status_code == 200 and len(p_res.content) > 3000:
+            logger.info("Successfully generated poster image via Pollinations AI!")
+            return p_res.content, enhanced_prompt
+    except Exception as p_err:
+        logger.warning(f"Pollinations AI fallback failed: {p_err}")
+
+    # Fallback 2: Dynamic PIL High-Res Brand Poster Graphic
+    logger.warning(f"Cloud image generation unavailable ({'; '.join(errors)}). Generating dynamic PIL high-res poster graphic.")
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        w, h = (1024, 1024) if aspect_ratio == "1:1" else (1024, 1792)
+        img = Image.new("RGB", (w, h), color=(15, 23, 42))
+        draw = ImageDraw.Draw(img)
+        
+        # Draw gradient shapes
+        draw.rectangle([0, 0, w, int(h * 0.15)], fill=(37, 99, 235))
+        draw.ellipse([int(w * 0.2), int(h * 0.3), int(w * 0.8), int(h * 0.7)], fill=(124, 58, 237))
+        
+        # Add Text overlay
+        text_content = f"BRAND POSTER\n\n{prompt[:120]}...\n\nStyle: {style}"
+        draw.text((w // 10, h // 2), text_content, fill=(255, 255, 255))
+        
+        import io
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        return buf.getvalue(), enhanced_prompt
+    except Exception as pil_err:
+        logger.error(f"PIL graphic fallback failed: {pil_err}")
+
+    # Ultimate fallback: 100x100 PNG
     fallback_b64 = "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAL0lEQVR42u3BAQEAAACAkP6v7ggKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXg281wAB4n64GgAAAABJRU5ErkJggg=="
     return base64.b64decode(fallback_b64), enhanced_prompt
 
@@ -1588,7 +1624,9 @@ async def generate_campaign_poster(
             detail=f"Ad Poster generation failed: {str(e)}"
         )
 
-    local_url = f"http://localhost:8000/images/{filename}"
+    import os as _os
+    _port = _os.environ.get("APP_PORT", "8001")
+    local_url = f"http://localhost:{_port}/images/{filename}"
     return {"image_url": local_url, "enhanced_prompt": enhanced_prompt, "aspect_ratio": payload.aspect_ratio}
 
 @router.post("/campaigns/publish-facebook")
@@ -3036,3 +3074,131 @@ async def create_email_template(
     await db.commit()
     await db.refresh(template)
     return template
+
+# ─── Ad Asset Library ────────────────────────────────────────────────────────
+
+class SaveAssetRequest(BaseModel):
+    filename: str
+    public_url: str
+    aspect_ratio: str = "1:1"
+    width: int | None = None
+    height: int | None = None
+    file_size_bytes: int | None = None
+    source: str = "gemini"
+    provider_model: str | None = None
+    original_prompt: str | None = None
+    enhanced_prompt: str | None = None
+    style: str | None = None
+    tags: list[str] = []
+    notes: str | None = None
+
+
+@router.post("/ads/save-asset")
+async def save_ad_asset(
+    payload: SaveAssetRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Save an AI-generated creative to the asset library."""
+    asset = AdAsset(
+        tenant_id=ctx.tenant_id,
+        filename=payload.filename,
+        public_url=payload.public_url,
+        aspect_ratio=payload.aspect_ratio,
+        width=payload.width,
+        height=payload.height,
+        file_size_bytes=payload.file_size_bytes,
+        source=payload.source,
+        provider_model=payload.provider_model,
+        original_prompt=payload.original_prompt,
+        enhanced_prompt=payload.enhanced_prompt,
+        style=payload.style,
+        approval_status="approved",
+        tags=payload.tags or [],
+        notes=payload.notes,
+    )
+    db.add(asset)
+    await db.commit()
+    await db.refresh(asset)
+    return {"id": str(asset.id), "public_url": asset.public_url, "approval_status": asset.approval_status}
+
+
+@router.get("/ads/asset-library")
+async def list_ad_assets(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    status: str | None = None,
+    source: str | None = None,
+    page: int = 1,
+    page_size: int = 20
+):
+    """List saved AI creative assets with optional status/source filtering."""
+    from sqlalchemy import desc
+    q = select(AdAsset).where(AdAsset.tenant_id == ctx.tenant_id)
+    if status:
+        q = q.where(AdAsset.approval_status == status)
+    if source:
+        q = q.where(AdAsset.source == source)
+    total_q = select(func.count()).select_from(q.subquery())
+    total = await db.scalar(total_q)
+    items_q = q.order_by(desc(AdAsset.created_at)).offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(items_q)
+    items = result.scalars().all()
+    return {
+        "total": total or 0,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": str(a.id),
+                "filename": a.filename,
+                "public_url": a.public_url,
+                "thumbnail_url": a.thumbnail_url,
+                "aspect_ratio": a.aspect_ratio,
+                "width": a.width,
+                "height": a.height,
+                "source": a.source,
+                "provider_model": a.provider_model,
+                "original_prompt": a.original_prompt,
+                "enhanced_prompt": a.enhanced_prompt,
+                "style": a.style,
+                "approval_status": a.approval_status,
+                "used_in_organic_post": a.used_in_organic_post,
+                "used_in_paid_campaign": a.used_in_paid_campaign,
+                "organic_post_id": a.organic_post_id,
+                "tags": a.tags or [],
+                "notes": a.notes,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in items
+        ]
+    }
+
+
+class ApproveAssetRequest(BaseModel):
+    status: str  # approved | rejected | draft
+    rejection_reason: str | None = None
+
+
+@router.put("/ads/assets/{asset_id}/approve")
+async def approve_ad_asset(
+    asset_id: str,
+    payload: ApproveAssetRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Approve or reject a saved creative asset."""
+    import uuid as _uuid
+    try:
+        uid = _uuid.UUID(asset_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid asset ID")
+    asset = await db.scalar(select(AdAsset).where(AdAsset.id == uid, AdAsset.tenant_id == ctx.tenant_id))
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    asset.approval_status = payload.status
+    if payload.rejection_reason:
+        asset.rejection_reason = payload.rejection_reason
+    await db.commit()
+    await db.refresh(asset)
+    return {"id": str(asset.id), "approval_status": asset.approval_status}
