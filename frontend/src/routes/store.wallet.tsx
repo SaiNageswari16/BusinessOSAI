@@ -74,7 +74,7 @@ function WalletPage() {
   if (isLoadingContext || isLoadingTx) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+        <Loader2 className="w-12 h-12 text-purple-900 animate-spin" />
       </div>
     );
   }
@@ -102,7 +102,7 @@ function WalletPage() {
           <div className="flex items-center gap-3">
              <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 flex items-center gap-2">
                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
-                 <ShieldCheck className="w-4 h-4 text-blue-600" />
+                 <ShieldCheck className="w-4 h-4 text-purple-900" />
                </div>
                <div>
                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</p>
@@ -216,7 +216,7 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
               </button>
               <button 
                 onClick={() => setIsScanOpen(true)}
-                className="flex-1 md:flex-none bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all backdrop-blur-md"
+                className="flex-1 md:flex-none bg-purple-900/20 hover:bg-purple-900/30 border border-blue-500/30 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all backdrop-blur-md"
               >
                 <QrCode className="w-5 h-5" /> Scan & Pay
               </button>
@@ -228,9 +228,9 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
         <div>
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-black text-[#1A1A1A] flex items-center gap-2">
-              <History className="w-6 h-6 text-blue-600" /> Recent Transactions
+              <History className="w-6 h-6 text-purple-900" /> Recent Transactions
             </h3>
-            <button className="text-blue-600 font-bold text-sm hover:underline">View All</button>
+            <button className="text-purple-900 font-bold text-sm hover:underline">View All</button>
           </div>
           
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
@@ -269,7 +269,7 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-black text-[#1A1A1A] text-lg">Saved Cards</h3>
-            <button onClick={() => setIsAddCardOpen(true)} className="text-blue-600 text-sm font-bold hover:underline">+ Add New</button>
+            <button onClick={() => setIsAddCardOpen(true)} className="text-purple-900 text-sm font-bold hover:underline">+ Add New</button>
           </div>
           
           <div className="space-y-4">
@@ -308,7 +308,7 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
               value={topUpAmount}
               onChange={(e) => setTopUpAmount(e.target.value)}
               placeholder="0.00"
-              className="w-full text-3xl font-black border-b-2 border-gray-200 focus:border-blue-600 pb-2 outline-none text-[#1A1A1A] transition-colors"
+              className="w-full text-3xl font-black border-b-2 border-gray-200 focus:border-purple-900 pb-2 outline-none text-[#1A1A1A] transition-colors"
             />
           </div>
           
@@ -317,7 +317,7 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
               <button 
                 key={amt}
                 onClick={() => setTopUpAmount(amt.toString())}
-                className="flex-1 py-1.5 border-2 border-gray-100 hover:border-blue-600 hover:bg-blue-50 rounded-xl font-bold text-gray-600 transition-all text-sm"
+                className="flex-1 py-1.5 border-2 border-gray-100 hover:border-purple-900 hover:bg-blue-50 rounded-xl font-bold text-gray-600 transition-all text-sm"
               >
                 +{amt}
               </button>
@@ -327,7 +327,7 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
           {cards.length > 0 && (
              <div className="mb-6">
                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Pay With Saved Card</label>
-                 <select className="w-full bg-gray-50 p-3 rounded-xl border border-gray-200 focus:border-blue-600 outline-none font-medium text-sm text-gray-700">
+                 <select className="w-full bg-gray-50 p-3 rounded-xl border border-gray-200 focus:border-purple-900 outline-none font-medium text-sm text-gray-700">
                     {cards.map((c: any) => (
                         <option key={c.id} value={c.id}>{c.type} ending in {c.number}</option>
                     ))}
@@ -356,7 +356,7 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
             </div>
             
             <div className="bg-gray-50 p-4 rounded-2xl mb-6 flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
+              <div className="w-12 h-12 bg-blue-100 text-purple-900 rounded-xl flex items-center justify-center">
                 <QrCode className="w-6 h-6" />
               </div>
               <div>
@@ -371,7 +371,7 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
                 value={payAmount}
                 onChange={(e) => setPayAmount(e.target.value)}
                 placeholder="Amount (Rs)"
-                className="w-full text-center text-4xl font-black border-b-2 border-gray-200 focus:border-blue-600 pb-2 outline-none"
+                className="w-full text-center text-4xl font-black border-b-2 border-gray-200 focus:border-purple-900 pb-2 outline-none"
                 autoFocus
               />
             </div>
@@ -397,20 +397,20 @@ function WalletDashboard({ balance, transactions, cards, setCards, topUpMutation
               <div className="space-y-4 mb-8">
                 <div>
                   <label className="text-xs font-bold text-gray-500 mb-1 block">Card Number</label>
-                  <input required value={newCardNumber} onChange={e => setNewCardNumber(e.target.value)} placeholder="0000 0000 0000 0000" className="w-full bg-gray-50 p-3 rounded-xl border border-gray-200 focus:border-blue-600 outline-none" />
+                  <input required value={newCardNumber} onChange={e => setNewCardNumber(e.target.value)} placeholder="0000 0000 0000 0000" className="w-full bg-gray-50 p-3 rounded-xl border border-gray-200 focus:border-purple-900 outline-none" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-bold text-gray-500 mb-1 block">Expiry</label>
-                    <input required value={newCardExpiry} onChange={e => setNewCardExpiry(e.target.value)} placeholder="MM/YY" className="w-full bg-gray-50 p-3 rounded-xl border border-gray-200 focus:border-blue-600 outline-none" />
+                    <input required value={newCardExpiry} onChange={e => setNewCardExpiry(e.target.value)} placeholder="MM/YY" className="w-full bg-gray-50 p-3 rounded-xl border border-gray-200 focus:border-purple-900 outline-none" />
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-500 mb-1 block">CVV</label>
-                    <input required type="password" placeholder="***" className="w-full bg-gray-50 p-3 rounded-xl border border-gray-200 focus:border-blue-600 outline-none" />
+                    <input required type="password" placeholder="***" className="w-full bg-gray-50 p-3 rounded-xl border border-gray-200 focus:border-purple-900 outline-none" />
                   </div>
                 </div>
               </div>
-              <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-colors">
+              <button type="submit" className="w-full py-4 bg-purple-900 text-white rounded-2xl font-black shadow-lg hover:bg-amber-600 transition-colors">
                 Save Card
               </button>
             </form>

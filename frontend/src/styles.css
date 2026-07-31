@@ -232,8 +232,10 @@
     display: none !important;
   }
   
-  body.printing-receipt @page {
-    margin: 0;
-    size: 80mm auto;
+  @media print {
+    @page {
+      margin: 0;
+      size: 80mm auto;
+    }
   }
 }

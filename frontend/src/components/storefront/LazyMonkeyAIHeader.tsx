@@ -3,7 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useStoreCart } from "@/contexts/StoreCartContext";
 import { useState } from "react";
 
-export function VegistHeader() {
+export function LazyMonkeyAIHeader() {
   const { cartCount } = useStoreCart();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
@@ -21,7 +21,7 @@ export function VegistHeader() {
   return (
     <header className="bg-white border-b border-gray-100 font-sans">
       {/* Top Banner */}
-      <div className="bg-blue-600 text-white text-xs py-2 px-4 flex justify-between items-center">
+      <div className="bg-purple-900 text-white text-xs py-2 px-4 flex justify-between items-center">
         <div>Free shipping orders from all item</div>
         <div className="flex space-x-4">
           <div className="flex items-center cursor-pointer hover:text-gray-200">
@@ -36,9 +36,12 @@ export function VegistHeader() {
       {/* Main Header */}
       <div className="container mx-auto px-4 py-6 flex items-center justify-between">
         {/* Logo */}
-        <Link to="/store" className="flex-shrink-0 mr-8">
-          <div className="text-3xl font-black tracking-tight text-[#1A1A1A]">
-            BUSINESS<span className="text-blue-600">OSAI</span>
+        <Link to="/store" className="flex-shrink-0 mr-8 flex items-center gap-3 group">
+          <div className="w-12 h-12 flex items-center justify-center transition-transform group-hover:scale-105">
+            <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="w-full h-full object-contain" />
+          </div>
+          <div className="text-3xl font-black tracking-tight text-foreground hidden sm:block">
+            LazyMonkeyAI
           </div>
         </Link>
 
@@ -46,7 +49,7 @@ export function VegistHeader() {
         <div className="flex-1 max-w-2xl hidden md:flex">
           <form
             onSubmit={handleSearch}
-            className="flex w-full border-2 border-blue-600 rounded-full overflow-hidden"
+            className="flex w-full border-2 border-purple-900 rounded-full overflow-hidden"
           >
             <div className="bg-gray-50 border-r border-[#E5E4E2] px-4 py-2 flex items-center text-sm text-gray-600 min-w-[140px] cursor-pointer">
               All Categories <ChevronDown className="h-4 w-4 ml-auto" />
@@ -60,7 +63,7 @@ export function VegistHeader() {
             />
             <button
               type="submit"
-              className="bg-blue-600 text-white px-6 hover:bg-blue-700 transition-colors"
+              className="bg-purple-900 text-white px-6 hover:bg-amber-600 transition-colors"
             >
               <Search className="h-5 w-5" />
             </button>
@@ -69,17 +72,17 @@ export function VegistHeader() {
 
         {/* Icons */}
         <div className="flex items-center space-x-6 ml-8">
-          <Link to="/store/account" className="text-[#1E293B] hover:text-blue-600 transition-colors">
+          <Link to="/store/account" className="text-[#1E293B] hover:text-purple-900 transition-colors">
             <User className="h-6 w-6" />
           </Link>
-          <div className="text-[#1E293B] hover:text-blue-600 transition-colors relative cursor-pointer">
+          <div className="text-[#1E293B] hover:text-purple-900 transition-colors relative cursor-pointer">
             <Heart className="h-6 w-6" />
-            <span className="absolute -top-2 -right-2 bg-[#FF4E50] text-white text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">0</span>
+            <span className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">0</span>
           </div>
-          <Link to="/store/cart" className="text-[#1E293B] hover:text-blue-600 transition-colors relative">
+          <Link to="/store/cart" className="text-[#1E293B] hover:text-purple-900 transition-colors relative">
             <ShoppingBag className="h-6 w-6" />
             {cartCount > 0 && (
-              <span className="absolute -top-2 -right-2 bg-[#FF4E50] text-white text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
+              <span className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
                 {cartCount}
               </span>
             )}

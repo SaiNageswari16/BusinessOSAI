@@ -104,3 +104,25 @@ export const fetchStorefrontNotifications = async (): Promise<any[]> => {
 export const markStorefrontNotificationsRead = async (): Promise<{ success: boolean }> => {
   return { success: true };
 };
+
+export const fetchStorefrontUserContext = async (): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL.replace('/inventory', '/storefront')}/user-context`);
+  if (!response.ok) throw new Error('Failed to fetch user context');
+  return response.json();
+};
+
+export const fetchWalletTransactions = async (): Promise<any[]> => {
+  const response = await fetch(`${API_BASE_URL.replace('/inventory', '/storefront')}/wallet/transactions`);
+  if (!response.ok) throw new Error('Failed to fetch wallet transactions');
+  return response.json();
+};
+
+export const topUpWallet = async (amount: number): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL.replace('/inventory', '/storefront')}/wallet/topup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount })
+  });
+  if (!response.ok) throw new Error('Failed to top up wallet');
+  return response.json();
+};

@@ -23,7 +23,7 @@ function WishlistPage() {
             <Heart className="w-16 h-16 mx-auto text-gray-300 mb-6" />
             <h2 className="text-2xl font-bold text-[#1A1A1A] mb-4">Your wishlist is empty</h2>
             <p className="text-gray-500 mb-8 max-w-md mx-auto">Save items you love here so you can easily find them later and add them to your cart when you're ready.</p>
-            <Link to="/store/shop" className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold transition-colors uppercase tracking-wide inline-flex items-center">
+            <Link to="/store/shop" className="bg-purple-900 hover:bg-amber-600 text-white px-8 py-3 rounded-full font-bold transition-colors uppercase tracking-wide inline-flex items-center">
               Continue Shopping <ArrowRight className="w-4 h-4 ml-2" />
             </Link>
           </div>
@@ -52,12 +52,12 @@ function WishlistPage() {
                 {/* Product Info */}
                 <div className="p-4">
                   <Link to="/store/product/$id" params={{ id: item.id.split('-')[0] }}>
-                    <h3 className="text-sm font-bold text-[#1A1A1A] mb-1 group-hover:text-blue-600 transition-colors line-clamp-2">
+                    <h3 className="text-sm font-bold text-[#1A1A1A] mb-1 group-hover:text-purple-900 transition-colors line-clamp-2">
                       {item.name}
                     </h3>
                   </Link>
                   <div className="flex items-center space-x-2 mb-4">
-                    <span className="text-lg font-black text-blue-600">{item.price.toFixed(2)} KWD</span>
+                    <span className="text-lg font-black text-purple-900">{item.price.toFixed(2)} KWD</span>
                     {item.mrp && item.mrp > item.price && (
                       <span className="text-sm text-gray-400 line-through">{item.mrp.toFixed(2)} KWD</span>
                     )}
@@ -69,7 +69,7 @@ function WishlistPage() {
                       addToCart(item, 1);
                       toggleWishlist(item); // Remove from wishlist after adding to cart
                     }}
-                    className="w-full bg-[#1A1A1A] hover:bg-blue-600 text-white font-bold py-2.5 rounded transition-colors uppercase tracking-wide text-xs flex items-center justify-center"
+                    className="w-full bg-[#1A1A1A] hover:bg-purple-900 text-white font-bold py-2.5 rounded transition-colors uppercase tracking-wide text-xs flex items-center justify-center"
                   >
                     <ShoppingCart className="w-4 h-4 mr-2" />
                     Move to Cart
