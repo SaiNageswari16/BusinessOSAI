@@ -38,10 +38,6 @@ def _flatten_fb_lead(raw: dict, form_id: str = "") -> dict:
         field_map[field["name"]] = values[0].strip() if values else ""
     field_map["fb_lead_id"]    = raw.get("id", "")
     field_map["created_time"]  = raw.get("created_time", "")
-    field_map["ad_id"]         = raw.get("ad_id", "")
-    field_map["adset_id"]      = raw.get("adset_id", "")
-    field_map["campaign_id"]   = raw.get("campaign_id", "")
-    field_map["form_id"]       = raw.get("form_id", "")
     return field_map
 
 

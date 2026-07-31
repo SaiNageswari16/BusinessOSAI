@@ -324,32 +324,6 @@ async def delete_uom(
     await db.commit()
 
 
-@router.patch("/uoms/{uom_id}", response_model=UnitOfMeasureResponse)
-async def update_uom(
-    uom_id: uuid.UUID,
-    payload: UnitOfMeasureUpdate,
-    request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    uom = await db.scalar(select(UnitOfMeasure).where(
-        UnitOfMeasure.id == uom_id, UnitOfMeasure.tenant_id == ctx.tenant_id
-    ))
-    if not uom:
-        raise HTTPException(status_code=404, detail="UOM not found")
-    if payload.name is not None:
-        uom.name = payload.name
-    if payload.abbreviation is not None:
-        uom.abbreviation = payload.abbreviation
-    if payload.description is not None:
-        uom.description = payload.description
-    if payload.status is not None:
-        uom.status = _parse_status(payload.status)
-    await db.commit()
-    await db.refresh(uom)
-    return uom
-
-
 # ==========================================
 # Products
 # ==========================================
@@ -429,16 +403,44 @@ async def create_product(
             brand_id = new_brand.id
             
     data["brand_id"] = brand_id
-    
-    product = Product(
-        tenant_id=ctx.tenant_id,
-        **data
-    )
-    db.add(product)
-    await db.flush()
-    
-    # Reload with relations
-    await db.refresh(product, ["category", "brand", "uom"])
+
+    barcode = (data.get("barcode") or "").strip()
+    name = (data.get("name") or "").strip()
+
+    existing_prod = None
+    if barcode:
+        stmt = select(Product).where(Product.tenant_id == ctx.tenant_id, Product.barcode == barcode)
+        res = await db.execute(stmt)
+        existing_prod = res.scalars().first()
+
+    if not existing_prod and name:
+        stmt = select(Product).where(Product.tenant_id == ctx.tenant_id, func.lower(Product.name) == name.lower())
+        res = await db.execute(stmt)
+        existing_prod = res.scalars().first()
+
+    if existing_prod:
+        added_stock = data.get("initial_stock") or 1
+        existing_prod.initial_stock = (existing_prod.initial_stock or 0) + added_stock
+        if data.get("mrp"):
+            existing_prod.mrp = data["mrp"]
+        if data.get("selling_price"):
+            existing_prod.selling_price = data["selling_price"]
+        if data.get("purchase_price"):
+            existing_prod.purchase_price = data["purchase_price"]
+        if brand_id:
+            existing_prod.brand_id = brand_id
+
+        await db.commit()
+        await db.refresh(existing_prod, ["category", "brand", "uom"])
+        product = existing_prod
+    else:
+        product = Product(
+            tenant_id=ctx.tenant_id,
+            **data
+        )
+        db.add(product)
+        await db.flush()
+        await db.refresh(product, ["category", "brand", "uom"])
 
     # Cache in global master catalog if it has a barcode and doesn't exist yet
     if product.barcode and product.barcode.strip():

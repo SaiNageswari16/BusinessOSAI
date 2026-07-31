@@ -140,12 +140,51 @@ async def create_product(
         data["short_description"] = data.pop("description")
     if "discount" in data:
         data["discount_limit"] = data.pop("discount")
-        
-    product = Product(tenant_id=ctx.user.tenant_id, **data)
-    db.add(product)
-    await db.commit()
-    await db.refresh(product, ["category", "brand"])
-    
+
+    barcode = (data.get("barcode") or "").strip()
+    name = (data.get("name") or "").strip()
+
+    # Search for existing product by barcode or by name
+    existing_prod = None
+    if barcode:
+        stmt = select(Product).where(
+            Product.tenant_id == ctx.user.tenant_id,
+            Product.barcode == barcode
+        )
+        res = await db.execute(stmt)
+        existing_prod = res.scalars().first()
+
+    if not existing_prod and name:
+        stmt = select(Product).where(
+            Product.tenant_id == ctx.user.tenant_id,
+            func.lower(Product.name) == name.lower()
+        )
+        res = await db.execute(stmt)
+        existing_prod = res.scalars().first()
+
+    if existing_prod:
+        added_qty = data.get("initial_stock") or data.get("stock") or 1
+        existing_prod.initial_stock = (existing_prod.initial_stock or 0) + added_qty
+        if data.get("mrp"):
+            existing_prod.mrp = data["mrp"]
+        if data.get("selling_price"):
+            existing_prod.selling_price = data["selling_price"]
+        if data.get("purchase_price"):
+            existing_prod.purchase_price = data["purchase_price"]
+        if data.get("short_description"):
+            existing_prod.short_description = data["short_description"]
+        if data.get("image_url"):
+            existing_prod.image_url = data["image_url"]
+
+        await db.commit()
+        await db.refresh(existing_prod, ["category", "brand"])
+        product = existing_prod
+    else:
+        product = Product(tenant_id=ctx.user.tenant_id, **data)
+        db.add(product)
+        await db.commit()
+        await db.refresh(product, ["category", "brand"])
+
     res = POSProductResponse.model_construct(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
         sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,

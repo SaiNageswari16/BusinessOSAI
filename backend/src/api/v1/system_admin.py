@@ -299,7 +299,7 @@ async def reset_platform_user_password(
     email_body = f"""
     <html>
       <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2 style="color: #6366f1;">IOTRONCS Retail Security Alert</h2>
+        <h2 style="color: #6366f1;">BusinessOS AI Security Alert</h2>
         <p>Hello <strong>{user.full_name}</strong>,</p>
         <p>A system administrator has reset your password. You can now log in using the following temporary credentials:</p>
         <div style="background: #f3f4f6; border-radius: 8px; padding: 15px; margin: 15px 0; font-family: monospace; font-size: 14px;">
@@ -309,7 +309,7 @@ async def reset_platform_user_password(
         <p style="color: #ef4444;"><strong>Note:</strong> You will be prompted to choose a new password immediately upon logging in for security purposes.</p>
         <p>If you did not request this reset, please contact system support immediately.</p>
         <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;"/>
-        <p style="font-size: 11px; color: #9ca3af;">This is an automated notification from IOTRONCS Retail Security. Please do not reply to this email.</p>
+        <p style="font-size: 11px; color: #9ca3af;">This is an automated notification from BusinessOS AI Security. Please do not reply to this email.</p>
       </body>
     </html>
     """
@@ -318,7 +318,7 @@ async def reset_platform_user_password(
 
     # Background send
     await send_email(
-        subject="IOTRONCS Retail — Your password has been reset",
+        subject="BusinessOS AI — Your password has been reset",
         recipients=[user.email],
         html=email_body,
         text=text_body,

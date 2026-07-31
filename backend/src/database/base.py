@@ -1,9 +1,16 @@
 import uuid
+import enum
 from datetime import datetime
 
 from sqlalchemy import DateTime, func, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class EntityStatus(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    SUSPENDED = "suspended"
 
 
 class Base(DeclarativeBase):

@@ -31,7 +31,6 @@ from src.schemas.erp import (
 from src.utils.email import send_email
 from src.utils.pagination import PaginatedResponse, paginate
 from src.utils.rbac_policy import (
-    SUPER_ADMIN_ROLE_NAME,
     assert_role_name_allowed,
     can_manage_super_admin,
     get_super_admin_role,
@@ -197,28 +196,6 @@ async def update_role(
 
 
     return await _role_to_response(db, role)
-
-
-@router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_role(
-    role_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:roles"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == ctx.tenant_id))
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
-    if role.is_system:
-        actor_is_super = await user_has_super_admin_role(db, ctx.user.id, ctx.tenant_id)
-        if not can_manage_super_admin(
-            is_tenant_owner=ctx.user.is_tenant_owner,
-            has_super_admin_role=actor_is_super,
-        ):
-            raise HTTPException(status_code=403, detail="Only the tenant owner or Super Admin can delete system roles")
-        if role.name.strip().lower() == SUPER_ADMIN_ROLE_NAME.lower():
-            raise HTTPException(status_code=400, detail="The Super Admin role cannot be deleted")
-    await db.delete(role)
-    await db.flush()
 
 
 @router.get("/users", response_model=PaginatedResponse[UserResponse])
@@ -399,44 +376,6 @@ async def update_user(
             db.add(UserBranch(user_id=user.id, branch_id=branch_id, is_primary=idx == 0))
 
     return await _user_to_response(db, user)
-
-
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(
-    user_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    user = await db.scalar(select(User).where(User.id == user_id, User.tenant_id == ctx.tenant_id))
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    if user.is_tenant_owner:
-        raise HTTPException(status_code=400, detail="Cannot delete the tenant owner")
-
-    actor_is_super = await user_has_super_admin_role(db, ctx.user.id, ctx.tenant_id)
-    if not can_manage_super_admin(
-        is_tenant_owner=ctx.user.is_tenant_owner,
-        has_super_admin_role=actor_is_super,
-    ):
-        if await user_has_super_admin_role(db, user.id, ctx.tenant_id):
-            raise HTTPException(status_code=403, detail="Only tenant owner or super admin can delete super admin users")
-
-    await db.delete(user)
-    await db.flush()
-
-    await write_audit_log(
-        db,
-        tenant_id=ctx.tenant_id,
-        user_id=ctx.user.id,
-        module="erp",
-        action="deleted",
-        entity_type="user",
-        entity_id=user.id,
-        old_values={"email": user.email, "full_name": user.full_name},
-        ip_address=None,
-        user_agent=None,
-    )
 
 
 # ─── ERP Workspaces Endpoints ─────────────────────────────────────

@@ -72,57 +72,6 @@ async def delete_product_bundle(
     bundle = result.scalar_one_or_none()
     if not bundle:
         raise HTTPException(status_code=404, detail="Product bundle not found")
-
+    
     await db.delete(bundle)
     await db.commit()
-
-
-@router.patch("/{bundle_id}", response_model=ProductBundleResponse)
-async def update_product_bundle(
-    bundle_id: uuid.UUID,
-    bundle_in: ProductBundleUpdate,
-    ctx: CurrentUserContext = Depends(require_permission("manage:erp")),
-    db: AsyncSession = Depends(get_db)
-) -> Any:
-    result = await db.execute(
-        select(ProductBundle)
-        .where(ProductBundle.id == bundle_id, ProductBundle.tenant_id == ctx.tenant_id)
-        .options(selectinload(ProductBundle.items))
-    )
-    bundle = result.scalar_one_or_none()
-    if not bundle:
-        raise HTTPException(status_code=404, detail="Product bundle not found")
-
-    if bundle_in.name is not None:
-        bundle.name = bundle_in.name
-    if bundle_in.sku is not None:
-        bundle.sku = bundle_in.sku
-    if bundle_in.description is not None:
-        bundle.description = bundle_in.description
-    if bundle_in.price is not None:
-        bundle.price = bundle_in.price
-
-    if bundle_in.items is not None:
-        # Replace all items
-        for item in list(bundle.items):
-            await db.delete(item)
-        await db.flush()
-        for item in bundle_in.items:
-            new_item = ProductBundleItem(
-                id=uuid.uuid4(),
-                tenant_id=ctx.tenant_id,
-                bundle_id=bundle.id,
-                product_id=item.product_id,
-                quantity=item.quantity,
-            )
-            db.add(new_item)
-
-    await db.commit()
-
-    # Reload with items
-    result = await db.execute(
-        select(ProductBundle)
-        .where(ProductBundle.id == bundle_id)
-        .options(selectinload(ProductBundle.items))
-    )
-    return result.scalar_one()

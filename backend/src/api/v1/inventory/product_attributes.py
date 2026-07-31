@@ -49,32 +49,6 @@ async def delete_product_attribute(
     attr = result.scalar_one_or_none()
     if not attr:
         raise HTTPException(status_code=404, detail="Product attribute not found")
-
+    
     await db.delete(attr)
     await db.commit()
-
-
-@router.patch("/{attribute_id}", response_model=ProductAttributeResponse)
-async def update_product_attribute(
-    attribute_id: uuid.UUID,
-    attribute_in: ProductAttributeUpdate,
-    ctx: CurrentUserContext = Depends(require_permission("manage:erp")),
-    db: AsyncSession = Depends(get_db)
-) -> Any:
-    result = await db.execute(select(ProductAttribute).where(
-        ProductAttribute.id == attribute_id, ProductAttribute.tenant_id == ctx.tenant_id
-    ))
-    attr = result.scalar_one_or_none()
-    if not attr:
-        raise HTTPException(status_code=404, detail="Product attribute not found")
-
-    if attribute_in.name is not None:
-        attr.name = attribute_in.name
-    if attribute_in.module is not None:
-        attr.module = attribute_in.module
-    if attribute_in.options is not None:
-        attr.options = attribute_in.options
-
-    await db.commit()
-    await db.refresh(attr)
-    return attr

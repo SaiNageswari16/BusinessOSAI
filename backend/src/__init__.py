@@ -1,1 +1,1 @@
-"""IOTRONCS Retail Core ERP Backend."""
+"""BusinessOS AI Core ERP Backend."""

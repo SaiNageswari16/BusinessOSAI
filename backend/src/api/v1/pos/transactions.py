@@ -177,53 +177,80 @@ async def get_daily_summary(
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get aggregated daily sales summary directly from DB."""
-    # Base condition: Current tenant + (completed or refunded)
-    tx_cond = (POSTransaction.tenant_id == ctx.user.tenant_id) & (POSTransaction.status.in_(["completed", "refunded"]))
+    """Get aggregated daily sales summary for TODAY only, directly from DB."""
+    from datetime import datetime, timezone, timedelta
+
+    # Today's date window in UTC (supports servers in any timezone)
+    now_utc = datetime.now(timezone.utc)
+    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end   = today_start + timedelta(days=1)
+
+    # Base condition: current tenant + today's records only
+    date_cond = (
+        POSTransaction.created_at >= today_start,
+        POSTransaction.created_at <  today_end,
+        POSTransaction.tenant_id  == ctx.user.tenant_id,
+    )
     if session_id:
-        tx_cond = tx_cond & (POSTransaction.session_id == session_id)
-        
-    # 1. Total revenue and transaction count
+        date_cond = (*date_cond, POSTransaction.session_id == session_id)
+
+    # Completed sales only (exclude refunds from revenue total)
+    completed_cond = (*date_cond, POSTransaction.status == "completed")
+
+    # Refunded transactions only (for Returns & Refunds KPI)
+    refunded_cond = (*date_cond, POSTransaction.status == "refunded")
+
+    # 1. Total revenue + transaction count (completed only)
     summary_stmt = select(
         func.count(POSTransaction.id).label("transactions_count"),
-        func.sum(POSTransaction.total_amount).label("total_revenue")
-    ).where(tx_cond)
-    
+        func.coalesce(func.sum(POSTransaction.total_amount), 0).label("total_revenue")
+    ).where(*completed_cond)
+
     summary_res = await db.execute(summary_stmt)
     summary_row = summary_res.first()
-    
-    transactions_count = summary_row.transactions_count or 0
-    total_revenue = float(summary_row.total_revenue or 0)
-    
-    # 2. Payments breakdown
+
+    transactions_count = int(summary_row.transactions_count or 0)
+    total_revenue      = float(summary_row.total_revenue or 0)
+
+    # 2. Returns & Refunds total (absolute value of refunded transactions)
+    returns_stmt = select(
+        func.coalesce(func.sum(func.abs(POSTransaction.total_amount)), 0).label("total_returns")
+    ).where(*refunded_cond)
+
+    returns_res  = await db.execute(returns_stmt)
+    total_returns = float((returns_res.scalar()) or 0)
+
+    # 3. Payment method breakdown (completed sales)
     payments_stmt = select(
         POSPayment.payment_method,
-        func.sum(POSPayment.amount).label("total_amount")
-    ).join(POSTransaction).where(tx_cond).group_by(POSPayment.payment_method)
-    
+        func.coalesce(func.sum(POSPayment.amount), 0).label("total_amount")
+    ).join(POSTransaction).where(*completed_cond).group_by(POSPayment.payment_method)
+
     payments_res = await db.execute(payments_stmt)
-    
-    breakdown = { "cash": 0.0, "card": 0.0, "upi": 0.0 }
+
+    breakdown = {"cash": 0.0, "card": 0.0, "upi": 0.0}
     for row in payments_res:
         method = (row.payment_method or "").lower()
         if method in breakdown:
             breakdown[method] = float(row.total_amount or 0)
-            
-    # 3. Split count (transactions with > 1 payment)
+
+    # 4. Split payment count
     split_stmt = select(func.count()).select_from(
         select(POSPayment.transaction_id)
         .join(POSTransaction)
-        .where(tx_cond)
+        .where(*completed_cond)
         .group_by(POSPayment.transaction_id)
         .having(func.count(POSPayment.id) > 1)
         .subquery()
     )
-    split_res = await db.execute(split_stmt)
-    split_count = split_res.scalar() or 0
-    
+    split_res  = await db.execute(split_stmt)
+    split_count = int(split_res.scalar() or 0)
+
     return {
         "transactions_count": transactions_count,
-        "total_revenue": total_revenue,
-        "breakdown": breakdown,
-        "split_count": split_count
+        "total_revenue":      total_revenue,
+        "total_returns":      total_returns,
+        "breakdown":          breakdown,
+        "split_count":        split_count,
+        "date":               today_start.strftime("%Y-%m-%d"),
     }

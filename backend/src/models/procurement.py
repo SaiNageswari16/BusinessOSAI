@@ -4,8 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 
-from src.database.base import Base, TenantScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
-from src.models import EntityStatus
+from src.database.base import Base, EntityStatus, TenantScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 
 # ─── Supplier Management ───────────────────────────────────────────
 

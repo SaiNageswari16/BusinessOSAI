@@ -19,8 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.database.base import Base, TenantScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
-from src.models import EntityStatus
+from src.database.base import Base, EntityStatus, TenantScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 # ═══════════════════════════════════════════════════════════════════

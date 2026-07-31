@@ -36,7 +36,7 @@ log = get_logger("main")
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Open Food Facts → IOTRONCS Retail Master Catalog Importer",
+        description="Open Food Facts → BusinessOS AI Master Catalog Importer",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument(

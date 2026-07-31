@@ -53,40 +53,6 @@ async def delete_product_variant(
     var = result.scalar_one_or_none()
     if not var:
         raise HTTPException(status_code=404, detail="Product variant not found")
-
+    
     await db.delete(var)
     await db.commit()
-
-
-@router.patch("/{variant_id}", response_model=ProductVariantResponse)
-async def update_product_variant(
-    variant_id: uuid.UUID,
-    variant_in: ProductVariantUpdate,
-    ctx: CurrentUserContext = Depends(require_permission("manage:erp")),
-    db: AsyncSession = Depends(get_db)
-) -> Any:
-    result = await db.execute(select(ProductVariant).where(
-        ProductVariant.id == variant_id, ProductVariant.tenant_id == ctx.tenant_id
-    ))
-    var = result.scalar_one_or_none()
-    if not var:
-        raise HTTPException(status_code=404, detail="Product variant not found")
-
-    if variant_in.product_id is not None:
-        var.product_id = variant_in.product_id
-    if variant_in.variant_name is not None:
-        var.variant_name = variant_in.variant_name
-    if variant_in.sku is not None:
-        var.sku = variant_in.sku
-    if variant_in.barcode is not None:
-        var.barcode = variant_in.barcode
-    if variant_in.attributes is not None:
-        var.attributes = variant_in.attributes
-    if variant_in.additional_price is not None:
-        var.additional_price = variant_in.additional_price
-    if variant_in.stock_override is not None:
-        var.stock_override = variant_in.stock_override
-
-    await db.commit()
-    await db.refresh(var)
-    return var

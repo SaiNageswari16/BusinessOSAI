@@ -1401,7 +1401,7 @@ async def get_ai_suggestions(
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
 
         instruction = f"""
-        You are Antigravity AI, the intelligent replenishment core of IOTRONCS Retail.
+        You are Antigravity AI, the intelligent replenishment core of BusinessOS AI.
         Analyze the following active database state for this tenant:
         - Products: {json.dumps(inventory_summary[:20])}
         - Recent Purchase Orders: {json.dumps(po_summary[:20])}

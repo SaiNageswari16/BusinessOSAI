@@ -112,39 +112,12 @@ async def create_employee(
 
     # Generate temporary password for the employee user
     temp_pass = f"Welcome@{payload.employee_code.replace('-', '')}"
-
+    
     # Auto-create User account linked to employee
     existing_user = await db.scalar(
         select(User).where(User.tenant_id == ctx.tenant_id, User.email == payload.email)
     )
-
-    # Ensure Employee role exists (always — for both new and existing users)
-    role = await db.scalar(
-        select(Role).where(Role.tenant_id == ctx.tenant_id, Role.name == "Employee")
-    )
-    if not role:
-        role = Role(
-            tenant_id=ctx.tenant_id,
-            name="Employee",
-            description="Standard employee access to ESS and profile logs",
-            is_system=False
-        )
-        db.add(role)
-        await db.flush()
-
-        # Grant view:dashboard, view:hrms & all ESS permissions
-        ess_perm_codes = [
-            "view:dashboard", "view:hrms",
-            "view:ess_attendance", "view:ess_leaves",
-            "view:ess_payroll", "view:ess_documents",
-            "view:ess_tasks_announcements"
-        ]
-        for code in ess_perm_codes:
-            perm_obj = await db.scalar(select(Permission).where(Permission.code == code))
-            if perm_obj:
-                db.add(RolePermission(role_id=role.id, permission_id=perm_obj.id))
-        await db.flush()
-
+    
     linked_user_id = None
     if not existing_user:
         new_user = User(
@@ -161,7 +134,34 @@ async def create_employee(
         db.add(new_user)
         await db.flush()
         linked_user_id = new_user.id
-
+        
+        # Ensure Employee role exists and assign it
+        role = await db.scalar(
+            select(Role).where(Role.tenant_id == ctx.tenant_id, Role.name == "Employee")
+        )
+        if not role:
+            role = Role(
+                tenant_id=ctx.tenant_id,
+                name="Employee",
+                description="Standard employee access to ESS and profile logs",
+                is_system=False
+            )
+            db.add(role)
+            await db.flush()
+            
+            # Grant view:dashboard, view:hrms & all ESS permissions
+            ess_perm_codes = [
+                "view:dashboard", "view:hrms", 
+                "view:ess_attendance", "view:ess_leaves", 
+                "view:ess_payroll", "view:ess_documents", 
+                "view:ess_tasks_announcements"
+            ]
+            for code in ess_perm_codes:
+                perm_obj = await db.scalar(select(Permission).where(Permission.code == code))
+                if perm_obj:
+                    db.add(RolePermission(role_id=role.id, permission_id=perm_obj.id))
+            await db.flush()
+            
         db.add(UserRole(
             user_id=new_user.id,
             role_id=role.id,
@@ -172,22 +172,6 @@ async def create_employee(
     else:
         linked_user_id = existing_user.id
         existing_user.employee_id = payload.employee_code
-
-        # Make sure the existing user actually has the Employee role assigned
-        existing_link = await db.scalar(
-            select(UserRole).where(
-                UserRole.user_id == existing_user.id,
-                UserRole.role_id == role.id,
-            )
-        )
-        if not existing_link:
-            db.add(UserRole(
-                user_id=existing_user.id,
-                role_id=role.id,
-                is_default=True,
-                company_id=payload.company_id,
-                branch_id=payload.branch_id,
-            ))
 
     emp = Employee(
         tenant_id=ctx.tenant_id,

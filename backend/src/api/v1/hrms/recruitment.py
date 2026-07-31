@@ -315,7 +315,7 @@ async def jobs_xml_feed(
 
     xml_content = '<?xml version="1.0" encoding="UTF-8" ?>\n'
     xml_content += '<source>\n'
-    xml_content += '  <publisher>IOTRONCS Retail Recruitment Feed</publisher>\n'
+    xml_content += '  <publisher>BusinessOS AI Recruitment Feed</publisher>\n'
     xml_content += '  <publisherurl>http://localhost:8080</publisherurl>\n'
     
     for job in jobs:

@@ -1,4 +1,4 @@
-# Open Food Facts → IOTRONCS Retail Importer
+# Open Food Facts → BusinessOS AI Importer
 
 Production-grade streaming importer for the [Open Food Facts](https://world.openfoodfacts.org/data)
 dataset into the `erp_master_catalog` PostgreSQL table.

@@ -5,37 +5,42 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.v1.router import api_router
-from src.config import get_settings
-from src.database.init_db import bootstrap_defaults, init_database
-from src.database.session import AsyncSessionLocal
+from src.config.settings import get_settings
+from src.database.session import check_database_health
+from src.database.init_db import init_database
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 settings = get_settings()
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
-    logger.info("Starting %s [%s]", settings.app_name, settings.app_env)
-    await init_database()
-    async with AsyncSessionLocal() as session:
-        try:
-            await bootstrap_defaults(session)
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            logger.exception("Bootstrap failed")
-            raise
+async def lifespan(app: FastAPI):
+    # Startup: Perform basic DB health check & bootstrap
+    logger.info("Initializing BusinessOS AI Core Services...")
+    try:
+        is_healthy = await check_database_health()
+        if is_healthy:
+            logger.info("PostgreSQL database connection verified.")
+            if settings.auto_create_tables:
+                await init_database()
+        else:
+            logger.warning(
+                "PostgreSQL connection check failed. System will operate with degraded capabilities."
+            )
+    except Exception as e:
+        logger.error(f"Error during system startup initialization: {e}")
 
     yield
 
-    logger.info("Shutting down %s", settings.app_name)
+    # Shutdown
+    logger.info("Shutting down BusinessOS AI Core Services...")
 
 
 app = FastAPI(
     title=settings.app_name,
-    description="Multi-tenant Core ERP API for IOTRONCS Retail",
     version="1.0.0",
+    description="BusinessOS AI - Production ERP Core Backend System",
     lifespan=lifespan,
     docs_url="/docs" if not settings.is_production else None,
     redoc_url="/redoc" if not settings.is_production else None,
@@ -43,7 +48,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

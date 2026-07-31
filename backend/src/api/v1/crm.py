@@ -11,19 +11,13 @@ from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import (
-    AuditLog, Customer, Lead, LeadActivity, Tenant, CRMSupportTicket,
-    CRMQuotation, CRMSalesOrder, CRMOpportunity, EmailCampaign, EmailTemplate,
-    Employee, Applicant, MetaAdCampaign, MetaAdSet, MetaAd
+    AuditLog, Customer, Lead, LeadActivity, Tenant, CRMSupportTicket, 
+    CRMQuotation, CRMSalesOrder, CRMOpportunity, EmailCampaign, EmailTemplate, 
+    Employee, Applicant
 )
-from src.schemas.crm import (
-    CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse,
-    LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate,
-    CreatePaidAdRequest, ActivateAdRequest, MetaAdCampaignResponse, MetaAdSetResponse,
-    MetaAdResponse, MetaAdInsights, PaidCampaignListResponse, LeadFormInfo,
-)
+from src.schemas.crm import CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate
 from src.utils.pagination import PaginatedResponse, paginate
 from src.utils.notifications import add_system_notification
-from src.services.meta_ads import MetaAdsClient
 import logging
 logger = logging.getLogger(__name__)
 
@@ -40,7 +34,7 @@ async def _lead_or_404(db: AsyncSession, lead_id: uuid.UUID, tenant_id: uuid.UUI
 
 
 @router.get("/customers", response_model=PaginatedResponse[CustomerResponse])
-async def list_customers(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=1000), search: str | None = None, customer_type: str | None = None):
+async def list_customers(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), search: str | None = None, customer_type: str | None = None):
     query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if search:
         term = f"%{search}%"
@@ -71,7 +65,7 @@ async def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate, reque
 
 
 @router.get("/leads", response_model=PaginatedResponse[LeadResponse])
-async def list_leads(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=1000), search: str | None = None, status_filter: str | None = Query(default=None, alias="status")):
+async def list_leads(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), search: str | None = None, status_filter: str | None = Query(default=None, alias="status")):
     query = select(Lead).where(Lead.tenant_id == ctx.tenant_id)
     if search:
         term = f"%{search}%"; query = query.where(or_(Lead.name.ilike(term), Lead.company_name.ilike(term), Lead.email.ilike(term), Lead.phone.ilike(term)))
@@ -128,95 +122,10 @@ async def convert_lead(lead_id: uuid.UUID, request: Request, ctx: Annotated[Curr
     return customer
 
 
-@router.get("/leads/{lead_id}/attribution")
-async def get_lead_attribution(lead_id: uuid.UUID, ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
-    """
-    Resolve a lead's full Meta ad attribution chain.
-
-    Reads the `meta` JSONB blob (form_id, ad_id, adset_id, campaign_id)
-    captured at lead-import time, then joins against the local mirror
-    tables (fb_ads, fb_ad_sets, fb_ad_campaigns) to return human-readable
-    names plus the tenant's connected ad account.
-    """
-    lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
-    meta = lead.meta or {}
-
-    ad_id       = meta.get("ad_id") or ""
-    adset_id    = meta.get("adset_id") or ""
-    campaign_id = meta.get("campaign_id") or ""
-    form_id     = meta.get("form_id") or ""
-
-    result: dict = {
-        "form_id":     form_id,
-        "form_name":   meta.get("form_name"),
-        "ad_id":       ad_id,
-        "adset_id":    adset_id,
-        "campaign_id": campaign_id,
-        "ad":          None,
-        "adset":       None,
-        "campaign":    None,
-        "ad_account_id": None,
-        "ad_account_name": None,
-        "source":      lead.external_source,
-    }
-
-    # Look up names from local mirror tables (only works for ads created in-app)
-    if ad_id:
-        ad_row = await db.scalar(
-            select(MetaAd).where(MetaAd.tenant_id == ctx.tenant_id, MetaAd.meta_ad_id == ad_id)
-        )
-        if ad_row:
-            result["ad"] = {
-                "id": str(ad_row.id),
-                "name": ad_row.name,
-                "status": ad_row.status,
-                "headline": ad_row.headline,
-                "lead_form_id": ad_row.lead_form_id,
-            }
-
-    if adset_id:
-        adset_row = await db.scalar(
-            select(MetaAdSet).where(MetaAdSet.tenant_id == ctx.tenant_id, MetaAdSet.meta_adset_id == adset_id)
-        )
-        if adset_row:
-            result["adset"] = {
-                "id": str(adset_row.id),
-                "name": adset_row.name,
-                "status": adset_row.status,
-            }
-
-    if campaign_id:
-        camp_row = await db.scalar(
-            select(MetaAdCampaign).where(MetaAdCampaign.tenant_id == ctx.tenant_id, MetaAdCampaign.meta_campaign_id == campaign_id)
-        )
-        if camp_row:
-            result["campaign"] = {
-                "id": str(camp_row.id),
-                "name": camp_row.name,
-                "status": camp_row.status,
-                "objective": camp_row.objective,
-            }
-
-    # Resolve ad account from tenant settings
-    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
-    if tenant:
-        settings = tenant.settings or {}
-        fb_page = settings.get("facebook_page", {})
-        ad_acct = fb_page.get("ad_account_id")
-        if ad_acct:
-            result["ad_account_id"] = ad_acct
-            # ad_account_name may be cached in the legacy 'facebook' block
-            legacy = settings.get("facebook", {})
-            if legacy.get("ad_account_name"):
-                result["ad_account_name"] = legacy["ad_account_name"]
-
-    return result
-
-
 # ─── CRM Opportunities & Pipeline ───────────────────────────────
 
 @router.get("/opportunities", response_model=PaginatedResponse[OpportunityResponse])
-async def list_opportunities(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=1000), search: str | None = None, stage: str | None = None):
+async def list_opportunities(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), search: str | None = None, stage: str | None = None):
     query = select(CRMOpportunity).where(CRMOpportunity.tenant_id == ctx.tenant_id)
     if search:
         query = query.where(CRMOpportunity.name.ilike(f"%{search}%"))
@@ -664,7 +573,7 @@ async def get_fb_auth_url(
     params = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
-        "scope": "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_ads,ads_management,ads_read,business_management",
+        "scope": "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_ads",
         "response_type": "code",
         # Encode tenant_id in state so the callback knows which org to update
         "state": str(ctx.tenant_id),
@@ -954,14 +863,11 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
     logger = logging.getLogger("CRM_AI_Helper")
 
     primary = prefer_provider or settings.ai_provider or "gemini"
-    if primary not in ("gemini", "openai", "claude"):
+    if primary not in ("gemini", "openai"):
         primary = "gemini"
+    secondary = "openai" if primary == "gemini" else "gemini"
 
-    providers_to_try = [primary]
-    for p in ("gemini", "openai", "claude"):
-        if p not in providers_to_try:
-            providers_to_try.append(p)
-
+    providers_to_try = [primary, secondary]
     errors = []
 
     for prov in providers_to_try:
@@ -1037,49 +943,6 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
                 logger.error(f"Gemini call failed in CRM: {e}")
                 errors.append(f"Gemini failed: {str(e)}")
 
-        elif prov == "claude":
-            if not settings.anthropic_api_key:
-                errors.append("Anthropic API key not configured")
-                continue
-            try:
-                url = f"{settings.anthropic_base_url.rstrip('/')}/v1/messages"
-                headers = {
-                    "x-api-key": settings.anthropic_api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                }
-                
-                content_list = []
-                if reference_image:
-                    base64_data = reference_image
-                    mime_type = "image/jpeg"
-                    if "data:" in base64_data:
-                        header, base64_data = base64_data.split(",", 1)
-                        mime_type = header.split(";")[0].split(":")[1]
-                    content_list.append({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": mime_type,
-                            "data": base64_data
-                        }
-                    })
-                
-                content_list.append({"type": "text", "text": instruction})
-                
-                body = {
-                    "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
-                    "max_tokens": 1500,
-                    "messages": [{"role": "user", "content": content_list}]
-                }
-                
-                res = requests.post(url, json=body, headers=headers, timeout=25)
-                res.raise_for_status()
-                return res.json()["content"][0]["text"]
-            except Exception as e:
-                logger.error(f"Claude call failed in CRM: {e}")
-                errors.append(f"Claude failed: {str(e)}")
-
     raise Exception(f"AI Service unavailable. Attempted providers failed: {'; '.join(errors)}")
 
 
@@ -1104,10 +967,11 @@ def call_ai_image(prompt: str, aspect_ratio: str = "1:1", style: str = "Photorea
         logger.warning(f"Prompt enhancement failed: {e}. Using raw prompt.")
 
     primary = prefer_provider or settings.ai_provider or "gemini"
-    if primary not in ("gemini", "openai", "claude"):
+    if primary not in ("gemini", "openai"):
         primary = "gemini"
-    providers_to_try = ["gemini", "openai"] if primary == "claude" else [primary, "openai" if primary == "gemini" else "gemini"]
+    secondary = "openai" if primary == "gemini" else "gemini"
 
+    providers_to_try = [primary, secondary]
     errors = []
 
     for prov in providers_to_try:
@@ -1165,105 +1029,10 @@ def call_ai_image(prompt: str, aspect_ratio: str = "1:1", style: str = "Photorea
                 logger.error(f"OpenAI DALL-E 3 failed: {e}")
                 errors.append(f"OpenAI DALL-E failed: {str(e)}")
 
-    # ── Fallback A: Pollinations.ai (free, no key, Flux model) ────────────────
-    try:
-        width, height = (1024, 1024) if aspect_ratio == "1:1" else (1024, 1792)
-        # Use a simple approach: truncate prompt to URL-safe length and fetch
-        trunc_prompt = enhanced_prompt[:200]
-        safe_prompt = requests.utils.quote(trunc_prompt, safe="")
-        poll_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width={width}&height={height}&model=flux&nologo=true"
-        res = requests.get(poll_url, timeout=(15, 60), allow_redirects=True, headers={
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "image/jpeg,image/png,image/*,*/*",
-        })
-        if res.status_code == 200 and len(res.content) > 15000:
-            return res.content, enhanced_prompt
-        logger.warning(f"Pollinations A returned {res.status_code}, {len(res.content)} bytes, ct={res.headers.get('content-type','?')}")
-    except Exception as e:
-        logger.error(f"Pollinations.ai fallback A failed: {e}")
-
-    # ── Fallback B: Pollinations retry with different model ────────────────────
-    try:
-        width, height = (1024, 1024) if aspect_ratio == "1:1" else (1024, 1792)
-        trunc_prompt = enhanced_prompt[:200]
-        safe_prompt = requests.utils.quote(trunc_prompt, safe="")
-        poll_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width={width}&height={height}&model=flux-schnell&nologo=true&enhance=true"
-        res = requests.get(poll_url, timeout=(15, 60), allow_redirects=True, headers={
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "image/jpeg,image/png,image/*,*/*",
-        })
-        if res.status_code == 200 and len(res.content) > 15000:
-            return res.content, enhanced_prompt
-        logger.warning(f"Pollinations B returned {res.status_code}, {len(res.content)} bytes")
-    except Exception as e:
-        logger.error(f"Pollinations.ai fallback B failed: {e}")
-
-    # ── Fallback C: Valid colored JPEG so the image is never blank ────────────
-    logger.warning("All remote image providers failed. Returning generated placeholder.")
-    try:
-        import struct
-        from io import BytesIO
-        from PIL import Image, ImageDraw, ImageFont  # type: ignore
-        # Create a colored placeholder with the prompt text
-        w, h = (1024, 1024) if aspect_ratio == "1:1" else (1024, 1792)
-        img = Image.new("RGB", (w, h), color=(99, 102, 241))  # indigo-500
-        draw = ImageDraw.Draw(img)
-        # Draw a darker rectangle at bottom for text contrast
-        draw.rectangle([(0, h - 200), (w, h)], fill=(55, 48, 163))  # indigo-800
-        # Wrap and draw prompt text
-        text = enhanced_prompt[:200]
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28)
-        except Exception:
-            try:
-                font = ImageFont.truetype("arial.ttf", 28)
-            except Exception:
-                font = ImageFont.load_default()
-        words = text.split()
-        lines = []
-        current_line = []
-        for word in words:
-            test_line = " ".join(current_line + [word])
-            bbox = draw.textbbox((0, 0), test_line, font=font)
-            if bbox[2] - bbox[0] > w - 60 and current_line:
-                lines.append(" ".join(current_line))
-                current_line = [word]
-            else:
-                current_line.append(word)
-        if current_line:
-            lines.append(" ".join(current_line))
-        y = h // 2 - (len(lines) * 36) // 2
-        for line in lines:
-            bbox = draw.textbbox((0, 0), line, font=font)
-            text_w = bbox[2] - bbox[0]
-            x = (w - text_w) // 2
-            draw.text((x, y), line, fill=(255, 255, 255), font=font)
-            y += 36
-        buf = BytesIO()
-        img.save(buf, format="JPEG", quality=85)
-        return buf.getvalue(), enhanced_prompt
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.error(f"PIL placeholder failed: {e}")
-
-    # ── Absolute last resort: minimal valid JPEG bytes ────────────────────────
-    logger.error("ALL image generation methods exhausted. Returning minimal JPEG.")
-    return bytes([
-        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
-        0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
-        0x00, 0x08, 0x06, 0x07, 0x13, 0x07, 0x08, 0x13, 0x0A, 0x08, 0x0A, 0x0B,
-        0x0E, 0x18, 0x0F, 0x0E, 0x14, 0x11, 0x11, 0x14, 0x1A, 0x18, 0x1A, 0x22,
-        0x1E, 0x22, 0x26, 0x28, 0x28, 0x26, 0x24, 0x24, 0x28, 0x30, 0x34, 0x31,
-        0x30, 0x2C, 0x2C, 0x28, 0x2C, 0x36, 0x3E, 0x36, 0x34, 0x3A, 0x2E, 0x2A,
-        0x2E, 0x2E, 0x30, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x01,
-        0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x03, 0xFF, 0xC4, 0x00, 0x14, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0xFB, 0xD8,
-        0xFF, 0xD9
-    ]), enhanced_prompt
+    logger.warning(f"Cloud image generation unavailable ({'; '.join(errors)}). Returning fallback placeholder poster.")
+    # Safe base64 100x100 placeholder image
+    fallback_b64 = "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAL0lEQVR42u3BAQEAAACAkP6v7ggKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXg281wAB4n64GgAAAABJRU5ErkJggg=="
+    return base64.b64decode(fallback_b64), enhanced_prompt
 
 
 # ─── AI Analytics ──────────────────────────────────────────────────
@@ -1748,7 +1517,6 @@ class PublishFacebookRequest(BaseModel):
 @router.post("/campaigns/generate-poster")
 async def generate_campaign_poster(
     payload: GeneratePosterRequest,
-    request: Request,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))]
 ):
     import uuid
@@ -1757,7 +1525,7 @@ async def generate_campaign_poster(
     os.makedirs("images", exist_ok=True)
     filename = f"poster_{uuid.uuid4().hex}.jpg"
     filepath = os.path.join("images", filename)
- 
+
     try:
         image_bytes, enhanced_prompt = call_ai_image(
             prompt=payload.prompt,
@@ -1772,17 +1540,17 @@ async def generate_campaign_poster(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Ad Poster generation failed: {str(e)}"
         )
- 
-    local_url = f"{str(request.base_url).rstrip('/')}/images/{filename}"
+
+    local_url = f"http://localhost:8000/images/{filename}"
     return {"image_url": local_url, "enhanced_prompt": enhanced_prompt, "aspect_ratio": payload.aspect_ratio}
- 
+
 @router.post("/campaigns/publish-facebook")
 async def publish_to_facebook(
     payload: PublishFacebookRequest,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    """Publish generated poster and marketing copy live to the linked Facebook Page."""
+    "\"\"\"Publish generated poster and marketing copy live to the linked Facebook Page.\"\"\""
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -1810,7 +1578,7 @@ async def publish_to_facebook(
         
         # Check if the image is hosted locally on the static server path
         # and upload it directly as raw binary to bypass external fetch loops
-        if "/images/" in payload.image_url:
+        if "http://localhost:8000/images/" in payload.image_url:
             filename = payload.image_url.split("/images/")[1]
             local_path = os.path.join("images", filename)
             if os.path.exists(local_path):
@@ -1873,474 +1641,6 @@ async def publish_to_facebook(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to publish to Facebook feed: {str(e)}"
         )
-
-
-# ─── Paid Meta Ads (full Campaign → Ad Set → Creative → Ad flow) ────────────────
-
-async def _resolve_paid_ad_creds_async(db: AsyncSession, tenant_id: uuid.UUID) -> tuple[str, str, str]:
-    """Async helper used by all paid-ad endpoints."""
-    tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    ts = tenant.settings or {}
-    fb_page = ts.get("facebook_page", {})
-    fb_legacy = ts.get("facebook", {})
-    token = (
-        fb_page.get("user_access_token")
-        or fb_page.get("page_access_token")
-        or fb_legacy.get("fb_access_token")
-    )
-    ad_account = (
-        fb_page.get("ad_account_id") or fb_legacy.get("fb_ad_account_id")
-    )
-    page_id = fb_page.get("page_id") or fb_legacy.get("fb_page_or_form_id")
-
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "No Facebook access token found. Connect a Facebook Page in "
-                "Marketing & Sales → Ad Generator first."
-            ),
-        )
-    if not ad_account:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "No Facebook Ad Account selected. Pick one under "
-                "Ad Generator → Connect FB Page → Ad Account selector."
-            ),
-        )
-    if not page_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No Facebook Page connected. Please connect a Page first.",
-        )
-    return token, ad_account, page_id
-
-
-@router.post("/ads/lead-forms")
-async def list_meta_lead_forms(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:paid_ads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """List lead-gen forms on the connected Page — for the destination dropdown."""
-    import requests as req_lib
-
-    token, _ad_account, page_id = await _resolve_paid_ad_creds_async(db, ctx.tenant_id)
-    try:
-        resp = req_lib.get(
-            f"https://graph.facebook.com/v25.0/{page_id}/leadgen_forms",
-            params={
-                "access_token": token,
-                "fields": "id,name,status,leads_count",
-                "limit": 100,
-            },
-            timeout=15,
-        )
-        data = resp.json()
-        if "error" in data:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Meta API error: {data['error'].get('message', 'unknown')}",
-            )
-        forms = [
-            LeadFormInfo(
-                id=f["id"],
-                name=f.get("name", ""),
-                status=f.get("status", "ACTIVE"),
-                leads_count=int(f.get("leads_count", 0) or 0),
-            )
-            for f in data.get("data", [])
-        ]
-        return forms
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Meta API error: {str(e)}")
-
-
-@router.post("/ads/campaigns", status_code=status.HTTP_201_CREATED)
-async def create_paid_ad_campaign(
-    payload: CreatePaidAdRequest,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:paid_ads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """
-    Full paid-ad creation pipeline:
-      image → adimage upload → adcreative → campaign (PAUSED)
-      → adset (budget + targeting) → ad (PAUSED)
-
-    Ad starts PAUSED. The user must explicitly call /ads/{id}/activate to publish.
-    """
-    import requests as req_lib
-    import anyio
-
-    token, ad_account_id, page_id = await _resolve_paid_ad_creds_async(db, ctx.tenant_id)
-
-    # ── 1. Download image bytes ────────────────────────────────────────────
-    try:
-        image_bytes, _name = await anyio.to_thread.run_sync(
-            MetaAdsClient.download_image_bytes, payload.image_url
-        )
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(
-            status_code=400, detail=f"Could not fetch image: {str(e)}"
-        )
-
-    # ── 2. Instantiate client ──────────────────────────────────────────────
-    client = MetaAdsClient(
-        access_token=token,
-        ad_account_id=ad_account_id,
-        page_id=page_id,
-        api_version="v25.0",
-    )
-
-    try:
-        # ── 3. Upload image ─────────────────────────────────────────────────
-        image_hash = await anyio.to_thread.run_sync(
-            client.upload_ad_image, image_bytes, "ad_creative"
-        )
-
-        # ── 4. Create ad creative ───────────────────────────────────────────
-        creative_id = await anyio.to_thread.run_sync(
-            client.create_ad_creative,
-            image_hash,
-            payload.ad_name,
-            page_id,
-            payload.caption,
-            payload.headline,
-            payload.destination_url,
-            payload.lead_form_id,
-            payload.cta_type,
-        )
-
-        # ── 5. Create campaign ──────────────────────────────────────────────
-        campaign_meta_id = await anyio.to_thread.run_sync(
-            client.create_campaign,
-            payload.campaign_name,
-            payload.objective,
-            payload.special_ad_categories or [],
-        )
-
-        # ── 6. Create ad set ────────────────────────────────────────────────
-        adset_meta_id = await anyio.to_thread.run_sync(
-            client.create_ad_set,
-            campaign_meta_id,
-            payload.adset_name,
-            payload.daily_budget_cents,
-            payload.lifetime_budget_cents,
-            payload.targeting or {},
-            payload.start_time,
-            payload.end_time,
-        )
-
-        # ── 7. Create ad ────────────────────────────────────────────────────
-        ad_meta_id = await anyio.to_thread.run_sync(
-            client.create_ad, adset_meta_id, creative_id, payload.ad_name
-        )
-    except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=f"Meta API error: {str(e)}")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    # ── 8. Persist local mirrors ───────────────────────────────────────────
-    campaign = MetaAdCampaign(
-        tenant_id=ctx.tenant_id,
-        meta_campaign_id=campaign_meta_id,
-        name=payload.campaign_name,
-        objective=payload.objective,
-        status="PAUSED",
-        special_ad_categories=payload.special_ad_categories or [],
-        daily_budget_cents=payload.daily_budget_cents,
-        lifetime_budget_cents=payload.lifetime_budget_cents,
-        meta_payload={"id": campaign_meta_id},
-    )
-    db.add(campaign)
-    await db.flush()
-
-    ad_set = MetaAdSet(
-        tenant_id=ctx.tenant_id,
-        campaign_id=campaign.id,
-        meta_adset_id=adset_meta_id,
-        name=payload.adset_name,
-        targeting=payload.targeting or {},
-        status="PAUSED",
-        meta_payload={"id": adset_meta_id},
-    )
-    db.add(ad_set)
-    await db.flush()
-
-    ad = MetaAd(
-        tenant_id=ctx.tenant_id,
-        adset_id=ad_set.id,
-        meta_ad_id=ad_meta_id,
-        meta_creative_id=creative_id,
-        meta_image_hash=image_hash,
-        name=payload.ad_name,
-        lead_form_id=payload.lead_form_id,
-        destination_url=payload.destination_url,
-        headline=payload.headline,
-        body=payload.caption,
-        cta_type=payload.cta_type,
-        status="PAUSED",
-        meta_payload={"id": ad_meta_id, "creative_id": creative_id},
-    )
-    db.add(ad)
-    await db.flush()
-
-    await write_audit_log(
-        db,
-        tenant_id=ctx.tenant_id,
-        user_id=ctx.user.id,
-        module="crm",
-        action="paid_ad_created",
-        entity_type="meta_ad",
-        entity_id=ad.id,
-        new_values={
-            "campaign_id": str(campaign.id),
-            "adset_id": str(ad_set.id),
-            "ad_id": str(ad.id),
-            "campaign_name": payload.campaign_name,
-            "adset_name": payload.adset_name,
-            "ad_name": payload.ad_name,
-            "daily_budget_cents": payload.daily_budget_cents,
-            "lifetime_budget_cents": payload.lifetime_budget_cents,
-        },
-    )
-
-    await add_system_notification(
-        db,
-        ctx.tenant_id,
-        title="Paid Ad Created",
-        body=(
-            f"Campaign '{payload.campaign_name}' is ready in PAUSED state. "
-            f"Open Ad Post History → Paid Campaigns tab to activate."
-        ),
-        category="crm",
-    )
-
-    await db.commit()
-
-    return {
-        "success": True,
-        "local_campaign_id": str(campaign.id),
-        "local_adset_id": str(ad_set.id),
-        "local_ad_id": str(ad.id),
-        "meta_campaign_id": campaign_meta_id,
-        "meta_adset_id": adset_meta_id,
-        "meta_ad_id": ad_meta_id,
-        "meta_creative_id": creative_id,
-        "image_hash": image_hash,
-        "message": (
-            f"Campaign '{payload.campaign_name}' created and saved as PAUSED. "
-            f"Click 'Activate' to submit it for Meta review."
-        ),
-    }
-
-
-@router.post("/ads/{ad_id}/activate")
-async def activate_paid_ad(
-    ad_id: uuid.UUID,
-    payload: ActivateAdRequest,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:paid_ads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Set a paid ad to ACTIVE or PAUSED via Meta Marketing API."""
-    import anyio
-
-    ad = await db.scalar(
-        select(MetaAd).where(MetaAd.id == ad_id, MetaAd.tenant_id == ctx.tenant_id)
-    )
-    if not ad:
-        raise HTTPException(status_code=404, detail="Ad not found")
-
-    token, ad_account_id, page_id = await _resolve_paid_ad_creds_async(db, ctx.tenant_id)
-
-    client = MetaAdsClient(
-        access_token=token,
-        ad_account_id=ad_account_id,
-        page_id=page_id,
-    )
-
-    try:
-        await anyio.to_thread.run_sync(
-            client.update_ad_status, ad.meta_ad_id, payload.status
-        )
-    except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=f"Meta API error: {str(e)}")
-
-    ad.status = payload.status
-    await db.flush()
-    await write_audit_log(
-        db,
-        tenant_id=ctx.tenant_id,
-        user_id=ctx.user.id,
-        module="crm",
-        action=f"paid_ad_{payload.status.lower()}",
-        entity_type="meta_ad",
-        entity_id=ad.id,
-        new_values={"status": payload.status, "meta_ad_id": ad.meta_ad_id},
-    )
-
-    await add_system_notification(
-        db,
-        ctx.tenant_id,
-        title=f"Ad {payload.status}",
-        body=(
-            f"'{ad.name}' is now {payload.status}."
-        ),
-        category="crm",
-    )
-
-    await db.commit()
-
-    return {
-        "success": True,
-        "meta_ad_id": ad.meta_ad_id,
-        "status": payload.status,
-    }
-
-
-@router.get("/ads/campaigns", response_model=PaidCampaignListResponse)
-async def list_paid_ad_campaigns(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:paid_ads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-):
-    """Paginated list of paid ad campaigns from local mirror."""
-    total = await db.scalar(
-        select(func.count()).select_from(MetaAdCampaign).where(
-            MetaAdCampaign.tenant_id == ctx.tenant_id
-        )
-    ) or 0
-
-    rows = await db.scalars(
-        select(MetaAdCampaign)
-        .where(MetaAdCampaign.tenant_id == ctx.tenant_id)
-        .order_by(MetaAdCampaign.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    items = [MetaAdCampaignResponse.model_validate(r) for r in rows]
-    return PaidCampaignListResponse(
-        total=total, page=page, page_size=page_size, items=items
-    )
-
-
-@router.get("/ads/campaigns/{campaign_id}/insights", response_model=MetaAdInsights)
-async def get_campaign_insights(
-    campaign_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:paid_ads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Fetch live performance insights for a campaign from Meta."""
-    import anyio
-
-    campaign = await db.scalar(
-        select(MetaAdCampaign).where(
-            MetaAdCampaign.id == campaign_id, MetaAdCampaign.tenant_id == ctx.tenant_id
-        )
-    )
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-
-    token, ad_account_id, page_id = await _resolve_paid_ad_creds_async(db, ctx.tenant_id)
-
-    client = MetaAdsClient(
-        access_token=token, ad_account_id=ad_account_id, page_id=page_id
-    )
-
-    # Default: last 7 days
-    from datetime import timedelta
-    until = datetime.now(timezone.utc).date().isoformat()
-    since = (datetime.now(timezone.utc).date() - timedelta(days=7)).isoformat()
-
-    try:
-        data = await anyio.to_thread.run_sync(
-            client.fetch_adset_insights, campaign.meta_campaign_id, since, until
-        )
-    except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=f"Meta API error: {str(e)}")
-
-    rows = data.get("data", [])
-    if not rows:
-        return MetaAdInsights(
-            spend="0.00", impressions="0", clicks="0", ctr="0",
-            reach="0", frequency="0",
-        )
-
-    row = rows[0]
-    return MetaAdInsights(
-        spend=str(row.get("spend", "0.00")),
-        impressions=str(row.get("impressions", "0")),
-        clicks=str(row.get("clicks", "0")),
-        ctr=str(row.get("ctr", "0")),
-        reach=str(row.get("reach", "0")),
-        frequency=str(row.get("frequency", "0")),
-        cpc=row.get("cpc"),
-        cpm=row.get("cpm"),
-    )
-
-
-@router.delete("/ads/campaigns/{campaign_id}")
-async def archive_paid_ad_campaign(
-    campaign_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:paid_ads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Archive a Meta campaign and delete its local mirror."""
-    import anyio
-    import requests as req_lib
-
-    campaign = await db.scalar(
-        select(MetaAdCampaign).where(
-            MetaAdCampaign.id == campaign_id, MetaAdCampaign.tenant_id == ctx.tenant_id
-        )
-    )
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-
-    token, ad_account_id, page_id = await _resolve_paid_ad_creds_async(db, ctx.tenant_id)
-
-    # Archive in Meta (best-effort: if it fails the local row is still cleaned up)
-    try:
-        resp = req_lib.post(
-            f"https://graph.facebook.com/v25.0/{campaign.meta_campaign_id}",
-            params={"access_token": token, "status": "ARCHIVED"},
-            timeout=15,
-        )
-        if "error" in resp.json():
-            logger.warning(
-                "Meta archive returned error for campaign %s: %s",
-                campaign.meta_campaign_id, resp.json().get("error"),
-            )
-    except Exception as e:
-        logger.warning(f"Meta archive call failed (continuing): {e}")
-
-    # Capture info before delete for audit
-    snapshot = {
-        "name": campaign.name,
-        "meta_campaign_id": campaign.meta_campaign_id,
-    }
-    await db.delete(campaign)
-    await db.flush()
-    await write_audit_log(
-        db,
-        tenant_id=ctx.tenant_id,
-        user_id=ctx.user.id,
-        module="crm",
-        action="paid_ad_archived",
-        entity_type="meta_campaign",
-        entity_id=campaign_id,
-        new_values=snapshot,
-    )
-    await db.commit()
-
-    return {"success": True}
 
 
 # ─── Ad History & Token Health Endpoints ─────────────────────────────────────
@@ -2621,78 +1921,6 @@ async def get_facebook_campaigns(
                 "reach": ins.get("reach", "0"),
                 "frequency": ins.get("frequency", "0"),
             })
-
-        # Step 4: Pull ads with creative images and ad-wise reach for each campaign
-        try:
-            ad_insights_map: dict = {}
-            try:
-                ad_insights_url = f"https://graph.facebook.com/v25.0/{clean_account_id}/insights"
-                ad_insights_res = req_lib.get(ad_insights_url, params={
-                    "access_token": token,
-                    "level": "ad",
-                    "fields": "ad_id,ad_name,campaign_id,spend,impressions,clicks,ctr,reach,frequency",
-                    "date_preset": "maximum",
-                    "limit": 150,
-                }, timeout=15)
-                ad_insights_data = ad_insights_res.json()
-                if "data" in ad_insights_data:
-                    for a_ins in ad_insights_data["data"]:
-                        aid = a_ins.get("ad_id")
-                        if aid:
-                            ad_insights_map[aid] = a_ins
-            except Exception:
-                pass
-
-            ads_url = f"https://graph.facebook.com/v25.0/{clean_account_id}/ads"
-            ads_res = req_lib.get(ads_url, params={
-                "access_token": token,
-                "fields": "id,name,status,campaign_id,creative{name,image_url,image_hash,object_story_spec}",
-                "limit": 150,
-            }, timeout=15)
-            ads_data = ads_res.json()
-            if "data" in ads_data:
-                campaign_ads_map: dict = {}
-                ad_image_map: dict = {}
-                for ad in ads_data["data"]:
-                    camp = ad.get("campaign_id", "")
-                    aid = ad.get("id", "")
-                    if camp:
-                        creative = ad.get("creative", {})
-                        img = creative.get("image_url")
-                        if not img:
-                            story = creative.get("object_story_spec", {})
-                            link = story.get("link_data", {})
-                            img = link.get("image_url")
-
-                        a_ins = ad_insights_map.get(aid, {})
-                        ad_item = {
-                            "id": aid,
-                            "name": ad.get("name", "Ad Creative"),
-                            "status": ad.get("status", "ACTIVE"),
-                            "spend": a_ins.get("spend", "0.00"),
-                            "impressions": a_ins.get("impressions", "0"),
-                            "clicks": a_ins.get("clicks", "0"),
-                            "ctr": a_ins.get("ctr", "0"),
-                            "reach": a_ins.get("reach", "0"),
-                            "frequency": a_ins.get("frequency", "0"),
-                            "image_url": img
-                        }
-                        if camp not in campaign_ads_map:
-                            campaign_ads_map[camp] = []
-                        campaign_ads_map[camp].append(ad_item)
-
-                        if camp not in ad_image_map:
-                            ad_image_map[camp] = {
-                                "ad_name": ad.get("name", ""),
-                                "image_url": img,
-                            }
-                for r in result:
-                    r["ad_image_url"] = ad_image_map.get(r["id"], {}).get("image_url")
-                    r["ad_name"] = ad_image_map.get(r["id"], {}).get("ad_name", "")
-                    r["ads"] = campaign_ads_map.get(r["id"], [])
-        except Exception:
-            pass  # non-critical — campaigns still render without images
-
         return result
     except HTTPException:
         raise
@@ -2724,11 +1952,7 @@ async def get_facebook_ads(
         
     try:
         url = f"https://graph.facebook.com/v25.0/{clean_account_id}/ads"
-        res = req_lib.get(url, params={
-            "access_token": token,
-            "fields": "id,name,status,campaign_id,adset_id,creative{name,image_url,image_hash}",
-            "limit": 150
-        }, timeout=15)
+        res = req_lib.get(url, params={"access_token": token, "fields": "id,name,status,campaign_id,adset_id", "limit": 150}, timeout=15)
         data = res.json()
         if "error" in data:
             raise HTTPException(status_code=400, detail=data["error"].get("message", "Failed to retrieve ads from Meta."))
@@ -2777,7 +2001,7 @@ async def sync_facebook_leads(
         for form in forms:
             form_id = form["id"]
             leads_url = f"https://graph.facebook.com/v25.0/{form_id}/leads"
-            leads_res = req_lib.get(leads_url, params={"access_token": token, "fields": "id,created_time,field_data,ad_id,adset_id,campaign_id,form_id"}, timeout=15)
+            leads_res = req_lib.get(leads_url, params={"access_token": token, "fields": "id,created_time,field_data"}, timeout=15)
             leads_data = leads_res.json()
             
             if "error" in leads_data:
@@ -2836,14 +2060,7 @@ async def sync_facebook_leads(
                     source="facebook_ad",
                     external_id=sub_id,
                     external_source="facebook",
-                    meta={
-                        "form_id": form_id,
-                        "form_name": form.get("name"),
-                        "raw_data": sub,
-                        "ad_id": sub.get("ad_id", ""),
-                        "adset_id": sub.get("adset_id", ""),
-                        "campaign_id": sub.get("campaign_id", ""),
-                    },
+                    meta={"form_id": form_id, "form_name": form.get("name"), "raw_data": sub},
                     notes=f"Synced from Meta Lead Form: '{form.get('name')}'"
                 )
                 db.add(new_lead)
@@ -2863,90 +2080,6 @@ async def sync_facebook_leads(
     except Exception as e:
         logger.error(f"Error syncing Meta leads: {e}")
         raise HTTPException(status_code=502, detail=f"Meta leads sync error: {str(e)}")
-
-
-@router.get("/facebook/organic-posts")
-async def get_facebook_organic_posts(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    limit: int = Query(25, ge=1, le=100),
-):
-    """Fetch organic (non-paid) posts from the connected FB Page with engagement metrics."""
-    import requests as req_lib
-    import logging
-    logger = logging.getLogger(__name__)
-
-    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
-    settings_dict = tenant.settings or {}
-    fb_page_cfg = settings_dict.get("facebook_page", {})
-    fb_legacy_cfg = settings_dict.get("facebook", {})
-
-    token = (
-        fb_page_cfg.get("user_access_token")
-        or fb_page_cfg.get("page_access_token")
-        or fb_legacy_cfg.get("fb_access_token")
-        or fb_legacy_cfg.get("access_token")
-    )
-    page_id = (
-        fb_page_cfg.get("page_id")
-        or fb_legacy_cfg.get("fb_page_or_form_id")
-        or fb_legacy_cfg.get("page_id")
-    )
-
-    if not token or not page_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Facebook integration is not connected. Please connect it first.",
-        )
-
-    try:
-        url = f"https://graph.facebook.com/v25.0/{page_id}/posts"
-        params = {
-            "access_token": token,
-            "fields": (
-                "id,message,full_picture,created_time,permalink_url,"
-                "likes.summary(true){total_count},"
-                "reactions.summary(true).type(LIKE,LOVE,WOW,SAD,ANGRY),"
-                "comments.summary(true){total_count},"
-                "shares"
-            ),
-            "limit": limit,
-        }
-        resp = req_lib.get(url, params=params, timeout=20)
-        data = resp.json()
-
-        if "error" in data:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Meta API error: {data['error'].get('message', 'unknown')}",
-            )
-
-        posts = []
-        for post in data.get("data", []):
-            likes = (post.get("likes") or {}).get("summary", {}).get("total_count", 0)
-            reactions = (post.get("reactions") or {}).get("summary", {}).get("total_count", 0)
-            comments = (post.get("comments") or {}).get("summary", {}).get("total_count", 0)
-            shares = (post.get("shares") or {}).get("count", 0)
-
-            posts.append({
-                "post_id": post.get("id"),
-                "message": post.get("message", ""),
-                "image_url": post.get("full_picture"),
-                "created_time": post.get("created_time"),
-                "permalink_url": post.get("permalink_url"),
-                "likes": likes,
-                "reactions": reactions,
-                "comments": comments,
-                "shares": shares,
-                "engagement": reactions + comments + shares,
-            })
-
-        return {"posts": posts, "total": len(posts), "page_id": page_id}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Meta API error: {str(e)}")
 
 
 # ─── Customer Intelligence Endpoints ─────────────────────────────────────────
@@ -3594,52 +2727,6 @@ class EmailTemplateResponse(BaseModel):
         from_attributes = True
 
 
-# ─── Asset Library Schemas ─────────────────────────────────────────
-
-
-class SaveAssetRequest(BaseModel):
-    filename: str
-    public_url: str
-    aspect_ratio: str = "1:1"
-    width: int | None = None
-    height: int | None = None
-    file_size_bytes: int | None = None
-    source: str = "claude"  # claude | gemini | openai | upload
-    provider_model: str | None = None
-    original_prompt: str | None = None
-    enhanced_prompt: str | None = None
-    style: str | None = None
-    tags: list[str] | None = None
-    notes: str | None = None
-
-
-class ApproveAssetRequest(BaseModel):
-    status: str  # approved | rejected | draft
-    rejection_reason: str | None = None
-
-
-class AssetResponse(BaseModel):
-    id: str
-    filename: str
-    public_url: str
-    thumbnail_url: str | None
-    aspect_ratio: str
-    width: int | None
-    height: int | None
-    source: str
-    provider_model: str | None
-    original_prompt: str | None
-    enhanced_prompt: str | None
-    style: str | None
-    approval_status: str
-    used_in_organic_post: bool
-    used_in_paid_campaign: bool
-    organic_post_id: str | None
-    tags: list[str]
-    notes: str | None
-    created_at: str
-
-
 async def send_campaign_html_email(to_email: str, subject: str, body_html: str) -> bool:
     """Helper to dispatch rich-text HTML emails via SMTP settings."""
     from src.config import get_settings
@@ -3796,134 +2883,3 @@ async def create_email_template(
     await db.commit()
     await db.refresh(template)
     return template
-
-
-# ─── Asset Library Endpoints ───────────────────────────────────────
-
-
-@router.post("/ads/save-asset")
-async def save_asset_to_library(
-    payload: SaveAssetRequest,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Save a generated image to the asset library for reuse."""
-    from src.models import AssetLibrary
-
-    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
-
-    asset = AssetLibrary(
-        tenant_id=tenant.id,
-        created_by_user_id=ctx.user.id,
-        filename=payload.filename,
-        file_path=payload.public_url,  # store the public URL as path since we serve statically
-        public_url=payload.public_url,
-        aspect_ratio=payload.aspect_ratio,
-        width=payload.width,
-        height=payload.height,
-        file_size_bytes=payload.file_size_bytes,
-        source=payload.source,
-        provider_model=payload.provider_model,
-        original_prompt=payload.original_prompt,
-        enhanced_prompt=payload.enhanced_prompt,
-        style=payload.style,
-        tags=payload.tags or [],
-        notes=payload.notes,
-        approval_status="approved",  # Generated assets are auto-approved
-    )
-    db.add(asset)
-    await db.commit()
-    await db.refresh(asset)
-    return {
-        "id": str(asset.id),
-        "public_url": asset.public_url,
-        "approval_status": asset.approval_status,
-    }
-
-
-@router.get("/ads/asset-library")
-async def list_asset_library(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    status: str | None = None,
-    source: str | None = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-):
-    """List assets in the library, optionally filtered by status/source."""
-    from sqlalchemy import desc
-    from src.models import AssetLibrary
-
-    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
-
-    query = select(AssetLibrary).where(AssetLibrary.tenant_id == tenant.id)
-    if status:
-        query = query.where(AssetLibrary.approval_status == status)
-    if source:
-        query = query.where(AssetLibrary.source == source)
-
-    total = await db.scalar(select(func.count()).select_from(query.subquery()))
-    rows = await db.scalars(
-        query.order_by(desc(AssetLibrary.created_at))
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-
-    items = []
-    for a in rows:
-        items.append({
-            "id": str(a.id),
-            "filename": a.filename,
-            "public_url": a.public_url,
-            "thumbnail_url": a.thumbnail_url,
-            "aspect_ratio": a.aspect_ratio,
-            "width": a.width,
-            "height": a.height,
-            "source": a.source,
-            "provider_model": a.provider_model,
-            "original_prompt": a.original_prompt,
-            "enhanced_prompt": a.enhanced_prompt,
-            "style": a.style,
-            "approval_status": a.approval_status,
-            "used_in_organic_post": a.used_in_organic_post,
-            "used_in_paid_campaign": a.used_in_paid_campaign,
-            "organic_post_id": a.organic_post_id,
-            "tags": a.tags or [],
-            "notes": a.notes,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
-        })
-
-    return {"total": total or 0, "page": page, "page_size": page_size, "items": items}
-
-
-@router.put("/ads/assets/{asset_id}/approve")
-async def approve_asset(
-    asset_id: str,
-    payload: ApproveAssetRequest,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Approve or reject an asset."""
-    from src.models import AssetLibrary
-
-    asset = await db.scalar(
-        select(AssetLibrary).where(
-            AssetLibrary.id == uuid.UUID(asset_id),
-            AssetLibrary.tenant_id == ctx.tenant_id,
-        )
-    )
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-
-    asset.approval_status = payload.status
-    if payload.status == "approved":
-        asset.approved_by_user_id = ctx.user.id
-        asset.approved_at = datetime.now(timezone.utc)
-        asset.rejection_reason = None
-    elif payload.status == "rejected":
-        asset.rejection_reason = payload.rejection_reason
-    else:
-        asset.rejection_reason = None
-
-    await db.commit()
-    return {"id": str(asset.id), "approval_status": asset.approval_status}
