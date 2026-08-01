@@ -4,11 +4,18 @@
  * Auth token is injected from localStorage (set by AuthProvider).
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000/api/v1";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000/api/v1";
 
 export function resolveImageUrl(url: string | null | undefined): string {
-  if (!url) return "";
+  if (!url || url.trim() === "") return "";
   if (url.startsWith("/images/")) {
+    const backendBase = API_BASE_URL.replace("/api/v1", "");
+    return `${backendBase}${url}`;
+  }
+  // If it's already a full URL, return as-is
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  // If it starts with /static/, serve from backend root
+  if (url.startsWith("/static/")) {
     const backendBase = API_BASE_URL.replace("/api/v1", "");
     return `${backendBase}${url}`;
   }
@@ -3380,6 +3387,12 @@ export const inventoryApi = {
     request<{ products_created: number; brands_created: number; categories_created: number; uoms_created: number; skipped_count: number; errors: string[] }>("POST", "/inventory/products/master-import", { items }),
   updateProduct: (id: string, data: Record<string, unknown>) => request<InventoryProduct>("PATCH", `/inventory/products/${id}`, data),
   deleteProduct: (id: string) => request<void>("DELETE", `/inventory/products/${id}`),
+
+  lookupProductByBarcode: (rawBarcode: string) =>
+    request<{ success: boolean; message?: string; product?: any }>("GET", `/products/barcode/${encodeURIComponent(rawBarcode)}`),
+
+  instantScan: (rawBarcode: string) =>
+    request<{ success: boolean; found_in_db: boolean; barcode_searched: string; product?: any; message: string; background_search_triggered: boolean; enriching: boolean }>("POST", `/products/instant-scan`, { barcode: rawBarcode }),
 
   // Master Catalog & AI Search
   getSearchSuggestions: (query: string) =>
