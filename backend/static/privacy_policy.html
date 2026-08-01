@@ -34,11 +34,24 @@
     }
 
     .header-banner {
-      background: var(--bg-gradient);
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(30, 41, 59, 0.92) 100%),
+                  url('lazy_monkey_logo.jpg') center/cover no-repeat;
       color: #FFFFFF;
-      padding: 60px 20px;
+      padding: 65px 20px;
       text-align: center;
       position: relative;
+      border-bottom: 2px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .monkey-avatar {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      border: 3px solid #60A5FA;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      margin-bottom: 14px;
+      object-fit: cover;
+      background: #FFFFFF;
     }
 
     .header-banner h1 {
@@ -51,21 +64,23 @@
 
     .header-banner p {
       font-size: 1.1rem;
-      color: #94A3B8;
-      max-width: 600px;
+      color: #CBD5E1;
+      max-width: 650px;
       margin: 0 auto;
     }
 
     .badge {
       display: inline-block;
-      background: rgba(37, 99, 235, 0.2);
-      border: 1px solid rgba(59, 130, 246, 0.4);
-      color: #60A5FA;
-      padding: 6px 14px;
+      background: rgba(37, 99, 235, 0.35);
+      border: 1px solid rgba(96, 165, 250, 0.6);
+      color: #93C5FD;
+      padding: 7px 18px;
       border-radius: 20px;
-      font-size: 0.85rem;
-      font-weight: 600;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
       margin-bottom: 16px;
+      backdrop-filter: blur(8px);
     }
 
     .container {
@@ -156,6 +171,21 @@
       font-weight: 600;
     }
 
+    @media print {
+      @page {
+        margin: 12mm 15mm 15mm 15mm;
+      }
+      body {
+        background-color: #FFFFFF !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .header-banner {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    }
+
     @media (max-width: 640px) {
       .policy-card {
         padding: 24px;
@@ -168,28 +198,32 @@
 </head>
 <body>
 
+  <!-- Banner Header -->
   <div class="header-banner">
-    <div class="badge">Lazy Monkey POS & Retail OS</div>
+    <img src="lazy_monkey_logo.jpg" alt="LazyMonkeyAI Logo" class="monkey-avatar"><br>
+    <div class="badge">LazyMonkeyAI POS & Retail OS</div>
     <h1>Privacy Policy & Terms of Service</h1>
-    <p>Comprehensive information governance, data security standards, and merchant terms of use for Lazy Monkey Point of Sale systems.</p>
+    <p>Comprehensive information governance, data security standards, and merchant terms of use for LazyMonkeyAI Point of Sale systems.</p>
   </div>
 
+  <!-- Content Container -->
   <div class="container">
     <div class="policy-card">
 
       <div class="last-updated">
         <span><strong>Effective Date:</strong> July 31, 2026</span>
-        <span><strong>Version:</strong> 2.4.0 (Production)</span>
       </div>
 
       <div class="highlight-box">
         🔒 <strong>Merchant Guarantee:</strong> Lazy Monkey operates on a strict zero-monetization policy. Your store sales data, customer databases, product catalogs, and cashier transaction logs belong 100% to your merchant entity and are never sold or rented to third parties.
       </div>
 
+      <!-- Section 1 -->
       <h2><span class="num">1</span> Introduction & Service Overview</h2>
       <p>Welcome to <strong>Lazy Monkey POS</strong>, an enterprise-grade Point-of-Sale (POS), inventory management, and cashier management ecosystem operated by Lazy Monkey Technologies ("Lazy Monkey", "we", "us", or "our"). This document sets forth the Privacy Policy and Terms of Service governing your access to and use of Lazy Monkey mobile applications, desktop software, web-based management dashboards, application programming interfaces (APIs), and cloud synchronization services.</p>
       <p>By registering a merchant account, logging into a cashier terminal, connecting hardware peripherals, or processing retail transactions through Lazy Monkey, you ("Merchant", "Cashier", or "User") agree to be legally bound by these terms. If you do not agree to these terms, you must refrain from using the platform.</p>
 
+      <!-- Section 2 -->
       <h2><span class="num">2</span> Information We Collect</h2>
       <p>Lazy Monkey collects and processes specific categories of data necessary to deliver seamless cashier billing, atomic inventory tracking, and merchant operational analytics. The data collected includes:</p>
       <ul>
@@ -200,6 +234,7 @@
         <li><strong>Technical & Peripheral Diagnostics:</strong> Terminal IP address, browser user agents, mobile device IDs, Bluetooth ESC/POS thermal printer pairing diagnostics, barcode scanner inputs, and system error traces.</li>
       </ul>
 
+      <!-- Section 3 -->
       <h2><span class="num">3</span> How We Use Collected Data</h2>
       <p>We utilize the collected information strictly for operational, security, and computational purposes related to store management:</p>
       <ul>
@@ -210,10 +245,12 @@
         <li>To maintain system uptime, detect unauthorized access attempts, and provide customer support.</li>
       </ul>
 
+      <!-- Section 4 -->
       <h2><span class="num">4</span> Data Ownership & Proprietary Rights</h2>
       <p>All commercial data, customer records, inventory listings, pricing structures, and financial reports generated by your business remain the exclusive intellectual property of the merchant. Lazy Monkey claims no ownership rights over your transactional or commercial dataset.</p>
       <p>Lazy Monkey grants the merchant a non-exclusive, non-transferable, revocable license to access and utilize the platform during the active subscription period.</p>
 
+      <!-- Section 5 -->
       <h2><span class="num">5</span> Security Architecture & Data Protection</h2>
       <p>Lazy Monkey implements multi-layered security safeguards to protect merchant databases against unauthorized disclosure, alteration, or destruction:</p>
       <ul>
@@ -222,9 +259,11 @@
         <li><strong>Automated Backups:</strong> System databases undergo continuous transactional logging and daily encrypted cloud backups to protect against hardware failures or data loss.</li>
       </ul>
 
+      <!-- Section 6 -->
       <h2><span class="num">6</span> Hardware & Third-Party Integrations</h2>
       <p>Lazy Monkey interfaces with hardware peripherals (such as Bluetooth ESC/POS thermal receipt printers, USB barcode scanners, and cash drawers) and third-party utility APIs (such as SMS/Email gateways for digital receipt delivery). Lazy Monkey is not liable for hardware malfunctions, printer hardware firmware defects, or third-party network outages beyond our reasonable control.</p>
 
+      <!-- Section 7 -->
       <h2><span class="num">7</span> Merchant Compliance & Acceptable Use</h2>
       <p>Merchants using Lazy Monkey agree to:</p>
       <ul>
@@ -234,18 +273,34 @@
         <li>Ensure appropriate customer consent is obtained before sending commercial SMS or email promotional messages.</li>
       </ul>
 
+      <!-- Section 8 -->
       <h2><span class="num">8</span> Data Retention & Export Rights</h2>
       <p>Merchants retain the right to export their product catalogs, customer databases, and sales reports in standard CSV or PDF formats at any time. Upon merchant account termination, stored transactional data is retained for 30 days to facilitate final data extraction before permanent deletion from active database nodes.</p>
 
-      <h2><span class="num">9</span> Modifications to Privacy Terms</h2>
-      <p>Lazy Monkey reserves the right to amend this Privacy Policy and Terms of Service periodically to reflect platform enhancements, hardware compatibility updates, or legal changes. Continued use of Lazy Monkey applications following published updates constitutes acceptance of the modified terms.</p>
-
-      <h2><span class="num">10</span> Contact & Support</h2>
-      <p>If you have questions regarding this Privacy Policy, data protection practices, or merchant compliance, please contact our legal and support team:</p>
+      <!-- Section 9 -->
+      <h2><span class="num">9</span> Mobile Device Permissions & Hardware Usage</h2>
+      <p>The LazyMonkeyAI mobile application requests specific device permissions strictly to enable essential Point-of-Sale hardware functionality:</p>
       <ul>
-        <li><strong>Email:</strong> privacy@lazymonkeypos.com</li>
-        <li><strong>Support Desk:</strong> support@lazymonkeypos.com</li>
-        <li><strong>Website:</strong> <a href="https://www.lazymonkeypos.com" target="_blank">www.lazymonkeypos.com</a></li>
+        <li><strong>Bluetooth & Nearby Devices (BLUETOOTH_CONNECT, BLUETOOTH_SCAN):</strong> Required solely to discover, pair, and transmit receipt print data to wireless ESC/POS thermal printers.</li>
+        <li><strong>Camera Access (CAMERA):</strong> Used exclusively for real-time barcode scanning of product items during inventory management and cashier checkout.</li>
+        <li><strong>Location Access (ACCESS_FINE_LOCATION):</strong> Mandatory under Android OS guidelines for Bluetooth LE hardware device discovery. Location coordinates are never recorded, tracked, or transmitted.</li>
+      </ul>
+
+      <!-- Section 10 -->
+      <h2><span class="num">10</span> Children's Data Protection Policy</h2>
+      <p>LazyMonkeyAI is a commercial Point-of-Sale retail application designed for business management by adults aged 18 and older. We do not knowingly solicit, collect, or process personal data from children under the age of 13. If we become aware that a child under 13 has provided personal information, we will immediately delete such data from our systems.</p>
+
+      <!-- Section 11 -->
+      <h2><span class="num">11</span> Modifications to Privacy Terms</h2>
+      <p>LazyMonkeyAI reserves the right to amend this Privacy Policy and Terms of Service periodically to reflect platform enhancements, hardware compatibility updates, or legal requirements. Continued use of LazyMonkeyAI applications following published updates constitutes acceptance of the modified terms.</p>
+
+      <!-- Section 12 -->
+      <h2><span class="num">12</span> Contact & Support</h2>
+      <p>If you have questions regarding this Privacy Policy, account data deletion, or Play Store compliance, please contact our legal and support team:</p>
+      <ul>
+        <li><strong>Email:</strong> roufbaig123@gmail.com</li>
+        <li><strong>Support Desk:</strong> roufbaig123@gmail.com</li>
+        <li><strong>Website:</strong> <a href="https://lazymonkeyai.com/" target="_blank">https://lazymonkeyai.com/</a></li>
       </ul>
 
     </div>
