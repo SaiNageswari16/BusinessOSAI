@@ -30,9 +30,24 @@ from src.api.v1.inventory.product_variants import router as inventory_variants_r
 from src.api.v1.inventory.product_bundles import router as inventory_bundles_router
 from src.api.v1.inventory.product_kits import router as inventory_kits_router
 from src.api.v1.inventory.product_images import router as inventory_images_router
+from src.api.v1.inventory.identifiers import router as inventory_identifiers_router
+from src.api.v1.inventory.intelligence import router as inventory_intelligence_router
+from src.api.v1.inventory.traceability import router as inventory_traceability_router
+from src.api.v1.inventory.warehouse_rules import router as inventory_warehouse_rules_router
 
 # Warehouse Management
 from src.api.v1.inventory.warehouses import router as inventory_warehouses_router
+
+# Storefront & CRM Modules
+from src.api.v1.storefront import router as storefront_router
+from src.api.v1.crm_modules import (
+    discounts_router,
+    groups_router,
+    loyalty_router,
+    memberships_router,
+    segments_router,
+    wallet_router,
+)
 
 # Inventory Operations
 from src.api.v1.inventory.operations_overview import router as inventory_overview_router
@@ -68,6 +83,17 @@ api_router.include_router(pos_sessions.router, prefix="/pos")
 api_router.include_router(system_admin_router)
 api_router.include_router(crm_router)
 
+# CRM Modules
+api_router.include_router(discounts_router)
+api_router.include_router(groups_router)
+api_router.include_router(loyalty_router)
+api_router.include_router(memberships_router)
+api_router.include_router(segments_router)
+api_router.include_router(wallet_router)
+
+# Storefront
+api_router.include_router(storefront_router)
+
 from src.api.v1.inventory.barcode_scanner import router as barcode_scanner_router
 
 # Inventory Module
@@ -79,6 +105,10 @@ api_router.include_router(inventory_variants_router, prefix="/inventory")
 api_router.include_router(inventory_bundles_router, prefix="/inventory")
 api_router.include_router(inventory_kits_router, prefix="/inventory")
 api_router.include_router(inventory_images_router, prefix="/inventory")
+api_router.include_router(inventory_identifiers_router, prefix="/inventory", tags=["Inventory Identifiers"])
+api_router.include_router(inventory_intelligence_router, prefix="/inventory", tags=["Inventory Intelligence"])
+api_router.include_router(inventory_traceability_router, prefix="/inventory", tags=["Inventory Traceability"])
+api_router.include_router(inventory_warehouse_rules_router, prefix="/inventory", tags=["Warehouse Rules"])
 
 # Warehouse Management
 api_router.include_router(inventory_warehouses_router, prefix="/inventory", tags=["Inventory - Warehouse Management"])

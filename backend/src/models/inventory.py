@@ -356,3 +356,106 @@ class MasterCatalogProduct(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     rag_enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rag_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+
+# ==========================================
+# Traceability, Batch & Identifiers Models
+# ==========================================
+
+from datetime import date
+
+class InventoryBatch(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_inventory_batches"
+
+    batch_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sku: Mapped[str] = mapped_column(String(100), nullable=False)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
+    warehouse_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    remaining_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    manufacturing_date: Mapped[date | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    expiry_date: Mapped[date | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    supplier: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="Active")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class InventorySerial(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_inventory_serials"
+
+    serial_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sku: Mapped[str] = mapped_column(String(100), nullable=False)
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_inventory_batches.id", ondelete="SET NULL"), nullable=True)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
+    warehouse_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    manufacturing_date: Mapped[date | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    expiry_date: Mapped[date | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="In Stock")
+    location: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ProductQRCode(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_product_qrcodes"
+
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False, index=True)
+    qr_data: Mapped[str] = mapped_column(Text, nullable=False)
+    label_format: Mapped[str] = mapped_column(String(50), default="Standard")
+    print_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_printed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ProductRFID(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_product_rfids"
+
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False, index=True)
+    tag_uid: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    frequency: Mapped[str] = mapped_column(String(50), default="UHF")
+    status: Mapped[str] = mapped_column(String(50), default="Active")
+    write_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_seen_location: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TraceabilityEvent(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_traceability_events"
+
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False, index=True)
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_inventory_batches.id", ondelete="SET NULL"), nullable=True)
+    serial_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_inventory_serials.id", ondelete="SET NULL"), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    actor: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class PutAwayRule(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_put_away_rules"
+
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
+    zone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_product_categories.id", ondelete="SET NULL"), nullable=True)
+    destination_location: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(50), default="Active")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class PickingRule(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_picking_rules"
+
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    strategy: Mapped[str] = mapped_column(String(50), default="FIFO")
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_product_categories.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="Active")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+

@@ -1574,6 +1574,117 @@ class AdAsset(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+# ─── CRM Extensions (Groups, Segments, Wallet, Loyalty, Memberships, Discounts) ───
+
+class CustomerGroup(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_customer_groups"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    group_type: Mapped[str] = mapped_column(String(50), default="static")
+    status: Mapped[str] = mapped_column(String(50), default="active")
+    members_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class CustomerGroupMember(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_customer_group_members"
+
+    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customer_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False, index=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CustomerSegment(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_customer_segments"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rules: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    match_type: Mapped[str] = mapped_column(String(20), default="all")
+    status: Mapped[str] = mapped_column(String(50), default="active")
+    customer_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class MembershipPlan(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_membership_plans"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    tier_level: Mapped[int] = mapped_column(Integer, default=1)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
+    validity_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    perks: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+
+class CustomerMembership(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_customer_memberships"
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False, index=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_membership_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(50), default="active")
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CustomerWallet(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_customer_wallets"
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False, index=True, unique=True)
+    balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    currency: Mapped[str] = mapped_column(String(10), default="INR")
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+
+class CustomerWalletTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_customer_wallet_transactions"
+
+    wallet_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customer_wallets.id", ondelete="CASCADE"), nullable=False, index=True)
+    transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    balance_after: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    reference_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class LoyaltyProgram(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_loyalty_programs"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    points_per_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=1.0)
+    amount_per_point_redemption: Mapped[float] = mapped_column(Numeric(10, 2), default=0.1)
+    min_points_to_redeem: Mapped[int] = mapped_column(Integer, default=100)
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+
+class LoyaltyTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_loyalty_transactions"
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False, index=True)
+    transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    points: Mapped[int] = mapped_column(Integer, nullable=False)
+    points_balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    reference_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Discount(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "crm_discounts"
+
+    code: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    discount_type: Mapped[str] = mapped_column(String(50), default="percentage")
+    value: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    min_order_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
+    max_discount_amount: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    usage_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    usage_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+
+
 from .erp import *
 from .inventory import *
 from .procurement import *
