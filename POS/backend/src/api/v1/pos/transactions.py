@@ -84,8 +84,35 @@ async def checkout(
             ).with_for_update()
             prod_res = await db.execute(prod_stmt)
             product = prod_res.scalar_one_or_none()
+
+            # Fallback: If product_id points to a MasterCatalogProduct ID or temp ID, match Product by barcode/SKU/name
+            if not product:
+                from src.models import MasterCatalogProduct
+                m_stmt = select(MasterCatalogProduct).where(MasterCatalogProduct.id == item.product_id)
+                m_res = await db.execute(m_stmt)
+                m_prod = m_res.scalar_one_or_none()
+
+                search_codes = []
+                search_name = None
+                if m_prod:
+                    if m_prod.barcode: search_codes.append(m_prod.barcode)
+                    if m_prod.sku_code: search_codes.append(m_prod.sku_code)
+                    if m_prod.name: search_name = m_prod.name
+
+                if search_codes or search_name:
+                    conds = [Product.tenant_id == ctx.user.tenant_id]
+                    or_conds = []
+                    for code in search_codes:
+                        or_conds.append(Product.barcode == code)
+                        or_conds.append(Product.sku == code)
+                    if search_name:
+                        or_conds.append(func.lower(Product.name) == search_name.lower())
+                    
+                    p_stmt = select(Product).where(*conds, or_(*or_conds)).with_for_update()
+                    p_res = await db.execute(p_stmt)
+                    product = p_res.scalars().first()
+
             if product:
-                # Allow stock to go negative to flag discrepancies for reconciliation
                 if product.initial_stock is None:
                     product.initial_stock = 0
                 product.initial_stock -= item.quantity
