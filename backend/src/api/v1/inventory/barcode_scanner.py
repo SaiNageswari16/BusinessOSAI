@@ -683,7 +683,7 @@ async def get_merchant_store_info(db: AsyncSession = Depends(get_db)):
     if comp:
         return {
             "success": True,
-            "store_name": comp.name or "BusinessOS Store",
+            "store_name": comp.name or "LazyMonkeyai Store",
             "gstin": comp.gst_number or "",
             "address": comp.address or "",
             "phone": comp.phone or "",
@@ -693,7 +693,7 @@ async def get_merchant_store_info(db: AsyncSession = Depends(get_db)):
         }
     return {
         "success": True,
-        "store_name": "BusinessOS Store",
+        "store_name": "LazyMonkeyai Store",
         "gstin": "",
         "address": "",
         "phone": "",
@@ -702,61 +702,6 @@ async def get_merchant_store_info(db: AsyncSession = Depends(get_db)):
         "footer_message": "Thank You! Visit Again"
     }
 
-@router.post("/system/store-info")
-async def update_merchant_store_info(
-    payload: Dict[str, Any],
-    db: AsyncSession = Depends(get_db)
-):
-    from src.models import Company
-    from sqlalchemy import desc
-    stmt = select(Company).order_by(desc(Company.updated_at)).limit(1)
-    res = await db.execute(stmt)
-    comp = res.scalars().first()
 
-    store_name = payload.get("store_name", "").strip()
-    gstin = payload.get("gstin", "").strip()
-    address = payload.get("address", "").strip()
-    phone = payload.get("phone", "").strip()
-    email = payload.get("email", "").strip()
-    website = payload.get("website", "").strip()
-    footer = payload.get("footer_message", "").strip()
-
-    if not comp:
-        comp = Company(
-            name=store_name or "BusinessOS Store",
-            legal_name=store_name or "BusinessOS Store",
-            gst_number=gstin,
-            address=address,
-            phone=phone,
-            email=email,
-            website=website,
-            tax_config_label=footer
-        )
-        db.add(comp)
-    else:
-        if store_name:
-            comp.name = store_name
-            comp.legal_name = store_name
-        comp.gst_number = gstin
-        comp.address = address
-        comp.phone = phone
-        comp.email = email
-        comp.website = website
-        if footer:
-            comp.tax_config_label = footer
-
-    await db.commit()
-    await db.refresh(comp)
-    return {
-        "success": True,
-        "message": "Store settings updated successfully",
-        "store_name": comp.name,
-        "gstin": comp.gst_number or "",
-        "address": comp.address or "",
-        "phone": comp.phone or "",
-        "email": comp.email or "",
-        "website": comp.website or "",
-        "footer_message": comp.tax_config_label or "Thank You! Visit Again"
-    }
 
 
