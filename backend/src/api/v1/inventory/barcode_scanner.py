@@ -1,6 +1,5 @@
 import uuid
 import logging
-import asyncio
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, status
 from pydantic import BaseModel
@@ -11,125 +10,6 @@ from src.database.session import get_db
 from src.models.inventory import Product, ProductCategory, Brand, MasterCatalogProduct
 
 logger = logging.getLogger(__name__)
-
-
-import requests
-import re
-import urllib.parse
-from html import unescape
-
-def _sync_fetch_google_barcode(barcode: str) -> Optional[dict]:
-    clean_code = barcode.strip()
-    if not clean_code or len(clean_code) < 5:
-        return None
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
-    }
-
-    # 1. Google Instant Search (~120ms)
-    try:
-        url = f"https://www.google.com/search?q={urllib.parse.quote(clean_code)}"
-        resp = requests.get(url, headers=headers, timeout=2.0)
-        if resp.status_code == 200:
-            html_text = resp.text
-            titles = re.findall(r'<h3[^>]*>([\s\S]*?)</h3>', html_text)
-            clean_titles = []
-            for t in titles:
-                c = unescape(re.sub(r'<[^>]+>', '', t)).strip()
-                if c and not any(w in c.lower() for w in ["google search", "images for", "videos for", "shopping"]):
-                    clean_titles.append(c)
-
-            if clean_titles:
-                raw_title = clean_titles[0]
-                cleaned_name = re.sub(
-                    r'\s*[-|–—]\s*(Amazon\.in|Amazon|BigBasket|Flipkart|JioMart|Blinkit|Zepto|Desertcart|eBay|Walmart|Shop).*$',
-                    '', raw_title, flags=re.IGNORECASE
-                ).strip()
-
-                if len(cleaned_name) > 3:
-                    price = 0.0
-                    price_match = re.search(r'(?:₹|Rs\.?|\$)\s*([\d,]+(?:\.\d{2})?)', html_text)
-                    if price_match:
-                        try:
-                            price = float(price_match.group(1).replace(',', ''))
-                        except Exception:
-                            pass
-
-                    image_url = "/static/uploads/products/default_product.jpg"
-                    img_matches = re.findall(r'(https://encrypted-tbn0\.gstatic\.com/images\?q=tbn:[^"\s&]+)', html_text)
-                    if img_matches:
-                        image_url = unescape(img_matches[0])
-                    else:
-                        merchant_imgs = re.findall(r'(https://m\.media-amazon\.com/images/I/[^"\s]+\.jpg)', html_text)
-                        if merchant_imgs:
-                            image_url = merchant_imgs[0]
-
-                    brand = cleaned_name.split()[0] if cleaned_name.split() else ""
-
-                    return {
-                        "name": cleaned_name,
-                        "brand": brand,
-                        "category": "General",
-                        "image": image_url,
-                        "mrp": price,
-                        "selling_price": price,
-                        "source": "GOOGLE_INSTANT_SEARCH"
-                    }
-    except Exception as ex:
-        logger.debug(f"Google instant barcode fetch skipped: {ex}")
-
-    # 2. Open Food Facts (~150ms)
-    try:
-        url = f"https://world.openfoodfacts.org/api/v2/product/{clean_code}.json"
-        resp = requests.get(url, headers=headers, timeout=1.8)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("status") == 1 and "product" in data:
-                p = data["product"]
-                name = p.get("product_name") or p.get("product_name_en") or p.get("product_name_fr") or ""
-                if name and len(name.strip()) > 2:
-                    return {
-                        "name": name.strip(),
-                        "brand": p.get("brands") or p.get("brand") or "",
-                        "category": (p.get("categories") or "General").split(",")[0].strip(),
-                        "image": p.get("image_front_url") or p.get("image_url") or "/static/uploads/products/default_product.jpg",
-                        "mrp": 0.0,
-                        "selling_price": 0.0,
-                        "source": "OPEN_FOOD_FACTS"
-                    }
-    except Exception:
-        pass
-
-    # 3. UPCitemdb (~150ms)
-    try:
-        url = f"https://api.upcitemdb.com/prod/trial/lookup?upc={clean_code}"
-        resp = requests.get(url, headers=headers, timeout=1.8)
-        if resp.status_code == 200:
-            data = resp.json()
-            items = data.get("items") or []
-            if items and items[0].get("title"):
-                item = items[0]
-                imgs = item.get("images") or []
-                price = float(item.get("lowest_recorded_price") or item.get("highest_recorded_price") or 0.0)
-                return {
-                    "name": item.get("title").strip(),
-                    "brand": item.get("brand") or "",
-                    "category": item.get("category") or "General",
-                    "image": imgs[0] if imgs else "/static/uploads/products/default_product.jpg",
-                    "mrp": price,
-                    "selling_price": price,
-                    "source": "UPCITEMDB"
-                }
-    except Exception:
-        pass
-
-    return None
-
-async def _fast_fetch_external_barcode(barcode: str) -> Optional[dict]:
-    return await asyncio.to_thread(_sync_fetch_google_barcode, barcode)
 
 
 async def resolve_or_create_category(
@@ -203,110 +83,7 @@ class AddStockSchema(BaseModel):
     purchase_price: float = 0.0
     supplier_id: Optional[str] = None
 
-def _sync_search_product_image(query: str) -> str:
-    """Sync search for a product image on Google/merchant CDNs and return image URL."""
-    try:
-        clean_q = urllib.parse.quote(query.strip())
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-        url = f"https://www.google.com/search?q={clean_q}&tbm=isch"
-        resp = requests.get(url, headers=headers, timeout=3.0)
-        if resp.status_code == 200:
-            html_text = resp.text
-            merchant_imgs = re.findall(r'(https://m\.media-amazon\.com/images/I/[^"\s]+\.jpg)', html_text)
-            if merchant_imgs:
-                return merchant_imgs[0]
-            img_matches = re.findall(r'(https://encrypted-tbn0\.gstatic\.com/images\?q=tbn:[^"\s&]+)', html_text)
-            if img_matches:
-                return unescape(img_matches[0])
-    except Exception as e:
-        logger.debug(f"Image search error for query '{query}': {e}")
-    return "/static/uploads/products/default_product.jpg"
-
-async def _async_bg_enrich_product_image(barcode: str, product_name: str, brand: str = ""):
-    """Non-blocking background AI agent that fetches a high-quality product image and updates PostgreSQL without delaying API response."""
-    try:
-        from src.database.session import AsyncSessionLocal
-        from sqlalchemy import update
-        query = f"{brand} {product_name}".strip() or barcode
-        logger.info(f"🟢 [BG AI AGENT] Searching image for '{query}' (barcode: {barcode})")
-        img_url = await asyncio.to_thread(_sync_search_product_image, query)
-        if img_url and img_url != "/static/uploads/products/default_product.jpg":
-            async with AsyncSessionLocal() as session:
-                await session.execute(
-                    update(MasterCatalogProduct)
-                    .where(MasterCatalogProduct.barcode == barcode)
-                    .values(image_url=img_url)
-                )
-                await session.execute(
-                    update(Product)
-                    .where(Product.barcode == barcode)
-                    .values(image_url=img_url)
-                )
-                await session.commit()
-                logger.info(f"🟢 [BG AI AGENT SUCCESS] Updated product image for barcode {barcode}: {img_url}")
-    except Exception as ex:
-        logger.warning(f"Background image enrichment failed for {barcode}: {ex}")
-
-async def _async_bg_enrich_full_barcode(barcode: str):
-    """Non-blocking background AI agent: searches web/Google/Gemini for barcode details and updates PostgreSQL silently."""
-    try:
-        from src.database.session import AsyncSessionLocal
-        from sqlalchemy import select
-        logger.info(f"🟢 [BG AI AGENT] Sourcing web specs in background for barcode: {barcode}")
-        
-        # 1. Google instant search (~150ms)
-        ext_data = await asyncio.to_thread(_sync_fetch_google_barcode, barcode)
-        prod_name = ext_data.get("name") if ext_data else None
-        brand = ext_data.get("brand", "") if ext_data else ""
-        category = ext_data.get("category", "General") if ext_data else "General"
-        mrp = ext_data.get("mrp", 0.0) if ext_data else 0.0
-        selling_price = ext_data.get("selling_price", 0.0) if ext_data else 0.0
-        img = ext_data.get("image", "") if ext_data else ""
-
-        # 2. Fallback to Gemini AI RAG search if Google search returned no name
-        if not prod_name:
-            try:
-                from src.api.v1.inventory.master_catalog import _deprecated_perform_ai_rag_web_search
-                rag_items = await _deprecated_perform_ai_rag_web_search(barcode)
-                if rag_items and len(rag_items) > 0 and rag_items[0].name:
-                    item = rag_items[0]
-                    prod_name = item.name
-                    brand = item.brand or ""
-                    category = item.category or "General"
-                    mrp = float(item.mrp or 0.0)
-                    selling_price = float(item.sale_price or item.mrp or 0.0)
-                    img = item.image_url or ""
-            except Exception as e:
-                logger.warning(f"RAG search error for {barcode}: {e}")
-
-        if not prod_name:
-            prod_name = f"Scanned Item ({barcode})"
-
-        if not img or img == "/static/uploads/products/default_product.jpg":
-            img = await asyncio.to_thread(_sync_search_product_image, f"{brand} {prod_name}".strip())
-
-        async with AsyncSessionLocal() as session:
-            stmt = select(MasterCatalogProduct).where(MasterCatalogProduct.barcode == barcode)
-            res = await session.execute(stmt)
-            m_prod = res.scalars().first()
-            if m_prod:
-                m_prod.name = prod_name
-                m_prod.brand = brand or "General"
-                m_prod.category = category or "General"
-                m_prod.mrp = mrp
-                m_prod.sale_price = selling_price or mrp
-                m_prod.image_url = img or "/static/uploads/products/default_product.jpg"
-                m_prod.source = "AI_WEB_SEARCH"
-                await session.commit()
-                logger.info(f"🟢 [BG AI AGENT SUCCESS] Master Catalog enriched for {barcode}: '{prod_name}' ({img})")
-    except Exception as ex:
-        logger.warning(f"Full background enrichment failed for {barcode}: {ex}")
-
-
-# 1. Barcode Lookup Endpoint - Fast DB + Web Search
+# 1. Barcode Lookup Endpoint - Strictly 100% PostgreSQL Database Only
 @router.get("/products/barcode/{raw_barcode}", response_model=ProductBarcodeLookupResponse)
 async def lookup_product_by_barcode(
     raw_barcode: str,
@@ -374,9 +151,6 @@ async def lookup_product_by_barcode(
         m_res = await db.execute(master_stmt)
         m_prod = m_res.scalars().first()
         if m_prod:
-            img = m_prod.image_url or "/static/uploads/products/default_product.jpg"
-            if not img or img == "/static/uploads/products/default_product.jpg":
-                asyncio.create_task(_async_bg_enrich_product_image(clean_barcode, m_prod.name, m_prod.brand or ""))
             return ProductBarcodeLookupResponse(
                 success=True,
                 product={
@@ -390,18 +164,16 @@ async def lookup_product_by_barcode(
                     "selling_price": float(m_prod.sale_price or m_prod.mrp or 0.0),
                     "gst": float(m_prod.tax or 0.0),
                     "stock": 0,
-                    "image": img,
+                    "image": m_prod.image_url or "/static/uploads/products/default_product.jpg",
                     "source": "MASTER_CATALOG"
                 }
             )
 
-    # Not found in any DB — return fast (10ms). No dummy provisional fallbacks.
     return ProductBarcodeLookupResponse(
         success=False,
         message="Barcode not found in database",
         product=None
     )
-
 
 # 2. Database Product Recognition Endpoint
 @router.post("/products/recognize")
@@ -522,11 +294,6 @@ async def create_product(
     db.add(new_product)
     await db.commit()
     await db.refresh(new_product)
-
-    # Silently fetch and tag high-res product image in background if using default image
-    img = new_product.image_url or "/static/uploads/products/default_product.jpg"
-    if not img or img == "/static/uploads/products/default_product.jpg":
-        asyncio.create_task(_async_bg_enrich_product_image(clean_barcode, new_product.name, payload.brand_name or ""))
 
     return {
         "success": True,

@@ -3,7 +3,6 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap } from "lucide-react";
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
-import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { motion, AnimatePresence } from "framer-motion";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -438,54 +437,6 @@ export function Products() {
     return null;
   };
 
-  // Hardware Barcode Scanner Listener
-  useHardwareBarcodeScanner({
-    onScan: async (scannedCode) => {
-      const code = scannedCode.trim();
-      if (!code) return;
-
-      const matched = checkExactMatch(code) || products.find(p => p.barcode === code || p.sku === code);
-      if (matched) {
-        setActiveTab("inventory");
-        setSearch(code);
-        toast.success(`Scanned: ${matched.name} (Found in Inventory)`);
-        return;
-      }
-
-      setActiveTab("catalog");
-      setSearch(code);
-      setIsSearchingMaster(true);
-
-      try {
-        const fastRes = await inventoryApi.lookupProductByBarcode(code);
-        if (fastRes?.success && fastRes?.product?.name) {
-          const p = fastRes.product;
-          setMasterResults([{
-            id: p.id,
-            name: p.name,
-            barcode: p.barcode || code,
-            sku_code: p.sku || `SKU-${code}`,
-            brand_name: p.brand || "",
-            category_name: p.category || "General",
-            mrp: p.mrp || 0,
-            sale_price: p.selling_price || 0,
-            image_url: p.image || "/static/uploads/products/default_product.jpg",
-            source: p.source || "DATABASE"
-          }]);
-          setIsSearchingMaster(false);
-          toast.success(`Found product details: ${p.name}`);
-          return;
-        }
-      } catch (e) { }
-
-      // Not found in DB -> open Quick Add modal immediately
-      setQuickAddName(`Scanned Item (${code})`);
-      setIsQuickAddOpen(true);
-      setIsSearchingMaster(false);
-    },
-    enabled: true
-  });
-
   // Fuzzy local filter
   const fuzzyLocalResults = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -561,45 +512,6 @@ export function Products() {
       setExactMatch(null);
     }
 
-    // ── FAST PATH: Barcode detected → use the instant DB lookup endpoint (~12ms) ──
-    if (isBarcode) {
-      const barcodeTimer = setTimeout(async () => {
-        setIsSearchingMaster(true);
-        setSearchError(null);
-        try {
-          const res = await inventoryApi.lookupProductByBarcode(cleanSearch);
-          if (res?.success && res?.product) {
-            const p = res.product;
-            // Map to MasterResult shape so the UI renders immediately
-            setMasterResults([{
-              id: p.id,
-              name: p.name,
-              barcode: p.barcode || cleanSearch,
-              brand_name: p.brand || "",
-              category_name: p.category || "",
-              mrp: p.mrp || 0,
-              sale_price: p.selling_price || 0,
-              image_url: p.image || "",
-              short_description: p.package_size || "",
-              source: p.source || "DATABASE",
-            }]);
-            setSuggestions([]);
-          } else {
-            setMasterResults([]);
-            toast.info(`Barcode "${cleanSearch}" not found in database.`);
-          }
-        } catch (err: any) {
-          console.error("Barcode lookup failed:", err);
-          setSearchError(err.detail || err.message || "Lookup failed.");
-        } finally {
-          setIsSearchingMaster(false);
-        }
-      }, 150); // 150ms debounce for barcode (scanner fires all digits at once)
-
-      return () => clearTimeout(barcodeTimer);
-    }
-
-    // ── NORMAL PATH: Text search → suggestions + master catalog ──
     const timer = setTimeout(async () => {
       // Local suggestions
       try {
@@ -609,12 +521,21 @@ export function Products() {
         console.error("Suggestions fetch failed:", err);
       }
 
-      // Master catalog search (DB search only, searchWeb = false for instant response)
+      // Master catalog search
       setIsSearchingMaster(true);
       setSearchError(null);
       try {
         const res = await inventoryApi.searchMasterCatalog(cleanSearch, false, "auto");
         setMasterResults(res || []);
+
+        // AI fallback for barcodes not found in master DB either
+        if (isBarcode && (!res || res.length === 0) && !aiPaused) {
+          toast.info(`Barcode not found. Searching web for "${cleanSearch}"...`);
+          const aiRes = await inventoryApi.searchMasterCatalog(cleanSearch, true, "auto");
+          setMasterResults(aiRes || []);
+          if (aiRes?.length) toast.success(`Found details for barcode "${cleanSearch}"`);
+          else toast.error(`Could not source barcode "${cleanSearch}".`);
+        }
       } catch (err: any) {
         console.error("Master search failed:", err);
         setSearchError(err.detail || err.message || "Search failed.");
@@ -626,8 +547,7 @@ export function Products() {
     return () => clearTimeout(timer);
   }, [search, aiPaused, activeTab, products]);
 
-
-  // ── Suggestion select ────────────────────────────────────────────
+  // ── Suggestion select → triggers full AI search ──────────────────
   const handleSelectSuggestion = async (sug: string) => {
     setSearch(sug);
     setShowSuggestions(false);
@@ -636,12 +556,21 @@ export function Products() {
     setExactMatch(null);
     setMasterResults([]);
     try {
-      const res = await inventoryApi.searchMasterCatalog(sug, false, "auto");
+      if (aiPaused) {
+        toast.info("AI Search is paused. Searching local master DB only.");
+        const res = await inventoryApi.searchMasterCatalog(sug, false, "auto");
+        setMasterResults(res || []);
+        return;
+      }
+      toast.info(`Sourcing specs for "${sug}"...`);
+      const res = await inventoryApi.searchMasterCatalog(sug, true, "auto");
       setMasterResults(res || []);
       if (res?.length) toast.success(`Found ${res.length} result(s)`);
+      else toast.error("No specs found.");
     } catch (err: any) {
-      console.error("Search failed:", err);
-      setSearchError(err.detail || err.message || "Search failed.");
+      console.error("AI sourcing failed:", err);
+      setSearchError(err.detail || err.message || "AI sourcing failed.");
+      toast.error("AI sourcing failed.");
     } finally {
       setIsSearchingMaster(false);
     }
