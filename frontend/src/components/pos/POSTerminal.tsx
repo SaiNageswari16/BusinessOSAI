@@ -5,8 +5,7 @@ import {
   Info, Camera, Sparkles, Printer, Database, Boxes, LayoutGrid, List as ListIcon, Combine, ArrowRightLeft, ArrowLeft,
   Truck, RefreshCw, Heart, History, Wallet
 } from "lucide-react";
-import { posApi, inventoryApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
-import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
+import { posApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
 import { posStore, posSession, posCustomers, paymentMethods, posCategories } from "../../lib/pos-fallback";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSearch, useNavigate } from "@tanstack/react-router";
@@ -41,27 +40,6 @@ function PosTerminalInner() {
   const [cart, setCart] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState(posCustomers[0]);
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
-  const [isEditingProduct, setIsEditingProduct] = useState(false);
-  const [editForm, setEditForm] = useState<any>({
-    name: "", brand: "", sku: "", barcode: "",
-    sellingPrice: 0, mrp: 0, purchasePrice: 0, stock: 0, longDesc: ""
-  });
-
-  const handleSelectProduct = (product: any) => {
-    setSelectedProduct(product);
-    setIsEditingProduct(false);
-    setEditForm({
-      name: product.name || "",
-      brand: product.brand || "",
-      sku: product.sku || "",
-      barcode: product.barcode || "",
-      sellingPrice: product.sellingPrice || 0,
-      mrp: product.mrp || 0,
-      purchasePrice: product.purchasePrice || 0,
-      stock: product.stock || 0,
-      longDesc: product.longDesc || product.shortDesc || "",
-    });
-  };
 
   // Backend data
   const [products, setProducts] = useState<any[]>([]);
@@ -197,67 +175,6 @@ function PosTerminalInner() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Hardware Barcode Scanner Listener in POS Terminal
-  useHardwareBarcodeScanner({
-    onScan: async (scannedCode) => {
-      const code = scannedCode.trim();
-      if (!code) return;
-
-      const matched = products.find(
-        p => p.barcode === code || p.sku === code || p.barcode?.toLowerCase() === code.toLowerCase()
-      );
-
-      if (matched) {
-        addToCart(matched);
-        toast.success(`Scanned: ${matched.name} (+1 to Cart)`);
-        return;
-      }
-
-      try {
-        const fastRes = await inventoryApi.lookupProductByBarcode(code);
-        if (fastRes?.success && fastRes?.product?.name) {
-          const p = fastRes.product;
-          const posProd = {
-            id: p.id || `scanned-${code}`,
-            name: p.name,
-            barcode: p.barcode || code,
-            sku: p.sku || code,
-            category: p.category || "General",
-            sellingPrice: p.selling_price || p.mrp || 100,
-            mrp: p.mrp || p.selling_price || 100,
-            image_url: p.image || "/static/uploads/products/default_product.jpg",
-          };
-          addToCart(posProd);
-          toast.success(`Scanned & Added: ${p.name}`);
-          return;
-        }
-      } catch (e) { }
-      // Automatically create a provisional/unknown item to allow immediate billing:
-      const provItem = {
-        id: `scanned-${code}`,
-        name: `Scanned Item (${code})`,
-        barcode: code,
-        sku: `SKU-${code}`,
-        category: "all",
-        sellingPrice: 100, // Default price, editable
-        mrp: 100,
-        purchasePrice: 60,
-        tax: 5,
-        discount: 0,
-        stock: 99,
-        isProvisional: true, // Mark it as provisional
-        brand: "General",
-        shortDesc: "Provisional scanned product",
-        longDesc: "This item was added dynamically via barcode scanner. Edit details to save to inventory.",
-        image: "/static/uploads/products/default_product.jpg",
-        aiScore: 50,
-      };
-      addToCart(provItem);
-      toast.info(`Unknown barcode: added provisional item to cart. Click details to edit name/price.`);
-    },
-    enabled: true
-  });
-
   // Filter products
   const filteredProducts = products.filter(p => {
     const matchCat = activeCategory === "all" || p.category === activeCategory;
@@ -335,95 +252,20 @@ function PosTerminalInner() {
     await executeCheckout([{ payment_method: paymentMethod.toLowerCase(), amount: total }]);
   };
 
-  const resolveCartProvisionalItems = async (currentCart: any[]) => {
-    const provisionalItems = currentCart.filter(item => item.isProvisional || item.id.toString().startsWith("scanned-"));
-    if (provisionalItems.length === 0) return currentCart;
-
-    toast.loading("Registering new scanned products to inventory...");
-    try {
-      const createdProds = await Promise.all(
-        provisionalItems.map(async (item) => {
-          const res = await posApi.createProduct({
-            name: item.name,
-            brand_name: item.brand || "General",
-            sku: item.sku || `SKU-${item.barcode}`,
-            barcode: item.barcode,
-            selling_price: item.sellingPrice,
-            mrp: item.mrp || item.sellingPrice,
-            purchase_price: item.purchasePrice || (item.sellingPrice * 0.6),
-            initial_stock: item.qty || 1,
-            description: item.longDesc || "Scanned unknown item",
-            is_active: true
-          });
-          return {
-            tempId: item.id,
-            realId: res.id
-          };
-        })
-      );
-
-      const updatedCart = currentCart.map(item => {
-        const match = createdProds.find(cp => cp.tempId === item.id);
-        if (match) {
-          return { ...item, id: match.realId, isProvisional: false };
-        }
-        return item;
-      });
-
-      toast.dismiss();
-      toast.success("New products registered successfully.");
-
-      // Fetch updated products list
-      posApi.getProducts().then(prods => {
-        if (Array.isArray(prods)) {
-          const mappedProds = prods.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            brand: p.brand || "",
-            category: p.category_id || "all",
-            shortDesc: p.description || `${p.name}`,
-            longDesc: p.description || "",
-            barcode: p.barcode || "",
-            sku: p.sku || "",
-            sellingPrice: p.selling_price || p.mrp || 0,
-            mrp: p.mrp,
-            purchasePrice: p.purchase_price,
-            tax: (p.selling_price || p.mrp || 0) * (p.tax_percent / 100),
-            discount: p.discount,
-            stock: p.stock,
-            reorderLevel: p.reorder_level,
-            image: p.image_url ? resolveImageUrl(p.image_url) : null,
-            aiScore: 75,
-            isFastMoving: p.stock > 50,
-          }));
-          setProducts(mappedProds);
-        }
-      }).catch(err => console.warn(err));
-
-      return updatedCart;
-    } catch (e: any) {
-      toast.dismiss();
-      toast.error("Failed to register provisional items: " + (e.detail || e.message));
-      throw e;
-    }
-  };
-
   const executeCheckout = async (paymentsArray: any[]) => {
     try {
       if (!currentSession) {
         alert("Please open a register first.");
         return;
       }
-      
-      const resolvedCart = await resolveCartProvisionalItems(cart);
-
+      // Create payload matching POSTransactionCreate schema
       const payload = {
         subtotal: subtotal,
         tax_amount: tax,
         discount_amount: totalDiscount,
         total_amount: total,
         session_id: currentSession.id,
-        items: resolvedCart.map(item => ({
+        items: cart.map(item => ({
           product_id: item.id,
           quantity: item.qty,
           unit_price: item.sellingPrice,
@@ -432,7 +274,6 @@ function PosTerminalInner() {
         })),
         payments: paymentsArray
       };
-
       // Call Backend API
       const response = await posApi.checkout(payload);
       console.log("Checkout Success! Receipt:", response.receipt_number);
@@ -479,8 +320,6 @@ function PosTerminalInner() {
       if (cart.length === 0) return alert("Cart is empty.");
       if (!currentSession) return alert("Please open a register first.");
 
-      const resolvedCart = await resolveCartProvisionalItems(cart);
-
       const payload = {
         subtotal: subtotal,
         tax_amount: tax,
@@ -488,7 +327,7 @@ function PosTerminalInner() {
         total_amount: total,
         session_id: currentSession.id,
         status: "on_hold",
-        items: resolvedCart.map(item => ({
+        items: cart.map(item => ({
           product_id: item.id,
           quantity: item.qty,
           unit_price: item.sellingPrice,
@@ -559,15 +398,13 @@ function PosTerminalInner() {
       if (cart.length === 0) return alert("Cart is empty.");
       if (!currentSession) return alert("Please open a register first.");
 
-      const resolvedCart = await resolveCartProvisionalItems(cart);
-
       const payload = {
         subtotal: subtotal,
         tax_amount: tax,
         discount_amount: totalDiscount,
         total_amount: total,
         session_id: currentSession.id,
-        items: resolvedCart.map(item => ({
+        items: cart.map(item => ({
           product_id: item.id,
           quantity: item.qty,
           unit_price: item.sellingPrice,
@@ -743,7 +580,7 @@ function PosTerminalInner() {
 
                     {/* Info Button (Opens Drawer) */}
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleSelectProduct(product); }}
+                      onClick={(e) => { e.stopPropagation(); setSelectedProduct(product); }}
                       className="absolute top-2 right-2 z-20 w-6 h-6 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <Info className="w-3.5 h-3.5" />
@@ -829,7 +666,7 @@ function PosTerminalInner() {
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2 text-slate-400">
                             <button
-                              onClick={(e) => { e.stopPropagation(); handleSelectProduct(p); }}
+                              onClick={(e) => { e.stopPropagation(); setSelectedProduct(p); }}
                               className="hover:text-slate-900 p-1 bg-white border border-slate-200 rounded-md shadow-sm"
                             >
                               <Info className="w-4 h-4" />
@@ -862,288 +699,74 @@ function PosTerminalInner() {
                   <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
                     <div className="flex items-center gap-2 text-slate-900">
                       <Info className="w-5 h-5" />
-                      <h3 className="font-bold">{isEditingProduct ? "Edit Product Details" : "Product Specifications"}</h3>
+                      <h3 className="font-bold">Product Specifications</h3>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setIsEditingProduct(!isEditingProduct)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 shadow-sm transition-all cursor-pointer"
-                      >
-                        {isEditingProduct ? "Cancel" : "Edit Product"}
-                      </button>
-                      <button onClick={() => { setSelectedProduct(null); setIsEditingProduct(false); }} className="p-2 text-slate-400 hover:text-slate-900 bg-white rounded-lg border border-slate-200 shadow-sm cursor-pointer">
-                        <X className="w-4 h-4" />
-                      </button>
+                    <button onClick={() => setSelectedProduct(null)} className="p-2 text-slate-400 hover:text-slate-900 bg-white rounded-lg border border-slate-200 shadow-sm">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+                    <div className="flex gap-6 items-start">
+                      <div className="w-48 h-48 bg-slate-50 rounded-xl border border-slate-200 p-4 shrink-0 flex items-center justify-center">
+                        <img src={selectedProduct.image || "https://placehold.co/400x400/f8fafc/94a3b8?text=No+Image"} onError={(e) => { e.currentTarget.src = "https://placehold.co/400x400/f8fafc/94a3b8?text=No+Image"; }} alt={selectedProduct.name} className="w-full h-full object-contain mix-blend-multiply" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">{selectedProduct.brand}</span>
+                          <span className="text-xs font-semibold text-slate-400">{selectedProduct.sku}</span>
+                        </div>
+                        <h2 className="text-2xl font-black text-slate-900 leading-tight mb-2">{selectedProduct.name}</h2>
+                        <p className="text-sm text-slate-600 mb-4">{selectedProduct.longDesc}</p>
+
+                        <div className="flex items-end gap-4">
+                          <div>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Selling Price</p>
+                            <div className="text-3xl font-black text-emerald-600">{formatCurrency(selectedProduct.sellingPrice)}</div>
+                          </div>
+                          {selectedProduct.discount > 0 && (
+                            <div className="pb-1">
+                              <span className="text-sm text-slate-400 line-through mr-2">{formatCurrency(selectedProduct.mrp)}</span>
+                              <span className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">
+                                -{selectedProduct.margin} Margin
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1"><Boxes className="w-3.5 h-3.5" /> Inventory & Storage</h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between"><span className="text-slate-500">Available Stock:</span> <span className="font-bold text-slate-900">{selectedProduct.stock} Units</span></div>
+                          <div className="flex justify-between"><span className="text-slate-500">Warehouse:</span> <span className="font-semibold text-slate-700">{selectedProduct.warehouse}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-500">Location:</span> <span className="font-semibold text-slate-700">{selectedProduct.rack} / {selectedProduct.shelf}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-500">Batch:</span> <span className="font-mono text-xs bg-white px-1 border rounded">{selectedProduct.batch}</span></div>
+                        </div>
+                      </div>
+
+                      <div className="bg-amber-50/50 border border-amber-100 rounded-xl p-4">
+                        <h4 className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" /> AI Product Insights</h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between"><span className="text-amber-700/70">Demand Forecast:</span> <span className="font-bold text-amber-700">{selectedProduct.demandScore}/100</span></div>
+                          <div className="flex justify-between"><span className="text-amber-700/70">AI Recommendation:</span> <span className="font-bold text-amber-700">{selectedProduct.aiScore}/100</span></div>
+                          <div className="flex justify-between"><span className="text-amber-700/70">Trend Status:</span> <span className="font-semibold text-emerald-600">{selectedProduct.isFastMoving ? 'Fast Moving 🔥' : 'Stable'}</span></div>
+                          <div className="flex justify-between"><span className="text-amber-700/70">Supplier:</span> <span className="font-semibold text-amber-900">{selectedProduct.supplier}</span></div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  {isEditingProduct ? (
-                    <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#F8FAFC]">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Product Name</label>
-                          <input
-                            type="text"
-                            value={editForm.name}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Brand</label>
-                          <input
-                            type="text"
-                            value={editForm.brand}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, brand: e.target.value }))}
-                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">SKU Code</label>
-                          <input
-                            type="text"
-                            value={editForm.sku}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, sku: e.target.value }))}
-                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-mono"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Barcode</label>
-                          <input
-                            type="text"
-                            value={editForm.barcode}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, barcode: e.target.value }))}
-                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-mono"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Selling Price (₹)</label>
-                          <input
-                            type="number"
-                            value={editForm.sellingPrice}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, sellingPrice: parseFloat(e.target.value) || 0 }))}
-                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">MRP (₹)</label>
-                          <input
-                            type="number"
-                            value={editForm.mrp}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, mrp: parseFloat(e.target.value) || 0 }))}
-                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Purchase Price (₹)</label>
-                          <input
-                            type="number"
-                            value={editForm.purchasePrice}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0 }))}
-                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Available Stock</label>
-                          <input
-                            type="number"
-                            value={editForm.stock}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, stock: parseInt(e.target.value) || 0 }))}
-                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tax Percent (%)</label>
-                          <input
-                            type="number"
-                            value={selectedProduct.tax_percent || 18}
-                            disabled
-                            className="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm bg-slate-50 text-slate-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Description</label>
-                        <textarea
-                          rows={3}
-                          value={editForm.longDesc}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, longDesc: e.target.value }))}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-medium"
-                        />
-                      </div>
-
-                      <div className="pt-4 flex gap-3">
-                        <button
-                          onClick={async () => {
-                            try {
-                              if (selectedProduct.isProvisional) {
-                                // If it is provisional, we can update it locally in the cart,
-                                // and once the order is checked out it will be created in the DB!
-                                setCart(prev => prev.map(item => {
-                                  if (item.id === selectedProduct.id) {
-                                    return {
-                                      ...item,
-                                      name: editForm.name,
-                                      brand: editForm.brand,
-                                      sku: editForm.sku,
-                                      barcode: editForm.barcode,
-                                      sellingPrice: editForm.sellingPrice,
-                                      mrp: editForm.mrp,
-                                      purchasePrice: editForm.purchasePrice,
-                                      stock: editForm.stock,
-                                      longDesc: editForm.longDesc,
-                                      shortDesc: editForm.name,
-                                    };
-                                  }
-                                  return item;
-                                }));
-                                toast.success("Provisional product details updated in current transaction cart!");
-                              } else {
-                                // For database products, call update API
-                                await posApi.updateProduct(selectedProduct.id, {
-                                  name: editForm.name,
-                                  brand_name: editForm.brand,
-                                  sku: editForm.sku,
-                                  barcode: editForm.barcode,
-                                  selling_price: editForm.sellingPrice,
-                                  mrp: editForm.mrp,
-                                  purchase_price: editForm.purchasePrice,
-                                  initial_stock: editForm.stock,
-                                  description: editForm.longDesc,
-                                });
-
-                                // Update local lists
-                                setProducts(prev => prev.map(p => {
-                                  if (p.id === selectedProduct.id) {
-                                    return {
-                                      ...p,
-                                      name: editForm.name,
-                                      brand: editForm.brand,
-                                      sku: editForm.sku,
-                                      barcode: editForm.barcode,
-                                      sellingPrice: editForm.sellingPrice,
-                                      mrp: editForm.mrp,
-                                      purchasePrice: editForm.purchasePrice,
-                                      stock: editForm.stock,
-                                      longDesc: editForm.longDesc,
-                                    };
-                                  }
-                                  return p;
-                                }));
-
-                                // Update cart
-                                setCart(prev => prev.map(item => {
-                                  if (item.id === selectedProduct.id) {
-                                    return {
-                                      ...item,
-                                      name: editForm.name,
-                                      brand: editForm.brand,
-                                      sku: editForm.sku,
-                                      barcode: editForm.barcode,
-                                      sellingPrice: editForm.sellingPrice,
-                                      mrp: editForm.mrp,
-                                      purchasePrice: editForm.purchasePrice,
-                                      stock: editForm.stock,
-                                      longDesc: editForm.longDesc,
-                                    };
-                                  }
-                                  return item;
-                                }));
-                                toast.success("Product updated successfully in local database and catalog!");
-                              }
-                              setSelectedProduct(null);
-                              setIsEditingProduct(false);
-                            } catch (e: any) {
-                              toast.error("Failed to update product details: " + (e.detail || e.message));
-                            }
-                          }}
-                          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-600/20 transition-all text-center cursor-pointer"
-                        >
-                          Save Changes
-                        </button>
-                        <button
-                          onClick={() => setIsEditingProduct(false)}
-                          className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-                        <div className="flex gap-6 items-start">
-                          <div className="w-48 h-48 bg-slate-50 rounded-xl border border-slate-200 p-4 shrink-0 flex items-center justify-center">
-                            <img src={selectedProduct.image || "https://placehold.co/400x400/f8fafc/94a3b8?text=No+Image"} onError={(e) => { e.currentTarget.src = "https://placehold.co/400x400/f8fafc/94a3b8?text=No+Image"; }} alt={selectedProduct.name} className="w-full h-full object-contain mix-blend-multiply" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">{selectedProduct.brand}</span>
-                              <span className="text-xs font-semibold text-slate-400">{selectedProduct.sku}</span>
-                            </div>
-                            <h2 className="text-2xl font-black text-slate-900 leading-tight mb-2">{selectedProduct.name}</h2>
-                            <p className="text-sm text-slate-600 mb-4">{selectedProduct.longDesc}</p>
-
-                            <div className="flex items-end gap-4">
-                              <div>
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Selling Price</p>
-                                <div className="text-3xl font-black text-emerald-600">{formatCurrency(selectedProduct.sellingPrice)}</div>
-                              </div>
-                              {selectedProduct.discount > 0 && (
-                                <div className="pb-1">
-                                  <span className="text-sm text-slate-400 line-through mr-2">{formatCurrency(selectedProduct.mrp)}</span>
-                                  <span className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">
-                                    -{selectedProduct.margin} Margin
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1"><Boxes className="w-3.5 h-3.5" /> Inventory & Storage</h4>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between"><span className="text-slate-500">Available Stock:</span> <span className="font-bold text-slate-900">{selectedProduct.stock} Units</span></div>
-                              <div className="flex justify-between"><span className="text-slate-500">Warehouse:</span> <span className="font-semibold text-slate-700">{selectedProduct.warehouse || "Main Storefront"}</span></div>
-                              <div className="flex justify-between"><span className="text-slate-500">Location:</span> <span className="font-semibold text-slate-700">{selectedProduct.rack || "Default"} / {selectedProduct.shelf || "Default"}</span></div>
-                              <div className="flex justify-between"><span className="text-slate-500">Barcode:</span> <span className="font-mono text-xs bg-white px-1 border rounded">{selectedProduct.barcode}</span></div>
-                            </div>
-                          </div>
-
-                          <div className="bg-amber-50/50 border border-amber-100 rounded-xl p-4">
-                            <h4 className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" /> AI Product Insights</h4>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between"><span className="text-amber-700/70">Demand Forecast:</span> <span className="font-bold text-amber-700">{selectedProduct.demandScore || 85}/100</span></div>
-                              <div className="flex justify-between"><span className="text-amber-700/70">AI Recommendation:</span> <span className="font-bold text-amber-700">{selectedProduct.aiScore || 90}/100</span></div>
-                              <div className="flex justify-between"><span className="text-amber-700/70">Trend Status:</span> <span className="font-semibold text-emerald-600">{selectedProduct.isFastMoving ? 'Fast Moving 🔥' : 'Stable'}</span></div>
-                              <div className="flex justify-between"><span className="text-amber-700/70">Supplier:</span> <span className="font-semibold text-amber-900">{selectedProduct.supplier || "Direct"}</span></div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-4 border-t border-slate-100 bg-white flex gap-3">
-                        <button onClick={() => addToCart(selectedProduct)} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl shadow-lg shadow-slate-900/20 transition-all flex items-center justify-center gap-2 cursor-pointer">
-                          <Plus className="w-5 h-5" /> Add to Checkout
-                        </button>
-                        <button onClick={() => setSelectedProduct(null)} className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all cursor-pointer">
-                          Close
-                        </button>
-                      </div>
-                    </>
-                  )}
+                  <div className="p-4 border-t border-slate-100 bg-white flex gap-3">
+                    <button onClick={() => addToCart(selectedProduct)} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl shadow-lg shadow-slate-900/20 transition-all flex items-center justify-center gap-2">
+                      <Plus className="w-5 h-5" /> Add to Checkout
+                    </button>
+                    <button onClick={() => setSelectedProduct(null)} className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all">
+                      Close
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

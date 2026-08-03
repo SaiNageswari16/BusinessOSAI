@@ -6,7 +6,7 @@ import {
   FileText, Fingerprint, FlaskConical, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
   Heart, HeartHandshake, History, Image, Inbox, Laptop, Layers, LayoutDashboard, LibraryBig, LineChart,
   ListChecks, Lock, Map, MapPin, Megaphone, MessageSquare, MessagesSquare, Microscope, Monitor, Navigation,
-  Network, Package, PackageOpen, PackagePlus, Percent, PieChart, Plus, Printer, QrCode, Radio, RadioTower, Receipt,
+  Network, Package, PackageOpen, PackagePlus, Percent, PieChart, Plus, QrCode, Radio, RadioTower, Receipt,
   RefreshCcw, RefreshCw, Rocket, RotateCw, Scale, ScanBarcode, ScanLine, Search, Settings, Settings2,
   ShieldCheck, ShoppingBag, ShoppingBasket, ShoppingCart, Signal, Skull, Sliders, SlidersHorizontal, Snail, Sparkles,
   Store, Tag, Tags, Target, Terminal, Ticket, Timer, TrendingUp, Truck, UserCheck,
@@ -199,16 +199,6 @@ export const nav: NavGroup[] = [
           { to: "/inventory?tab=abc_analysis", label: "ABC Analysis", icon: PieChart },
           { to: "/inventory?tab=xyz_analysis", label: "XYZ Analysis", icon: LineChart },
           { to: "/inventory?tab=forecast", label: "Inventory Forecast", icon: BrainCircuit },
-        ]
-      },
-      {
-        to: "/inventory?tab=print_templates",
-        label: "Print & Document Templates",
-        icon: Printer,
-        subItems: [
-          { to: "/inventory?tab=print_templates", label: "Print Templates Manager", icon: FileText },
-          { to: "/inventory?tab=barcodes", label: "Barcode Label Generator", icon: ScanBarcode },
-          { to: "/inventory?tab=qrcodes", label: "QR Code Label Generator", icon: QrCode },
         ]
       },
     ]
