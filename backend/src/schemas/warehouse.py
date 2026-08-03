@@ -77,9 +77,9 @@ from datetime import date
 
 class InventoryBatchBase(BaseModel):
     batch_number: str
-    product_id: UUID
-    product_name: str
-    sku: str
+    product_id: Optional[UUID] = None
+    product_name: Optional[str] = None
+    sku: Optional[str] = None
     warehouse_id: Optional[UUID] = None
     warehouse_name: Optional[str] = None
     quantity: int = 0
@@ -113,9 +113,9 @@ class InventoryBatchResponse(InventoryBatchBase, TimestampSchema):
 
 class InventorySerialBase(BaseModel):
     serial_number: str
-    product_id: UUID
-    product_name: str
-    sku: str
+    product_id: Optional[UUID] = None
+    product_name: Optional[str] = None
+    sku: Optional[str] = None
     batch_id: Optional[UUID] = None
     warehouse_id: Optional[UUID] = None
     warehouse_name: Optional[str] = None
