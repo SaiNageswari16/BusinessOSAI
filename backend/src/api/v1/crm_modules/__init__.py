@@ -5,6 +5,7 @@ from .memberships import router as memberships_router
 from .wallet import router as wallet_router
 from .loyalty import router as loyalty_router
 from .discounts import router as discounts_router
+from .whatsapp_automation import router as whatsapp_automation_router
 
 __all__ = [
     "groups_router",
@@ -13,4 +14,5 @@ __all__ = [
     "wallet_router",
     "loyalty_router",
     "discounts_router",
+    "whatsapp_automation_router",
 ]

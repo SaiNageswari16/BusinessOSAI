@@ -47,6 +47,7 @@ from src.api.v1.crm_modules import (
     memberships_router,
     segments_router,
     wallet_router,
+    whatsapp_automation_router,
 )
 
 # Inventory Operations
@@ -90,6 +91,7 @@ api_router.include_router(loyalty_router)
 api_router.include_router(memberships_router)
 api_router.include_router(segments_router)
 api_router.include_router(wallet_router)
+api_router.include_router(whatsapp_automation_router)
 
 # Storefront
 api_router.include_router(storefront_router)

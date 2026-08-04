@@ -4062,3 +4062,14 @@ export const crmApi = {
   getQuotations: () => request<any>("GET", "/crm/quotations"),
   getSalesOrders: () => request<any>("GET", "/crm/sales-orders")
 };
+
+export const whatsappAutomationApi = {
+  getSessions: () => request<any>("GET", "/whatsapp-automation/sessions"),
+  startSession: (sessionId: string) => request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/start`),
+  logoutSession: (sessionId: string) => request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/logout`),
+  getContacts: (sessionId: string) => request<any>("GET", `/whatsapp-automation/sessions/${sessionId}/contacts`),
+  syncContacts: (sessionId: string, contacts: any[]) => request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/sync`, { contacts }),
+  getChatMessages: (sessionId: string, phone: string) => request<any>("GET", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/messages`),
+  sendMessage: (sessionId: string, phone: string, message: string) => request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/send`, { message }),
+  getActiveChats: (sessionId: string) => request<any>("GET", `/whatsapp-automation/sessions/${sessionId}/chats`),
+};
