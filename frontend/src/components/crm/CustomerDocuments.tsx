@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import React from "react";
 import { motion } from "framer-motion";
 import { FileText, Upload, Search, Download, Trash2, Eye, Folder, File, Filter } from "lucide-react";
@@ -19,7 +20,7 @@ export function CustomerDocuments({ tab = "all_documents" }: Props) {
           <h1 className="text-2xl font-bold text-foreground">Customer Documents</h1>
           <p className="text-sm text-muted-foreground">Securely manage NDAs, contracts, and compliance documents.</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+        <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
           <Upload className="size-4" /> Upload Document
         </button>
       </div>
@@ -34,10 +35,10 @@ export function CustomerDocuments({ tab = "all_documents" }: Props) {
           />
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 bg-background/50 border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background/50 border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
             <Filter className="size-4" /> Filter
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-background/50 border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background/50 border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
             <Folder className="size-4" /> Manage Folders
           </button>
         </div>
@@ -86,13 +87,13 @@ export function CustomerDocuments({ tab = "all_documents" }: Props) {
                   <td className="px-6 py-4 text-muted-foreground">{doc.date}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors">
+                      <button onClick={() => toast.info('Feature coming soon!')} className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors">
                         <Eye className="size-4" />
                       </button>
-                      <button className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors">
+                      <button onClick={() => toast.info('Feature coming soon!')} className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors">
                         <Download className="size-4" />
                       </button>
-                      <button className="p-1.5 text-muted-foreground hover:bg-accent hover:text-red-500 rounded-md transition-colors">
+                      <button onClick={() => toast.info('Feature coming soon!')} className="p-1.5 text-muted-foreground hover:bg-accent hover:text-red-500 rounded-md transition-colors">
                         <Trash2 className="size-4" />
                       </button>
                     </div>

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, X, RefreshCw, Send, Trash2, Eye,
   Loader2, Megaphone, DollarSign, MousePointerClick,
-  Layers, Users
+  Layers, Users, TrendingUp
 } from "lucide-react";
 import { paidAdsApi } from "@/lib/api-client";
 import PaidCampaignBuilder from "./PaidCampaignBuilder";
@@ -20,7 +20,7 @@ type TokenInfo = {
   error?: string | null;
 };
 
-function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo }) {
+function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,6 +118,15 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo }) {
     );
   }
 
+  if (!tokenInfo || !tokenInfo.connected) {
+    return (
+      <div className="py-12 text-center border border-border rounded-xl bg-card">
+        <h3 className="font-bold text-foreground">No Facebook Page Connected</h3>
+        <p className="text-xs text-muted-foreground mt-1">Connect your Facebook Page in the Ad Generator to manage paid campaigns.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Builder toggle */}
@@ -140,11 +149,10 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo }) {
           </button>
           <button
             onClick={() => setShowBuilder(!showBuilder)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-              showBuilder
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${showBuilder
                 ? "bg-muted text-foreground"
                 : "bg-primary text-primary-foreground hover:bg-primary/90"
-            }`}
+              }`}
           >
             {showBuilder ? (
               <>
@@ -220,15 +228,14 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo }) {
                     </td>
                     <td className="p-3">
                       <span
-                        className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${
-                          camp.status === "ACTIVE"
+                        className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${camp.status === "ACTIVE"
                             ? "bg-emerald-500/10 text-emerald-600"
                             : camp.status === "PAUSED"
-                            ? "bg-amber-500/10 text-amber-600"
-                            : camp.status === "DELETED"
-                            ? "bg-red-500/10 text-red-600"
-                            : "bg-muted text-muted-foreground"
-                        }`}
+                              ? "bg-amber-500/10 text-amber-600"
+                              : camp.status === "DELETED"
+                                ? "bg-red-500/10 text-red-600"
+                                : "bg-muted text-muted-foreground"
+                          }`}
                       >
                         {camp.status}
                       </span>

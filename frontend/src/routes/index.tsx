@@ -102,134 +102,137 @@ function LoginPage() {
   const googleButtonLabel = mode === "login" ? "Continue with Google" : "Register with Google";
 
   return (
-    <div className="min-h-screen grid items-stretch lg:grid-cols-2 bg-slate-50/50">
+    <div className="min-h-screen grid items-stretch lg:grid-cols-2 bg-white">
       {/* Left — brand panel */}
-      <div className="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden bg-slate-100/80 text-slate-900">
+      <div className="relative hidden lg:flex flex-col p-12 lg:px-16 xl:px-24 overflow-hidden bg-slate-50 text-slate-900 border-r border-slate-200/60">
         <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-indigo-300/40 blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[0%] right-[0%] w-[70%] h-[70%] rounded-full bg-emerald-300/30 blur-[120px] pointer-events-none" />
         <div className="absolute top-[40%] right-[10%] w-[40%] h-[40%] rounded-full bg-violet-300/40 blur-[100px] pointer-events-none" />
 
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="size-12 shrink-0 flex items-center justify-center transition-transform hover:scale-105">
-            <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
+        <div className="relative z-10 flex flex-col flex-1 justify-center">
+          <div className="flex items-center gap-5 mb-12">
+            <div className="size-20 shrink-0 flex items-center justify-center transition-transform hover:scale-105">
+              <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain drop-shadow-sm" />
+            </div>
+            <div>
+              <div className="font-bold text-3xl tracking-tight text-slate-900">LazyMonkeyAI</div>
+              <div className="text-sm text-indigo-600 uppercase tracking-wider font-bold mt-1">Smart AI for Lazy Geniuses</div>
+            </div>
           </div>
-          <div>
-            <div className="font-bold text-xl tracking-tight text-slate-900">LazyMonkeyAI</div>
-            <div className="text-xs text-amber-600 uppercase tracking-wider font-semibold mt-0.5">Smart AI for Lazy Geniuses</div>
-          </div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+            <h1 className="text-4xl xl:text-5xl font-bold leading-[1.15] tracking-tight">
+              One platform.<br/>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">Every part of your business.</span>
+            </h1>
+            <p className="mt-6 text-slate-600 text-base xl:text-lg leading-relaxed max-w-md">
+              ERP, POS, Inventory, CRM, HRMS, IoT and Accounting — unified by an AI copilot that thinks across your entire operation.
+            </p>
+
+            <div className="mt-10 grid grid-cols-1 gap-4 max-w-md">
+              {[
+                { icon: Zap, t: "AI Copilot trained on your data" },
+                { icon: BarChart3, t: "Realtime analytics across 350+ KPIs" },
+                { icon: ShieldCheck, t: "SOC 2 Type II • ISO 27001 • GDPR" },
+              ].map((f, i) => (
+                <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.1 }}
+                  className="flex items-center gap-4 rounded-xl bg-white/80 backdrop-blur-md px-5 py-4 ring-1 ring-slate-200/50 shadow-sm hover:bg-white transition-colors">
+                  <f.icon className="size-5 shrink-0 text-indigo-600" />
+                  <span className="text-sm font-medium text-slate-700">{f.t}</span>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
         </div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="relative z-10 max-w-lg">
-          <h1 className="text-5xl font-bold leading-[1.1] tracking-tight">
-            One platform.<br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-900 to-amber-600">Every part of your business.</span>
-          </h1>
-          <p className="mt-6 text-slate-600 text-lg leading-relaxed">
-            ERP, POS, Inventory, CRM, HRMS, IoT and Accounting — unified by an AI copilot that thinks across your entire operation.
-          </p>
-
-          <div className="mt-10 grid grid-cols-1 gap-4 max-w-md">
-            {[
-              { icon: Zap, t: "AI Copilot trained on your data" },
-              { icon: BarChart3, t: "Realtime analytics across 350+ KPIs" },
-              { icon: ShieldCheck, t: "SOC 2 Type II • ISO 27001 • GDPR" },
-            ].map((f, i) => (
-              <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.1 }}
-                className="flex items-center gap-4 rounded-xl bg-white/60 backdrop-blur-sm px-5 py-3.5 ring-1 ring-slate-200/80 shadow-sm hover:bg-white/80 transition-colors">
-                <f.icon className="size-5 shrink-0 text-amber-600" />
-                <span className="text-sm font-medium text-slate-700">{f.t}</span>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-
-        <div className="relative z-10 text-xs font-medium text-slate-500">
+        <div className="relative z-10 text-xs font-medium text-slate-500 mt-8">
           Trusted by 8,200+ companies across 47 countries.
         </div>
       </div>
 
       {/* Right — form */}
-      <div className="flex items-center justify-center p-6 sm:p-10 relative bg-slate-50/50">
-        {/* Subtle background glow for the right panel */}
-        <div className="absolute inset-0 bg-slate-50/80 -z-10" />
-        
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md rounded-2xl bg-card p-8 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-border/60">
-          <div className="flex flex-col items-center justify-center text-center space-y-6 mb-12">
-            <div className="size-20 shrink-0 flex items-center justify-center transition-transform hover:scale-105">
-              <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
+      <div className="flex items-center justify-center p-6 sm:p-12 relative bg-white">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-[400px]">
+          {/* Mobile Logo (hidden on desktop to avoid redundancy) */}
+          <div className="flex lg:hidden flex-col items-center justify-center text-center space-y-3 mb-8">
+            <div className="size-24 shrink-0 flex items-center justify-center">
+              <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain drop-shadow-sm" />
             </div>
-            <span className="font-bold text-xl tracking-tight">LazyMonkeyAI</span>
+            <span className="font-bold text-3xl tracking-tight text-slate-900">LazyMonkeyAI</span>
           </div>
 
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">{mode === "login" ? "Welcome back" : "Create your workspace"}</h2>
-          <p className="mt-2 text-muted-foreground text-sm">
-            {mode === "login"
-              ? "Sign in to your enterprise workspace."
-              : "Register a tenant admin account and get started."}
-          </p>
+          <div className="text-center lg:text-left mb-8">
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900">{mode === "login" ? "Welcome back" : "Create workspace"}</h2>
+            <p className="mt-2 text-slate-500 text-sm">
+              {mode === "login"
+                ? "Sign in to your enterprise workspace."
+                : "Register a tenant admin account and get started."}
+            </p>
+          </div>
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {mode === "register" ? (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="tenant_name">Workspace name</Label>
-                  <Input id="tenant_name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="h-11" />
+                  <Label htmlFor="tenant_name" className="text-sm font-medium text-slate-700">Workspace name</Label>
+                  <Input id="tenant_name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="tenant_slug">Workspace slug (optional)</Label>
-                  <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11" />
+                  <Label htmlFor="tenant_slug" className="text-sm font-medium text-slate-700">Workspace slug <span className="text-slate-400 font-normal">(optional)</span></Label>
+                  <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="company_name">Company name</Label>
-                  <Input id="company_name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-11" />
+                  <Label htmlFor="company_name" className="text-sm font-medium text-slate-700">Company name</Label>
+                  <Input id="company_name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="admin_name">Admin full name</Label>
-                  <Input id="admin_name" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="h-11" />
+                  <Label htmlFor="admin_name" className="text-sm font-medium text-slate-700">Admin full name</Label>
+                  <Input id="admin_name" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" />
                 </div>
               </>
             ) : (
               <div className="space-y-2">
-                <Label htmlFor="tenant_slug">Workspace slug (optional)</Label>
-                <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11" />
+                <Label htmlFor="tenant_slug" className="text-sm font-medium text-slate-700">Workspace slug <span className="text-slate-400 font-normal">(optional)</span></Label>
+                <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="e.g. acme-corp" />
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Work email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11" />
+              <Label htmlFor="email" className="text-sm font-medium text-slate-700">Work email</Label>
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="you@company.com" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" className="text-sm font-medium text-slate-700">Password</Label>
                 {mode === "login" ? (
-                  <button type="button" className="text-xs text-primary hover:underline" onClick={() => toast.info("Password reset link sent.")}> 
+                  <button type="button" className="text-sm font-medium text-indigo-600 hover:text-indigo-700" onClick={() => toast.info("Password reset link sent.")}> 
                     Forgot password?
                   </button>
                 ) : null}
               </div>
               <div className="relative">
-                <Input id="password" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="h-11 pr-10" />
-                <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <Input id="password" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="••••••••" />
+                <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                   {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
             </div>
-                        {mode === "login" ? (
-              <div className="flex items-center gap-2 mt-2">
-                <Checkbox id="remember" defaultChecked />
-                <Label htmlFor="remember" className="text-sm font-normal cursor-pointer text-muted-foreground">Remember me on this device</Label>
+            
+            {mode === "login" ? (
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox id="remember" defaultChecked className="border-slate-300 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600" />
+                <Label htmlFor="remember" className="text-sm font-normal cursor-pointer text-slate-600">Remember me for 30 days</Label>
               </div>
             ) : (
-              <div className="flex items-center space-x-2 mt-4">
-                <Checkbox id="terms" required />
-                <Label htmlFor="terms" className="text-sm font-normal text-muted-foreground leading-snug">
-                  I agree to the <a href="#" className="text-indigo-600 hover:underline">Terms of Service</a> and <a href="#" className="text-indigo-600 hover:underline">Privacy Policy</a>.
+              <div className="flex items-start space-x-2 pt-2">
+                <Checkbox id="terms" required className="mt-0.5 border-slate-300 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600" />
+                <Label htmlFor="terms" className="text-sm font-normal text-slate-600 leading-snug">
+                  I agree to the <a href="#" className="font-medium text-indigo-600 hover:text-indigo-700">Terms of Service</a> and <a href="#" className="font-medium text-indigo-600 hover:text-indigo-700">Privacy Policy</a>.
                 </Label>
               </div>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full h-11 text-base bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/20 transition-all font-medium mt-4">
+            <Button type="submit" disabled={loading} className="w-full h-11 text-base bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all font-medium mt-2">
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -244,9 +247,9 @@ function LoginPage() {
           </form>
 
           <div className="relative my-8">
-            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
+            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-200" /></div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground font-medium">Or continue with</span>
+              <span className="bg-white px-3 text-slate-500 font-medium tracking-wider">Or continue with</span>
             </div>
           </div>
 
@@ -255,7 +258,7 @@ function LoginPage() {
             variant="outline"
             onClick={handleOAuthLogin}
             disabled={!googleOAuthEnabled}
-            className="w-full h-11 font-medium bg-transparent hover:bg-slate-50 dark:hover:bg-slate-900 border-border"
+            className="w-full h-11 font-medium bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-sm"
           >
             <svg className="mr-2 size-4" viewBox="0 0 24 24">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -266,15 +269,11 @@ function LoginPage() {
             {googleButtonLabel}
           </Button>
 
-          <p className="mt-6 text-center text-sm text-muted-foreground">
+          <p className="mt-8 text-center text-sm text-slate-600">
             {mode === "login" ? "Don't have a workspace? " : "Already have a workspace? "}
-            <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")} className="font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 hover:underline">
+            <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")} className="font-semibold text-indigo-600 hover:text-indigo-700 hover:underline transition-colors">
               {mode === "login" ? "Create one" : "Sign in"}
             </button>
-          </p>
-
-          <p className="mt-3 text-center text-xs text-muted-foreground">
-            By signing in you agree to our Terms of Service &amp; Privacy Policy.
           </p>
         </motion.div>
       </div>

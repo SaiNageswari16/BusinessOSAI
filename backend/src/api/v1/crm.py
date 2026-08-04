@@ -34,7 +34,7 @@ async def _lead_or_404(db: AsyncSession, lead_id: uuid.UUID, tenant_id: uuid.UUI
 
 
 @router.get("/customers", response_model=PaginatedResponse[CustomerResponse])
-async def list_customers(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), search: str | None = None, customer_type: str | None = None):
+async def list_customers(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200), search: str | None = None, customer_type: str | None = None):
     query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if search:
         term = f"%{search}%"
@@ -2215,13 +2215,11 @@ async def get_facebook_organic_posts(
         or fb_page_cfg.get("user_access_token")
         or fb_legacy_cfg.get("fb_access_token")
         or fb_legacy_cfg.get("access_token")
-        or getattr(settings, "facebook_access_token", None)
     )
     page_id = (
         fb_page_cfg.get("page_id")
         or fb_legacy_cfg.get("fb_page_or_form_id")
         or fb_legacy_cfg.get("page_id")
-        or getattr(settings, "facebook_page_id", None)
     )
 
     if not token or not page_id:
@@ -3202,3 +3200,25 @@ async def approve_ad_asset(
     await db.commit()
     await db.refresh(asset)
     return {"id": str(asset.id), "approval_status": asset.approval_status}
+
+
+# --- Stubs for Missing Endpoints ---------------------------------------------
+
+@router.get('/discounts')
+async def list_discounts(page: int = 1, page_size: int = 100):
+    return {'items': [], 'total': 0, 'page': page, 'page_size': page_size, 'pages': 0}
+
+@router.get('/membership-plans')
+async def list_membership_plans(page: int = 1, page_size: int = 100):
+    return {'items': [], 'total': 0, 'page': page, 'page_size': page_size, 'pages': 0}
+
+
+
+# Mock endpoints for CRM Groups and Segments
+@router.get('/groups')
+async def get_crm_groups(page: int = 1, page_size: int = 100):
+    return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}
+
+@router.get('/segments')
+async def get_crm_segments(page: int = 1, page_size: int = 100):
+    return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}

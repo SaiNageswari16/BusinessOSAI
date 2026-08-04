@@ -2,6 +2,10 @@
 import enum
 import uuid
 from datetime import date, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.models import Company
 
 from sqlalchemy import (
     Boolean,
@@ -317,6 +321,10 @@ class InvoiceLine(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     product_sku: Mapped[str | None] = mapped_column(String(100))
     hsn_code: Mapped[str | None] = mapped_column(String(20))
+    batch_number: Mapped[str | None] = mapped_column(String(100))
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    mfg_date: Mapped[date | None] = mapped_column(Date)
+    mrp: Mapped[float | None] = mapped_column(Numeric(18, 2))
     description: Mapped[str | None] = mapped_column(Text)
     uom: Mapped[str | None] = mapped_column(String(30))
     quantity: Mapped[float] = mapped_column(Numeric(12, 3), default=1)

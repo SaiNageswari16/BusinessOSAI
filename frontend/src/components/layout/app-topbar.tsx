@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Search, Bell, MessageSquare, Settings, LogOut, Plus,
-  Command as CommandIcon, ChevronDown, Building2, GitBranch, Sparkles, ShieldCheck, Sun, Moon, Globe,
+  Command as CommandIcon, ChevronDown, Building2, GitBranch, Sparkles, ShieldCheck, Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
-import { useTheme } from "@/contexts/theme-context";
 import { useI18n } from "@/contexts/i18n-context";
 import { notifications } from "@/data/mock";
 import { CommandPalette } from "@/components/command-palette";
@@ -36,7 +35,6 @@ export function AppTopbar() {
     branchesList,
   } = useTenant();
   const { activeRole, availableRoles, setActiveRole } = useRbac();
-  const { theme, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [now, setNow] = useState(new Date());
@@ -129,7 +127,7 @@ export function AppTopbar() {
     <header className="sticky top-0 z-50 flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4 lg:px-6 shadow-sm no-print">
       {/* Brand / Logo */}
       <div className="flex items-center gap-2 mr-2">
-        <div className="size-8 shrink-0 rounded-lg flex items-center justify-center transition-transform hover:scale-105">
+        <div className="size-12 shrink-0 rounded-lg flex items-center justify-center transition-transform hover:scale-105">
           <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
         </div>
         <div className="hidden lg:block overflow-hidden">
@@ -267,19 +265,6 @@ export function AppTopbar() {
         </DropdownMenu>
 
         {/* Theme Toggle */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9"
-          onClick={toggleTheme}
-          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-        >
-          {theme === "dark" ? (
-            <Sun className="size-4 text-amber-400" />
-          ) : (
-            <Moon className="size-4 text-muted-foreground" />
-          )}
-        </Button>
 
         {/* Messages */}
         <Button variant="ghost" size="icon" className="h-9 w-9 relative">

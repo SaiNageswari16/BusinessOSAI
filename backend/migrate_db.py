@@ -47,6 +47,25 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to 'crm_leads': {e}")
 
+    # Add columns to ar_invoice_lines for POS Sales
+    invoice_lines_columns = [
+        ("batch_number", "VARCHAR(100)"),
+        ("expiry_date", "DATE"),
+        ("mfg_date", "DATE"),
+        ("mrp", "NUMERIC(18, 2)")
+    ]
+
+    for name, col_type in invoice_lines_columns:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE ar_invoice_lines ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'ar_invoice_lines' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in 'ar_invoice_lines'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to 'ar_invoice_lines': {e}")
+
     # Add RAG tracking columns to erp_master_catalog
     catalog_cols = [
         ("ai_search_done", "BOOLEAN DEFAULT FALSE NOT NULL"),

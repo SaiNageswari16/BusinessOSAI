@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from "@tanstack/react-router";
 import {
   History, RefreshCw, Copy, ExternalLink, Facebook,
   CheckCircle, AlertCircle, Clock, AlertTriangle, Shield,
@@ -291,6 +292,7 @@ function LeadSyncToast({ pageId }: { pageId: string }) {
 
 export function AdHistory() {
   const { tenant } = useTenant();
+  const navigate = useNavigate();
 
   // Organic history posts states
   const [ads, setAds] = useState<AdHistoryItem[]>([]);
@@ -470,13 +472,13 @@ export function AdHistory() {
             <RefreshCw className={`size-3.5 ${refreshing || campaignsLoading ? "animate-spin" : ""}`} />
             Refresh
           </button>
-          <a
-            href="/crm?tab=ad_generator"
+          <button
+            onClick={() => navigate({ to: "/crm", search: { tab: "ad_generator" } })}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
           >
             <Sparkles className="size-3.5" />
             Create Ad Poster
-          </a>
+          </button>
         </div>
       </div>
 

@@ -1,14 +1,50 @@
+import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Plus, Search, Filter, FileCheck, FileText, Send, Building, Calendar, ExternalLink } from "lucide-react";
 import { crmQuotationsApi, type CrmQuotation } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function Quotations() {
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
   const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newQuote, setNewQuote] = useState({ quote_number: "", customer_name: "", total: 0, status: "Draft" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await crmQuotationsApi.create({
+        quote_number: newQuote.quote_number,
+        customer_name: newQuote.customer_name,
+        total: newQuote.total,
+        status: newQuote.status,
+        customer_id: "00000000-0000-0000-0000-000000000000",
+      });
+      toast.success("Quotation created successfully!");
+      setIsAddModalOpen(false);
+      setNewQuote({ quote_number: "", customer_name: "", total: 0, status: "Draft" });
+      void fetchQuotations();
+    } catch(err: any) {
+      toast.error(err?.message || "Failed to create quotation");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const fetchQuotations = async () => {
     setLoading(true);
@@ -39,9 +75,45 @@ export function Quotations() {
           <p className="text-sm text-muted-foreground">Create, manage, and track professional sales quotations.</p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <Plus className="size-4" /> Create Quotation
-          </button>
+          <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+            <DialogTrigger asChild>
+              <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+                <Plus className="size-4" /> Create Quotation
+              </button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Create New Quotation</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleAddSubmit} className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Quote Number</Label>
+                  <Input required value={newQuote.quote_number} onChange={e => setNewQuote({...newQuote, quote_number: e.target.value})} placeholder="QT-2026-001" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer Name</Label>
+                  <Input value={newQuote.customer_name} onChange={e => setNewQuote({...newQuote, customer_name: e.target.value})} placeholder="e.g. Acme Corp" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Total Amount (₹)</Label>
+                  <Input required type="number" min="0" value={newQuote.total} onChange={e => setNewQuote({...newQuote, total: Number(e.target.value)})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <select value={newQuote.status} onChange={e => setNewQuote({...newQuote, status: e.target.value})} className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    <option value="Draft">Draft</option>
+                    <option value="Sent">Sent</option>
+                    <option value="Approved">Approved</option>
+                  </select>
+                </div>
+                <DialogFooter className="pt-4">
+                  <button type="submit" disabled={isSubmitting} className="flex items-center justify-center gap-2 w-full px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                    {isSubmitting ? "Creating..." : "Create Quotation"}
+                  </button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -75,7 +147,7 @@ export function Quotations() {
             className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none"
           />
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+        <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
           <Filter className="size-4" /> Filter
         </button>
       </div>
@@ -136,10 +208,10 @@ export function Quotations() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors" title="Print">
+                        <button onClick={() => toast.info('Feature coming soon!')} className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors" title="Print">
                           <FileText className="size-4" />
                         </button>
-                        <button className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors" title="Send Email">
+                        <button onClick={() => toast.info('Feature coming soon!')} className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors" title="Send Email">
                           <Send className="size-4" />
                         </button>
                       </div>

@@ -21,6 +21,7 @@ import { NotificationTemplates } from "@/components/erp/NotificationTemplates";
 import { DocumentTemplates } from "@/components/erp/DocumentTemplates";
 import { CustomFields } from "@/components/erp/CustomFields";
 import { AutomationRules } from "@/components/erp/AutomationRules";
+import { PasswordPolicies, SessionPolicies, DevicePolicies } from "@/components/erp/SecurityPolicies";
 import { BackupRestore } from "@/components/erp/BackupRestore";
 import { ErrorLogs } from "@/components/erp/ErrorLogs";
 import { ActivityLogs } from "@/components/erp/ActivityLogs";
@@ -75,10 +76,10 @@ const componentMap: Record<string, React.ElementType> = {
   // Users, Roles & Security
   user_preferences: UserManagement,
   notifications: SystemNotificationsTab,
-  password_policies: RolesPermissions,
+  password_policies: PasswordPolicies,
   mfa: MfaPolicies,
-  session_policies: MfaPolicies,
-  device_policies: MfaPolicies,
+  session_policies: SessionPolicies,
+  device_policies: DevicePolicies,
   login_history: ActivityLogs,
   roles: RolesPermissions,
   permissions: PermissionMatrix,

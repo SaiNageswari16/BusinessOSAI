@@ -1,14 +1,51 @@
+import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Plus, Search, Filter, ShoppingCart, Download, Printer, Box, CreditCard, Clock, CheckCircle2, RefreshCw } from "lucide-react";
 import { crmSalesOrdersApi, type CrmSalesOrder } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function SalesOrders() {
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
   const [orders, setOrders] = useState<CrmSalesOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newOrder, setNewOrder] = useState({ order_number: "", customer_name: "", total: 0, status: "Pending", payment_status: "Unpaid" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await crmSalesOrdersApi.create({
+        order_number: newOrder.order_number,
+        customer_name: newOrder.customer_name,
+        total: newOrder.total,
+        status: newOrder.status,
+        payment_status: newOrder.payment_status,
+        customer_id: "00000000-0000-0000-0000-000000000000",
+      });
+      toast.success("Order created successfully!");
+      setIsAddModalOpen(false);
+      setNewOrder({ order_number: "", customer_name: "", total: 0, status: "Pending", payment_status: "Unpaid" });
+      void fetchOrders();
+    } catch(err: any) {
+      toast.error(err?.message || "Failed to create order");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -39,12 +76,59 @@ export function SalesOrders() {
           <p className="text-sm text-muted-foreground">Track and manage customer orders, integrated with inventory and fulfillment.</p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
             <Download className="size-4" /> Export
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <Plus className="size-4" /> Create Order
-          </button>
+          <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+            <DialogTrigger asChild>
+              <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+                <Plus className="size-4" /> Create Order
+              </button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Create Sales Order</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleAddSubmit} className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Order Number</Label>
+                  <Input required value={newOrder.order_number} onChange={e => setNewOrder({...newOrder, order_number: e.target.value})} placeholder="SO-2026-001" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer Name</Label>
+                  <Input value={newOrder.customer_name} onChange={e => setNewOrder({...newOrder, customer_name: e.target.value})} placeholder="e.g. Acme Corp" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Total Amount (₹)</Label>
+                  <Input required type="number" min="0" value={newOrder.total} onChange={e => setNewOrder({...newOrder, total: Number(e.target.value)})} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <select value={newOrder.status} onChange={e => setNewOrder({...newOrder, status: e.target.value})} className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                      <option value="Pending">Pending</option>
+                      <option value="Processing">Processing</option>
+                      <option value="Shipped">Shipped</option>
+                      <option value="Delivered">Delivered</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Payment</Label>
+                    <select value={newOrder.payment_status} onChange={e => setNewOrder({...newOrder, payment_status: e.target.value})} className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                      <option value="Unpaid">Unpaid</option>
+                      <option value="Partially Paid">Partially Paid</option>
+                      <option value="Paid">Paid</option>
+                    </select>
+                  </div>
+                </div>
+                <DialogFooter className="pt-4">
+                  <button type="submit" disabled={isSubmitting} className="flex items-center justify-center gap-2 w-full px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                    {isSubmitting ? "Creating..." : "Create Order"}
+                  </button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -77,7 +161,7 @@ export function SalesOrders() {
             className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none"
           />
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+        <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
           <Filter className="size-4" /> Filter
         </button>
       </div>
@@ -148,7 +232,7 @@ export function SalesOrders() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors" title="Print Invoice">
+                        <button onClick={() => toast.info('Feature coming soon!')} className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors" title="Print Invoice">
                           <Printer className="size-4" />
                         </button>
                       </div>

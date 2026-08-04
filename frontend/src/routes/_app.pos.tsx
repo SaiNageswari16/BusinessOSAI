@@ -5,6 +5,7 @@ import { useRbac } from "@/contexts/rbac-context";
 import { Unauthorized } from "@/components/unauthorized";
 import { PosDashboard } from "../components/pos/PosDashboard";
 import { PosTerminal } from "../components/pos/POSTerminal";
+import { PosSalesInvoice } from "../components/pos/PosSalesInvoice";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
 import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
 
@@ -1138,7 +1139,7 @@ function PosAiAssistant() {
 const componentMap: Record<string, React.ElementType> = {
   dashboard: PosDashboard,
   terminal: PosTerminal,
-  sales: PosSales,
+  sales: PosSalesInvoice,
   customers: PosCustomersPlaceholder,
   payments: PosPayments,
   store_operations: PosStoreOperations,

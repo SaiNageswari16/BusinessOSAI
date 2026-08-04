@@ -233,10 +233,10 @@ export function AdGenerator() {
 
   // Asset library modal
   const [showAssetLibrary, setShowAssetLibrary] = useState(false);
-  const [assetLibrary, setAssetLibrary] = useState<assetLibraryApi.AssetLibraryItem[]>([]);
+  const [assetLibrary, setAssetLibrary] = useState<anyLibraryItem[]>([]);
   const [assetFilter, setAssetFilter] = useState<"all" | "approved" | "unused">("approved");
 
-  const reuseAsset = (asset: assetLibraryApi.AssetLibraryItem) => {
+  const reuseAsset = (asset: anyLibraryItem) => {
     setImageUrl(asset.public_url);
     setEnhancedPrompt(asset.enhanced_prompt || asset.original_prompt || "");
     if (asset.original_prompt && asset.original_prompt !== posterPrompt) {

@@ -1,14 +1,44 @@
+import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Plus, Search, Filter, Rocket, Calendar, Building, ExternalLink } from "lucide-react";
 import { crmOpportunitiesApi, type CrmOpportunity } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function Opportunities() {
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
   const [opportunities, setOpportunities] = useState<CrmOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newOpp, setNewOpp] = useState({ name: "", customer_name: "", amount: 0, probability: 50, stage: "Prospecting" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await crmOpportunitiesApi.create(newOpp);
+      toast.success("Opportunity created successfully!");
+      setIsAddModalOpen(false);
+      setNewOpp({ name: "", customer_name: "", amount: 0, probability: 50, stage: "Prospecting" });
+      void fetchOpps();
+    } catch(err: any) {
+      toast.error(err?.message || "Failed to create opportunity");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const fetchOpps = async () => {
     setLoading(true);
@@ -41,9 +71,54 @@ export function Opportunities() {
           <p className="text-sm text-muted-foreground">List view of all active sales opportunities and potential revenue.</p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <Plus className="size-4" /> Add Opportunity
-          </button>
+          <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+            <DialogTrigger asChild>
+              <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+                <Plus className="size-4" /> Add Opportunity
+              </button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Add New Opportunity</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleAddSubmit} className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Opportunity Name</Label>
+                  <Input required value={newOpp.name} onChange={e => setNewOpp({...newOpp, name: e.target.value})} placeholder="e.g. Enterprise License Deal" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer / Lead Name</Label>
+                  <Input value={newOpp.customer_name} onChange={e => setNewOpp({...newOpp, customer_name: e.target.value})} placeholder="e.g. Acme Corp" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Amount (₹)</Label>
+                    <Input required type="number" min="0" value={newOpp.amount} onChange={e => setNewOpp({...newOpp, amount: Number(e.target.value)})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Probability (%)</Label>
+                    <Input required type="number" min="0" max="100" value={newOpp.probability} onChange={e => setNewOpp({...newOpp, probability: Number(e.target.value)})} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Stage</Label>
+                  <select value={newOpp.stage} onChange={e => setNewOpp({...newOpp, stage: e.target.value})} className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    <option value="Prospecting">Prospecting</option>
+                    <option value="Qualification">Qualification</option>
+                    <option value="Proposal">Proposal</option>
+                    <option value="Negotiation">Negotiation</option>
+                    <option value="Closed Won">Closed Won</option>
+                    <option value="Closed Lost">Closed Lost</option>
+                  </select>
+                </div>
+                <DialogFooter className="pt-4">
+                  <button type="submit" disabled={isSubmitting} className="flex items-center justify-center gap-2 w-full px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                    {isSubmitting ? "Saving..." : "Save Opportunity"}
+                  </button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -58,7 +133,7 @@ export function Opportunities() {
             className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none"
           />
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+        <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
           <Filter className="size-4" /> Filter
         </button>
       </div>
@@ -133,7 +208,7 @@ export function Opportunities() {
                       </td>
                       <td className="px-6 py-4 font-medium">{(opp as any).owner_name || "Platform Admin"}</td>
                       <td className="px-6 py-4 text-right">
-                        <button className="text-primary hover:underline text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 ml-auto bg-transparent border-none">
+                        <button onClick={() => toast.info('Feature coming soon!')} className="text-primary hover:underline text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 ml-auto bg-transparent border-none">
                           View Details <ExternalLink className="size-3" />
                         </button>
                       </td>

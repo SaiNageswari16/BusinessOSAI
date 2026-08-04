@@ -155,6 +155,10 @@ class InvoiceLineCreate(BaseModel):
     product_name: str = Field(min_length=1, max_length=255)
     product_sku: str | None = None
     hsn_code: str | None = Field(default=None, max_length=20)
+    batch_number: str | None = Field(default=None, max_length=100)
+    expiry_date: date | None = None
+    mfg_date: date | None = None
+    mrp: float | None = Field(default=None, ge=0)
     description: str | None = None
     uom: str | None = Field(default=None, max_length=30)
     quantity: float = Field(gt=0, default=1)
@@ -173,6 +177,10 @@ class InvoiceLineResponse(ORMModel):
     product_name: str
     product_sku: str | None
     hsn_code: str | None
+    batch_number: str | None
+    expiry_date: date | None
+    mfg_date: date | None
+    mrp: float | None
     description: str | None
     uom: str | None
     quantity: float

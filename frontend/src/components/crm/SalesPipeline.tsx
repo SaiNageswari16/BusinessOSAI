@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Filter, Download, PieChart, TrendingUp, DollarSign, Target, Percent } from "lucide-react";
@@ -67,7 +68,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
           <p className="text-sm text-muted-foreground">Analyze conversion rates and revenue forecast across stages.</p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
             <Download className="size-4" /> Export Report
           </button>
         </div>

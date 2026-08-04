@@ -5,6 +5,16 @@ import { Plus, Search, Filter, MoreHorizontal, Target, Calendar, User } from "lu
 import { crmOpportunitiesApi, type CrmOpportunity } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/tenant-context";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface Props {
   tab?: string;
@@ -16,7 +26,26 @@ export function Deals({ tab = "all_deals" }: Props) {
   const [searchTerm, setSearchTerm] = useState("");
   const [deals, setDeals] = useState<CrmOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newDeal, setNewDeal] = useState({ name: "", customer_name: "", amount: 0, probability: 50, stage: "Prospecting" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const stages = ["Prospecting", "Qualification", "Needs Analysis", "Value Proposition", "Negotiation", "Closed Won", "Closed Lost"];
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await crmOpportunitiesApi.create(newDeal);
+      toast.success("Deal created successfully!");
+      setIsAddModalOpen(false);
+      setNewDeal({ name: "", customer_name: "", amount: 0, probability: 50, stage: "Prospecting" });
+      void fetchDeals();
+    } catch(err: any) {
+      toast.error(err?.message || "Failed to create deal");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const fetchDeals = async () => {
     setLoading(true);
@@ -70,12 +99,52 @@ export function Deals({ tab = "all_deals" }: Props) {
               className="w-64 pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none"
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
             <Filter className="size-4" /> Filter
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <Plus className="size-4" /> Add Deal
-          </button>
+          <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+            <DialogTrigger asChild>
+              <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+                <Plus className="size-4" /> Add Deal
+              </button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Add New Deal</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleAddSubmit} className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Deal Name</Label>
+                  <Input required value={newDeal.name} onChange={e => setNewDeal({...newDeal, name: e.target.value})} placeholder="e.g. Enterprise License" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer / Lead Name</Label>
+                  <Input value={newDeal.customer_name} onChange={e => setNewDeal({...newDeal, customer_name: e.target.value})} placeholder="e.g. Acme Corp" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Amount (₹)</Label>
+                    <Input required type="number" min="0" value={newDeal.amount} onChange={e => setNewDeal({...newDeal, amount: Number(e.target.value)})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Probability (%)</Label>
+                    <Input required type="number" min="0" max="100" value={newDeal.probability} onChange={e => setNewDeal({...newDeal, probability: Number(e.target.value)})} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Stage</Label>
+                  <select value={newDeal.stage} onChange={e => setNewDeal({...newDeal, stage: e.target.value})} className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    {stages.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <DialogFooter className="pt-4">
+                  <button type="submit" disabled={isSubmitting} className="flex items-center justify-center gap-2 w-full px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                    {isSubmitting ? "Saving..." : "Save Deal"}
+                  </button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

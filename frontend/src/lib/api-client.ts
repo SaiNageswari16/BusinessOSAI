@@ -4,7 +4,7 @@
  * Auth token is injected from localStorage (set by AuthProvider).
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000/api/v1";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000/api/v1";
 
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || url.trim() === "") return "";
@@ -4038,4 +4038,27 @@ export const taxApi = {
   createTaxPayment: (data: Partial<TaxPayment>) => request<TaxPayment>("POST", "/tax/payments", data),
   updateTaxPayment: (id: string, data: Partial<TaxPayment>) => request<TaxPayment>("PATCH", `/tax/payments/${id}`, data),
   deleteTaxPayment: (id: string) => request<{ message: string }>("DELETE", `/tax/payments/${id}`),
+};
+
+// ─── CRM & Sales ─────────────────────────────────────────────────────────────
+
+export const crmApi = {
+  // Intelligence
+  getIntelligenceAnalytics: () => request<any>("GET", "/crm/intelligence/analytics"),
+  getChurnPrediction: () => request<any>("GET", "/crm/intelligence/churn"),
+  getLifetimeValue: () => request<any>("GET", "/crm/intelligence/lifetime-value"),
+  getPurchaseBehaviour: () => request<any>("GET", "/crm/intelligence/purchase-behaviour"),
+  getRfmAnalysis: () => request<any>("GET", "/crm/intelligence/rfm"),
+  getRecommendations: () => request<any>("GET", "/crm/intelligence/recommendations"),
+  
+  // Facebook Ads & Marketing
+  getAdHistory: (page = 1, pageSize = 50) => request<any>("GET", "/crm/campaigns/ad-history", undefined, { page, page_size: pageSize }),
+  getFacebookCampaigns: () => request<any>("GET", "/crm/facebook/campaigns"),
+  
+  // Pipeline & Core
+  getOpportunities: () => request<any>("GET", "/crm/opportunities"),
+  getLeads: (page = 1, pageSize = 100) => request<any>("GET", "/crm/leads", undefined, { page, page_size: pageSize }),
+  getCustomers: (page = 1, pageSize = 200) => request<any>("GET", "/crm/customers", undefined, { page, page_size: pageSize }),
+  getQuotations: () => request<any>("GET", "/crm/quotations"),
+  getSalesOrders: () => request<any>("GET", "/crm/sales-orders")
 };
