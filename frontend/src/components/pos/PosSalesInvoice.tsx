@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { posApi, crmApi, invoicesApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
+import { triggerThermalPrint } from "../../lib/print-helper";
 
 interface InvoiceItem {
   id: string;
@@ -195,6 +197,37 @@ export function PosSalesInvoice() {
     toast.success(`Party "${newCust.name}" created and selected!`);
   };
 
+  const [printedBill, setPrintedBill] = useState<any>(null);
+
+  const handlePrintThermal = () => {
+    if (items.length === 0) return toast.error("Please add items to invoice before printing receipt.");
+    const customerObj = customers.find((c) => c.id === selectedCustomer);
+    const billData = {
+      invoice_number: invoiceNumber,
+      date: invoiceDate,
+      customerName: customerObj?.name || 'Walk-in Customer',
+      customerPhone: customerObj?.phone || '',
+      items: items.map(it => ({
+        name: it.product_name || 'Item',
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        hsn_code: it.hsn_code,
+        discount: it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value,
+        subtotal: (it.quantity * it.unit_price) - (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value)
+      })),
+      subtotal: subtotal,
+      discount_amount: totalDiscount,
+      tax_amount: totalTax,
+      grand_total: grandTotal,
+      payment_method: paymentMode,
+      payment_status: 'PAID'
+    };
+    setPrintedBill(billData);
+    setTimeout(() => {
+      triggerThermalPrint();
+    }, 100);
+  };
+
   const handleSave = async () => {
     if (!selectedCustomer) return toast.error("Please select a customer or party first.");
     if (items.length === 0) return toast.error("Please add at least one item.");
@@ -222,7 +255,8 @@ export function PosSalesInvoice() {
         })),
       });
       toast.success("Sales Invoice created successfully!");
-      setItems([]);
+      // Automatically trigger thermal print upon successful save
+      handlePrintThermal();
     } catch (error: any) {
       toast.error(error?.detail || "Failed to create invoice");
     } finally {
@@ -232,6 +266,7 @@ export function PosSalesInvoice() {
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
+      <ThermalReceiptPrinter bill={printedBill} />
       {/* Sleek Modern Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between shadow-sm sticky top-0 z-30">
         <div className="flex items-center gap-3">
@@ -250,8 +285,11 @@ export function PosSalesInvoice() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">
-            <Settings className="w-4 h-4 text-slate-500" /> Options
+          <button
+            onClick={handlePrintThermal}
+            className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+          >
+            <QrCode className="w-4 h-4 text-indigo-600" /> Print Thermal (80mm)
           </button>
           <button
             onClick={() => setItems([])}
@@ -264,7 +302,7 @@ export function PosSalesInvoice() {
             onClick={handleSave}
             className="px-6 py-2 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2 disabled:opacity-50"
           >
-            {isSaving ? "Saving Invoice..." : "Save Sales Invoice"}
+            {isSaving ? "Saving Invoice..." : "Save & Print Receipt"}
           </button>
         </div>
       </div>

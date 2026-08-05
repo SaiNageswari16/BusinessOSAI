@@ -1,16 +1,32 @@
-# BusinessOS AI - Core ERP Backend
+# BusinessOS AI - Core ERP Backend Dependencies
+
+# FastAPI Web Framework & ASGI Application Server
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+
+# Database Layer & Migrations (PostgreSQL Async)
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
+alembic==1.14.0
+
+# Data Validation & Environment Settings
 pydantic[email]==2.10.4
 pydantic-settings==2.7.0
+python-dotenv==1.0.1
+
+# Security, Auth Tokens & Password Hashing
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
-python-multipart==0.0.20
-python-dotenv==1.0.1
-alembic==1.14.0
 authlib==1.2.0
+python-multipart==0.0.20
+
+# Network, Web Scraping & PDF Utilities
 requests==2.32.3
+httpx==0.28.1
+beautifulsoup4==4.12.3
 pypdf==6.14.2
+
+# Testing Frameworks
+pytest==8.3.4
+pytest-asyncio==0.25.3

@@ -14,118 +14,12 @@ import { useTenant } from "../../contexts/tenant-context";
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
 
+import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
+import { triggerThermalPrint } from "../../lib/print-helper";
+
 const PrintableReceipt = ({ bill, allBills }: { bill: any, allBills: any[] }) => {
-  const { tenant } = useTenant();
-  
   if (!bill) return null;
-
-  const totalQty = bill.items?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
-  const totalItems = bill.items?.length || 0;
-
-  const companyName = tenant?.name || "";
-  const address = (tenant?.raw as any)?.address || "";
-  const taxId = (tenant?.raw as any)?.tax_id || "";
-  const cin = (tenant?.raw as any)?.registration_number || "";
-  const email = (tenant?.raw as any)?.email || "";
-
-  return createPortal(
-    <div id="printable-receipt-portal" className="w-[300px] ml-0 mr-auto p-4 font-mono text-black text-[11px] leading-tight" style={{ fontFamily: 'monospace' }}>
-      <div className="text-center mb-1">
-        <h2 className="text-sm font-bold mb-0">{companyName}</h2>
-        <p className="text-[10px] whitespace-pre-line">{address}</p>
-        <p className="text-[10px]">GSTIN/UIN: {taxId}<br/>CIN: {cin}<br/>E-Mail: {email}</p>
-      </div>
-      
-      <div className="text-center font-bold border-y border-black py-0.5 my-1 text-xs">
-        TAX INVOICE
-      </div>
-
-      <div className="text-[10px] mb-1">
-        <div className="flex justify-between">
-          <span>Bill No. : {bill.id || bill.rawId?.substring(0,8)}</span>
-          <span>Time : {new Date(bill.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Date : {new Date(bill.date).toLocaleDateString()}</span>
-          <span>User : Admin</span>
-        </div>
-        <div>Party Name: Cash Customer</div>
-      </div>
-      
-      <div className="flex justify-between font-bold border-y border-black py-0.5 mb-1">
-        <span className="w-1/12 text-left">Sl</span>
-        <span className="w-5/12 text-left pl-1">Description</span>
-        <span className="w-2/12 text-center">Qty</span>
-        <span className="w-2/12 text-right">Rate</span>
-        <span className="w-2/12 text-right">Amount</span>
-      </div>
-      
-      <div className="min-h-[40px]">
-        {bill.items?.map((item: any, idx: number) => {
-          const childRefunds = allBills.filter(b => b.parentTxId === bill.rawId);
-          const refundedQty = childRefunds.reduce((sum, child) => {
-            const childItem = child.items.find((i: any) => i.product_id === item.product_id);
-            return sum + (childItem ? Math.abs(childItem.quantity) : 0);
-          }, 0);
-
-          const rate = item.price ? item.price : (item.quantity > 0 ? item.subtotal / item.quantity : 0);
-
-          return (
-            <div key={idx} className="flex justify-between mb-0.5 items-start">
-              <span className="w-1/12 text-left">{idx + 1}</span>
-              <span className="w-5/12 text-left break-words pl-1 pr-1">{item.name || `Product ${item.product_id.substring(0,4)}`}</span>
-              <span className="w-2/12 text-center">{item.quantity} {refundedQty > 0 && `(-${refundedQty})`}</span>
-              <span className="w-2/12 text-right">{rate.toFixed(2)}</span>
-              <span className="w-2/12 text-right">{Number(item.subtotal).toFixed(2)}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="border-t border-black mt-1"></div>
-      
-      <div className="flex justify-between items-center mb-1 py-0.5">
-        <span className="w-6/12 text-center font-bold">Total</span>
-        <span className="w-2/12 text-center font-bold">{totalQty}</span>
-        <span className="w-4/12 text-right font-bold">₹ {bill.subtotal?.toFixed(2) || 0}</span>
-      </div>
-
-      <div className="border-t border-black mb-1"></div>
-
-      <div className="flex justify-between mb-0.5">
-        <span>CGST @{(bill.tax/2 / bill.subtotal * 100).toFixed(0)}%</span>
-        <span>{(bill.tax/2 || 0).toFixed(2)}</span>
-      </div>
-      <div className="flex justify-between mb-0.5">
-        <span>SGST @{(bill.tax/2 / bill.subtotal * 100).toFixed(0)}%</span>
-        <span>{(bill.tax/2 || 0).toFixed(2)}</span>
-      </div>
-      
-      <div className="border-t border-black my-1"></div>
-
-      <div className="flex justify-between font-bold text-sm border-y border-black py-1 mb-2">
-        <span>Total Final Amount :</span>
-        <span>{bill.total?.toFixed(2)}</span>
-      </div>
-      
-      <div className="text-[9px] mb-2 text-justify">
-        <span className="font-bold underline">Declaration :</span><br/>
-        We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
-      </div>
-
-      <div className="text-center font-bold text-[10px] mt-2 mb-2">
-        <p>THANK YOU FOR SHOPPING WITH US</p>
-        <p>VISIT AGAIN | HAVE A NICE DAY</p>
-      </div>
-
-      {/* QR Code Placeholder */}
-      <div className="flex flex-col items-center mt-2 mb-2">
-        <span className="font-bold mb-1 text-[10px]">e-Invoice</span>
-        <QrCode className="w-20 h-20 text-black mb-1" strokeWidth={1.5} />
-      </div>
-    </div>,
-    document.body
-  );
+  return <ThermalReceiptPrinter bill={bill} />;
 };
 
 const PlaceholderView = ({ title, icon: Icon, description }: any) => (
@@ -1401,7 +1295,7 @@ export const RecentBillsView = ({ onRefund }: { onRefund?: (id: string) => void 
             <div className="p-4 border-t border-slate-200 bg-white flex gap-3">
               <button 
                 onClick={() => {
-                  window.print();
+                  triggerThermalPrint();
                 }}
                 className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-colors"
               >

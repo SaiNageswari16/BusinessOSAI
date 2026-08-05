@@ -203,39 +203,49 @@
   box-shadow: 0 0 0 1px var(--glass-border), 0 8px 40px -12px color-mix(in oklab, var(--brand-violet) 30%, transparent);
 }
 
-/* Print & PDF Export Styles */
+/* Print & Thermal Receipt Styles */
 @media print {
-  /* Hide navigation, topbar, and elements marked with no-print */
-  header, nav, .no-print, [data-no-print] {
+  /* Hide all web UI elements when printing thermal receipts */
+  body.printing-receipt > *:not(#printable-receipt-portal),
+  body.printing-receipt #root > *:not(#printable-receipt-portal),
+  header, nav, footer, .no-print, [data-no-print] {
     display: none !important;
   }
-  
-  /* Standard page margin & sizing for PDF export */
-  @page {
-    margin: 12mm;
-    size: auto;
-  }
-  
+
   body, html {
     background-color: white !important;
     color: black !important;
     height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: visible !important;
   }
 
-  main, section, div {
-    overflow: visible !important;
+  /* Target 80mm HS-KH80 Thermal Printer Portal */
+  #printable-receipt-portal {
+    display: block !important;
+    visibility: visible !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    padding: 3mm !important;
+    margin: 0 !important;
+    background: white !important;
+    color: black !important;
+    font-family: monospace, "Courier New", Courier, monospace !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
   }
 
-  /* Specific 80mm POS Thermal Receipt Printing when thermal receipt is active */
-  body.printing-receipt body > *:not(#printable-receipt-portal) {
-    display: none !important;
+  #printable-receipt-portal * {
+    visibility: visible !important;
+    color: black !important;
   }
-  
-  @media print {
-    @page {
-      margin: 0;
-      size: 80mm auto;
-    }
+
+  @page {
+    margin: 0mm !important;
+    size: 80mm auto !important;
   }
 }
