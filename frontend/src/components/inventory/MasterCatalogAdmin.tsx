@@ -53,7 +53,7 @@ export function MasterCatalogAdmin() {
   const [items, setItems] = useState<MasterCatalogItem[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(50);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -80,12 +80,12 @@ export function MasterCatalogAdmin() {
   };
 
   // Fetch list of master catalog products
-  const fetchList = async () => {
+  const fetchList = async (targetPage = page, targetSize = pageSize) => {
     setIsLoadingList(true);
     try {
       const res = await inventoryApi.adminGetMasterCatalogList({
-        page,
-        page_size: pageSize,
+        page: targetPage,
+        page_size: targetSize,
         search: searchQuery.trim() || undefined,
         rag_status: statusFilter !== "all" ? statusFilter : undefined
       });
@@ -105,16 +105,10 @@ export function MasterCatalogAdmin() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch list on filter or query change
+  // Combined fetch trigger on query, status filter, page, or page size change
   useEffect(() => {
-    setPage(1);
-    fetchList();
-  }, [searchQuery, statusFilter]);
-
-  // Fetch list on page change
-  useEffect(() => {
-    fetchList();
-  }, [page]);
+    fetchList(page, pageSize);
+  }, [page, pageSize, searchQuery, statusFilter]);
 
   const handlePauseResume = async () => {
     try {
@@ -474,12 +468,29 @@ export function MasterCatalogAdmin() {
 
         {/* Pagination bar */}
         {!isLoadingList && totalItems > 0 && (
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-muted-foreground">
-              Showing <span className="font-semibold text-foreground">{(page - 1) * pageSize + 1}</span> to{" "}
-              <span className="font-semibold text-foreground">{Math.min(page * pageSize, totalItems)}</span> of{" "}
-              <span className="font-semibold text-foreground">{totalItems}</span> products
-            </span>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">
+                Showing <span className="font-semibold text-foreground">{(page - 1) * pageSize + 1}</span> to{" "}
+                <span className="font-semibold text-foreground">{Math.min(page * pageSize, totalItems)}</span> of{" "}
+                <span className="font-semibold text-foreground">{totalItems}</span> products
+              </span>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span>Show:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="bg-background border border-input rounded-md px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                  <option value={100}>100 / page</option>
+                </select>
+              </div>
+            </div>
 
             <div className="flex items-center gap-2">
               <Button

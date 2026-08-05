@@ -5,10 +5,11 @@ import {
   Info, Camera, Sparkles, Printer, Database, Boxes, LayoutGrid, List as ListIcon, Combine, ArrowRightLeft, ArrowLeft,
   Truck, RefreshCw, Heart, History, Wallet
 } from "lucide-react";
-import { posApi, inventoryApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
+import { posApi, inventoryApi, crmApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { posStore, posSession, posCustomers, paymentMethods, posCategories } from "../../lib/pos-fallback";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import { useSearch, useNavigate } from "@tanstack/react-router";
 import {
   BarcodeScannerView, QuickSearchView, HoldBillsView, SplitBillsView,
@@ -40,6 +41,58 @@ function PosTerminalInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState(posCustomers[0]);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [customerList, setCustomerList] = useState<any[]>(posCustomers);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [customerTab, setCustomerTab] = useState<'search' | 'new'>('search');
+  const [newCustName, setNewCustName] = useState("");
+  const [newCustPhone, setNewCustPhone] = useState("");
+  const [newCustEmail, setNewCustEmail] = useState("");
+  const [newCustTier, setNewCustTier] = useState("Silver");
+
+  useEffect(() => {
+    crmApi.getCustomers(1, 100)
+      .then((res: any) => {
+        const items = res?.items || res;
+        if (Array.isArray(items) && items.length > 0) {
+          const formatted = items.map((c: any) => ({
+            id: c.id,
+            name: c.name || "Customer",
+            phone: c.phone || "",
+            email: c.email || "",
+            points: c.loyalty_points || 150,
+            tier: c.tier || "Silver",
+            wallet: c.wallet_balance || 0,
+            totalSpent: c.total_spent ? `₹${c.total_spent}` : "₹0.00",
+            lastVisit: "Recent"
+          }));
+          setCustomerList([posCustomers[0], ...formatted]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleCreateCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustName.trim()) return;
+    const newCust = {
+      id: `CUST${Date.now().toString().slice(-4)}`,
+      name: newCustName.trim(),
+      phone: newCustPhone.trim(),
+      email: newCustEmail.trim(),
+      points: 100,
+      tier: newCustTier,
+      wallet: 0,
+      totalSpent: "₹0.00",
+      lastVisit: "Just Now"
+    };
+    setCustomerList(prev => [posCustomers[0], newCust, ...prev.filter(c => c.id !== 'walk-in')]);
+    setSelectedCustomer(newCust);
+    setIsCustomerModalOpen(false);
+    setNewCustName("");
+    setNewCustPhone("");
+    setNewCustEmail("");
+  };
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [isEditingProduct, setIsEditingProduct] = useState(false);
   const [editForm, setEditForm] = useState<any>({
@@ -1155,7 +1208,10 @@ function PosTerminalInner() {
 
             {/* Customer Profile */}
             <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-              <button className="w-full bg-white border border-slate-200 hover:border-slate-400 rounded-xl p-3 flex items-center justify-between transition-colors shadow-sm group mb-2">
+              <button
+                onClick={() => setIsCustomerModalOpen(true)}
+                className="w-full bg-white border border-slate-200 hover:border-indigo-400 rounded-xl p-3 flex items-center justify-between transition-all shadow-sm hover:shadow-md group mb-2 text-left"
+              >
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center border border-slate-200 group-hover:bg-slate-900 group-hover:text-white transition-colors">
                     <UserIcon className="w-5 h-5" />
@@ -1624,6 +1680,208 @@ function PosTerminalInner() {
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Customer Selection & Registration Modal */}
+      <AnimatePresence>
+        {isCustomerModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCustomerModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-100 z-10"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
+                <div className="flex items-center gap-3 text-slate-900">
+                  <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
+                    <UserIcon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-lg leading-tight">Customer Profile Selection</h3>
+                    <p className="text-xs text-slate-400 font-semibold mt-0.5">Attach Customer to Terminal Cart & Rewards</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsCustomerModalOpen(false)}
+                  className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-200 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Mode Toggle Pills */}
+              <div className="p-3 border-b border-slate-100 bg-white flex gap-2">
+                <button
+                  onClick={() => setCustomerTab('search')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                    customerTab === 'search'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Search Existing Customer
+                </button>
+                <button
+                  onClick={() => setCustomerTab('new')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                    customerTab === 'new'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  + Add New Customer
+                </button>
+              </div>
+
+              <div className="p-5 overflow-y-auto flex-1 bg-slate-50">
+                {customerTab === 'search' ? (
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <input
+                        type="text"
+                        placeholder="Search by customer name, mobile, or email..."
+                        value={customerSearchQuery}
+                        onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-indigo-500 shadow-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                      {customerList
+                        .filter(c =>
+                          !customerSearchQuery.trim() ||
+                          c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+                          (c.phone && c.phone.includes(customerSearchQuery)) ||
+                          (c.email && c.email.toLowerCase().includes(customerSearchQuery.toLowerCase()))
+                        )
+                        .map(cust => (
+                          <div
+                            key={cust.id}
+                            onClick={() => {
+                              setSelectedCustomer(cust);
+                              setIsCustomerModalOpen(false);
+                            }}
+                            className={`p-3.5 bg-white border rounded-xl cursor-pointer transition-all flex items-center justify-between hover:border-indigo-400 hover:shadow-md ${
+                              selectedCustomer.id === cust.id ? 'border-indigo-600 ring-2 ring-indigo-500/20 bg-indigo-50/20' : 'border-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center border border-slate-200">
+                                {cust.name.charAt(0)}
+                              </div>
+                              <div>
+                                <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                                  {cust.name}
+                                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.2 rounded">
+                                    {cust.tier || 'Silver'} Tier
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-3 mt-0.5">
+                                  {cust.phone && <span>📞 {cust.phone}</span>}
+                                  <span>{cust.points || 0} Pts</span>
+                                </div>
+                              </div>
+                            </div>
+                            <button className="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors">
+                              Select
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+                      <button
+                        onClick={() => {
+                          setSelectedCustomer(posCustomers[0]);
+                          setIsCustomerModalOpen(false);
+                        }}
+                        className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                      >
+                        Reset to Walk-in Guest
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleCreateCustomer} className="space-y-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Customer Full Name *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Alex Rivera"
+                        value={newCustName}
+                        onChange={(e) => setNewCustName(e.target.value)}
+                        required
+                        className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
+                        <input
+                          type="text"
+                          placeholder="+1 (555) 019-2834"
+                          value={newCustPhone}
+                          onChange={(e) => setNewCustPhone(e.target.value)}
+                          className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="alex@example.com"
+                          value={newCustEmail}
+                          onChange={(e) => setNewCustEmail(e.target.value)}
+                          className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Customer Tier</label>
+                      <select
+                        value={newCustTier}
+                        onChange={(e) => setNewCustTier(e.target.value)}
+                        className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="Bronze">Bronze Tier</option>
+                        <option value="Silver">Silver Tier</option>
+                        <option value="Gold">Gold Tier</option>
+                        <option value="Platinum">Platinum Tier</option>
+                      </select>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCustomerTab('search')}
+                        className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md"
+                      >
+                        Create & Attach Customer
+                      </button>
+                    </div>
+                  </form>
                 )}
               </div>
             </motion.div>

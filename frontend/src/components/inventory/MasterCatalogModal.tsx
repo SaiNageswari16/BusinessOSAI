@@ -115,6 +115,27 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
     return () => clearInterval(timer);
   }, [isOpen]);
 
+  // Auto-load initial 50 sample products when modal opens
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const loadInitialSample = async () => {
+      if (results.length > 0) return;
+      setIsLoading(true);
+      try {
+        const res = await inventoryApi.adminGetMasterCatalogList({ page: 1, page_size: 50 });
+        if (res.items && res.items.length > 0) {
+          setResults(res.items);
+          setHasSearched(true);
+        }
+      } catch (err) {
+        console.error("Failed to load initial master catalog items:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadInitialSample();
+  }, [isOpen]);
+
   const handleTriggerBulkRAG = async () => {
     setIsTriggeringRAG(true);
     try {

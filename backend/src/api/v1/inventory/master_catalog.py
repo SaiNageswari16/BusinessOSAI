@@ -1505,7 +1505,14 @@ def _catalog_item(identity: dict, barcode: str, enrichment: Optional[dict] = Non
         ret = str(val).strip()
         return ret if ret else None
 
-    image_url = _download_and_cache_product_image(identity.get("image_url") or enrichment.get("image_url"), barcode)
+    raw_img = identity.get("image_url") or enrichment.get("image_url") or "/static/uploads/products/default_product.jpg"
+    if raw_img and raw_img.startswith("http") and barcode:
+        try:
+            import asyncio
+            asyncio.create_task(asyncio.to_thread(_download_and_cache_product_image, raw_img, barcode))
+        except Exception:
+            pass
+    image_url = raw_img
     return MasterCatalogItem(
         name=identity["name"], brand=to_str(identity.get("brand") or enrichment.get("brand")), barcode=barcode,
         sku_code=to_str(enrichment.get("sku_code")), product_code=to_str(enrichment.get("product_code")), hsn_code=to_str(enrichment.get("hsn_code")), plu_no=to_str(enrichment.get("plu_no")),

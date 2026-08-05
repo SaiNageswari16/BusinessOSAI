@@ -395,10 +395,60 @@ async def lookup_product_by_barcode(
                 }
             )
 
-    # Not found in any DB — return fast (10ms). No dummy provisional fallbacks.
+    # Tier 3: Real-Time Instant Web Sourcing for New Barcodes (150ms text lookup)
+    ext_data = await _fast_fetch_external_barcode(clean_barcode)
+    if ext_data and ext_data.get("name"):
+        prod_name = ext_data["name"]
+        brand_name = ext_data.get("brand", "")
+        cat_name = ext_data.get("category", "General")
+        mrp_val = float(ext_data.get("mrp", 0.0))
+        sp_val = float(ext_data.get("selling_price", 0.0)) or mrp_val
+        img_url = ext_data.get("image") or "/static/uploads/products/default_product.jpg"
+
+        # Save to Master Catalog PostgreSQL table so subsequent lookups hit DB in 10ms
+        try:
+            new_mc = MasterCatalogProduct(
+                id=uuid.uuid4(),
+                name=prod_name,
+                brand=brand_name or "General",
+                barcode=clean_barcode,
+                sku_code=f"SKU-{clean_barcode}",
+                mrp=mrp_val,
+                sale_price=sp_val,
+                category=cat_name,
+                image_url=img_url,
+                source="AI_WEB_SEARCH"
+            )
+            db.add(new_mc)
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"Could not save web-searched barcode to master catalog: {e}")
+
+        # Non-blocking background image enrichment
+        asyncio.create_task(_async_bg_enrich_product_image(clean_barcode, prod_name, brand_name))
+
+        return ProductBarcodeLookupResponse(
+            success=True,
+            product={
+                "id": f"web-{clean_barcode}",
+                "barcode": clean_barcode,
+                "name": prod_name,
+                "brand": brand_name,
+                "category": cat_name,
+                "package_size": "Standard",
+                "mrp": mrp_val,
+                "selling_price": sp_val,
+                "gst": 18.0,
+                "stock": 0,
+                "image": img_url,
+                "source": "AI_WEB_SEARCH"
+            }
+        )
+
+    # Not found in DB or web search
     return ProductBarcodeLookupResponse(
         success=False,
-        message="Barcode not found in database",
+        message="Barcode not found in database or web search",
         product=None
     )
 
