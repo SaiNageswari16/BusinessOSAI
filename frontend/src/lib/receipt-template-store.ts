@@ -87,7 +87,6 @@ export function getStoredReceiptTemplates(): ReceiptTemplate[] {
 export function getActiveReceiptTemplate(): ReceiptTemplate {
   if (typeof window !== 'undefined') {
     try {
-      // 1. First check if user marked an active template in Inventory Print Templates
       const invTemplatesRaw = localStorage.getItem('businessos_print_templates_v1');
       const userActiveDefaultsRaw = localStorage.getItem('user_active_print_templates_v1');
 
@@ -95,7 +94,6 @@ export function getActiveReceiptTemplate(): ReceiptTemplate {
         const invTemplates = JSON.parse(invTemplatesRaw);
         const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
 
-        // Find selected thermal ID, or invoice ID, or default
         const activeThermalId = activeDefaults.thermal || activeDefaults.invoices;
         let matched = invTemplates.find((t: any) => t.id === activeThermalId);
 
@@ -150,6 +148,55 @@ export function getActiveReceiptTemplate(): ReceiptTemplate {
   const templates = getStoredReceiptTemplates();
   const active = templates.find((t) => t.isDefault);
   return active || templates[0] || DEFAULT_RECEIPT_TEMPLATE;
+}
+
+export function getActiveBarcodeTemplate(): any {
+  if (typeof window !== 'undefined') {
+    try {
+      const invTemplatesRaw = localStorage.getItem('businessos_print_templates_v1');
+      const userActiveDefaultsRaw = localStorage.getItem('user_active_print_templates_v1');
+
+      if (invTemplatesRaw) {
+        const invTemplates = JSON.parse(invTemplatesRaw);
+        const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
+
+        const activeBarcodeId = activeDefaults.barcodes;
+        let matched = invTemplates.find((t: any) => t.id === activeBarcodeId);
+
+        if (!matched) {
+          matched = invTemplates.find((t: any) => t.category === 'barcodes' && t.isDefault) ||
+                    invTemplates.find((t: any) => t.category === 'barcodes') ||
+                    invTemplates.find((t: any) => t.id === 'master-tpl-barcodes-retail');
+        }
+
+        if (matched) {
+          return matched;
+        }
+      }
+    } catch (e) {
+      console.error('Error loading active barcode template:', e);
+    }
+  }
+
+  return {
+    id: 'master-tpl-barcodes-retail',
+    name: 'Retail Jewelry & Apparel Tag (2 Inch / 50x25mm)',
+    category: 'barcodes',
+    paperSize: '50x25mm',
+    storeName: 'LAZYMONKEY AI SUPERSTORE',
+    primaryColor: '#0f172a',
+    fields: {
+      showCompanyName: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showCategoryBrand: true,
+      showBarcodeGraphic: true,
+      showHSN: true,
+      showMfgExpDate: true
+    }
+  };
 }
 
 export function saveReceiptTemplates(templates: ReceiptTemplate[]): void {

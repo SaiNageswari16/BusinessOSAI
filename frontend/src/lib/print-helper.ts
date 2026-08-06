@@ -5,6 +5,8 @@ export function triggerThermalPrint(customPaperWidth?: string) {
 
   const activeTemplate = getActiveReceiptTemplate();
   const paperWidth = customPaperWidth || activeTemplate.paperSize || '80mm';
+  const is58 = paperWidth === '58mm';
+  const printableWidth = is58 ? '48mm' : '72mm';
 
   document.body.classList.add('printing-receipt');
 
@@ -19,15 +21,16 @@ export function triggerThermalPrint(customPaperWidth?: string) {
   styleEl.innerHTML = `
     @media print {
       @page {
-        size: ${paperWidth} portrait !important;
+        size: auto !important;
         margin: 0mm !important;
       }
       html, body {
-        width: ${paperWidth} !important;
+        width: 100% !important;
+        height: auto !important;
         margin: 0 !important;
         padding: 0 !important;
-        background: white !important;
-        color: black !important;
+        background: #ffffff !important;
+        color: #000000 !important;
         overflow: visible !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
@@ -44,19 +47,20 @@ export function triggerThermalPrint(customPaperWidth?: string) {
         position: absolute !important;
         left: 0 !important;
         top: 0 !important;
-        width: ${paperWidth} !important;
-        max-width: ${paperWidth} !important;
-        padding: 2mm 3mm !important;
+        width: ${printableWidth} !important;
+        max-width: ${printableWidth} !important;
+        padding: 1mm 2mm !important;
         margin: 0 !important;
-        background: white !important;
-        color: black !important;
+        background: #ffffff !important;
+        color: #000000 !important;
         z-index: 999999 !important;
         font-family: 'Courier New', Courier, monospace !important;
         box-sizing: border-box !important;
       }
       #printable-receipt-portal * {
         visibility: visible !important;
-        color: black !important;
+        color: #000000 !important;
+        background: transparent !important;
         box-sizing: border-box !important;
       }
     }

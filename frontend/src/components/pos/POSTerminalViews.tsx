@@ -4,18 +4,19 @@ import {
   ScanBarcode, Search, Clock, Combine, Truck, RefreshCw, CreditCard,
   Tag, Heart, History, Sparkles, AlertCircle, ShoppingCart, ArrowRightLeft,
   Banknote, Camera, QrCode, LayoutGrid, List as ListIcon, Edit2, Trash2, X, Info, Boxes,
-  CheckCircle2, Keyboard, MonitorSmartphone, Wallet
+  CheckCircle2, Keyboard, MonitorSmartphone, Wallet, Printer
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { posProducts, posTransactions, posCustomers, posCategories } from "../../lib/pos-fallback";
 import { posApi, POSTransactionHistory } from "../../lib/api-client";
 import { useTenant } from "../../contexts/tenant-context";
+import { ESCPOSPrinter } from "../../lib/escpos-printer";
+import { triggerThermalPrint } from "../../lib/print-helper";
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
 
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
-import { triggerThermalPrint } from "../../lib/print-helper";
 
 const PrintableReceipt = ({ bill, allBills }: { bill: any, allBills: any[] }) => {
   if (!bill) return null;
@@ -1294,12 +1295,21 @@ export const RecentBillsView = ({ onRefund }: { onRefund?: (id: string) => void 
             {/* Actions */}
             <div className="p-4 border-t border-slate-200 bg-white flex gap-3">
               <button 
-                onClick={() => {
-                  triggerThermalPrint();
+                onClick={async () => {
+                  try {
+                    const escpos = new ESCPOSPrinter();
+                    const directPrinted = await escpos.printDirectUSB(selectedBill);
+                    if (!directPrinted) {
+                      triggerThermalPrint();
+                    }
+                  } catch (e) {
+                    triggerThermalPrint();
+                  }
                 }}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-colors"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
               >
-                Print Receipt
+                <Printer className="w-4 h-4" />
+                Print (USB / System)
               </button>
               {!selectedBill.isRefund && (
                 <button 

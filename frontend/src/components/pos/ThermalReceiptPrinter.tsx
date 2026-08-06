@@ -100,15 +100,16 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   const grandTotal = bill.total || bill.grand_total || (rawSubtotal - rawDiscount + rawTax);
 
   const is58mm = invTemplate?.paperSize === '58mm' || fallbackStore.paperSize === '58mm';
-  const widthClass = is58mm ? 'w-[240px]' : 'w-[320px]';
+  const printableWidth = is58mm ? '48mm' : '72mm';
 
   return createPortal(
     <div
       id="printable-receipt-portal"
-      className={`${widthClass} bg-[#fffffb] text-black p-3 font-mono text-[11px] leading-tight select-none relative`}
+      className="bg-white text-black p-1 font-mono text-[11px] leading-tight select-none relative"
       style={{
-        width: is58mm ? '58mm' : '80mm',
-        maxWidth: is58mm ? '58mm' : '80mm',
+        width: printableWidth,
+        maxWidth: printableWidth,
+        margin: '0 auto',
         fontFamily: "'Courier New', Courier, monospace"
       }}
     >

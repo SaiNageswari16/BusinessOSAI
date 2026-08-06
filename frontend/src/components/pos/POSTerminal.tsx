@@ -16,6 +16,8 @@ import {
   DeliveryView, ExchangeView, RefundView, PriceCheckView,
   FavoritesView, RecentBillsView, AISuggestionsView, WalletView
 } from "./POSTerminalViews";
+import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
+import { triggerThermalPrint } from "../../lib/print-helper";
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(val);
 
@@ -143,6 +145,7 @@ function PosTerminalInner() {
   // Cash Payment States
   const [cashModalOpen, setCashModalOpen] = useState(false);
   const [cashTendered, setCashTendered] = useState("");
+  const [completedCheckoutBill, setCompletedCheckoutBill] = useState<any | null>(null);
 
   // Held Bills Modal States
   const [heldBillsModalOpen, setHeldBillsModalOpen] = useState(false);
@@ -490,6 +493,31 @@ function PosTerminalInner() {
       const response = await posApi.checkout(payload);
       console.log("Checkout Success! Receipt:", response.receipt_number);
 
+      const billData = {
+        invoice_number: response.receipt_number || `REC-${Date.now().toString().slice(-6)}`,
+        date: new Date(),
+        customerName: selectedCustomer?.name || 'Walk-in Guest',
+        customerPhone: selectedCustomer?.phone || '',
+        items: resolvedCart.map(item => ({
+          product_id: item.id,
+          name: item.name,
+          product_name: item.name,
+          sku: item.sku,
+          hsn_code: item.hsn_code,
+          quantity: item.qty,
+          unit_price: item.sellingPrice,
+          subtotal: (item.sellingPrice - (item.discount || 0)) * item.qty
+        })),
+        subtotal: subtotal,
+        discount_amount: totalDiscount,
+        tax_amount: tax,
+        grand_total: total,
+        payment_method: paymentsArray[0]?.payment_method || 'Cash',
+        payment_status: 'PAID'
+      };
+
+      setCompletedCheckoutBill(billData);
+
       // Clear UI state
       clearCart();
       setPaymentMethod("");
@@ -498,7 +526,13 @@ function PosTerminalInner() {
       setSplitCash("");
       setSplitOnline("");
       setCashTendered("");
-      alert("Checkout Successful! Receipt: " + response.receipt_number);
+
+      toast.success(`Checkout Successful! Receipt: ${response.receipt_number}`);
+      
+      // Instantly trigger 80mm thermal receipt printing for accurate products
+      setTimeout(() => {
+        triggerThermalPrint();
+      }, 150);
     } catch (err: any) {
       console.error("Checkout Failed:", err);
       alert("Checkout failed: " + (err.detail || err.message || "Unknown error"));
@@ -1888,6 +1922,9 @@ function PosTerminalInner() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Active Checkout Thermal Printer Portal */}
+      <ThermalReceiptPrinter bill={completedCheckoutBill} />
     </div>
   );
 }

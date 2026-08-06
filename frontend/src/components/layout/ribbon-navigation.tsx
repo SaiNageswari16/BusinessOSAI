@@ -120,6 +120,15 @@ export function RibbonNavigation() {
     setActiveSubItem(activeS);
   }, [location.pathname, location.href]);
 
+  const safeNavigate = (targetUrl: string) => {
+    if (!targetUrl) return;
+    if (typeof window !== "undefined") {
+      const currentUrl = window.location.pathname + window.location.search;
+      if (currentUrl === targetUrl) return;
+      window.location.href = targetUrl;
+    }
+  };
+
   const handleGroupClick = (group: NavGroup) => {
     if (activeGroup.group === group.group) {
       setIsRibbonCollapsed(!isRibbonCollapsed);
@@ -133,10 +142,10 @@ export function RibbonNavigation() {
     
     if (firstItem.subItems && firstItem.subItems.length > 0) {
       setActiveSubItem(firstItem.subItems[0]);
-      navigate({ to: firstItem.subItems[0].to });
+      safeNavigate(firstItem.subItems[0].to);
     } else {
       setActiveSubItem(undefined);
-      navigate({ to: firstItem.to });
+      safeNavigate(firstItem.to);
     }
     setMobileMenuOpen(false);
   };
@@ -145,16 +154,16 @@ export function RibbonNavigation() {
     setActiveItem(item);
     if (item.subItems && item.subItems.length > 0) {
       setActiveSubItem(item.subItems[0]);
-      navigate({ to: item.subItems[0].to });
+      safeNavigate(item.subItems[0].to);
     } else {
       setActiveSubItem(undefined);
-      navigate({ to: item.to });
+      safeNavigate(item.to);
     }
   };
 
   const handleSubItemClick = (sub: any) => {
     setActiveSubItem(sub);
-    navigate({ to: sub.to });
+    safeNavigate(sub.to);
   };
 
   return (
