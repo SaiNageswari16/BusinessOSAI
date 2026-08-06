@@ -6,8 +6,7 @@ import {
 } from "lucide-react";
 import { posDashboardStats, posTransactions, posSession, posStore } from "../../lib/pos-fallback";
 
-const formatCurrency = (val: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
+import { formatCurrency } from "../../lib/utils";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }

@@ -13,8 +13,7 @@ import { useTenant } from "../../contexts/tenant-context";
 import { ESCPOSPrinter } from "../../lib/escpos-printer";
 import { triggerThermalPrint } from "../../lib/print-helper";
 
-const formatCurrency = (val: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
+import { formatCurrency } from "../../lib/utils";
 
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 

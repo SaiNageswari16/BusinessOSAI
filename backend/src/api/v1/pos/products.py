@@ -14,6 +14,7 @@ from src.schemas.erp import (
     POSCategoryCreate, POSCategoryResponse,
     POSProductBulkCreate, POSProductBulkResponse,
 )
+from src.utils.redis_cache import cache_response, invalidate_cache_by_prefix
 
 router = APIRouter(tags=["POS - Products"])
 
@@ -21,6 +22,7 @@ router = APIRouter(tags=["POS - Products"])
 # ─── Categories ────────────────────────────────────────────────────────────────
 
 @router.get("/categories", response_model=list[POSCategoryResponse])
+@cache_response(expire=300, prefix="pos_categories")
 async def list_categories(
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db),
@@ -58,6 +60,10 @@ async def create_category(
     db.add(cat)
     await db.commit()
     await db.refresh(cat)
+    
+    # Invalidate categories cache
+    await invalidate_cache_by_prefix("pos_categories")
+    
     # Ensure response matches POS schema
     res = POSCategoryResponse.model_validate(cat)
     res.is_active = (cat.status == "active")
@@ -78,11 +84,15 @@ async def delete_category(
         raise HTTPException(status_code=404, detail="Category not found.")
     await db.delete(cat)
     await db.commit()
+    
+    # Invalidate categories cache
+    await invalidate_cache_by_prefix("pos_categories")
 
 
 # ─── Products ──────────────────────────────────────────────────────────────────
 
 @router.get("/products", response_model=list[POSProductResponse])
+@cache_response(expire=60, prefix="pos_products")
 async def list_products(
     category_id: Optional[uuid.UUID] = Query(None),
     search: Optional[str] = Query(None),
@@ -185,6 +195,9 @@ async def create_product(
         await db.commit()
         await db.refresh(product, ["category", "brand"])
 
+    # Invalidate products cache
+    await invalidate_cache_by_prefix("pos_products")
+
     res = POSProductResponse.model_construct(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
         sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
@@ -245,6 +258,8 @@ async def bulk_create_products(
     if new_products:
         db.add_all(new_products)
         await db.commit()
+        # Invalidate cache
+        await invalidate_cache_by_prefix("pos_products")
 
     return POSProductBulkResponse(
         created_count=len(new_products),
@@ -254,6 +269,7 @@ async def bulk_create_products(
 
 
 @router.get("/products/{product_id}", response_model=POSProductResponse)
+@cache_response(expire=60, prefix="pos_products")
 async def get_product(
     product_id: uuid.UUID,
     ctx: CurrentUserContext = Depends(get_current_user_context),
@@ -309,6 +325,9 @@ async def update_product(
     await db.commit()
     await db.refresh(product, ["category", "brand"])
     
+    # Invalidate cache
+    await invalidate_cache_by_prefix("pos_products")
+    
     res = POSProductResponse.model_construct(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
         sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
@@ -335,3 +354,6 @@ async def delete_product(
         raise HTTPException(status_code=404, detail="Product not found.")
     await db.delete(product)
     await db.commit()
+    
+    # Invalidate cache
+    await invalidate_cache_by_prefix("pos_products")

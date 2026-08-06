@@ -307,7 +307,7 @@ export function PosSalesInvoice() {
         </div>
       </div>
 
-      <div className="p-6 space-y-6 max-w-[1400px] mx-auto w-full">
+      <div className="p-6 lg:p-8 space-y-8 w-full max-w-full">
         {/* Top Info Grid: Bill To & Invoice Info */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Bill To Card (7 cols) */}

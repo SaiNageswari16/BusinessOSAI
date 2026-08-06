@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRbac } from "@/contexts/rbac-context";
@@ -8,10 +8,11 @@ import { PosTerminal } from "../components/pos/POSTerminal";
 import { PosSalesInvoice } from "../components/pos/PosSalesInvoice";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
 import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
+import { formatCurrency } from "../lib/utils";
 
 export const Route = createFileRoute("/_app/pos")({ component: PosModule });
 
-const fmt = (val: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
+const fmt = (val: number) => formatCurrency(val);
 const useView = () => new URLSearchParams(useRouterState().location.searchStr).get("view") || "all";
 
 /* ─────────────────── SALES ─────────────────── */
@@ -1150,6 +1151,13 @@ const componentMap: Record<string, React.ElementType> = {
 };
 
 function PosModule() {
+  const [, setCurrencyTick] = useState(0);
+  useEffect(() => {
+    const cb = () => setCurrencyTick(t => t + 1);
+    window.addEventListener("bos-currency-changed", cb);
+    return () => window.removeEventListener("bos-currency-changed", cb);
+  }, []);
+
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
   const { hasPermission } = useRbac();

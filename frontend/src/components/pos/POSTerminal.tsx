@@ -18,8 +18,7 @@ import {
 } from "./POSTerminalViews";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
-const formatCurrency = (val: number) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(val);
+import { formatCurrency } from "../../lib/utils";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -35,6 +34,13 @@ export function PosTerminal() {
 }
 
 function PosTerminalInner() {
+  const [, setCurrencyTick] = useState(0);
+  useEffect(() => {
+    const cb = () => setCurrencyTick(t => t + 1);
+    window.addEventListener("bos-currency-changed", cb);
+    return () => window.removeEventListener("bos-currency-changed", cb);
+  }, []);
+
   const search = useSearch({ strict: false }) as any;
   const navigate = useNavigate();
   const currentView = search.view || 'billing';

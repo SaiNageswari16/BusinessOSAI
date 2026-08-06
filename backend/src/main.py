@@ -1,4 +1,15 @@
 import logging
+
+# Passlib bcrypt compatibility patch for newer bcrypt versions
+try:
+    import bcrypt
+    if not hasattr(bcrypt, "__about__"):
+        class About:
+            __version__ = getattr(bcrypt, "__version__", "4.0.0")
+        bcrypt.__about__ = About()
+except ImportError:
+    pass
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -31,10 +42,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error during system startup initialization: {e}")
 
+    # Start background enricher service
+    try:
+        from src.services.rag_enricher import RAGEnricherService
+        await RAGEnricherService.start()
+    except Exception as enrich_err:
+        logger.error(f"Failed to start RAG Enricher Service: {enrich_err}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down LazyMonkeyai Core Services...")
+    try:
+        from src.services.rag_enricher import RAGEnricherService
+        await RAGEnricherService.stop()
+    except Exception as enrich_err:
+        logger.error(f"Failed to stop RAG Enricher Service: {enrich_err}")
 
 
 app = FastAPI(

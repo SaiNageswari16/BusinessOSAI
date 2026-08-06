@@ -53,8 +53,11 @@ class ProductBase(BaseModel):
     purchase_price: Optional[float] = 0.0
     mrp: Optional[float] = 0.0
     selling_price: Optional[float] = 0.0
+    wholesale_price: Optional[float] = 0.0
+    min_wholesale_qty: Optional[int] = 1
     tax_percent: Optional[float] = 0.0
     discount_limit: Optional[float] = 0.0
+
     
     initial_stock: Optional[int] = 0
     reorder_level: Optional[int] = 0

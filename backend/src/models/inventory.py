@@ -67,8 +67,11 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     purchase_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     mrp: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     selling_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    wholesale_price: Mapped[float | None] = mapped_column(Numeric(10, 2), default=0)
+    min_wholesale_qty: Mapped[int | None] = mapped_column(Integer, default=1)
     tax_percent: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
     discount_limit: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+
     
     initial_stock: Mapped[int] = mapped_column(Integer, default=0)
     reorder_level: Mapped[int] = mapped_column(Integer, default=0)

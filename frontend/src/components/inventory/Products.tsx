@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
+import { formatCurrency } from "../../lib/utils";
 
 // ── Types ───────────────────────────────────────────────────────────
 interface MasterResult {
@@ -40,7 +41,9 @@ const LOCAL_COLUMNS = [
   { id: "uom", label: "Unit (UOM)" },
   { id: "purchase_price", label: "Purchase Price" },
   { id: "mrp", label: "MRP" },
-  { id: "selling_price", label: "Selling Price" },
+  { id: "selling_price", label: "Retail Selling Price" },
+  { id: "wholesale_price", label: "Wholesale Price" },
+  { id: "min_wholesale_qty", label: "Min Wholesale Qty" },
   { id: "tax_percent", label: "Tax (%)" },
   { id: "initial_stock", label: "Stock" },
   { id: "reorder_level", label: "Reorder Level" },
@@ -57,13 +60,11 @@ const MASTER_COLUMNS = [
   { id: "category", label: "Category" },
   { id: "brand", label: "Brand" },
   { id: "mrp", label: "MRP" },
-  { id: "selling_price", label: "Selling Price" },
+  { id: "selling_price", label: "Retail Price" },
+  { id: "wholesale_price", label: "Wholesale Price" },
   { id: "specifications", label: "Specifications" },
   { id: "source", label: "Source" },
 ];
-
-const formatCurrency = (val?: number | null) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(val ?? 0);
 
 // ── Helpers ──────────────────────────────────────────────────────────
 const esc = (v: any) => {
@@ -75,10 +76,11 @@ const esc = (v: any) => {
 const defaultFormData = () => ({
   name: "", brand: "", sku: "", barcode: "", category_id: "",
   uom_id: "", warehouse: "", supplier: "",
-  purchase_price: 0, mrp: 0, selling_price: 0, tax_percent: 0,
+  purchase_price: 0, mrp: 0, selling_price: 0, wholesale_price: 0, min_wholesale_qty: 1, tax_percent: 0,
   discount_limit: 0, initial_stock: 0, reorder_level: 0, safety_stock: 0,
   image_url: "", short_description: "", long_description: "", status: "active"
 });
+
 
 const localVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "initial_stock", "status"];
 const masterVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "selling_price", "source"];
@@ -365,6 +367,13 @@ function ImportPreviewModal({
 //  MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════
 export function Products() {
+  const [, setCurrencyTick] = useState(0);
+  useEffect(() => {
+    const cb = () => setCurrencyTick(t => t + 1);
+    window.addEventListener("bos-currency-changed", cb);
+    return () => window.removeEventListener("bos-currency-changed", cb);
+  }, []);
+
   // ── Tab state ────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"inventory" | "catalog">("inventory");
 
@@ -401,6 +410,7 @@ export function Products() {
 
   // ── Modal state ──────────────────────────────────────────────────
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentForm, setCurrentForm] = useState(defaultFormData());
@@ -503,24 +513,25 @@ export function Products() {
 
   // ── Data loading ─────────────────────────────────────────────────
   const loadData = async () => {
-    setIsLoading(true);
     try {
-      const [prodsRes, catsRes, uomsRes, whsRes] = await Promise.all([
-        inventoryApi.getProducts(),
-        inventoryApi.getCategories(),
-        inventoryApi.getUOMs(),
-        inventoryApi.getWarehouses()
-      ]);
+      const prodsRes = await inventoryApi.getProducts().catch((err) => {
+        console.error("Failed to load products:", err);
+        return { items: [] };
+      });
       setProducts(prodsRes.items || []);
-      setCategories(catsRes.items || []);
-      setUoms(uomsRes.items || []);
-      setWarehouses(whsRes || []);
     } catch (error) {
-      console.error("Failed to load products:", error);
+      console.error("Failed in loadData:", error);
     } finally {
       setIsLoading(false);
     }
+
+    // Load metadata asynchronously in the background — never blocks product list
+    inventoryApi.getCategories().then((res) => setCategories(res.items || [])).catch(() => {});
+    inventoryApi.getUOMs().then((res) => setUoms(res.items || [])).catch(() => {});
+    inventoryApi.getWarehouses().then((res) => setWarehouses(res || [])).catch(() => {});
   };
+
+
 
   useEffect(() => { checkAiStatus(); }, []);
   useEffect(() => { loadData(); }, []);
@@ -938,6 +949,44 @@ export function Products() {
           <button onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); }} className="p-1.5 rounded-lg hover:bg-muted"><X className="size-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Product Image Upload Section */}
+          <div className="border-b pb-4 mb-4">
+            <label className="block text-xs font-semibold text-muted-foreground mb-2">Product Image</label>
+            <div className="flex items-center gap-4">
+              {currentForm.image_url ? (
+                <div className="relative size-20 rounded-xl overflow-hidden border bg-white group shadow-sm">
+                  <img src={resolveImageUrl(currentForm.image_url)} alt="Preview" className="object-cover w-full h-full" />
+                  <button type="button" onClick={() => setCurrentForm(p => ({ ...p, image_url: "" }))} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition-opacity cursor-pointer border-0">
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="size-20 rounded-xl border border-dashed flex items-center justify-center text-muted-foreground bg-muted/20">
+                  <Package className="size-6 text-muted-foreground opacity-60" />
+                </div>
+              )}
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input type="file" accept="image/*" id="prod-img-upload" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const res = await inventoryApi.uploadProductImage(file);
+                      setCurrentForm(p => ({ ...p, image_url: res.image_url }));
+                      toast.success("Product image uploaded successfully!");
+                    } catch (err) {
+                      toast.error("Failed to upload product image.");
+                    }
+                  }} />
+                  <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById("prod-img-upload")?.click()} className="cursor-pointer">
+                    <Upload className="size-3.5 mr-1.5" /> Upload Photo
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">PNG, JPG or WebP — Max 5MB. Matches local listings style.</p>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             {[
               { label: "Product Name", name: "name", required: true },
@@ -948,8 +997,11 @@ export function Products() {
               { label: "UoM", name: "uom_id", type: "select", options: uoms },
               { label: "Purchase Price", name: "purchase_price", type: "number", step: "0.01" },
               { label: "MRP", name: "mrp", type: "number", step: "0.01" },
-              { label: "Selling Price", name: "selling_price", type: "number", step: "0.01" },
+              { label: "Retail Selling Price", name: "selling_price", type: "number", step: "0.01" },
+              { label: "Wholesale Price", name: "wholesale_price", type: "number", step: "0.01" },
+              { label: "Min Wholesale Qty", name: "min_wholesale_qty", type: "number" },
               { label: "Tax (%)", name: "tax_percent", type: "number" },
+
               { label: "Discount Limit (%)", name: "discount_limit", type: "number" },
               { label: "Initial Stock", name: "initial_stock", type: "number" },
               { label: "Reorder Level", name: "reorder_level", type: "number" },
@@ -995,7 +1047,9 @@ export function Products() {
       {visible.includes("image") && (
         <td className="px-6 py-4">
           {product.image_url ? (
-            <img src={resolveImageUrl(product.image_url)} alt={product.name} className="size-10 rounded-lg object-cover border bg-white" />
+            <img src={resolveImageUrl(product.image_url)} alt={product.name}
+              onClick={() => setPreviewImage(resolveImageUrl(product.image_url))}
+              className="size-10 rounded-lg object-cover border bg-white cursor-zoom-in hover:opacity-90 transition-opacity" />
           ) : (
             <div className="size-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
               <Package className="size-5 text-muted-foreground" />
@@ -1016,10 +1070,14 @@ export function Products() {
       {visible.includes("category") && <td className="px-6 py-4 text-xs">{product.category_name || '-'}</td>}
       {visible.includes("brand") && <td className="px-6 py-4 text-xs">{product.brand_name || '-'}</td>}
       {visible.includes("uom") && <td className="px-6 py-4 text-xs">{product.uom_name || '-'}</td>}
+      {/* Selling Prices */}
       {visible.includes("purchase_price") && <td className="px-6 py-4">{formatCurrency(product.purchase_price)}</td>}
       {visible.includes("mrp") && <td className="px-6 py-4 font-bold">{formatCurrency(product.mrp)}</td>}
       {visible.includes("selling_price") && <td className="px-6 py-4">{formatCurrency(product.selling_price)}</td>}
+      {visible.includes("wholesale_price") && <td className="px-6 py-4 text-emerald-700 font-semibold">{formatCurrency((product as any).wholesale_price || 0)}</td>}
+      {visible.includes("min_wholesale_qty") && <td className="px-6 py-4 text-xs font-mono">{(product as any).min_wholesale_qty || 1} pcs</td>}
       {visible.includes("tax_percent") && <td className="px-6 py-4 text-xs">{product.tax_percent}%</td>}
+
       {visible.includes("initial_stock") && (
         <td className="px-6 py-4">
           <div className="flex items-center gap-2">
@@ -1066,7 +1124,9 @@ export function Products() {
         {visible.includes("image") && (
           <td className="px-6 py-4">
             {item.image_url ? (
-              <img src={resolveImageUrl(item.image_url)} alt={item.name} className="size-10 rounded-lg object-cover border bg-white" />
+              <img src={resolveImageUrl(item.image_url)} alt={item.name}
+                onClick={() => setPreviewImage(resolveImageUrl(item.image_url))}
+                className="size-10 rounded-lg object-cover border bg-white cursor-zoom-in hover:opacity-90 transition-opacity" />
             ) : (
               <div className="size-10 rounded-lg bg-indigo-100/30 flex items-center justify-center shrink-0">
                 <Globe className="size-5 text-indigo-500" />
@@ -1159,13 +1219,9 @@ export function Products() {
         {activeTab === "inventory" && (
           <Button variant="outline"><Filter className="size-4 mr-2" /> Filters</Button>
         )}
-        <Button variant="outline" onClick={handleToggleAi}
-          className={"font-semibold text-xs h-10 px-3 flex items-center gap-2 " + (aiPaused ? "border-amber-500/30 bg-amber-500/10 text-amber-600" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600")}>
-          <Sparkles className={"size-4 shrink-0 " + (!aiPaused ? "animate-pulse" : "")} />
-          AI Search: {aiPaused ? "Paused" : "Active"}
-        </Button>
         {activeTab === "inventory" && renderColumnsMenu()}
       </div>
+
 
       {/* ══════════════════════════════════════════════════════════════
            INVENTORY TAB — Two-source unified view
@@ -1400,6 +1456,21 @@ export function Products() {
             onConfirm={handleConfirmImport}
             isImporting={isImporting}
           />
+        )}
+      </AnimatePresence>
+
+      {/* ── Image Preview popup modal ─────────────────────────────── */}
+      <AnimatePresence>
+        {previewImage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setPreviewImage(null)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="relative max-w-3xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+              <button type="button" className="absolute -top-12 right-0 text-white hover:text-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-700/50" onClick={() => setPreviewImage(null)}>
+                <X className="size-4" /> Close
+              </button>
+              <img src={previewImage} alt="Preview" className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl border border-white/10" />
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

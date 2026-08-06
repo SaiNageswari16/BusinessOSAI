@@ -210,6 +210,11 @@ export function AdGenerator() {
   const [imageUrl, setImageUrl] = useState("");
   const [enhancedPrompt, setEnhancedPrompt] = useState("");
   const [generatingPoster, setGeneratingPoster] = useState(false);
+  
+  // Prompt optimization states
+  const [isPromptOptimized, setIsPromptOptimized] = useState(false);
+  const [optimizingPrompt, setOptimizingPrompt] = useState(false);
+  const [optimizedEditablePrompt, setOptimizedEditablePrompt] = useState("");
 
   // Multimodal asset upload
   const [refImageBase64, setRefImageBase64] = useState("");
@@ -281,11 +286,35 @@ export function AdGenerator() {
     return url;
   };
 
-  // ── STEP 1: Generate Image ───────────────────────────────────────────────────
-
-  const handleGeneratePoster = async (e: React.FormEvent) => {
+  // ── STEP 1a: Optimize Prompt ────────────────────────────────────────────────
+  const handleOptimizePrompt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!posterPrompt.trim()) return;
+    setOptimizingPrompt(true);
+    setIsPromptOptimized(false);
+    setOptimizedEditablePrompt("");
+    try {
+      const res = await crmCampaignsApi.optimizePrompt({
+        prompt: posterPrompt,
+        aspect_ratio: aspectRatio,
+        provider,
+        reference_image: refImageBase64 || undefined,
+      });
+      setOptimizedEditablePrompt(res.optimized_prompt);
+      setIsPromptOptimized(true);
+      toast.success("AI Prompt optimized! You can now review, edit, and generate.");
+    } catch (err: any) {
+      toast.error(err instanceof Error ? err.message : "Failed to optimize prompt");
+    } finally {
+      setOptimizingPrompt(false);
+    }
+  };
+
+  // ── STEP 1b: Generate Image ───────────────────────────────────────────────────
+  const handleGeneratePoster = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalPrompt = optimizedEditablePrompt.trim() || posterPrompt.trim();
+    if (!finalPrompt) return;
     setGeneratingPoster(true);
     setImageUrl("");
     setEnhancedPrompt("");
@@ -294,11 +323,12 @@ export function AdGenerator() {
     setPipelineStatus("generating");
     try {
       const res = await crmCampaignsApi.generatePoster({
-        prompt: posterPrompt,
+        prompt: finalPrompt,
         style,
         aspect_ratio: aspectRatio,
         provider,
         reference_image: refImageBase64 || undefined,
+        skip_enhancement: true, // Bypass backend expander since it is already optimized/edited
       });
       setImageUrl(resolveImageUrl(res.image_url));
       setEnhancedPrompt(res.enhanced_prompt);
@@ -580,44 +610,45 @@ export function AdGenerator() {
               <span className="flex items-center justify-center size-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">1</span>
               Design Creative
             </h2>
-            <form onSubmit={handleGeneratePoster} className="space-y-4">
+            <div className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Design Prompt</label>
-                <textarea required rows={3} value={posterPrompt} onChange={(e) => setPosterPrompt(e.target.value)}
-                  placeholder="e.g., Promotional poster for a summer collection, minimalist background, neon glow accent, high realism."
+                <textarea required rows={3} value={posterPrompt} onChange={(e) => { setPosterPrompt(e.target.value); setIsPromptOptimized(false); }}
+                  placeholder="e.g., Promotional poster for a summer collection, minimalist background, neon glow accent."
                   className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none resize-none" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Style</label>
-                  <select value={style} onChange={(e) => setStyle(e.target.value)} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none cursor-pointer">
-                    <option>Photorealistic</option>
-                    <option>Modern Ad Graphic</option>
-                    <option>Minimalist Studio</option>
-                    <option>Cyberpunk Neon</option>
-                    <option>Pop Art Sketch</option>
-                  </select>
-                </div>
+              <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Aspect Ratio</label>
-                  <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none cursor-pointer">
+                  <select value={aspectRatio} onChange={(e) => { setAspectRatio(e.target.value); setIsPromptOptimized(false); }} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none cursor-pointer">
                     <option value="1:1">1:1 (Post Square)</option>
                     <option value="9:16">9:16 (Story / Reel)</option>
                   </select>
                 </div>
-                <div className="col-span-2">
-                  <button type="submit" disabled={generatingPoster || !posterPrompt}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors border-none cursor-pointer">
-                    {generatingPoster ? <><Loader2 className="size-4 animate-spin" /> Synthesizing...</> : <><Sparkles className="size-4" /> Generate Creative ({provider === "claude" ? "Gemini + Claude prompt" : provider})</>}
+                <div>
+                  <button type="button" onClick={handleOptimizePrompt} disabled={optimizingPrompt || !posterPrompt.trim()}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors border-none cursor-pointer shadow-sm">
+                    {optimizingPrompt ? <><Loader2 className="size-4 animate-spin" /> Optimizing Prompt...</> : <><Sparkles className="size-4" /> Optimize Prompt with AI</>}
                   </button>
-                  {provider === "claude" && (
-                    <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-                      Uses Claude for prompt enhancement → Gemini Imagen for image. No extra cost.
-                    </p>
-                  )}
                 </div>
+                
+                {isPromptOptimized && (
+                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3 p-4 bg-muted/30 border rounded-xl animate-in fade-in duration-200">
+                    <label className="block text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                      <Sparkles className="size-3.5 text-indigo-500" />
+                      Final AI Prompt (Review & Edit before generating)
+                    </label>
+                    <textarea rows={4} value={optimizedEditablePrompt} onChange={(e) => setOptimizedEditablePrompt(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none resize-none font-medium leading-relaxed text-slate-800" />
+                    
+                    <button type="button" onClick={handleGeneratePoster} disabled={generatingPoster || !optimizedEditablePrompt.trim()}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold disabled:opacity-60 transition-colors border-none cursor-pointer shadow-md">
+                      {generatingPoster ? <><Loader2 className="size-4 animate-spin" /> Synthesizing Image...</> : <><ImageIcon className="size-4" /> Generate Creative Image</>}
+                    </button>
+                  </motion.div>
+                )}
               </div>
-            </form>
+            </div>
           </div>
 
           {/* Step 2: Reference Upload */}
@@ -758,7 +789,7 @@ export function AdGenerator() {
               </div>
               <div className="text-center space-y-2">
                 <p className="text-sm font-bold text-foreground">Synthesizing creative...</p>
-                <p className="text-[11px] text-muted-foreground">AI is crafting your {style} image at {aspectRatio}</p>
+                <p className="text-[11px] text-muted-foreground">AI is crafting your image at {aspectRatio}</p>
               </div>
               <div className="w-48 space-y-1.5">
                 {[0, 1, 2].map(i => (

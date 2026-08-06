@@ -5,7 +5,8 @@ import { Search, Plus, Edit2, Trash2, X, Save, Loader2, AlertCircle, DollarSign,
 import { currenciesApi, type Currency } from "@/lib/api-client";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { cn, AVAILABLE_CURRENCIES, getActiveCurrency, setActiveCurrency } from "@/lib/utils";
+
 
 function CurrencyFormModal({ currency, onClose, onSaved }: { currency: Currency | null; onClose: () => void; onSaved: () => void }) {
   const isEdit = !!currency;
@@ -128,17 +129,61 @@ export function CurrencyManagement() {
     finally { setDeleting(false); }
   };
 
+  const [activeCurr, setActiveCurrState] = useState(getActiveCurrency());
+
+  const handleSelectActive = (code: string) => {
+    setActiveCurrency(code);
+    setActiveCurrState(getActiveCurrency());
+    toast.success(`Active application currency changed to ${code}`);
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Currency Management</h2>
-          <p className="text-sm text-muted-foreground">Configure currencies and exchange rates for multi-currency support.</p>
+          <p className="text-sm text-muted-foreground">Configure currencies and exchange rates for multi-currency support across all receipts and invoices.</p>
         </div>
         <Button className="gradient-brand text-white border-0 gap-2" onClick={() => { setEditCurrency(null); setShowForm(true); }}>
           <Plus className="size-4" /> Add Currency
         </Button>
       </div>
+
+      {/* Global Active Display Currency Switcher */}
+      <Card className="p-5 border-emerald-200 dark:border-emerald-800 bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-background dark:from-emerald-950/40 dark:via-teal-950/20 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-extrabold text-xl shadow-md">
+              {activeCurr.symbol}
+            </div>
+            <div>
+              <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">Active System Display Currency</div>
+              <div className="text-base font-bold flex items-center gap-2">
+                <span>{activeCurr.code} ({activeCurr.symbol})</span>
+                <span className="text-xs font-normal text-muted-foreground">— All receipts, invoices, POS, & catalog values will format using this currency.</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {AVAILABLE_CURRENCIES.map((c) => (
+              <button
+                key={c.code}
+                onClick={() => handleSelectActive(c.code)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border",
+                  activeCurr.code === c.code
+                    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm scale-105"
+                    : "bg-card text-foreground hover:bg-muted border-border"
+                )}
+              >
+                <span className="font-extrabold">{c.symbol}</span>
+                <span>{c.code}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Card>
+
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />

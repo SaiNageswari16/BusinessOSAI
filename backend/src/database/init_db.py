@@ -49,7 +49,15 @@ async def init_database() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables ensured via SQLAlchemy metadata.create_all()")
+        # Ensure new columns on existing PostgreSQL tables
+        from sqlalchemy import text
+        try:
+            await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC(10, 2) DEFAULT 0;"))
+            await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS min_wholesale_qty INTEGER DEFAULT 1;"))
+        except Exception as alter_err:
+            logger.warning(f"Auto-column migration check: {alter_err}")
+    logger.info("Database tables & schema columns ensured via SQLAlchemy.")
+
 
 
 async def bootstrap_defaults(db: AsyncSession) -> None:

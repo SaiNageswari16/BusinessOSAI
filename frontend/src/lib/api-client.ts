@@ -631,9 +631,10 @@ async function request<T>(
   params?: Record<string, string | number | boolean | undefined | null>,
 ): Promise<T> {
   const token = getToken();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const headers: Record<string, string> = {};
+  if (!(body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   // Automatically attach tenant impersonation header for Platform Owner
@@ -663,7 +664,7 @@ async function request<T>(
   const res = await fetch(url, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? (body instanceof FormData ? body : JSON.stringify(body)) : undefined,
   });
 
   if (!res.ok) {
@@ -2580,7 +2581,9 @@ export interface LiveNotification {
 export const crmCampaignsApi = {
   generateCopy: (data: { prompt: string; channel: string; provider?: string; reference_image?: string }) =>
     request<{ copy: string }>("POST", "/crm/campaigns/generate-copy", data),
-  generatePoster: (data: { prompt: string; style?: string; aspect_ratio?: string; provider?: string; reference_image?: string }) =>
+  optimizePrompt: (data: { prompt: string; aspect_ratio?: string; provider?: string; reference_image?: string }) =>
+    request<{ optimized_prompt: string }>("POST", "/crm/campaigns/optimize-prompt", data),
+  generatePoster: (data: { prompt: string; style?: string; aspect_ratio?: string; provider?: string; reference_image?: string; skip_enhancement?: boolean }) =>
     request<{ image_url: string; enhanced_prompt: string; aspect_ratio: string }>("POST", "/crm/campaigns/generate-poster", data),
   publishFacebook: (data: { image_url: string; caption: string }) =>
     request<{ status: string; post_id?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
@@ -3387,6 +3390,11 @@ export const inventoryApi = {
     request<{ products_created: number; brands_created: number; categories_created: number; uoms_created: number; skipped_count: number; errors: string[] }>("POST", "/inventory/products/master-import", { items }),
   updateProduct: (id: string, data: Record<string, unknown>) => request<InventoryProduct>("PATCH", `/inventory/products/${id}`, data),
   deleteProduct: (id: string) => request<void>("DELETE", `/inventory/products/${id}`),
+  uploadProductImage: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<{ image_url: string }>("POST", "/inventory/products/upload-image", fd);
+  },
 
   lookupProductByBarcode: (rawBarcode: string) =>
     request<{ success: boolean; message?: string; product?: any }>("GET", `/products/barcode/${encodeURIComponent(rawBarcode)}`),

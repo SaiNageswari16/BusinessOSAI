@@ -122,11 +122,15 @@ export function RibbonNavigation() {
 
   const safeNavigate = (targetUrl: string) => {
     if (!targetUrl) return;
-    if (typeof window !== "undefined") {
-      const currentUrl = window.location.pathname + window.location.search;
-      if (currentUrl === targetUrl) return;
-      window.location.href = targetUrl;
+    const [path, searchStr] = targetUrl.split("?");
+    const search: Record<string, string> = {};
+    if (searchStr) {
+      const params = new URLSearchParams(searchStr);
+      params.forEach((value, key) => {
+        search[key] = value;
+      });
     }
+    void navigate({ to: path, search });
   };
 
   const handleGroupClick = (group: NavGroup) => {

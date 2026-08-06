@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, Header, UploadFile, File
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -21,6 +21,7 @@ from src.schemas.inventory import (
     PublicProductResponse
 )
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.redis_cache import cache_response, invalidate_cache_by_prefix
 
 router = APIRouter()
 
@@ -35,6 +36,7 @@ def _parse_status(value: str) -> EntityStatus:
 # ==========================================
 
 @router.get("/categories", response_model=PaginatedResponse[ProductCategoryResponse])
+@cache_response(expire=300, prefix="pos_categories")
 async def list_product_categories(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -84,6 +86,8 @@ async def create_product_category(
     await db.flush()
     await db.commit()
     await db.commit()
+    # Invalidate categories cache
+    await invalidate_cache_by_prefix("pos_categories")
     return cat
 
 
@@ -133,6 +137,8 @@ async def bulk_create_product_categories(
     if new_cats:
         db.add_all(new_cats)
         await db.commit()
+        # Invalidate categories cache
+        await invalidate_cache_by_prefix("pos_categories")
 
     return ProductCategoryBulkResponse(
         created_count=len(new_cats),
@@ -329,6 +335,7 @@ async def delete_uom(
 # ==========================================
 
 @router.get("/products", response_model=PaginatedResponse[ProductResponse])
+@cache_response(expire=60, prefix="pos_products")
 async def list_products(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -448,7 +455,10 @@ async def create_product(
         existing_mc_res = await db.execute(
             select(MasterCatalogProduct).where(MasterCatalogProduct.barcode == clean_barcode)
         )
-        if not existing_mc_res.scalars().first():
+        existing_mc = existing_mc_res.scalars().first()
+        if not existing_mc:
+            # Decide if enrichment is needed: no image or no specs means we enqueue for background AI fetch
+            needs_enrichment = not (product.image_url and product.short_description)
             new_mc = MasterCatalogProduct(
                 id=uuid.uuid4(),
                 tenant_id=None,
@@ -468,9 +478,19 @@ async def create_product(
                 sub_category=product.category.name if product.category else "General",
                 short_description=product.short_description or "",
                 specifications="Created from tenant inventory",
-                source="AI_WEB_SEARCH"
+                source="AI_WEB_SEARCH",
+                ai_search_done=not needs_enrichment,
+                rag_status="pending" if needs_enrichment else "completed",
             )
             db.add(new_mc)
+        elif not existing_mc.ai_search_done:
+            # Already in catalog but not yet enriched — leave it in queue
+            pass
+        else:
+            # Already enriched catalog entry exists — mark for re-enrichment if local product has no image
+            if not (product.image_url and product.short_description):
+                existing_mc.ai_search_done = False
+                existing_mc.rag_status = "pending"
 
     await db.commit()
     
@@ -488,6 +508,10 @@ async def create_product(
     res.category_name = product.category.name if product.category else None
     res.brand_name = product.brand.name if product.brand else None
     res.uom_name = product.uom.name if product.uom else None
+    
+    # Invalidate products cache
+    await invalidate_cache_by_prefix("pos_products")
+    
     return res
 
 
@@ -577,6 +601,10 @@ async def update_product(
     res.category_name = product.category.name if product.category else None
     res.brand_name = product.brand.name if product.brand else None
     res.uom_name = product.uom.name if product.uom else None
+    
+    # Invalidate products cache
+    await invalidate_cache_by_prefix("pos_products")
+    
     return res
 
 
@@ -594,6 +622,9 @@ async def delete_product(
         raise HTTPException(status_code=404, detail="Product not found")
     await db.delete(product)
     await db.commit()
+    
+    # Invalidate products cache
+    await invalidate_cache_by_prefix("pos_products")
 
 
 @router.post("/products/master-import", response_model=MasterProductBulkResponse, status_code=status.HTTP_201_CREATED)
@@ -752,7 +783,10 @@ async def master_import_products(
             existing_mc_res = await db.execute(
                 select(MasterCatalogProduct).where(MasterCatalogProduct.barcode == clean_barcode)
             )
-            if not existing_mc_res.scalars().first():
+            existing_mc = existing_mc_res.scalars().first()
+            if not existing_mc:
+                # Products imported without images/specs are always queued for background AI enrichment
+                needs_enrichment = not (item.short_description and item.mrp and item.mrp > 0)
                 new_mc = MasterCatalogProduct(
                     id=uuid.uuid4(),
                     tenant_id=None,
@@ -760,7 +794,7 @@ async def master_import_products(
                     brand=item.brand_name.strip() if item.brand_name else "General",
                     barcode=clean_barcode,
                     sku_code=item.sku,
-                    hsn_code="150990",  # General default
+                    hsn_code="150990",
                     cost_price=item.purchase_price or 0.0,
                     mrp=item.mrp or 0.0,
                     sale_price=item.selling_price or 0.0,
@@ -771,12 +805,27 @@ async def master_import_products(
                     category=item.category_name.strip() if item.category_name else "General",
                     sub_category=item.sub_category_name.strip() if item.sub_category_name else "General",
                     short_description=item.short_description or "",
-                    specifications="Imported from tenant inventory creation",
-                    source="AI_WEB_SEARCH"
+                    specifications="Imported from bulk Excel/CSV upload — pending AI enrichment",
+                    source="AI_WEB_SEARCH",
+                    ai_search_done=False,
+                    rag_status="pending",
                 )
                 db.add(new_mc)
+            elif not existing_mc.ai_search_done:
+                # Already queued — leave it
+                pass
+            else:
+                # Re-queue if item was imported with minimal info
+                needs_enrichment = not (item.short_description and item.mrp and item.mrp > 0)
+                if needs_enrichment:
+                    existing_mc.ai_search_done = False
+                    existing_mc.rag_status = "pending"
 
     await db.commit()
+    
+    # Invalidate products & categories cache
+    await invalidate_cache_by_prefix("pos_products")
+    await invalidate_cache_by_prefix("pos_categories")
 
     return MasterProductBulkResponse(
         products_created=products_created,
@@ -786,6 +835,29 @@ async def master_import_products(
         skipped_count=skipped_count,
         errors=errors
     )
+
+
+@router.post("/products/upload-image")
+async def upload_product_image(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    file: UploadFile = File(...)
+):
+    import os
+    import shutil
+    
+    os.makedirs("images", exist_ok=True)
+    ext = os.path.splitext(file.filename)[1] or ".jpg"
+    filename = f"prod_{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join("images", filename)
+    
+    with open(filepath, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    import os as _os
+    _port = _os.environ.get("APP_PORT", "8001")
+    local_url = f"http://localhost:{_port}/images/{filename}"
+    return {"image_url": local_url}
+
 
 # ==========================================
 # Public Storefront Endpoints

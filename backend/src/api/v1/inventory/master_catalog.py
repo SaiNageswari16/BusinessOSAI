@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import uuid
@@ -33,7 +34,23 @@ router = APIRouter(prefix="/inventory/master-catalog", tags=["Inventory - Master
 
 
 def _extract_json_from_text(text: str) -> dict | list:
-    """Helper to extract JSON object or array from markdown codeblocks or raw text."""
+    """Helper to extract JSON object or array from markdown codeblocks or raw text.
+    Handles truncated JSON and strips Claude tool_call XML blocks.
+    """
+    if not text or not text.strip():
+        return {}
+    text = text.strip()
+
+    # Strip Claude tool_call / function XML blocks entirely — they are not JSON
+    # e.g. <tool_call><function=web_search>...</tool_call>
+    text_clean = re.sub(r'<tool_call>[\s\S]*?</tool_call>', '', text, flags=re.IGNORECASE).strip()
+    text_clean = re.sub(r'<function=[^>]+>[\s\S]*?</function>', '', text_clean, flags=re.IGNORECASE).strip()
+    text_clean = re.sub(r'<parameter=[^>]+>[\s\S]*?</parameter>', '', text_clean, flags=re.IGNORECASE).strip()
+    # Use cleaned text if it still has content, else fall back to original
+    if text_clean:
+        text = text_clean
+
+    # Direct parse
     try:
         return json.loads(text)
     except Exception:
@@ -46,15 +63,32 @@ def _extract_json_from_text(text: str) -> dict | list:
             return json.loads(match.group(1).strip())
         except Exception:
             pass
-            
-    # Try finding object { ... } or array [ ... ]
+
+    # Try finding object { ... } or array [ ... ] — full span
     match_obj = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", text)
     if match_obj:
         try:
             return json.loads(match_obj.group(1).strip())
         except Exception:
             pass
-            
+
+    # Last resort: Claude sometimes truncates mid-response.
+    # Walk backwards through the text to find the last '}' and try sub-strings.
+    last_brace = text.rfind("}")
+    if last_brace != -1:
+        first_brace = text.find("{")
+        if first_brace != -1:
+            candidate = text[first_brace:last_brace + 1]
+            try:
+                return json.loads(candidate)
+            except Exception:
+                pass
+            # Add closing brace in case Claude was cut off mid-field
+            try:
+                return json.loads(candidate + "}")
+            except Exception:
+                pass
+
     raise ValueError(f"Could not parse valid JSON from AI response text: {text[:200]}")
 
 
@@ -995,56 +1029,55 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
 
     response = None
     try:
-        # HEAD cheaply rejects error pages and non-image resources before GET.
+        # Check HTTP response — accept image/* as well as application/octet-stream
         head = requests.head(image_url, headers=_SOURCE_HEADERS, timeout=_IMAGE_TIMEOUT, allow_redirects=True)
-        if head.status_code != 200:
-            logger.warning("Rejected product image %s: HEAD returned %s", image_url, head.status_code)
-            return None
-        content_type = (head.headers.get("Content-Type") or "").split(";", 1)[0].lower()
-        if not content_type.startswith("image/"):
-            logger.warning("Rejected product image %s: MIME type %s", image_url, content_type or "missing")
-            return None
+        if head.status_code == 200:
+            content_type = (head.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+            _ALLOWED_TYPES = ("image/", "application/octet-stream", "binary/octet-stream", "")
+            if not any(content_type.startswith(t) for t in _ALLOWED_TYPES):
+                logger.warning("Rejected product image %s: MIME type %s", image_url, content_type or "missing")
+                return None
 
         response = requests.get(image_url, headers=_SOURCE_HEADERS, timeout=_IMAGE_TIMEOUT, allow_redirects=True)
-        content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
-        if response.status_code != 200 or not content_type.startswith("image/"):
-            logger.warning("Rejected product image %s: GET status=%s MIME=%s", image_url, response.status_code, content_type or "missing")
-            return None
-        if not response.content:
-            logger.warning("Rejected empty product image: %s", image_url)
+        if response.status_code != 200 or not response.content:
+            logger.warning("Rejected product image %s: GET status=%s empty=%s", image_url, response.status_code, not response.content)
             return None
 
         from PIL import Image, UnidentifiedImageError
         try:
-            Image.open(io.BytesIO(response.content)).verify()
-            image = Image.open(io.BytesIO(response.content))
-            image.load()
+            bytes_io = io.BytesIO(response.content)
+            with Image.open(bytes_io) as image:
+                image.verify()
+            
+            # Re-open after verify() (Pillow requirement)
+            bytes_io.seek(0)
+            with Image.open(bytes_io) as image:
+                image.load()
+                image_format = (image.format or "").upper()
+                extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif"}.get(image_format, ".jpg")
+                if extension == ".jpg" and image.mode != "RGB":
+                    image = image.convert("RGB")
+                
+                filename = f"{barcode.strip() if barcode else uuid.uuid4()}{extension}"
+                images_dir = os.path.join("images")
+                os.makedirs(images_dir, exist_ok=True)
+                local_path = os.path.join(images_dir, filename)
+
+                # Write directly to local_path — avoids Windows file locking / PermissionError
+                if image_format in {"JPEG", "PNG", "WEBP", "GIF"}:
+                    with open(local_path, "wb") as f:
+                        f.write(response.content)
+                else:
+                    with open(local_path, "wb") as f:
+                        image.save(f, format="JPEG", quality=90, optimize=True)
+
+                logger.info("Validated and cached product image: /images/%s", filename)
+                return f"/images/{filename}"
+
         except (UnidentifiedImageError, OSError, ValueError) as exc:
             logger.warning("Rejected corrupt product image %s: %s", image_url, exc)
             return None
 
-        # Preserve accepted web formats. Convert all other decodable images to JPEG.
-        image_format = (image.format or "").upper()
-        extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif"}.get(image_format, ".jpg")
-        if extension == ".jpg":
-            image = image.convert("RGB")
-        filename = f"{barcode.strip() if barcode else uuid.uuid4()}{extension}"
-        images_dir = os.path.join("images")
-        os.makedirs(images_dir, exist_ok=True)
-        local_path = os.path.join(images_dir, filename)
-        temporary_path = f"{local_path}.tmp"
-        try:
-            if image_format in {"JPEG", "PNG", "WEBP", "GIF"}:
-                with open(temporary_path, "wb") as image_file:
-                    image_file.write(response.content)
-            else:
-                image.save(temporary_path, format="JPEG", quality=90, optimize=True)
-            os.replace(temporary_path, local_path)
-        finally:
-            if os.path.exists(temporary_path):
-                os.unlink(temporary_path)
-        logger.info("Validated and cached product image: /images/%s", filename)
-        return f"/images/{filename}"
     except requests.RequestException as exc:
         logger.warning("Could not download product image %s: %s", image_url, exc)
     except ImportError:
@@ -1052,6 +1085,9 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
     except Exception:
         logger.exception("Unexpected failure while caching product image: %s", image_url)
     return None
+
+    return None
+
 
 
 def _walk_json_ld(value: object) -> list[dict]:
@@ -1339,23 +1375,24 @@ def _resolve_barcode_with_claude_web_search(barcode: str) -> Optional[dict]:
         return None
 
     prompt = (
-        f"You are an expert product cataloging assistant. Identify the product name, brand, description, category, and weight for barcode '{barcode}'.\n"
-        "Here is the live search context containing search results for this barcode:\n"
-        f"{context_text}\n\n"
-        "CRITICAL RULES:\n"
-        "1. Identify the exact product title and brand from the search results.\n"
-        "2. Return JSON ONLY with barcode, name, brand, description, category, weight, and image_url.\n"
-        "3. Keep your response extremely brief. Do NOT output any preamble, explanation, thinking blocks, or conversational text. Return only valid JSON.\n"
-        "Format:\n"
+        f"Identify the product for barcode '{barcode}' using the search context below.\n"
+        "Return ONLY a valid JSON object. No explanation, no markdown, no tool calls, no function calls.\n"
+        "JSON format (all fields required):\n"
         "{\n"
-        '  "barcode": "...",\n'
-        '  "name": "...",\n'
-        '  "brand": "...",\n'
-        '  "description": "...",\n'
-        '  "category": "...",\n'
-        '  "weight": "...",\n'
-        '  "image_url": "..."\n'
-        "}"
+        '  "barcode": "' + barcode + '",\n'
+        '  "name": "Full product title",\n'
+        '  "brand": "Brand name",\n'
+        '  "description": "Brief product description",\n'
+        '  "category": "Product category",\n'
+        '  "weight": "Size or weight (e.g. 100ml, 500g)",\n'
+        '  "image_url": ""\n'
+        "}\n"
+        "STRICT RULES:\n"
+        "1. Output ONLY the JSON object above. Nothing else.\n"
+        "2. Do NOT use any tools, functions, or web_search calls.\n"
+        "3. If you cannot identify the product, return {}.\n"
+        "4. Complete the JSON fully — do not truncate.\n"
+        f"\nSearch context:\n{context_text[:4000]}"
     )
 
     url = f"{settings.anthropic_base_url.rstrip('/')}/v1/messages"
@@ -1366,7 +1403,8 @@ def _resolve_barcode_with_claude_web_search(barcode: str) -> Optional[dict]:
     }
     body = {
         "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
-        "max_tokens": 800,
+        "max_tokens": 1024,
+        "system": "You are a product data assistant. You output ONLY valid JSON objects. Never use tool calls or function calls. Never output XML. Never truncate your response.",
         "messages": [{"role": "user", "content": prompt}],
     }
     try:
@@ -1387,6 +1425,11 @@ def _resolve_barcode_with_claude_web_search(barcode: str) -> Optional[dict]:
         name = _clean_source_text(data.get("name"))
         if _is_meaningless_product_name(name, barcode):
             return None
+        
+        image_url = _clean_source_text(data.get("image_url") or context.get("image_url"))
+        # If no image from Claude context, try Google/Bing/DDG image search
+        if not image_url or not image_url.startswith("http"):
+            image_url = _google_image_search_for_product(barcode, name)
             
         return {
             "name": name,
@@ -1394,12 +1437,13 @@ def _resolve_barcode_with_claude_web_search(barcode: str) -> Optional[dict]:
             "description": _clean_source_text(data.get("description")),
             "category": _clean_source_text(data.get("category")),
             "weight": _clean_source_text(data.get("weight")),
-            "image_url": _clean_source_text(data.get("image_url") or context.get("image_url")),
+            "image_url": image_url,
             "source": "Claude RAG Search",
         }
     except Exception as exc:
         logger.warning("Claude search resolution failed for %s: %s", barcode, exc)
     return None
+
 
 
 def _resolve_barcode_with_gemini_web_search(barcode: str) -> Optional[dict]:
@@ -1455,6 +1499,9 @@ def _resolve_barcode_with_gemini_web_search(barcode: str) -> Optional[dict]:
         if _is_meaningless_product_name(name, barcode):
             return None
         image_url = _find_grounded_product_image(source_urls)
+        # If no image found from grounded search pages, fall back to Google/Bing/DDG
+        if not image_url:
+            image_url = _google_image_search_for_product(barcode, name)
         return {
             "name": name, "brand": _clean_source_text(data.get("brand")),
             "description": _clean_source_text(data.get("description")), "category": _clean_source_text(data.get("category")),
@@ -1464,6 +1511,7 @@ def _resolve_barcode_with_gemini_web_search(barcode: str) -> Optional[dict]:
     except (requests.RequestException, ValueError, KeyError) as exc:
         logger.warning("Gemini web-search fallback failed for %s: %s", barcode, exc)
     return None
+
 
 
 def _find_grounded_product_image(source_urls: list[str]) -> str:
@@ -1487,6 +1535,83 @@ def _find_grounded_product_image(source_urls: list[str]) -> str:
     return ""
 
 
+def _google_image_search_for_product(barcode: str, product_name: str = "") -> str:
+    """Fetch a product image URL from Google Images scraping or DuckDuckGo.
+    Returns a raw image URL (not yet cached — callers must pass through _download_and_cache_product_image).
+    """
+    query = f"{product_name} {barcode}".strip() if product_name else barcode
+    # Try DuckDuckGo Image API (fast, no key needed)
+    try:
+        ddg_url = "https://duckduckgo.com/"
+        session = requests.Session()
+        # Get vqd token
+        token_resp = session.get(ddg_url, params={"q": query}, headers=_SOURCE_HEADERS, timeout=10)
+        vqd_match = re.search(r'vqd=["\']?([\w-]+)["\']?', token_resp.text)
+        if vqd_match:
+            vqd = vqd_match.group(1)
+            img_resp = session.get(
+                "https://duckduckgo.com/i.js",
+                params={"q": query, "vqd": vqd, "f": ",,,", "p": "1"},
+                headers={**_SOURCE_HEADERS, "Referer": "https://duckduckgo.com/"},
+                timeout=10
+            )
+            if img_resp.status_code == 200:
+                data = img_resp.json()
+                results = data.get("results") or []
+                for r in results[:5]:
+                    img_url = r.get("image")
+                    if img_url and img_url.startswith("http"):
+                        logger.info("[ImageSearch] DuckDuckGo image hit for %s: %s", barcode, img_url)
+                        return img_url
+    except Exception as exc:
+        logger.debug("DuckDuckGo image search failed for %s: %s", barcode, exc)
+
+    # Try Google Custom Search API if key is configured
+    try:
+        settings_obj = get_settings()
+        gcse_key = getattr(settings_obj, "google_search_api_key", None) or getattr(settings_obj, "google_api_key", None)
+        gcse_cx = getattr(settings_obj, "google_search_cx", None) or getattr(settings_obj, "google_cse_id", None)
+        if gcse_key and gcse_cx:
+            gcse_resp = requests.get(
+                "https://www.googleapis.com/customsearch/v1",
+                params={"key": gcse_key, "cx": gcse_cx, "q": query, "searchType": "image", "num": 5},
+                timeout=10,
+            )
+            if gcse_resp.status_code == 200:
+                items = gcse_resp.json().get("items") or []
+                for item in items:
+                    link = item.get("link")
+                    if link and link.startswith("http"):
+                        logger.info("[ImageSearch] Google CSE image hit for %s: %s", barcode, link)
+                        return link
+    except Exception as exc:
+        logger.debug("Google CSE image search failed for %s: %s", barcode, exc)
+
+    # Fallback: scrape Bing Images
+    try:
+        bing_resp = requests.get(
+            "https://www.bing.com/images/search",
+            params={"q": query, "first": 1, "count": 5},
+            headers=_SOURCE_HEADERS,
+            timeout=10,
+        )
+        if bing_resp.status_code == 200:
+            # Look for murl (media URL) in the HTML response
+            murls = re.findall(r'murl&quot;:&quot;(https?://[^&]+?)&quot;', bing_resp.text)
+            if not murls:
+                murls = re.findall(r'"murl":"(https?://[^"]+?)"', bing_resp.text)
+            for murl in murls[:5]:
+                if any(ext in murl.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+                    logger.info("[ImageSearch] Bing image hit for %s: %s", barcode, murl)
+                    return murl
+    except Exception as exc:
+        logger.debug("Bing image search failed for %s: %s", barcode, exc)
+
+    logger.debug("[ImageSearch] No image found for %s", barcode)
+    return ""
+
+
+
 def _catalog_item(identity: dict, barcode: str, enrichment: Optional[dict] = None) -> MasterCatalogItem:
     enrichment = enrichment or {}
     def number(name: str) -> float:
@@ -1505,14 +1630,36 @@ def _catalog_item(identity: dict, barcode: str, enrichment: Optional[dict] = Non
         ret = str(val).strip()
         return ret if ret else None
 
-    raw_img = identity.get("image_url") or enrichment.get("image_url") or "/static/uploads/products/default_product.jpg"
+    raw_img = identity.get("image_url") or enrichment.get("image_url") or ""
+    # Strip known invalid/placeholder URLs before deciding
+    _INVALID_IMG_PREFIXES = ("/static/", "/images/default", "N/A", "n/a")
+    if raw_img and any(raw_img.startswith(p) for p in _INVALID_IMG_PREFIXES):
+        raw_img = ""
+
     if raw_img and raw_img.startswith("http") and barcode:
+        # Schedule background download & caching — does not block response
         try:
             import asyncio
             asyncio.create_task(asyncio.to_thread(_download_and_cache_product_image, raw_img, barcode))
         except Exception:
             pass
-    image_url = raw_img
+        image_url = raw_img
+    elif barcode:
+        # No image from AI — attempt background image search (DDG → Google CSE → Bing)
+        product_name = identity.get("name", "")
+        try:
+            import asyncio
+            async def _search_and_cache():
+                found_url = await asyncio.to_thread(_google_image_search_for_product, barcode, product_name)
+                if found_url:
+                    await asyncio.to_thread(_download_and_cache_product_image, found_url, barcode)
+            asyncio.create_task(_search_and_cache())
+        except Exception:
+            pass
+        image_url = ""
+    else:
+        image_url = ""
+
     return MasterCatalogItem(
         name=identity["name"], brand=to_str(identity.get("brand") or enrichment.get("brand")), barcode=barcode,
         sku_code=to_str(enrichment.get("sku_code")), product_code=to_str(enrichment.get("product_code")), hsn_code=to_str(enrichment.get("hsn_code")), plu_no=to_str(enrichment.get("plu_no")),
@@ -1555,56 +1702,79 @@ def _call_enrichment_ai(provider: str, identity: dict, barcode: str, context: st
 
 
 async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -> List[MasterCatalogItem]:
-    """Source product identity first, then use AI only for safe enrichment."""
+    """Source product identity first, then use AI only for safe enrichment.
+
+    IMPORTANT: All internal calls that do synchronous network I/O (requests.get/post)
+    are wrapped with asyncio.to_thread() so this function is truly non-blocking and
+    safe to call from the background RAG enricher without stalling the event loop.
+    """
     query = query_str.strip()
     active_provider = _resolve_ai_provider(provider)
+
     if _is_barcode_query(query):
-        consensus = _resolve_barcode_consensus(query)
+        # Resolve barcode identity — runs sync registry lookups in a thread
+        consensus = await asyncio.to_thread(_resolve_barcode_consensus, query)
         identity = consensus["identity"]
+
         if not identity:
-            # Preserve the proven Gemini Google Search path for products that are
-            # absent from public barcode registries.  It uses the original broad
-            # retailer-search prompt and still passes image URLs through the
-            # validated cache function defined in this module.
+            # Proven Gemini Google Search grounding path (already awaitable)
             if active_provider == "gemini":
                 legacy_results = await _deprecated_perform_ai_rag_web_search(query, provider="gemini")
                 if legacy_results:
                     logger.info("Resolved barcode %s through legacy Gemini Google Search grounding", query)
                     return legacy_results
+
+            # Grounded web-search fallbacks — all sync internally, run in threads
             if active_provider == "gemini":
-                identity = _resolve_barcode_with_gemini_web_search(query)
+                identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
             elif active_provider == "claude":
-                identity = _resolve_barcode_with_claude_web_search(query) or _resolve_barcode_with_gemini_web_search(query)
+                identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
+                if not identity:
+                    identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
             else:
-                # OpenAI has no server-side web-search tool in this integration;
-                # prefer a configured grounded provider before returning a 404.
-                identity = (
-                    _resolve_barcode_with_gemini_web_search(query)
-                    or _resolve_barcode_with_claude_web_search(query)
-                )
+                # OpenAI: try Gemini then Claude (both sync internally)
+                identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
+                if not identity:
+                    identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
+
             if identity:
                 consensus = {
-                    "confidence": 65, "source": identity["source"],
-                    "resolved_by": "grounded_web_search", "candidates": [],
+                    "confidence": 65,
+                    "source": identity["source"],
+                    "resolved_by": "grounded_web_search",
+                    "candidates": [],
                 }
             else:
                 logger.warning("No safe product identity for barcode %s (%s)", query, consensus["resolved_by"])
-                raise HTTPException(status_code=404, detail=f"Product with barcode {query} could not be confidently resolved from public registries or web-grounded search.")
-        context = _fetch_web_search_context(query)
-        enrichment = _call_enrichment_ai(active_provider, identity, query, context["text"])
-        logger.info("Resolved barcode %s confidence=%s source=%s resolved_by=%s", query, consensus["confidence"], consensus["source"], consensus["resolved_by"])
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Product with barcode {query} could not be confidently resolved from public registries or web-grounded search."
+                )
+
+        # Fetch web context + enrichment — both sync, run in threads
+        context = await asyncio.to_thread(_fetch_web_search_context, query)
+        enrichment = await asyncio.to_thread(_call_enrichment_ai, active_provider, identity, query, context["text"])
+        logger.info(
+            "Resolved barcode %s confidence=%s source=%s resolved_by=%s",
+            query, consensus["confidence"], consensus["source"], consensus["resolved_by"]
+        )
         return [_catalog_item(identity, query, enrichment)]
 
-    # Existing text-query capability is retained. It never claims a barcode unless
-    # the provider supplies one; a barcode result will be revalidated on a later lookup.
-    context = _fetch_web_search_context(query)
-    identity = {"name": query, "brand": "", "description": "", "category": "", "weight": "", "image_url": context.get("image_url", "")}
-    enrichment = _call_enrichment_ai(active_provider, identity, "", context["text"])
+    # Text-query path (product name search)
+    context = await asyncio.to_thread(_fetch_web_search_context, query)
+    identity = {
+        "name": query, "brand": "", "description": "",
+        "category": "", "weight": "",
+        "image_url": context.get("image_url", ""),
+    }
+    enrichment = await asyncio.to_thread(_call_enrichment_ai, active_provider, identity, "", context["text"])
     proposed_name = _clean_source_text(enrichment.pop("name", ""))
     if proposed_name and not _is_meaningless_product_name(proposed_name, query):
         identity["name"] = proposed_name
     identity["brand"] = _clean_source_text(enrichment.pop("brand", ""))
     return [_catalog_item(identity, _clean_source_text(enrichment.pop("barcode", "")) or None, enrichment)] if identity["name"] else []
+
+
 
 
 @router.get("/suggestions", response_model=List[str])

@@ -6,8 +6,9 @@ import { toast } from "sonner";
 
 interface Props { tab?: string; }
 
+import { formatCurrency } from "@/lib/utils";
 function fmt(n: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
+  return formatCurrency(n);
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -146,6 +147,13 @@ function BankAccountFormModal({ onClose, onSaved }: { onClose: () => void; onSav
 
 // ─── Bank Accounts List ─────────────────────────────────────────────────────
 function BankAccountsTab() {
+  const [, setCurrencyTick] = useState(0);
+  useEffect(() => {
+    const cb = () => setCurrencyTick(t => t + 1);
+    window.addEventListener("bos-currency-changed", cb);
+    return () => window.removeEventListener("bos-currency-changed", cb);
+  }, []);
+
   const [accounts, setAccounts] = useState<BankAccountRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<BankAccountRecord | null>(null);

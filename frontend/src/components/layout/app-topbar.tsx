@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Search, Bell, MessageSquare, Settings, LogOut, Plus,
-  Command as CommandIcon, ChevronDown, Building2, GitBranch, Sparkles, ShieldCheck, Globe,
+  Command as CommandIcon, ChevronDown, Building2, GitBranch, Sparkles, ShieldCheck, Globe, Coins,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ import { useI18n } from "@/contexts/i18n-context";
 import { notifications } from "@/data/mock";
 import { CommandPalette } from "@/components/command-palette";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, AVAILABLE_CURRENCIES, getActiveCurrency, setActiveCurrency } from "@/lib/utils";
 import { liveNotificationsApi, LiveNotification } from "@/lib/api-client";
 import { toast } from "sonner";
 
@@ -38,6 +38,21 @@ export function AppTopbar() {
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [now, setNow] = useState(new Date());
+  const [activeCurrency, setActiveCurrencyState] = useState(getActiveCurrency());
+
+  const handleCurrencySelect = (code: string) => {
+    setActiveCurrency(code);
+    setActiveCurrencyState(getActiveCurrency());
+  };
+
+  useEffect(() => {
+    const handleCurrencyChanged = () => {
+      setActiveCurrencyState(getActiveCurrency());
+    };
+    window.addEventListener("bos-currency-changed", handleCurrencyChanged);
+    return () => window.removeEventListener("bos-currency-changed", handleCurrencyChanged);
+  }, []);
+
 
   useEffect(() => {
     const i = setInterval(() => setNow(new Date()), 30_000);
@@ -263,6 +278,49 @@ export function AppTopbar() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Currency Switcher */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-3 gap-1.5 font-bold text-xs border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/80 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-200 shadow-sm transition-all"
+              title="Click to change preferred global currency"
+            >
+              <Coins className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="font-extrabold text-[13px]">{activeCurrency.symbol}</span>
+              <span>{activeCurrency.code}</span>
+              <ChevronDown className="size-3 text-emerald-600 dark:text-emerald-400 opacity-70" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52 p-1.5 shadow-xl border-emerald-100 dark:border-emerald-900">
+            <DropdownMenuLabel className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 px-2 py-1.5">
+              <Coins className="size-3.5" />
+              Global Currency
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator className="my-1" />
+            {AVAILABLE_CURRENCIES.map((curr) => (
+              <DropdownMenuItem
+                key={curr.code}
+                onClick={() => handleCurrencySelect(curr.code)}
+                className={cn(
+                  "flex items-center justify-between cursor-pointer text-xs px-2 py-1.5 rounded-md font-medium transition-colors",
+                  activeCurrency.code === curr.code ? "bg-emerald-50 text-emerald-900 font-bold dark:bg-emerald-900/40 dark:text-emerald-200" : "hover:bg-muted"
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="font-extrabold w-5 text-center text-emerald-600 dark:text-emerald-400 text-sm">{curr.symbol}</span> 
+                  <span>{curr.code}</span>
+                </span>
+                {activeCurrency.code === curr.code && (
+                  <div className="size-2 rounded-full bg-emerald-600 dark:bg-emerald-400" />
+                )}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
 
         {/* Theme Toggle */}
 

@@ -951,7 +951,8 @@ def call_ai_image(
     aspect_ratio: str = "1:1",
     style: str = "Photorealistic",
     prefer_provider: str | None = None,
-    reference_image: str | None = None
+    reference_image: str | None = None,
+    skip_enhancement: bool = False
 ) -> tuple[bytes, str]:
     from src.config import get_settings
     settings = get_settings()
@@ -982,7 +983,7 @@ def call_ai_image(
                     ]
                 }]
             }
-            v_res = requests.post(vision_url, json=vision_payload, headers={"Content-Type": "application/json"}, timeout=15)
+            v_res = requests.post(vision_url, json=vision_payload, headers={"Content-Type": "application/json"}, timeout=30)
             if v_res.status_code == 200:
                 v_json = v_res.json()
                 brand_visual_details = v_json["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -992,24 +993,33 @@ def call_ai_image(
 
     if brand_visual_details:
         enhancement_instruction = (
-            f"Create a commercial marketing poster prompt. The central hero subject MUST BE the brand mascot/character described here: '{brand_visual_details}'. "
+            f"Create a professional commercial marketing poster prompt. The central hero subject MUST BE the brand mascot/character described here: '{brand_visual_details}'. "
             f"Campaign concept: '{prompt}'. "
-            f"Style: {style}, high resolution, professional commercial illustration/3D render, vibrant purple and neon blue AI tech aesthetic. "
-            f"Ensure the mascot character is the primary focus of the image, NOT a crowd or concert hall. "
-            f"Aspect ratio: {aspect_ratio}. Output ONLY the image generation prompt text."
+            f"Style: {style}, high resolution, professional commercial illustration or 3D render, clean studio lighting. "
+            f"CRITICAL INSTRUCTIONS:\n"
+            f"1. Make the prompt concise and direct (max 50 words).\n"
+            f"2. Ensure the mascot character is the primary focus of the image, NOT a crowd, concert hall, or irrelevant background elements.\n"
+            f"3. Describe ONLY concrete visual elements, characters, actions, and settings in a single, unified scene. Do NOT use abstract narratives or split-screens.\n"
+            f"4. Aspect ratio: {aspect_ratio}. Output ONLY the clean descriptive prompt text, no conversational text."
         )
     else:
         enhancement_instruction = (
-            f"Expand this prompt into a detailed image generation prompt: '{prompt}'. "
-            f"Style: {style}. Focus on lighting, textures, crisp branding, and high visual realism. "
-            f"Ensure it is optimized for a {aspect_ratio} aspect ratio. "
-            "Output ONLY the descriptive prompt text."
+            f"Expand this campaign concept into a detailed, professional, commercial product advertisement or marketing graphic prompt: '{prompt}'. "
+            f"Style: {style}. Focus on high realism, premium textures, and clean background. "
+            f"CRITICAL INSTRUCTIONS:\n"
+            f"1. The primary subject/product from the prompt MUST be the clean, prominent, central hero focus of the image.\n"
+            f"2. Keep the prompt concise, simple, and direct (max 50 words).\n"
+            f"3. DO NOT output abstract storytelling or narrative phrases (like 'dramatic high-stakes visual narrative', 'on one side, on the other side', 'split screen', etc.).\n"
+            f"4. Describe ONLY concrete, renderable visual items, character design, and actions in a single, unified scene.\n"
+            f"5. Keep the background clean, professional, and matching a high-end studio product shoot or elegant minimalist setting.\n"
+            f"6. Output ONLY the raw descriptive prompt text, no intro or outro comments."
         )
     enhanced_prompt = prompt
-    try:
-        enhanced_prompt = call_ai_text(enhancement_instruction, prefer_provider=prefer_provider).strip()
-    except Exception as e:
-        logger.warning(f"Prompt enhancement failed: {e}. Using raw prompt.")
+    if not skip_enhancement:
+        try:
+            enhanced_prompt = call_ai_text(enhancement_instruction, prefer_provider=prefer_provider).strip()
+        except Exception as e:
+            logger.warning(f"Prompt enhancement failed: {e}. Using raw prompt.")
 
     primary = prefer_provider or settings.ai_provider or "gemini"
     if primary not in ("gemini", "openai"):
@@ -1077,9 +1087,11 @@ def call_ai_image(
     # Fallback 1: Pollinations AI (Free synchronous high-quality AI image generation)
     try:
         import urllib.parse
+        import random
         clean_prompt = urllib.parse.quote(enhanced_prompt[:300])
         width, height = (1024, 1024) if aspect_ratio == "1:1" else (1024, 1792)
-        poll_url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width={width}&height={height}&nologo=true&seed=42"
+        seed = random.randint(1, 999999)
+        poll_url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width={width}&height={height}&nologo=true&seed={seed}"
         logger.info(f"Attempting Pollinations AI generation: {poll_url}")
         p_res = requests.get(poll_url, timeout=25)
         if p_res.status_code == 200 and len(p_res.content) > 3000:
@@ -1586,14 +1598,90 @@ async def update_opportunity(
 
 class GeneratePosterRequest(BaseModel):
     prompt: str
-    style: str = "Photorealistic" # Changed default to be more descriptive
-    aspect_ratio: str = "1:1"     # "1:1" for Posts, "9:16" for Reels
+    style: str = "Photorealistic" 
+    aspect_ratio: str = "1:1"     
+    provider: str = "gemini"
+    reference_image: str | None = None
+    skip_enhancement: bool = False
+
+class OptimizePromptRequest(BaseModel):
+    prompt: str
+    aspect_ratio: str = "1:1"
     provider: str = "gemini"
     reference_image: str | None = None
 
 class PublishFacebookRequest(BaseModel):
     image_url: str
     caption: str
+
+
+@router.post("/campaigns/optimize-prompt")
+async def optimize_campaign_prompt(
+    payload: OptimizePromptRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))]
+):
+    from src.config import get_settings
+    settings = get_settings()
+    import requests
+    
+    brand_visual_details = ""
+    if payload.reference_image and settings.gemini_api_key:
+        try:
+            b64_str = payload.reference_image
+            mime_type = "image/jpeg"
+            if "," in payload.reference_image:
+                header, b64_str = payload.reference_image.split(",", 1)
+                if "png" in header:
+                    mime_type = "image/png"
+                elif "webp" in header:
+                    mime_type = "image/webp"
+
+            vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
+            vision_payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": "Analyze this brand reference image. Describe the EXACT primary character, mascot (e.g. monkey with sunglasses), logo, colors, and laptop/tech elements so an AI image generator can reproduce this exact character and mascot in a new marketing poster. Be specific about the character's appearance, sunglasses, pose, colors (purple/blue), and branding text."},
+                        {"inline_data": {"mime_type": mime_type, "data": b64_str}}
+                    ]
+                }]
+            }
+            v_res = requests.post(vision_url, json=vision_payload, headers={"Content-Type": "application/json"}, timeout=30)
+            if v_res.status_code == 200:
+                v_json = v_res.json()
+                brand_visual_details = v_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except Exception as v_err:
+            logger.warning(f"Reference image analysis failed in optimize prompt: {v_err}")
+
+    if brand_visual_details:
+        enhancement_instruction = (
+            f"Create a professional commercial marketing poster prompt. The central hero subject MUST BE the brand mascot/character described here: '{brand_visual_details}'. "
+            f"Campaign concept: '{payload.prompt}'. "
+            f"Style: Photorealistic, high resolution, professional commercial illustration or 3D render, clean studio lighting. "
+            f"CRITICAL INSTRUCTIONS:\n"
+            f"1. Make the prompt concise and direct (max 50 words).\n"
+            f"2. Ensure the mascot character is the primary focus of the image, NOT a crowd, concert hall, or irrelevant background elements.\n"
+            f"3. Describe ONLY concrete visual elements, characters, actions, and settings in a single, unified scene. Do NOT use abstract narratives or split-screens.\n"
+            f"4. Aspect ratio: {payload.aspect_ratio}. Output ONLY the clean descriptive prompt text, no conversational text."
+        )
+    else:
+        enhancement_instruction = (
+            f"Expand this campaign concept into a detailed, professional, commercial product advertisement or marketing graphic prompt: '{payload.prompt}'. "
+            f"Style: Photorealistic. Focus on high realism, premium textures, and clean background. "
+            f"CRITICAL INSTRUCTIONS:\n"
+            f"1. The primary subject/product from the prompt MUST be the clean, prominent, central hero focus of the image.\n"
+            f"2. Keep the prompt concise, simple, and direct (max 50 words).\n"
+            f"3. DO NOT output abstract storytelling or narrative phrases (like 'dramatic high-stakes visual narrative', 'on one side, on the other side', 'split screen', etc.).\n"
+            f"4. Describe ONLY concrete, renderable visual items, character design, and actions in a single, unified scene.\n"
+            f"5. Keep the background clean, professional, and matching a high-end studio product shoot or elegant minimalist setting.\n"
+            f"6. Output ONLY the raw descriptive prompt text, no intro or outro comments."
+        )
+
+    try:
+        optimized = call_ai_text(enhancement_instruction, prefer_provider=payload.provider).strip()
+        return {"optimized_prompt": optimized}
+    except Exception as e:
+        logger.warning(f"Prompt optimization endpoint failed: {e}")
+        return {"optimized_prompt": payload.prompt}
 
 
 @router.post("/campaigns/generate-poster")
@@ -1614,7 +1702,8 @@ async def generate_campaign_poster(
             aspect_ratio=payload.aspect_ratio,
             style=payload.style,
             prefer_provider=payload.provider,
-            reference_image=payload.reference_image
+            reference_image=payload.reference_image,
+            skip_enhancement=payload.skip_enhancement
         )
         with open(filepath, "wb") as f:
             f.write(image_bytes)
