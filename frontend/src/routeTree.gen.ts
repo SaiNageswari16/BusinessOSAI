@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StoreRouteImport } from './routes/store'
 import { Route as RoleSelectRouteImport } from './routes/role-select'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
@@ -53,6 +54,11 @@ const StoreRoute = StoreRouteImport.update({
 const RoleSelectRoute = RoleSelectRouteImport.update({
   id: '/role-select',
   path: '/role-select',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangePasswordRoute = ChangePasswordRouteImport.update({
@@ -223,6 +229,7 @@ const StoreProductIdRoute = StoreProductIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/change-password': typeof ChangePasswordRoute
+  '/login': typeof LoginRoute
   '/role-select': typeof RoleSelectRoute
   '/store': typeof StoreRouteWithChildren
   '/accounting': typeof AppAccountingRoute
@@ -259,6 +266,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/change-password': typeof ChangePasswordRoute
+  '/login': typeof LoginRoute
   '/role-select': typeof RoleSelectRoute
   '/accounting': typeof AppAccountingRoute
   '/copilot': typeof AppCopilotRoute
@@ -296,6 +304,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/change-password': typeof ChangePasswordRoute
+  '/login': typeof LoginRoute
   '/role-select': typeof RoleSelectRoute
   '/store': typeof StoreRouteWithChildren
   '/_app/accounting': typeof AppAccountingRoute
@@ -334,6 +343,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/change-password'
+    | '/login'
     | '/role-select'
     | '/store'
     | '/accounting'
@@ -370,6 +380,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/change-password'
+    | '/login'
     | '/role-select'
     | '/accounting'
     | '/copilot'
@@ -406,6 +417,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/change-password'
+    | '/login'
     | '/role-select'
     | '/store'
     | '/_app/accounting'
@@ -444,6 +456,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   ChangePasswordRoute: typeof ChangePasswordRoute
+  LoginRoute: typeof LoginRoute
   RoleSelectRoute: typeof RoleSelectRoute
   StoreRoute: typeof StoreRouteWithChildren
 }
@@ -462,6 +475,13 @@ declare module '@tanstack/react-router' {
       path: '/role-select'
       fullPath: '/role-select'
       preLoaderRoute: typeof RoleSelectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/change-password': {
@@ -778,6 +798,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   ChangePasswordRoute: ChangePasswordRoute,
+  LoginRoute: LoginRoute,
   RoleSelectRoute: RoleSelectRoute,
   StoreRoute: StoreRouteWithChildren,
 }

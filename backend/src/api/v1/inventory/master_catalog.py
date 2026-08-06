@@ -502,12 +502,22 @@ async def _deprecated_perform_ai_rag_web_search(query_str: str, provider: str = 
             }
             res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
             if res.status_code == 429:
-                error_msg = "Gemini API daily/rate limit exceeded (429 Quota Exhausted). Please configure a paid Gemini key."
+                error_msg = "Gemini API daily/rate limit exceeded (429 Quota Exhausted)."
                 try:
                     error_msg = res.json()["error"]["message"]
-                except:
+                except Exception:
                     pass
+                logger.warning("Gemini web search returned 429 for barcode %s: %s", clean_query, error_msg)
+                
+                # Automatic fallback to Claude if Anthropic key is available
+                if _is_valid_key(settings.anthropic_api_key):
+                    logger.info("[RAG Fallback] Automatically switching to Claude for barcode %s due to Gemini 429 rate limit", clean_query)
+                    claude_result = _resolve_barcode_with_claude_web_search(clean_query)
+                    if claude_result:
+                        return [_catalog_item(claude_result, clean_query, claude_result)]
+                
                 raise HTTPException(status_code=429, detail=f"Gemini API Error: {error_msg}")
+
             
             if res.status_code != 200:
                 raise HTTPException(
@@ -1717,25 +1727,56 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
         identity = consensus["identity"]
 
         if not identity:
-            # Proven Gemini Google Search grounding path (already awaitable)
+            # 1. Primary: Gemini provider
             if active_provider == "gemini":
-                legacy_results = await _deprecated_perform_ai_rag_web_search(query, provider="gemini")
-                if legacy_results:
-                    logger.info("Resolved barcode %s through legacy Gemini Google Search grounding", query)
-                    return legacy_results
+                try:
+                    legacy_results = await _deprecated_perform_ai_rag_web_search(query, provider="gemini")
+                    if legacy_results:
+                        logger.info("Resolved barcode %s through Gemini Google Search grounding", query)
+                        return legacy_results
+                except Exception as g_ex:
+                    logger.warning("[RAG Fallback] Gemini grounding failed for %s: %s — trying Gemini scraper then Claude", query, g_ex)
 
-            # Grounded web-search fallbacks — all sync internally, run in threads
-            if active_provider == "gemini":
-                identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
-            elif active_provider == "claude":
-                identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
-                if not identity:
+                try:
                     identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
-            else:
-                # OpenAI: try Gemini then Claude (both sync internally)
-                identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
-                if not identity:
+                except Exception as ex:
+                    logger.warning("[RAG Fallback] Gemini web search error for %s: %s", query, ex)
+
+                # Seamless Fallback to Claude if Gemini fails or hits 429 quota
+                if not identity and _is_valid_key(settings.anthropic_api_key):
+                    logger.info("[RAG Fallback] Gemini returned no identity or 429 rate limit for %s — falling back to Claude", query)
+                    try:
+                        identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
+                    except Exception as c_ex:
+                        logger.warning("[RAG Fallback] Claude fallback failed for %s: %s", query, c_ex)
+
+            # 2. Primary: Claude provider
+            elif active_provider == "claude":
+                try:
                     identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
+                except Exception as c_ex:
+                    logger.warning("[RAG Fallback] Claude search error for %s: %s", query, c_ex)
+
+                # Seamless Fallback to Gemini if Claude fails
+                if not identity and _is_valid_key(settings.gemini_api_key):
+                    logger.info("[RAG Fallback] Claude returned no identity for %s — falling back to Gemini", query)
+                    try:
+                        identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
+                    except Exception as g_ex:
+                        logger.warning("[RAG Fallback] Gemini fallback failed for %s: %s", query, g_ex)
+
+            # 3. Default multi-provider chain: Gemini -> Claude
+            else:
+                try:
+                    identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
+                except Exception:
+                    pass
+                if not identity and _is_valid_key(settings.anthropic_api_key):
+                    try:
+                        identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
+                    except Exception:
+                        pass
+
 
             if identity:
                 consensus = {
