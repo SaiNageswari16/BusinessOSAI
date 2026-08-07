@@ -890,10 +890,8 @@ async def upload_product_image(
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    import os as _os
-    _port = _os.environ.get("APP_PORT", "8001")
-    local_url = f"http://localhost:{_port}/images/{filename}"
-    return {"image_url": local_url}
+    return {"image_url": f"/images/{filename}"}
+
 
 
 # ==========================================

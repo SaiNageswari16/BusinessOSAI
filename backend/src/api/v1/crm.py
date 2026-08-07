@@ -1715,10 +1715,8 @@ async def generate_campaign_poster(
             detail=f"Ad Poster generation failed: {str(e)}"
         )
 
-    import os as _os
-    _port = _os.environ.get("APP_PORT", "8001")
-    local_url = f"http://localhost:{_port}/images/{filename}"
-    return {"image_url": local_url, "enhanced_prompt": enhanced_prompt, "aspect_ratio": payload.aspect_ratio}
+    return {"image_url": f"/images/{filename}", "enhanced_prompt": enhanced_prompt, "aspect_ratio": payload.aspect_ratio}
+
 
 @router.post("/campaigns/publish-facebook")
 async def publish_to_facebook(
