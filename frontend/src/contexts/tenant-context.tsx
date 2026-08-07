@@ -137,8 +137,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       let mappedCompanies: TenantCompany[] = [];
-      // Platform admin = system slug OR any user explicitly promoted to Godmode (isPlatformAdmin)
-      const isPlatformAdmin = slug === "system" || isPlatformAdminUser;
+      // Platform admin = strictly isPlatformAdminUser (user.isPlatformAdmin === true or email === "venaticfungus@gmail.com")
+      const isPlatformAdmin = isPlatformAdminUser;
+
 
 
 
