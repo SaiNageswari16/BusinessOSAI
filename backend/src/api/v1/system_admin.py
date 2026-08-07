@@ -205,26 +205,18 @@ class UpdateTenantModulesPayload(ORMModel):
 # ─── Helpers ──────────────────────────────────────────────────────
 
 def require_platform_admin(ctx: CurrentUserContext):
-    user_settings = ctx.user.settings or {}
-    tenant_settings = (ctx.user.tenant.settings if ctx.user.tenant else {}) or {}
-    
+    tenant_slug = ctx.user.tenant.slug if ctx.user.tenant else ""
     is_platform_admin_user = (
-        (ctx.user.tenant and ctx.user.tenant.slug in ("system", "venatic", "nimbus-retail"))
-        or bool(user_settings.get("is_platform_admin"))
-        or bool(tenant_settings.get("is_platform_admin"))
+        tenant_slug in ("system", "venatic", "nimbus-retail")
+        or ctx.user.is_tenant_owner
     )
-    
-    is_admin = (
-        ctx.user.is_tenant_owner
-        or ctx.has_permission("all")
-        or ctx.has_permission("manage:all")
-        or ctx.has_permission("super_admin")
-    )
-    if not (is_platform_admin_user and is_admin):
+    if not is_platform_admin_user:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Only system platform administrators can access SaaS administration endpoints.",
         )
+
+
 
 
 
@@ -498,18 +490,13 @@ async def toggle_platform_super_admin(
         raise HTTPException(status_code=404, detail="User not found")
 
     user.is_tenant_owner = not user.is_tenant_owner
-    user_settings = dict(user.settings or {})
-    if user.is_tenant_owner:
-        user_settings["is_platform_admin"] = True
-    else:
-        user_settings.pop("is_platform_admin", None)
-    user.settings = user_settings
 
     await db.commit()
     await db.refresh(user)
 
     status_str = "Global Platform Super Admin (Godmode)" if user.is_tenant_owner else "Regular User"
     return MessageResponse(message=f"User {user.email} access updated to {status_str}")
+
 
 
 
