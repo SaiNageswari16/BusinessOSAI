@@ -88,9 +88,22 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     category: Mapped["ProductCategory"] = relationship(back_populates="products")
     brand: Mapped["Brand"] = relationship(back_populates="products")
     uom: Mapped["UnitOfMeasure"] = relationship(back_populates="products")
-    
+
     images: Mapped[list["ProductImage"]] = relationship(back_populates="product", cascade="all, delete-orphan")
     variants: Mapped[list["ProductVariant"]] = relationship(back_populates="product", cascade="all, delete-orphan")
+
+    @property
+    def category_name(self) -> str | None:
+        return self.category.name if self.category else None
+
+    @property
+    def brand_name(self) -> str | None:
+        return self.brand.name if self.brand else None
+
+    @property
+    def uom_name(self) -> str | None:
+        return self.uom.name if self.uom else None
+
 
 class ProductAttribute(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_product_attributes"

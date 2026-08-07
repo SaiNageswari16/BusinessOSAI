@@ -394,9 +394,9 @@ async def create_product(
     data = payload.model_dump()
     brand_name = data.pop("brand", None)
     data["status"] = _parse_status(data.get("status") or "active")
-    
+
     # Sync / Find Brand
-    brand_id = None
+    brand_id = data.get("brand_id")
     if brand_name and brand_name.strip():
         b_name = brand_name.strip()
         b_res = await db.execute(select(Brand).where(Brand.tenant_id == ctx.tenant_id, Brand.name.ilike(b_name)))
@@ -408,8 +408,8 @@ async def create_product(
             db.add(new_brand)
             await db.flush()
             brand_id = new_brand.id
-            
     data["brand_id"] = brand_id
+
 
     barcode = (data.get("barcode") or "").strip()
     name = (data.get("name") or "").strip()
@@ -535,19 +535,18 @@ async def update_product(
     
     if "brand" in updates:
         brand_name = updates.pop("brand", None)
-        brand_id = None
         if brand_name and brand_name.strip():
             b_name = brand_name.strip()
             b_res = await db.execute(select(Brand).where(Brand.tenant_id == ctx.tenant_id, Brand.name.ilike(b_name)))
             existing_brand = b_res.scalars().first()
             if existing_brand:
-                brand_id = existing_brand.id
+                product.brand_id = existing_brand.id
             else:
                 new_brand = Brand(id=uuid.uuid4(), tenant_id=ctx.tenant_id, name=b_name, status=EntityStatus.ACTIVE)
                 db.add(new_brand)
                 await db.flush()
-                brand_id = new_brand.id
-        product.brand_id = brand_id
+                product.brand_id = new_brand.id
+
 
     if "status" in updates and updates["status"]:
         updates["status"] = _parse_status(updates["status"])

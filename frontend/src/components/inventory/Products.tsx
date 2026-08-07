@@ -74,12 +74,13 @@ const esc = (v: any) => {
 };
 
 const defaultFormData = () => ({
-  name: "", brand: "", sku: "", barcode: "", category_id: "",
+  name: "", brand: "", brand_id: "", sku: "", barcode: "", category_id: "",
   uom_id: "", warehouse: "", supplier: "",
   purchase_price: 0, mrp: 0, selling_price: 0, wholesale_price: 0, min_wholesale_qty: 1, tax_percent: 0,
   discount_limit: 0, initial_stock: 0, reorder_level: 0, safety_stock: 0,
   image_url: "", short_description: "", long_description: "", status: "active"
 });
+
 
 
 const localVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "initial_stock", "status"];
@@ -391,9 +392,11 @@ export function Products() {
   // ── Inventory data ───────────────────────────────────────────────
   const [products, setProducts] = useState<InventoryProduct[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
   const [uoms, setUoms] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
 
   // ── Column visibility ────────────────────────────────────────────
   const [localVisibleColumns, setLocalVisibleColumns] = useState<string[]>(() => {
@@ -539,9 +542,11 @@ export function Products() {
 
     // Load metadata asynchronously in the background — never blocks product list
     inventoryApi.getCategories().then((res) => setCategories(res.items || [])).catch(() => {});
+    inventoryApi.getBrands().then((res) => setBrands(res.items || [])).catch(() => {});
     inventoryApi.getUOMs().then((res) => setUoms(res.items || [])).catch(() => {});
     inventoryApi.getWarehouses().then((res) => setWarehouses(res || [])).catch(() => {});
   };
+
 
 
 
@@ -675,10 +680,16 @@ export function Products() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const payload = {
+        ...currentForm,
+        brand_id: currentForm.brand_id || null,
+        category_id: currentForm.category_id || null,
+        uom_id: currentForm.uom_id || null,
+      };
       if (editingProductId) {
-        await inventoryApi.updateProduct(editingProductId, { ...currentForm, category_id: currentForm.category_id || null, uom_id: currentForm.uom_id || null });
+        await inventoryApi.updateProduct(editingProductId, payload);
       } else {
-        await inventoryApi.createProduct({ ...currentForm, category_id: currentForm.category_id || null, uom_id: currentForm.uom_id || null });
+        await inventoryApi.createProduct(payload);
       }
       setIsModalOpen(false);
       setEditingProductId(null);
@@ -695,15 +706,29 @@ export function Products() {
 
   const handleEdit = (product: any) => {
     setCurrentForm({
-      name: product.name, brand: product.brand_name || "", sku: product.sku || "",
-      barcode: product.barcode || "", category_id: product.category_id || "",
-      uom_id: product.uom_id || "", warehouse: product.warehouse || "", supplier: product.supplier || "",
-      purchase_price: product.purchase_price || 0, mrp: product.mrp || 0,
-      selling_price: product.selling_price || 0, tax_percent: product.tax_percent || 0,
-      discount_limit: product.discount_limit || 0, initial_stock: product.initial_stock || 0,
-      reorder_level: product.reorder_level || 0, safety_stock: product.safety_stock || 0,
-      image_url: product.image_url || "", short_description: product.short_description || "",
-      long_description: product.long_description || "", status: product.status || "active"
+      name: product.name,
+      brand: product.brand_name || product.brand || "",
+      brand_id: product.brand_id || "",
+      sku: product.sku || "",
+      barcode: product.barcode || "",
+      category_id: product.category_id || "",
+      uom_id: product.uom_id || "",
+      warehouse: product.warehouse || "",
+      supplier: product.supplier || "",
+      purchase_price: product.purchase_price || 0,
+      mrp: product.mrp || 0,
+      selling_price: product.selling_price || 0,
+      wholesale_price: product.wholesale_price || 0,
+      min_wholesale_qty: product.min_wholesale_qty || 1,
+      tax_percent: product.tax_percent || 0,
+      discount_limit: product.discount_limit || 0,
+      initial_stock: product.stock ?? product.initial_stock ?? 0,
+      reorder_level: product.reorder_level || 0,
+      safety_stock: product.safety_stock || 0,
+      image_url: product.image_url || "",
+      short_description: product.short_description || "",
+      long_description: product.long_description || "",
+      status: product.status || "active"
     });
     setEditingProductId(product.id);
     setIsModalOpen(true);
@@ -711,19 +736,34 @@ export function Products() {
 
   const handleDuplicate = (product: any) => {
     setCurrentForm({
-      name: product.name + " (Copy)", brand: product.brand_name || "", sku: (product.sku || "") + "-COPY",
-      barcode: "", category_id: product.category_id || "",
-      uom_id: product.uom_id || "", warehouse: product.warehouse || "", supplier: product.supplier || "",
-      purchase_price: product.purchase_price || 0, mrp: product.mrp || 0,
-      selling_price: product.selling_price || 0, tax_percent: product.tax_percent || 0,
-      discount_limit: product.discount_limit || 0, initial_stock: product.initial_stock || 0,
-      reorder_level: product.reorder_level || 0, safety_stock: product.safety_stock || 0,
-      image_url: product.image_url || "", short_description: product.short_description || "",
-      long_description: product.long_description || "", status: product.status || "active"
+      name: product.name + " (Copy)",
+      brand: product.brand_name || product.brand || "",
+      brand_id: product.brand_id || "",
+      sku: (product.sku || "") + "-COPY",
+      barcode: "",
+      category_id: product.category_id || "",
+      uom_id: product.uom_id || "",
+      warehouse: product.warehouse || "",
+      supplier: product.supplier || "",
+      purchase_price: product.purchase_price || 0,
+      mrp: product.mrp || 0,
+      selling_price: product.selling_price || 0,
+      wholesale_price: product.wholesale_price || 0,
+      min_wholesale_qty: product.min_wholesale_qty || 1,
+      tax_percent: product.tax_percent || 0,
+      discount_limit: product.discount_limit || 0,
+      initial_stock: product.stock ?? product.initial_stock ?? 0,
+      reorder_level: product.reorder_level || 0,
+      safety_stock: product.safety_stock || 0,
+      image_url: product.image_url || "",
+      short_description: product.short_description || "",
+      long_description: product.long_description || "",
+      status: product.status || "active"
     });
     setEditingProductId(null);
     setIsModalOpen(true);
   };
+
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this product?")) return;
@@ -1004,9 +1044,10 @@ export function Products() {
               { label: "Product Name", name: "name", required: true },
               { label: "SKU", name: "sku" },
               { label: "Barcode", name: "barcode" },
-              { label: "Brand", name: "brand" },
+              { label: "Brand", name: "brand_id", type: "select", options: brands },
               { label: "Category", name: "category_id", type: "select", options: categories },
               { label: "UoM", name: "uom_id", type: "select", options: uoms },
+
               { label: "Purchase Price", name: "purchase_price", type: "number", step: "0.01" },
               { label: "MRP", name: "mrp", type: "number", step: "0.01" },
               { label: "Retail Selling Price", name: "selling_price", type: "number", step: "0.01" },
@@ -1079,9 +1120,10 @@ export function Products() {
       )}
       {visible.includes("sku") && <td className="px-6 py-4 font-mono font-bold text-xs">{product.sku || '-'}</td>}
       {visible.includes("barcode") && <td className="px-6 py-4 font-mono text-xs">{product.barcode || '-'}</td>}
-      {visible.includes("category") && <td className="px-6 py-4 text-xs">{product.category_name || '-'}</td>}
-      {visible.includes("brand") && <td className="px-6 py-4 text-xs">{product.brand_name || '-'}</td>}
-      {visible.includes("uom") && <td className="px-6 py-4 text-xs">{product.uom_name || '-'}</td>}
+      {visible.includes("category") && <td className="px-6 py-4 text-xs font-medium">{product.category_name || (categories.find(c => c.id === product.category_id)?.name) || '-'}</td>}
+      {visible.includes("brand") && <td className="px-6 py-4 text-xs font-medium">{product.brand_name || (brands.find(b => b.id === product.brand_id)?.name) || (product as any).brand || '-'}</td>}
+      {visible.includes("uom") && <td className="px-6 py-4 text-xs font-medium">{product.uom_name || (uoms.find(u => u.id === product.uom_id)?.name) || '-'}</td>}
+
       {/* Selling Prices */}
       {visible.includes("purchase_price") && <td className="px-6 py-4">{formatCurrency(product.purchase_price)}</td>}
       {visible.includes("mrp") && <td className="px-6 py-4 font-bold">{formatCurrency(product.mrp)}</td>}
