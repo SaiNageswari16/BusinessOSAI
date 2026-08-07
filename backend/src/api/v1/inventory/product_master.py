@@ -275,6 +275,38 @@ async def delete_brand(
 # Units of Measure
 # ==========================================
 
+DEFAULT_UOMS = [
+    {"name": "Pieces", "abbreviation": "pcs", "description": "Individual unit or item count"},
+    {"name": "Kilograms", "abbreviation": "kg", "description": "Unit of mass (weight)"},
+    {"name": "Grams", "abbreviation": "g", "description": "Unit of mass (weight)"},
+    {"name": "Liters", "abbreviation": "L", "description": "Unit of liquid volume"},
+    {"name": "Milliliters", "abbreviation": "ml", "description": "Unit of liquid volume"},
+    {"name": "Meters", "abbreviation": "m", "description": "Unit of length"},
+    {"name": "Centimeters", "abbreviation": "cm", "description": "Unit of length"},
+    {"name": "Box", "abbreviation": "box", "description": "Box container packaging"},
+    {"name": "Pack", "abbreviation": "pk", "description": "Pack or packet packaging"},
+    {"name": "Carton", "abbreviation": "ctn", "description": "Carton or case bulk packaging"},
+    {"name": "Dozen", "abbreviation": "doz", "description": "Set of 12 items"},
+    {"name": "Set", "abbreviation": "set", "description": "Composite set of items"},
+]
+
+async def auto_seed_default_uoms(db: AsyncSession, tenant_id: uuid.UUID):
+    existing_count = await db.scalar(
+        select(func.count()).select_from(UnitOfMeasure).where(UnitOfMeasure.tenant_id == tenant_id)
+    )
+    if (existing_count or 0) == 0:
+        for uom_def in DEFAULT_UOMS:
+            uom = UnitOfMeasure(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                name=uom_def["name"],
+                abbreviation=uom_def["abbreviation"],
+                description=uom_def["description"],
+                status=EntityStatus.ACTIVE,
+            )
+            db.add(uom)
+        await db.commit()
+
 @router.get("/uoms", response_model=PaginatedResponse[UnitOfMeasureResponse])
 async def list_uoms(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
@@ -288,10 +320,16 @@ async def list_uoms(
         query = query.where(UnitOfMeasure.name.ilike(f"%{search}%") | UnitOfMeasure.abbreviation.ilike(f"%{search}%"))
         
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    if (total or 0) == 0 and not search:
+        await auto_seed_default_uoms(db, ctx.tenant_id)
+        query = select(UnitOfMeasure).where(UnitOfMeasure.tenant_id == ctx.tenant_id)
+        total = await db.scalar(select(func.count()).select_from(query.subquery()))
+
     result = await db.execute(
         query.order_by(UnitOfMeasure.name.asc()).offset((page - 1) * page_size).limit(page_size)
     )
     return paginate(result.scalars().all(), total or 0, page, page_size)
+
 
 
 @router.post("/uoms", response_model=UnitOfMeasureResponse, status_code=status.HTTP_201_CREATED)
