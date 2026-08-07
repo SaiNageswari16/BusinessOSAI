@@ -61,6 +61,14 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
 
 
+def _get_status_str(val) -> str:
+    if val is None:
+        return ""
+    if hasattr(val, "value"):
+        return str(val.value).lower()
+    return str(val).lower()
+
+
 async def _build_token_response(
     db: AsyncSession,
     user: User,
@@ -123,6 +131,7 @@ async def _build_token_response(
     user.last_login_at = datetime.now(timezone.utc)
     user.failed_login_attempts = 0
     user.locked_until = None
+    await db.commit()
 
     # If the user has multiple roles and has not selected one yet, require role selection
     requires_role_selection = len(user_roles) > 1 and not active_role_id
@@ -244,7 +253,10 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if user.status.value in ("suspended", "inactive") or (user.tenant and user.tenant.status.value == "suspended"):
+    u_status = _get_status_str(user.status)
+    t_status = _get_status_str(user.tenant.status) if user.tenant else "active"
+
+    if u_status in ("suspended", "inactive") or t_status == "suspended":
         raise HTTPException(
             status_code=403,
             detail="Your workspace account is currently pending administrator approval. Please contact the platform administrator."
@@ -253,22 +265,22 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
     if user.locked_until and user.locked_until > datetime.now(timezone.utc):
         raise HTTPException(status_code=423, detail="Account temporarily locked due to failed login attempts")
 
-
     if not verify_password(payload.password, user.password_hash):
         user.failed_login_attempts += 1
         if user.failed_login_attempts >= settings.max_login_attempts:
             user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=settings.lockout_minutes)
-        await db.flush()
+        await db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if user.status.value != "active":
+    if u_status != "active":
         raise HTTPException(status_code=403, detail="User account is not active")
 
-    if user.tenant.status.value in ("suspended", "cancelled"):
+    if t_status in ("suspended", "cancelled"):
         raise HTTPException(
             status_code=403,
             detail="Your workspace has been suspended or cancelled. Please contact the platform owner."
         )
+
 
     return await _build_token_response(db, user, request)
 

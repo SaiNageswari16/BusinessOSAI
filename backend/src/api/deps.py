@@ -124,15 +124,18 @@ async def get_current_user_context(
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    if user.status.value != "active":
+    u_status = user.status.value if hasattr(user.status, "value") else str(user.status or "").lower()
+    if u_status != "active":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is not active")
 
     # SaaS platform tenant status gating
-    if user.tenant.status.value in ("suspended", "cancelled"):
+    t_status = user.tenant.status.value if (user.tenant and hasattr(user.tenant.status, "value")) else str(getattr(user.tenant, "status", "") or "").lower()
+    if t_status in ("suspended", "cancelled"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your workspace has been suspended or cancelled. Please contact the platform owner."
         )
+
 
     # Module Entitlement Gating for client workspaces
     if user.tenant and user.tenant.slug not in ("system", "nimbus-retail") and not user.is_tenant_owner:
