@@ -70,8 +70,10 @@ class UserMeResponse(ORMModel):
     active_role_id: uuid.UUID | None = None
     tenant_slug: str | None = None
     is_tenant_owner: bool = False
+    is_platform_admin: bool = False
     permissions: list[str]
     roles: list[RoleSummary]
+
 
 
 

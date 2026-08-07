@@ -19,6 +19,7 @@ export interface AppUser {
   tenantId: string | null;
   tenantSlug: string | null;
   isTenantOwner: boolean;
+  isPlatformAdmin: boolean;
   permissions: string[];
   roles: AuthRole[];
   assignedRoles: string[];
@@ -26,6 +27,7 @@ export interface AppUser {
   activeRoleId: string | null;
   mustChangePassword: boolean;
 }
+
 
 
 interface LoginPayload {
@@ -112,6 +114,7 @@ function mapUser(json: Record<string, unknown>): AppUser {
     avatar: String(json.avatar_initials || buildAvatar(String(json.full_name ?? json.email ?? ""))),
     status: json.status === "active" ? "Active" : "Inactive",
     isTenantOwner: Boolean(json.is_tenant_owner),
+    isPlatformAdmin: Boolean(json.is_platform_admin),
     permissions: (json.permissions as string[] | undefined) ?? [],
     roles,
     assignedRoles: roles.map((role) => role.id),
@@ -120,6 +123,7 @@ function mapUser(json: Record<string, unknown>): AppUser {
     mustChangePassword: Boolean(json.must_change_password),
   };
 }
+
 
 
 export function AuthProvider({ children }: { children: ReactNode }) {

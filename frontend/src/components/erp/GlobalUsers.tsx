@@ -19,9 +19,11 @@ interface PlatformUser {
   full_name: string;
   status: string;
   is_tenant_owner: boolean;
+  is_platform_admin?: boolean;
   mfa_enabled: boolean;
   created_at: string;
 }
+
 
 function PasswordResetModal({
   user,
@@ -234,21 +236,23 @@ export function GlobalUsers() {
 
   const handleToggleSuperAdmin = async (user: PlatformUser) => {
     if (!accessToken) return;
-    const actionText = user.is_tenant_owner ? "Revoke Global Super Admin access from" : "Promote to Global Super Admin";
-    if (!window.confirm(`${actionText} ${user.email}? This grants unrestricted control across all workspaces and system admin endpoints.`)) return;
+    const isGod = Boolean(user.is_platform_admin || user.email === "venaticfungus@gmail.com");
+    const actionText = isGod ? "Demote God Mode access from" : "Promote to Global Super Admin (God Mode)";
+    if (!window.confirm(`${actionText} ${user.email}? This grants 100% unrestricted control across all tenant workspaces, SaaS administration, and system settings.`)) return;
 
     try {
       const res = await fetch(`${API_BASE_URL}/system/users/${user.id}/toggle-super-admin`, {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (!res.ok) throw new Error("Failed to update super admin status");
-      toast.success(`Updated Super Admin privileges for ${user.email}`);
+      if (!res.ok) throw new Error("Failed to update God Mode status");
+      toast.success(isGod ? `Demoted ${user.email} from God Mode.` : `Successfully promoted ${user.email} to Global Super Admin (God Mode)!`);
       void load();
     } catch (err: any) {
       toast.error(err.message || "Failed to update super admin status");
     }
   };
+
 
   const handleResetMfa = async (user: PlatformUser) => {
     if (!accessToken) return;
@@ -512,9 +516,15 @@ export function GlobalUsers() {
                       <div>
                         <div className="font-semibold text-foreground flex items-center gap-1.5">
                           {u.full_name}
-                          {u.is_tenant_owner && (
-                            <span className="text-[9px] bg-amber-500/10 text-amber-700 border border-amber-500/20 px-1 rounded uppercase tracking-wider font-bold">👑 Super Admin</span>
-                          )}
+                          {Boolean(u.is_platform_admin || u.email === "venaticfungus@gmail.com") ? (
+                            <span className="text-[9px] bg-gradient-to-r from-amber-500 to-yellow-600 text-white px-1.5 py-0.5 rounded uppercase tracking-wider font-extrabold shadow-sm flex items-center gap-0.5">
+                              👑 God Mode
+                            </span>
+                          ) : u.is_tenant_owner ? (
+                            <span className="text-[9px] bg-indigo-500/10 text-indigo-700 border border-indigo-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+                              🏢 Workspace Owner
+                            </span>
+                          ) : null}
                         </div>
                         <div className="text-xs text-muted-foreground font-mono mt-0.5">{u.email}</div>
                       </div>
@@ -549,15 +559,28 @@ export function GlobalUsers() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleSuperAdmin(u)}
-                          className={cn("h-8 px-2 text-xs font-bold gap-1", u.is_tenant_owner ? "text-amber-600 hover:text-amber-700 bg-amber-50" : "text-indigo-600 hover:text-indigo-700")}
-                          title="Toggle Global Super Admin Privileges"
-                        >
-                          👑 {u.is_tenant_owner ? "Super Admin" : "Make Admin"}
-                        </Button>
+                        {Boolean(u.is_platform_admin || u.email === "venaticfungus@gmail.com") ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleToggleSuperAdmin(u)}
+                            className="h-8 px-2 text-xs font-bold gap-1 text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200"
+                            title="Demote from Global Super Admin / God Mode"
+                          >
+                            ⚡ Demote God Mode
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleToggleSuperAdmin(u)}
+                            className="h-8 px-2.5 text-xs font-bold gap-1 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-white border-0 shadow-sm"
+                            title="Promote to Global Super Admin with 100% God Mode access"
+                          >
+                            👑 Promote to God Mode
+                          </Button>
+                        )}
+
                         <Button
                           variant="ghost"
                           size="sm"

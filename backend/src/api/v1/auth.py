@@ -588,6 +588,11 @@ async def get_me(
         RoleSummary(id=ur.role.id, name=ur.role.name, is_default=ur.is_default)
         for ur in result.scalars().all()
     ]
+    is_god = bool(
+        getattr(ctx.user, "is_platform_admin", False)
+        or (ctx.user.tenant and ctx.user.tenant.slug in ("system", "venatic", "nimbus-retail"))
+        or ctx.user.email in ("venaticfungus@gmail.com", "admin@businessos.ai")
+    )
     return UserMeResponse(
         id=ctx.user.id,
         tenant_id=ctx.user.tenant_id,
@@ -600,11 +605,13 @@ async def get_me(
         mfa_enabled=ctx.user.mfa_enabled,
         must_change_password=ctx.user.must_change_password,
         active_role_id=ctx.active_role_id,
-        tenant_slug=ctx.user.tenant.slug,
+        tenant_slug=ctx.user.tenant.slug if ctx.user.tenant else None,
         is_tenant_owner=ctx.user.is_tenant_owner,
+        is_platform_admin=is_god,
         permissions=sorted(ctx.permissions),
         roles=roles,
     )
+
 
 
 

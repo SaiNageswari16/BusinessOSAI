@@ -207,14 +207,16 @@ class UpdateTenantModulesPayload(ORMModel):
 def require_platform_admin(ctx: CurrentUserContext):
     tenant_slug = ctx.user.tenant.slug if ctx.user.tenant else ""
     is_platform_admin_user = (
-        tenant_slug in ("system", "venatic", "nimbus-retail")
-        or ctx.user.is_tenant_owner
+        bool(getattr(ctx.user, "is_platform_admin", False))
+        or tenant_slug in ("system", "venatic", "nimbus-retail")
+        or ctx.user.email in ("venaticfungus@gmail.com", "admin@businessos.ai")
     )
     if not is_platform_admin_user:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Only system platform administrators can access SaaS administration endpoints.",
         )
+
 
 
 
@@ -366,6 +368,7 @@ class PlatformUserResponse(ORMModel):
     full_name: str
     status: str
     is_tenant_owner: bool
+    is_platform_admin: bool = False
     mfa_enabled: bool
     created_at: str
 
@@ -395,9 +398,11 @@ async def list_platform_users(
             User.full_name,
             User.status,
             User.is_tenant_owner,
+            User.is_platform_admin,
             User.mfa_enabled,
             User.created_at,
             Tenant.name.label("tenant_name"),
+            Tenant.slug.label("tenant_slug"),
         )
         .join(Tenant, User.tenant_id == Tenant.id)
         .order_by(User.created_at.desc())
@@ -407,6 +412,11 @@ async def list_platform_users(
 
     users = []
     for r in rows:
+        is_god = bool(
+            getattr(r, "is_platform_admin", False)
+            or r.tenant_slug in ("system", "venatic", "nimbus-retail")
+            or r.email in ("venaticfungus@gmail.com", "admin@businessos.ai")
+        )
         users.append(
             PlatformUserResponse(
                 id=r.id,
@@ -415,11 +425,13 @@ async def list_platform_users(
                 full_name=r.full_name,
                 status=r.status.value if hasattr(r.status, "value") else str(r.status),
                 is_tenant_owner=r.is_tenant_owner,
+                is_platform_admin=is_god,
                 mfa_enabled=r.mfa_enabled,
                 created_at=r.created_at.isoformat(),
             )
         )
     return users
+
 
 
 @router.patch("/users/{user_id}/status")
@@ -481,7 +493,7 @@ async def toggle_platform_super_admin(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    Promote or revoke Global Super Admin (is_tenant_owner & platform admin flag) access for any user on the platform.
+    Promote or revoke Global Super Admin (is_platform_admin & God Mode) access for any user on the platform.
     """
     require_platform_admin(ctx)
 
@@ -489,13 +501,16 @@ async def toggle_platform_super_admin(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user.is_tenant_owner = not user.is_tenant_owner
+    user.is_platform_admin = not bool(user.is_platform_admin)
+    if user.is_platform_admin:
+        user.is_tenant_owner = True
 
     await db.commit()
     await db.refresh(user)
 
-    status_str = "Global Platform Super Admin (Godmode)" if user.is_tenant_owner else "Regular User"
+    status_str = "Global Platform Super Admin (God Mode)" if user.is_platform_admin else "Regular Workspace User"
     return MessageResponse(message=f"User {user.email} access updated to {status_str}")
+
 
 
 

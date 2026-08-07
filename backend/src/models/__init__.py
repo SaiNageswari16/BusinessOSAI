@@ -125,7 +125,9 @@ class User(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     )
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_tenant_owner: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

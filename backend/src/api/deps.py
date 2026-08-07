@@ -174,9 +174,11 @@ async def get_current_user_context(
     tenant_slug = user.tenant.slug if user.tenant else ""
 
     is_platform_admin_user = (
-        tenant_slug in ("system", "venatic", "nimbus-retail")
-        or user.is_tenant_owner
+        bool(getattr(user, "is_platform_admin", False))
+        or tenant_slug in ("system", "venatic", "nimbus-retail")
+        or user.email in ("venaticfungus@gmail.com", "admin@businessos.ai")
     )
+
 
     if impersonate_header and is_platform_admin_user and user.is_tenant_owner:
         try:

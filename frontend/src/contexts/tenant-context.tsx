@@ -56,16 +56,17 @@ function getAuthUserSlug(): string | null {
   }
 }
 
-function getAuthIsTenantOwner(): boolean {
+function getAuthIsPlatformAdmin(): boolean {
   try {
     const stored = localStorage.getItem("bos-auth");
     if (!stored) return false;
-    const parsed = JSON.parse(stored) as { user?: { isTenantOwner?: boolean } };
-    return Boolean(parsed.user?.isTenantOwner);
+    const parsed = JSON.parse(stored) as { user?: { isPlatformAdmin?: boolean; isTenantOwner?: boolean } };
+    return Boolean(parsed.user?.isPlatformAdmin || parsed.user?.isTenantOwner);
   } catch {
     return false;
   }
 }
+
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
@@ -118,7 +119,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const loadData = useCallback(async () => {
     const token = getAuthToken();
     const slug = getAuthUserSlug();
-    const isTenantOwner = getAuthIsTenantOwner();
+    const isPlatformAdminUser = getAuthIsPlatformAdmin();
     if (!token) {
       // Reset to mock data if not logged in
       const mappedMocks = mockCompanies.map(c => ({
@@ -135,8 +136,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       let mappedCompanies: TenantCompany[] = [];
-      // Platform admin = system/venatic/nimbus-retail slugs OR any user promoted to is_tenant_owner (Godmode)
-      const isPlatformAdmin = slug === "system" || slug === "venatic" || slug === "nimbus-retail" || isTenantOwner;
+      // Platform admin = system/venatic/nimbus-retail slugs OR any user promoted to Godmode (isPlatformAdmin)
+      const isPlatformAdmin = slug === "system" || slug === "venatic" || slug === "nimbus-retail" || isPlatformAdminUser;
+
 
       if (isPlatformAdmin) {
         // Fetch all client tenant environments for SaaS impersonation switcher
