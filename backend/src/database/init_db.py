@@ -53,8 +53,8 @@ async def init_database() -> None:
         from sqlalchemy import text
         try:
             await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC(10, 2) DEFAULT 0;"))
-            await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS min_wholesale_qty INTEGER DEFAULT 1;"))
-            await conn.execute(text("UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com' OR tenant_id IN (SELECT id FROM tenants WHERE slug IN ('system', 'venatic'));"))
+            await conn.execute(text("UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com';"))
+
 
         except Exception as alter_err:
             logger.warning(f"Auto-column migration check: {alter_err}")
