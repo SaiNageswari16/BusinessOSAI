@@ -37,8 +37,10 @@ from src.schemas.erp import (
     RoleSummary,
     SelectRoleRequest,
     TenantRegisterRequest,
+    RegistrationResponse,
     TokenResponse,
     UserMeResponse,
+
 
 )
 from src.config import get_settings
@@ -133,7 +135,7 @@ async def _build_token_response(
 
 
 
-@router.post("/register-tenant", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register-tenant", response_model=RegistrationResponse, status_code=status.HTTP_201_CREATED)
 async def register_tenant(
     payload: TenantRegisterRequest,
     request: Request,
@@ -144,7 +146,19 @@ async def register_tenant(
     if existing:
         raise HTTPException(status_code=400, detail="Tenant slug already exists")
 
-    tenant = Tenant(slug=slug, name=payload.tenant_name, plan=settings.default_tenant_plan)
+    requested_mods = payload.requested_modules or ["inventory", "pos"]
+
+    tenant = Tenant(
+        slug=slug,
+        name=payload.tenant_name,
+        plan=settings.default_tenant_plan,
+        status=TenantStatus.SUSPENDED,
+        settings={
+            "requested_modules": requested_mods,
+            "enabled_modules": [],
+            "requested_at": datetime.now(timezone.utc).isoformat()
+        }
+    )
     db.add(tenant)
     await db.flush()
 
@@ -156,6 +170,7 @@ async def register_tenant(
         password_hash=hash_password(payload.admin_password),
         full_name=payload.admin_name,
         avatar_initials="".join(part[0].upper() for part in payload.admin_name.split()[:2]),
+        status=UserStatus.SUSPENDED,
         is_tenant_owner=True,
     )
     db.add(admin)
@@ -178,29 +193,40 @@ async def register_tenant(
         action="tenant_registered",
         entity_type="tenant",
         entity_id=tenant.id,
-        new_values={"slug": slug, "name": tenant.name},
+        new_values={"slug": slug, "name": tenant.name, "requested_modules": requested_mods, "status": "suspended"},
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
 
-    # send welcome email in background
+    await db.commit()
+
+    # send notification email in background
     try:
         asyncio.create_task(
             send_email(
-                subject=f"Welcome to {settings.app_name}",
+                subject=f"Registration Submitted — {settings.app_name}",
                 recipients=[admin.email],
                 text=(
                     f"Hello {admin.full_name},\n\n"
-                    f"Your tenant '{tenant.name}' has been created.\n"
-                    "Use the admin account to log in and configure your workspace.\n\n"
-                    "— BusinessOS AI"
+                    f"Your workspace '{tenant.name}' has been registered and submitted for approval.\n"
+                    f"Requested Modules: {', '.join(requested_mods).upper()}\n\n"
+                    "Your account is currently under review by the Platform Administrator. You will receive an email notification once your account and selected modules are approved.\n\n"
+                    "— BusinessOS AI Security"
                 ),
             )
         )
     except Exception:
         pass
 
-    return await _build_token_response(db, admin, request)
+    return RegistrationResponse(
+        success=True,
+        message="Registration submitted successfully! Your workspace account is currently pending approval by the System Administrator.",
+        status="pending_approval",
+        tenant_id=tenant.id,
+        tenant_slug=tenant.slug,
+        admin_email=admin.email,
+        requested_modules=requested_mods
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -213,8 +239,15 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    if user.status.value in ("suspended", "inactive") or (user.tenant and user.tenant.status.value == "suspended"):
+        raise HTTPException(
+            status_code=403,
+            detail="Your workspace account is currently pending administrator approval. Please contact the platform administrator."
+        )
+
     if user.locked_until and user.locked_until > datetime.now(timezone.utc):
         raise HTTPException(status_code=423, detail="Account temporarily locked due to failed login attempts")
+
 
     if not verify_password(payload.password, user.password_hash):
         user.failed_login_attempts += 1

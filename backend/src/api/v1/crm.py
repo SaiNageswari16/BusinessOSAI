@@ -974,7 +974,8 @@ def call_ai_image(
                 elif "webp" in header:
                     mime_type = "image/webp"
 
-            vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
+            vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
+
             vision_payload = {
                 "contents": [{
                     "parts": [
@@ -1636,7 +1637,8 @@ async def optimize_campaign_prompt(
                 elif "webp" in header:
                     mime_type = "image/webp"
 
-            vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
+            vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
+
             vision_payload = {
                 "contents": [{
                     "parts": [

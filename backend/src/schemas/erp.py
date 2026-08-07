@@ -17,6 +17,18 @@ class TenantRegisterRequest(BaseModel):
     admin_email: EmailStr
     admin_password: str = Field(min_length=8, max_length=128)
     company_name: str = Field(min_length=2, max_length=255)
+    requested_modules: list[str] = Field(default_factory=lambda: ["inventory", "pos"])
+
+
+class RegistrationResponse(BaseModel):
+    success: bool = True
+    message: str
+    status: str = "pending_approval"
+    tenant_id: uuid.UUID
+    tenant_slug: str
+    admin_email: str
+    requested_modules: list[str] = Field(default_factory=list)
+
 
 
 class LoginRequest(BaseModel):

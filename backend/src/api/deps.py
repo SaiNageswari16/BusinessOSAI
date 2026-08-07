@@ -70,6 +70,13 @@ class CurrentUserContext:
 
         return False
 
+    def require_permission(self, permission: str) -> None:
+        if not self.has_permission(permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied. Required permission: {permission}",
+            )
+
 
 async def get_current_user_context(
     request: Request,
@@ -126,6 +133,37 @@ async def get_current_user_context(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your workspace has been suspended or cancelled. Please contact the platform owner."
         )
+
+    # Module Entitlement Gating for client workspaces
+    if user.tenant and user.tenant.slug not in ("system", "nimbus-retail") and not user.is_tenant_owner:
+        tenant_settings = user.tenant.settings or {}
+        enabled_modules = tenant_settings.get("enabled_modules")
+        if enabled_modules is not None and len(enabled_modules) > 0:
+            req_path = request.url.path.lower()
+            target_module = None
+            if "/inventory" in req_path or "/products" in req_path or "/master-catalog" in req_path:
+                target_module = "inventory"
+            elif "/pos" in req_path:
+                target_module = "pos"
+            elif "/accounting" in req_path or "/finance" in req_path or "/journals" in req_path:
+                target_module = "accounting"
+            elif "/crm" in req_path or "/leads" in req_path or "/deals" in req_path:
+                target_module = "crm"
+            elif "/procurement" in req_path or "/purchase" in req_path or "/grn" in req_path:
+                target_module = "procurement"
+            elif "/hrms" in req_path or "/employees" in req_path or "/leaves" in req_path:
+                target_module = "hrms"
+            elif "/iot" in req_path or "/telemetry" in req_path:
+                target_module = "iot"
+            elif "/copilot" in req_path:
+                target_module = "copilot"
+
+            if target_module and target_module not in enabled_modules:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Access denied. Module '{target_module.upper()}' is not enabled for your workspace subscription."
+                )
+
 
     # Check if Platform Admin is impersonating a buyer tenant
     resolved_tenant_id = actual_tenant_uuid

@@ -384,7 +384,8 @@ async def _deprecated_perform_ai_rag_web_search(query_str: str, provider: str = 
         
     if active_provider == "gemini" and has_gemini:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
+
             
             clean_query = query_str.strip()
             is_barcode = clean_query.isdigit() and len(clean_query) in [8, 12, 13, 14]
@@ -1322,7 +1323,8 @@ def _resolve_conflicting_identity(barcode: str, candidates: list[dict], context:
         f"Candidates: {json.dumps(choices)}\nRetailer evidence: {context[:5000]}"
     )
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
+
         response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}}, timeout=45)
         if response.status_code != 200:
             logger.warning("Gemini conflict resolution returned %s for %s", response.status_code, barcode)
@@ -1475,7 +1477,8 @@ def _resolve_barcode_with_gemini_web_search(barcode: str) -> Optional[dict]:
     )
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}",
+
             headers={"Content-Type": "application/json"},
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
@@ -1693,7 +1696,8 @@ def _call_enrichment_ai(provider: str, identity: dict, barcode: str, context: st
     )
     try:
         if provider == "gemini" and _is_valid_key(settings.gemini_api_key):
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
+
             response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}}, timeout=60)
             text = response.json()["candidates"][0]["content"]["parts"][0]["text"] if response.status_code == 200 else "{}"
         elif provider == "openai" and _is_valid_key(settings.openai_api_key):

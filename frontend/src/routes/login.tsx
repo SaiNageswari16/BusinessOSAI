@@ -27,6 +27,8 @@ function LoginPage() {
   const [tenantName, setTenantName] = useState("");
   const [adminName, setAdminName] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [selectedModules, setSelectedModules] = useState<string[]>(["inventory", "pos"]);
+  const [registrationSuccess, setRegistrationSuccess] = useState<string | null>(null);
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleOAuthEnabled, setGoogleOAuthEnabled] = useState(false);
@@ -61,19 +63,34 @@ function LoginPage() {
     setLoading(true);
 
     try {
-      const result = mode === "login"
-        ? await login({ email, password, tenant_slug: tenantSlug || undefined })
-        : await register({
+      if (mode === "login") {
+        const result = await login({ email, password, tenant_slug: tenantSlug || undefined });
+        toast.success("Signed in successfully");
+        navigate({ to: resolvePostAuthRoute(result.user, result.token) });
+      } else {
+        const res = await fetch(`${API_BASE_URL}/auth/register-tenant`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             tenant_name: tenantName,
             tenant_slug: tenantSlug || undefined,
             admin_name: adminName,
             admin_email: email,
             admin_password: password,
             company_name: companyName,
-          });
+            requested_modules: selectedModules,
+          }),
+        });
 
-      toast.success(mode === "login" ? "Signed in successfully" : "Workspace created and signed in");
-      navigate({ to: resolvePostAuthRoute(result.user, result.token) });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || "Registration failed");
+        }
+
+        const json = await res.json();
+        setRegistrationSuccess(json.message || "Registration submitted for System Admin approval.");
+        toast.success("Registration submitted for approval!");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed";
       toast.error(message);
@@ -81,6 +98,7 @@ function LoginPage() {
       setLoading(false);
     }
   };
+
 
   const handleOAuthLogin = () => {
     if (!googleOAuthEnabled) {
@@ -182,19 +200,67 @@ function LoginPage() {
               <>
                 <div className="space-y-2">
                   <Label htmlFor="tenant_name" className="text-sm font-medium text-slate-700">Workspace name</Label>
-                  <Input id="tenant_name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" />
+                  <Input id="tenant_name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="e.g. Acme Enterprise" required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="tenant_slug" className="text-sm font-medium text-slate-700">Workspace slug <span className="text-slate-400 font-normal">(optional)</span></Label>
-                  <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" />
+                  <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="e.g. acme-corp" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="company_name" className="text-sm font-medium text-slate-700">Company name</Label>
-                  <Input id="company_name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" />
+                  <Input id="company_name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="Acme Corporation Ltd." required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="admin_name" className="text-sm font-medium text-slate-700">Admin full name</Label>
-                  <Input id="admin_name" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" />
+                  <Input id="admin_name" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="John Doe" required />
+                </div>
+
+                {/* Module Entitlement Selector */}
+                <div className="space-y-2 pt-2 border-t">
+                  <Label className="text-sm font-semibold text-slate-900 block">Select Required Modules *</Label>
+                  <p className="text-xs text-slate-500 mb-2">Choose which business modules your workspace requires. System Admin will review & approve your selected modules.</p>
+                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 border rounded-lg bg-slate-50/50">
+                    {[
+                      { id: "inventory", name: "Inventory & Catalog", icon: "📦", desc: "Stock, Barcodes & Catalog" },
+                      { id: "pos", name: "Point of Sale (POS)", icon: "🛒", desc: "Retail & Counter Checkout" },
+                      { id: "accounting", name: "Finance & Accounting", icon: "📊", desc: "Ledgers, Tax & Invoicing" },
+                      { id: "crm", name: "Sales & CRM", icon: "🤝", desc: "Leads, Deals & Pipeline" },
+                      { id: "procurement", name: "Procurement", icon: "💼", desc: "POs & Supplier Bills" },
+                      { id: "hrms", name: "HRMS & Payroll", icon: "🏢", desc: "Attendance & Employee Hub" },
+                      { id: "iot", name: "IoT Telemetry", icon: "🔌", desc: "Devices & Real-time Sensors" },
+                      { id: "copilot", name: "AI Copilot", icon: "🤖", desc: "AI Assistant & RAG Sourcing" },
+                    ].map((mod) => {
+                      const isSelected = selectedModules.includes(mod.id);
+                      return (
+                        <div
+                          key={mod.id}
+                          onClick={() => {
+                            setSelectedModules((prev) =>
+                              prev.includes(mod.id)
+                                ? prev.filter((m) => m !== mod.id)
+                                : [...prev, mod.id]
+                            );
+                          }}
+                          className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all select-none ${
+                            isSelected
+                              ? "border-indigo-600 bg-indigo-50/80 ring-1 ring-indigo-600"
+                              : "border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-bold text-slate-900">{mod.icon} {mod.name}</span>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              readOnly
+                              className="size-3.5 accent-indigo-600 rounded"
+                            />
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{mod.desc}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </>
             ) : (
@@ -206,7 +272,7 @@ function LoginPage() {
 
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium text-slate-700">Work email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="you@company.com" />
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="you@company.com" required />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -218,7 +284,7 @@ function LoginPage() {
                 ) : null}
               </div>
               <div className="relative">
-                <Input id="password" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="••••••••" />
+                <Input id="password" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="••••••••" required />
                 <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                   {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -239,7 +305,7 @@ function LoginPage() {
               </div>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full h-11 text-base bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all font-medium mt-2">
+            <Button type="submit" disabled={loading || (mode === "register" && selectedModules.length === 0)} className="w-full h-11 text-base bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all font-medium mt-2">
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -248,12 +314,13 @@ function LoginPage() {
               ) : mode === "login" ? (
                 "Sign in"
               ) : (
-                "Create workspace"
+                "Submit Registration for Approval"
               )}
             </Button>
           </form>
 
           <div className="relative my-8">
+
             <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-200" /></div>
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-white px-3 text-slate-500 font-medium tracking-wider">Or continue with</span>
@@ -284,6 +351,33 @@ function LoginPage() {
           </p>
         </motion.div>
       </div>
+
+      {registrationSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white border rounded-2xl shadow-2xl p-6 max-w-md text-center space-y-4">
+            <div className="size-14 rounded-full bg-amber-100 text-amber-600 grid place-items-center mx-auto text-2xl font-bold">
+              ⏳
+            </div>
+            <h2 className="text-xl font-bold text-slate-900">Registration Submitted!</h2>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              {registrationSuccess}
+            </p>
+            <div className="p-3 rounded-lg bg-slate-50 text-xs text-slate-500 font-mono text-left">
+              <strong>Requested Modules:</strong> {selectedModules.join(", ").toUpperCase()}
+            </div>
+            <Button
+              onClick={() => {
+                setRegistrationSuccess(null);
+                setMode("login");
+              }}
+              className="w-full h-10 gradient-brand text-white font-bold"
+            >
+              Return to Login
+            </Button>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
+
