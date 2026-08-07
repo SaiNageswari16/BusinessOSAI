@@ -27,7 +27,9 @@ export function Brands() {
     setIsLoading(true);
     try {
       const res = await inventoryApi.getBrands();
-      setBrands(res.items || []);
+      const items = Array.isArray(res) ? res : (res?.items || []);
+      setBrands(items);
+
     } catch (error) {
       console.error("Failed to load brands:", error);
     } finally {

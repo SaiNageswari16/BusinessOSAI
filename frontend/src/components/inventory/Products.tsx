@@ -540,12 +540,12 @@ export function Products() {
       setIsLoading(false);
     }
 
-    // Load metadata asynchronously in the background — never blocks product list
-    inventoryApi.getCategories().then((res) => setCategories(res.items || [])).catch(() => {});
-    inventoryApi.getBrands().then((res) => setBrands(res.items || [])).catch(() => {});
-    inventoryApi.getUOMs().then((res) => setUoms(res.items || [])).catch(() => {});
-    inventoryApi.getWarehouses().then((res) => setWarehouses(res || [])).catch(() => {});
+    inventoryApi.getCategories().then((res) => setCategories(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    inventoryApi.getBrands().then((res) => setBrands(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    inventoryApi.getUOMs().then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    inventoryApi.getWarehouses().then((res) => setWarehouses(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
   };
+
 
 
 

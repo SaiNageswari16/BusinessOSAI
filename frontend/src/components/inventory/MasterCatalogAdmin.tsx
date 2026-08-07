@@ -89,8 +89,9 @@ export function MasterCatalogAdmin() {
         search: searchQuery.trim() || undefined,
         rag_status: statusFilter !== "all" ? statusFilter : undefined
       });
-      setItems(res.items || []);
-      setTotalItems(res.total || 0);
+      setItems(Array.isArray(res) ? res : (res?.items || []));
+      setTotalItems(res.total || (Array.isArray(res) ? res.length : 0));
+
     } catch (err: any) {
       toast.error(err.message || "Failed to fetch master catalog list");
     } finally {

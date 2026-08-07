@@ -31,7 +31,9 @@ export function Categories() {
     setIsLoading(true);
     try {
       const res = await inventoryApi.getCategories();
-      setCategories(res.items || []);
+      const items = Array.isArray(res) ? res : (res?.items || []);
+      setCategories(items);
+
     } catch (error) {
       console.error("Failed to load categories:", error);
     } finally {

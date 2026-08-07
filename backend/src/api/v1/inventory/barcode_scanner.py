@@ -690,18 +690,44 @@ async def add_inventory_stock(
 
 # 5. Dynamic Categories & Brands Lists
 @router.get("/inventory/categories")
-async def get_categories(db: AsyncSession = Depends(get_db)):
-    stmt = select(ProductCategory).limit(100)
+async def get_categories(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(ProductCategory).where(ProductCategory.tenant_id == ctx.tenant_id).order_by(ProductCategory.name.asc()).limit(200)
     res = await db.execute(stmt)
     categories = res.scalars().all()
-    return [{"id": str(c.id), "name": c.name} for c in categories]
+    return [
+        {
+            "id": str(c.id),
+            "name": c.name,
+            "category_code": c.category_code,
+            "description": c.description,
+            "parent_id": str(c.parent_id) if c.parent_id else None,
+            "status": c.status.value if hasattr(c.status, "value") else str(c.status or "active"),
+        }
+        for c in categories
+    ]
 
 @router.get("/inventory/brands")
-async def get_brands(db: AsyncSession = Depends(get_db)):
-    stmt = select(Brand).limit(100)
+async def get_brands(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Brand).where(Brand.tenant_id == ctx.tenant_id).order_by(Brand.name.asc()).limit(200)
     res = await db.execute(stmt)
     brands = res.scalars().all()
-    return [{"id": str(b.id), "name": b.name} for b in brands]
+    return [
+        {
+            "id": str(b.id),
+            "name": b.name,
+            "description": b.description,
+            "manufacturer": b.manufacturer,
+            "status": b.status.value if hasattr(b.status, "value") else str(b.status or "active"),
+        }
+        for b in brands
+    ]
+
 
 # 6. Public Product Catalog Endpoint for POS UI
 @router.get("/products/all")

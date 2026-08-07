@@ -24,7 +24,8 @@ export function ProductPicker({ value, onChange, placeholder = "Search productâ€
     let mounted = true;
     setIsLoading(true);
     inventoryApi.getProducts({ page_size: 200 })
-      .then((res) => { if (mounted) setAll(res.items || []); })
+      .then((res) => { if (mounted) setAll(Array.isArray(res) ? res : (res?.items || [])); })
+
       .catch(() => { if (mounted) setAll([]); })
       .finally(() => { if (mounted) setIsLoading(false); });
     return () => { mounted = false; };

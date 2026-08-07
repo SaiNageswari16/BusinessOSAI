@@ -123,10 +123,12 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
       setIsLoading(true);
       try {
         const res = await inventoryApi.adminGetMasterCatalogList({ page: 1, page_size: 50 });
-        if (res.items && res.items.length > 0) {
-          setResults(res.items);
+        const items = Array.isArray(res) ? res : (res?.items || []);
+        if (items.length > 0) {
+          setResults(items);
           setHasSearched(true);
         }
+
       } catch (err) {
         console.error("Failed to load initial master catalog items:", err);
       } finally {

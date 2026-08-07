@@ -23,7 +23,9 @@ export function UnitsOfMeasure() {
     setIsLoading(true);
     try {
       const res = await inventoryApi.getUOMs();
-      setUoms(res.items || []);
+      const items = Array.isArray(res) ? res : (res?.items || []);
+      setUoms(items);
+
     } catch (error) {
       console.error("Failed to load UOMs:", error);
     } finally {
