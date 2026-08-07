@@ -1,14 +1,16 @@
 import uuid
 import logging
 import asyncio
-from typing import Optional, List, Dict, Any
+from typing import Annotated, Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 
+from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
 from src.models.inventory import Product, ProductCategory, Brand, MasterCatalogProduct
+
 
 logger = logging.getLogger(__name__)
 
