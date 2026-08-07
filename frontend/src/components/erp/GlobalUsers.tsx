@@ -125,6 +125,8 @@ export function GlobalUsers() {
   const [filterCompany, setFilterCompany] = useState("all");
   const [resetUser, setResetUser] = useState<PlatformUser | null>(null);
 
+  const [isForbidden, setIsForbidden] = useState(false);
+
   const loadPending = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -152,8 +154,14 @@ export function GlobalUsers() {
       const res = await fetch(`${API_BASE_URL}/system/users`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      if (res.status === 403) {
+        setIsForbidden(true);
+        setUsers([]);
+        return;
+      }
       if (!res.ok) throw new Error("Failed to fetch global users directory");
       const data = await res.json();
+      setIsForbidden(false);
       setUsers(data);
     } catch (err: any) {
       console.error(err.message || "Failed to load users");
@@ -164,6 +172,7 @@ export function GlobalUsers() {
   }, [accessToken, loadPending]);
 
   useEffect(() => { void load(); }, [load]);
+
 
   const handleApproveRegistration = async (item: PendingRegistration) => {
     if (!accessToken) return;
@@ -258,6 +267,23 @@ export function GlobalUsers() {
     }
   };
 
+  if (isForbidden) {
+    return (
+      <div className="p-12 max-w-2xl mx-auto text-center space-y-5">
+        <div className="size-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 grid place-items-center mx-auto text-2xl">
+          🛡️
+        </div>
+        <h3 className="text-xl font-bold text-slate-900">Platform Administration Access Restricted</h3>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          The <strong>Global Users Directory</strong> and multi-tenant workspace administration console are reserved exclusively for the <strong>SaaS Platform Provider Super Admins</strong> (e.g., <code>system</code> or <code>venatic</code> workspace).
+        </p>
+        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 text-left">
+          <strong>Client Tenant Super Admin Note:</strong> As a Super Admin of your own company workspace, you can manage your company's users, roles, and security permissions under <strong>System Configuration ➔ Access & Security ➔ User Directory</strong>.
+        </div>
+      </div>
+    );
+  }
+
   const companiesList = Array.from(new Set(users.map((u) => u.tenant_name)));
 
   const filtered = users.filter((u) => {
@@ -272,6 +298,8 @@ export function GlobalUsers() {
   });
 
   return (
+
+
     <div className="p-8 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>

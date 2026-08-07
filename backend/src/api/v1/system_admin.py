@@ -205,19 +205,28 @@ class UpdateTenantModulesPayload(ORMModel):
 # ─── Helpers ──────────────────────────────────────────────────────
 
 def require_platform_admin(ctx: CurrentUserContext):
-    # Allow platform administration access for system/nimbus-retail tenant owners and super admins
-    is_platform_tenant = ctx.user.tenant and ctx.user.tenant.slug in ("system", "nimbus-retail")
+    user_settings = ctx.user.settings or {}
+    tenant_settings = (ctx.user.tenant.settings if ctx.user.tenant else {}) or {}
+    
+    is_platform_admin_user = (
+        (ctx.user.tenant and ctx.user.tenant.slug in ("system", "venatic", "nimbus-retail"))
+        or bool(user_settings.get("is_platform_admin"))
+        or bool(tenant_settings.get("is_platform_admin"))
+    )
+    
     is_admin = (
         ctx.user.is_tenant_owner
         or ctx.has_permission("all")
         or ctx.has_permission("manage:all")
         or ctx.has_permission("super_admin")
     )
-    if not (is_platform_tenant and is_admin) and not ctx.user.is_tenant_owner:
+    if not (is_platform_admin_user and is_admin):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Only system platform administrators can access SaaS administration endpoints.",
         )
+
+
 
 
 
@@ -433,25 +442,27 @@ async def update_platform_user_status(
     """
     require_platform_admin(ctx)
 
-    from src.models import UserStatus
-    user = await db.scalar(select(User).where(User.id == user_id))
+    from src.models import UserStatus, TenantStatus
+    user = await db.scalar(select(User).options(selectinload(User.tenant)).where(User.id == user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     try:
         user.status = UserStatus(payload.status.upper())
+        if user.status == UserStatus.ACTIVE and user.tenant and user.tenant.status == TenantStatus.SUSPENDED:
+            user.tenant.status = TenantStatus.ACTIVE
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid user status. Allowed: {[s.value for s in UserStatus]}",
         ) from exc
 
-    await db.flush()
+    await db.commit()
+    await db.refresh(user)
     return MessageResponse(message=f"User account status updated to {user.status.value}")
 
 
 @router.post("/users/{user_id}/reset-mfa")
-
 async def reset_platform_user_mfa(
     user_id: uuid.UUID,
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
@@ -478,20 +489,28 @@ async def toggle_platform_super_admin(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    Promote or revoke Global Super Admin (is_tenant_owner) access for any user on the platform.
+    Promote or revoke Global Super Admin (is_tenant_owner & platform admin flag) access for any user on the platform.
     """
     require_platform_admin(ctx)
 
-    user = await db.scalar(select(User).where(User.id == user_id))
+    user = await db.scalar(select(User).options(selectinload(User.tenant)).where(User.id == user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     user.is_tenant_owner = not user.is_tenant_owner
+    user_settings = dict(user.settings or {})
+    if user.is_tenant_owner:
+        user_settings["is_platform_admin"] = True
+    else:
+        user_settings.pop("is_platform_admin", None)
+    user.settings = user_settings
+
     await db.commit()
     await db.refresh(user)
 
-    status_str = "Global Super Admin (Owner)" if user.is_tenant_owner else "Regular User"
+    status_str = "Global Platform Super Admin (Godmode)" if user.is_tenant_owner else "Regular User"
     return MessageResponse(message=f"User {user.email} access updated to {status_str}")
+
 
 
 @router.get("/pending-approvals", response_model=list[PendingApprovalSummary])

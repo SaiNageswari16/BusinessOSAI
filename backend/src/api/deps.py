@@ -168,7 +168,16 @@ async def get_current_user_context(
     # Check if Platform Admin is impersonating a buyer tenant
     resolved_tenant_id = actual_tenant_uuid
     impersonate_header = request.headers.get("X-Impersonate-Tenant")
-    if impersonate_header and user.tenant.slug == "system" and user.is_tenant_owner:
+    user_settings = user.settings or {}
+    tenant_settings = (user.tenant.settings if user.tenant else {}) or {}
+    
+    is_platform_admin_user = (
+        (user.tenant and user.tenant.slug in ("system", "venatic", "nimbus-retail"))
+        or bool(user_settings.get("is_platform_admin"))
+        or bool(tenant_settings.get("is_platform_admin"))
+    )
+
+    if impersonate_header and is_platform_admin_user and user.is_tenant_owner:
         try:
             resolved_tenant_id = uuid.UUID(impersonate_header)
         except ValueError:
@@ -182,10 +191,11 @@ async def get_current_user_context(
                 if role_perm.permission and role_perm.permission.code:
                     permissions.add(role_perm.permission.code)
 
-    if user.is_tenant_owner or (user.tenant and user.tenant.slug == "system"):
+    if user.is_tenant_owner or is_platform_admin_user:
         permissions.add("all")
         permissions.add("manage:all")
         permissions.add("manage:erp")
+
 
     request.state.user = user
     request.state.tenant_id = resolved_tenant_id
