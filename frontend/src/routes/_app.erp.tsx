@@ -137,14 +137,15 @@ const tabPermissions: Record<string, string> = {
   calendars_shifts: "view:erp",
   tags_labels: "view:tags",
 
-  global_users: "manage:users",
-  audit_logs: "view:audit_logs",
-  activity_logs: "view:activity_logs",
-  error_logs: "view:error_logs",
-  system_health: "view:system_health",
-  backup_restore: "view:backup",
-  global_settings: "view:settings",
+  global_users: "manage:system_admin",
+  audit_logs: "manage:system_admin",
+  activity_logs: "manage:system_admin",
+  error_logs: "manage:system_admin",
+  system_health: "manage:system_admin",
+  backup_restore: "manage:system_admin",
+  global_settings: "manage:system_admin",
 };
+
 
 function ErpModule() {
   const routerState = useRouterState();

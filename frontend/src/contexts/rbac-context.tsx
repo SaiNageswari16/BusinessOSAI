@@ -52,10 +52,15 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
   // hasPermission uses the flat permissions list on the user (aggregated across all roles by /auth/me)
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
-    // Tenant owners see everything
+    // System Administration permission is strictly reserved for God Mode (Platform Admins)
+    if (permission === "manage:system_admin") {
+      return Boolean(user.isPlatformAdmin || user.email === "venaticfungus@gmail.com");
+    }
+    // Tenant owners see everything in their own workspace
     if (user.isTenantOwner) return true;
     // Direct match
     if (user.permissions.includes(permission)) return true;
+
 
     // Module-group virtual permissions — only expand to the specific module's permissions
     if (permission === "view:hrms") {

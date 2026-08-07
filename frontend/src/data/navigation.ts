@@ -106,19 +106,21 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/erp?tab=audit_logs",
+        to: "/erp?tab=global_users",
         label: "System Administration",
         icon: Settings,
+        permission: "manage:system_admin",
         subItems: [
-          { to: "/erp?tab=global_users", label: "Global Users", icon: Users },
-          { to: "/erp?tab=audit_logs", label: "Audit Logs", icon: History },
-          { to: "/erp?tab=activity_logs", label: "Activity Logs", icon: Activity },
-          { to: "/erp?tab=error_logs", label: "Error Logs", icon: Activity },
-          { to: "/erp?tab=system_health", label: "System Health", icon: Activity },
-          { to: "/erp?tab=backup_restore", label: "Backup & Restore", icon: History },
-          { to: "/erp?tab=global_settings", label: "Global Settings", icon: Settings },
+          { to: "/erp?tab=global_users", label: "Global Users", icon: Users, permission: "manage:system_admin" },
+          { to: "/erp?tab=audit_logs", label: "Audit Logs", icon: History, permission: "manage:system_admin" },
+          { to: "/erp?tab=activity_logs", label: "Activity Logs", icon: Activity, permission: "manage:system_admin" },
+          { to: "/erp?tab=error_logs", label: "Error Logs", icon: Activity, permission: "manage:system_admin" },
+          { to: "/erp?tab=system_health", label: "System Health", icon: Activity, permission: "manage:system_admin" },
+          { to: "/erp?tab=backup_restore", label: "Backup & Restore", icon: History, permission: "manage:system_admin" },
+          { to: "/erp?tab=global_settings", label: "Global Settings", icon: Settings, permission: "manage:system_admin" },
         ]
       }
+
     ]
   },
   {

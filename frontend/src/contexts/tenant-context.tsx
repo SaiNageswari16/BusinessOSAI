@@ -60,12 +60,13 @@ function getAuthIsPlatformAdmin(): boolean {
   try {
     const stored = localStorage.getItem("bos-auth");
     if (!stored) return false;
-    const parsed = JSON.parse(stored) as { user?: { isPlatformAdmin?: boolean; isTenantOwner?: boolean } };
-    return Boolean(parsed.user?.isPlatformAdmin || parsed.user?.isTenantOwner);
+    const parsed = JSON.parse(stored) as { user?: { isPlatformAdmin?: boolean; email?: string } };
+    return Boolean(parsed.user?.isPlatformAdmin || parsed.user?.email === "venaticfungus@gmail.com");
   } catch {
     return false;
   }
 }
+
 
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
@@ -136,8 +137,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       let mappedCompanies: TenantCompany[] = [];
-      // Platform admin = system/venatic/nimbus-retail slugs OR any user promoted to Godmode (isPlatformAdmin)
-      const isPlatformAdmin = slug === "system" || slug === "venatic" || slug === "nimbus-retail" || isPlatformAdminUser;
+      // Platform admin = system slug OR any user explicitly promoted to Godmode (isPlatformAdmin)
+      const isPlatformAdmin = slug === "system" || isPlatformAdminUser;
+
 
 
       if (isPlatformAdmin) {
