@@ -28,7 +28,10 @@ from src.models import (
     Tenant,
     User,
     UserRole,
+    TenantStatus,
+    UserStatus,
 )
+
 from src.schemas.erp import (
     ChangePasswordRequest,
     LoginRequest,
@@ -169,7 +172,7 @@ async def register_tenant(
         email=payload.admin_email.lower(),
         password_hash=hash_password(payload.admin_password),
         full_name=payload.admin_name,
-        avatar_initials="".join(part[0].upper() for part in payload.admin_name.split()[:2]),
+        avatar_initials="".join(part[0].upper() for part in (payload.admin_name or "Admin").split()[:2] if part),
         status=UserStatus.SUSPENDED,
         is_tenant_owner=True,
     )
@@ -177,12 +180,14 @@ async def register_tenant(
     await db.flush()
     db.add(UserRole(user_id=admin.id, role_id=super_role.id, is_default=True))
 
+    company_name_val = payload.company_name or payload.tenant_name or "My Business"
     company = Company(
         tenant_id=tenant.id,
-        name=payload.company_name,
-        legal_name=payload.company_name,
-        logo_initials="".join(part[0].upper() for part in payload.company_name.split()[:2]),
+        name=company_name_val,
+        legal_name=company_name_val,
+        logo_initials="".join(part[0].upper() for part in company_name_val.split()[:2] if part),
     )
+
     db.add(company)
 
     await write_audit_log(
