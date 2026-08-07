@@ -41,7 +41,6 @@ async def create_warehouse(
     )
     db.add(warehouse)
     await db.commit()
-
     result = await db.execute(
         select(Warehouse)
         .where(Warehouse.id == warehouse.id)
