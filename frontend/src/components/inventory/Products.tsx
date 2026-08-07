@@ -483,15 +483,27 @@ export function Products() {
             source: p.source || "DATABASE"
           }]);
           setIsSearchingMaster(false);
-          toast.success(`Found product details: ${p.name}`);
+          toast.success(`Found product: ${p.name}`);
           return;
         }
       } catch (e) { }
 
-      // Not found in DB -> open Quick Add modal immediately
+      // Fallback: Perform Web/AI Search if fast lookup yielded no results
+      try {
+        const webRes = await inventoryApi.searchMasterCatalog(code, true, "auto");
+        if (webRes && webRes.length > 0 && webRes[0].name) {
+          setMasterResults(webRes);
+          setIsSearchingMaster(false);
+          toast.success(`Sourced product details for ${code}`);
+          return;
+        }
+      } catch (e) { }
+
+      // Only if not found in local DB, master catalog, OR AI web search -> open Quick Add modal
       setQuickAddName(`Scanned Item (${code})`);
       setIsQuickAddOpen(true);
       setIsSearchingMaster(false);
+
     },
     enabled: true
   });

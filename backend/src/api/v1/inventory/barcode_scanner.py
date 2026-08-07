@@ -104,29 +104,34 @@ def _sync_fetch_google_barcode(barcode: str) -> Optional[dict]:
         pass
 
     # 3. UPCitemdb (~150ms)
-    try:
-        url = f"https://api.upcitemdb.com/prod/trial/lookup?upc={clean_code}"
-        resp = requests.get(url, headers=headers, timeout=1.8)
-        if resp.status_code == 200:
-            data = resp.json()
-            items = data.get("items") or []
-            if items and items[0].get("title"):
-                item = items[0]
-                imgs = item.get("images") or []
-                price = float(item.get("lowest_recorded_price") or item.get("highest_recorded_price") or 0.0)
-                return {
-                    "name": item.get("title").strip(),
-                    "brand": item.get("brand") or "",
-                    "category": item.get("category") or "General",
-                    "image": imgs[0] if imgs else "/static/uploads/products/default_product.jpg",
-                    "mrp": price,
-                    "selling_price": price,
-                    "source": "UPCITEMDB"
-                }
-    except Exception:
-        pass
+    upc_codes = [clean_code]
+    if clean_code.startswith("0"):
+        upc_codes.append(clean_code.lstrip("0"))
+    for upc in upc_codes:
+        try:
+            url = f"https://api.upcitemdb.com/prod/trial/lookup?upc={upc}"
+            resp = requests.get(url, headers=headers, timeout=1.8)
+            if resp.status_code == 200:
+                data = resp.json()
+                items = data.get("items") or []
+                if items and items[0].get("title"):
+                    item = items[0]
+                    imgs = item.get("images") or []
+                    price = float(item.get("lowest_recorded_price") or item.get("highest_recorded_price") or 0.0)
+                    return {
+                        "name": item.get("title").strip(),
+                        "brand": item.get("brand") or "",
+                        "category": item.get("category") or "General",
+                        "image": imgs[0] if imgs else "/static/uploads/products/default_product.jpg",
+                        "mrp": price,
+                        "selling_price": price,
+                        "source": "UPCITEMDB"
+                    }
+        except Exception:
+            pass
 
     return None
+
 
 async def _fast_fetch_external_barcode(barcode: str) -> Optional[dict]:
     return await asyncio.to_thread(_sync_fetch_google_barcode, barcode)
@@ -445,12 +450,84 @@ async def lookup_product_by_barcode(
             }
         )
 
+    # Tier 4: Deep Barcode Registry Consensus & AI RAG Sourcing
+    try:
+        from src.api.v1.inventory.master_catalog import _resolve_barcode_consensus, _perform_ai_rag_web_search
+        consensus = await asyncio.to_thread(_resolve_barcode_consensus, clean_barcode)
+        identity = consensus.get("identity") if consensus else None
+        
+        if not identity:
+            try:
+                rag_items = await _perform_ai_rag_web_search(clean_barcode)
+                if rag_items and len(rag_items) > 0 and rag_items[0].name:
+                    item = rag_items[0]
+                    identity = {
+                        "name": item.name,
+                        "brand": item.brand or "",
+                        "category": item.category or "General",
+                        "mrp": float(item.mrp or 0.0),
+                        "selling_price": float(item.sale_price or item.mrp or 0.0),
+                        "image_url": item.image_url or "/static/uploads/products/default_product.jpg",
+                        "weight": item.weight or "",
+                        "source": "AI_WEB_SEARCH"
+                    }
+            except Exception as r_ex:
+                logger.warning(f"Tier 4 RAG search error for {clean_barcode}: {r_ex}")
+
+        if identity and identity.get("name"):
+            prod_name = identity["name"]
+            brand_name = identity.get("brand", "")
+            cat_name = identity.get("category", "General")
+            mrp_val = float(identity.get("mrp", 0.0))
+            sp_val = float(identity.get("selling_price", 0.0)) or mrp_val
+            img_url = identity.get("image_url") or identity.get("image") or "/static/uploads/products/default_product.jpg"
+
+            # Save to Master Catalog so future lookups hit DB in 10ms
+            try:
+                new_mc = MasterCatalogProduct(
+                    id=uuid.uuid4(),
+                    name=prod_name,
+                    brand=brand_name or "General",
+                    barcode=clean_barcode,
+                    sku_code=f"SKU-{clean_barcode}",
+                    mrp=mrp_val,
+                    sale_price=sp_val,
+                    category=cat_name,
+                    image_url=img_url,
+                    source=identity.get("source", "REGISTRY_CONSENSUS")
+                )
+                db.add(new_mc)
+                await db.commit()
+            except Exception as mc_err:
+                logger.warning(f"Could not save barcode {clean_barcode} to master catalog: {mc_err}")
+
+            return ProductBarcodeLookupResponse(
+                success=True,
+                product={
+                    "id": f"registry-{clean_barcode}",
+                    "barcode": clean_barcode,
+                    "name": prod_name,
+                    "brand": brand_name,
+                    "category": cat_name,
+                    "package_size": identity.get("weight") or "Standard",
+                    "mrp": mrp_val,
+                    "selling_price": sp_val,
+                    "gst": 18.0,
+                    "stock": 0,
+                    "image": img_url,
+                    "source": identity.get("source", "REGISTRY_CONSENSUS")
+                }
+            )
+    except Exception as tier4_err:
+        logger.warning(f"Tier 4 Registry/RAG lookup failed for {clean_barcode}: {tier4_err}")
+
     # Not found in DB or web search
     return ProductBarcodeLookupResponse(
         success=False,
         message="Barcode not found in database or web search",
         product=None
     )
+
 
 
 # 2. Database Product Recognition Endpoint
