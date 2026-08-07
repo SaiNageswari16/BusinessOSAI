@@ -101,11 +101,13 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
         status=user.status.value,
         mfa_enabled=user.mfa_enabled,
         must_change_password=user.must_change_password,
+        is_tenant_owner=user.is_tenant_owner,
         last_login_at=user.last_login_at,
         roles=roles,
         created_at=user.created_at,
         updated_at=user.updated_at,
     )
+
 
 
 @router.get("/permissions", response_model=list[PermissionResponse])
@@ -154,6 +156,8 @@ async def create_role(
         for perm in perms.scalars().all():
             db.add(RolePermission(role_id=role.id, permission_id=perm.id))
 
+    await db.commit()
+    await db.refresh(role)
     return await _role_to_response(db, role)
 
 
@@ -194,8 +198,10 @@ async def update_role(
         for perm in perms.scalars().all():
             db.add(RolePermission(role_id=role.id, permission_id=perm.id))
 
-
+    await db.commit()
+    await db.refresh(role)
     return await _role_to_response(db, role)
+
 
 
 @router.get("/users", response_model=PaginatedResponse[UserResponse])
@@ -252,8 +258,9 @@ async def create_user(
     else:
         must_change_password = True
 
-    if not must_change_password and not ctx.user.is_tenant_owner:
-        must_change_password = True
+    actor_can_grant_admin = ctx.user.is_tenant_owner or (ctx.user.tenant and ctx.user.tenant.slug == "system")
+    is_owner_flag = payload.is_tenant_owner if actor_can_grant_admin else False
+
     user = User(
         tenant_id=ctx.tenant_id,
         email=payload.email.lower(),
@@ -264,9 +271,11 @@ async def create_user(
         avatar_initials=payload.avatar_initials,
         status=_parse_user_status(payload.status),
         must_change_password=must_change_password,
+        is_tenant_owner=is_owner_flag,
     )
     db.add(user)
     await db.flush()
+
 
     for role_id in payload.role_ids:
         role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == ctx.tenant_id))
@@ -311,6 +320,8 @@ async def create_user(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    await db.commit()
+    await db.refresh(user)
     return await _user_to_response(db, user)
 
 
@@ -325,7 +336,12 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    actor_can_grant_admin = ctx.user.is_tenant_owner or (ctx.user.tenant and ctx.user.tenant.slug == "system")
+
     updates = payload.model_dump(exclude_unset=True, exclude={"role_ids", "branch_ids", "password"})
+    if "is_tenant_owner" in updates and not actor_can_grant_admin:
+        updates.pop("is_tenant_owner", None)
+
     if "status" in updates:
         updates["status"] = _parse_user_status(updates["status"])
     for key, value in updates.items():
@@ -375,7 +391,10 @@ async def update_user(
         for idx, branch_id in enumerate(payload.branch_ids):
             db.add(UserBranch(user_id=user.id, branch_id=branch_id, is_primary=idx == 0))
 
+    await db.commit()
+    await db.refresh(user)
     return await _user_to_response(db, user)
+
 
 
 # ─── ERP Workspaces Endpoints ─────────────────────────────────────

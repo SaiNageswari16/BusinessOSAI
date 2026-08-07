@@ -28,20 +28,47 @@ class CurrentUserContext:
         self.active_role_id = active_role_id
 
     def has_permission(self, permission: str) -> bool:
+        # 1. Tenant Owner or System Platform Admin has UNRESTRICTED full control over all things & users
+        if getattr(self.user, "is_tenant_owner", False):
+            return True
+        if getattr(self.user, "tenant", None) and getattr(self.user.tenant, "slug", "") == "system":
+            return True
+
+        # 2. Wildcard & Super Admin permissions
+        if any(p in self.permissions for p in ("all", "*:*", "admin", "super_admin", "manage:all", "manage:erp")):
+            return True
+
+        # 3. Direct match
         if permission in self.permissions:
             return True
-        if permission == "view:hrms":
-            return any(p.startswith("view:hrms_") or p.startswith("manage:hrms_") for p in self.permissions)
-        if permission == "view:erp":
-            return any(p.startswith("view:") and p != "view:dashboard" for p in self.permissions)
-        return False
 
-    def require_permission(self, permission: str) -> None:
-        if not self.has_permission(permission):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
+        # 4. HRMS permission matching
+        if permission == "view:hrms":
+            return any(p.startswith("view:hrms") or p.startswith("manage:hrms") for p in self.permissions)
+
+        # 5. ERP / General Management matching
+        if permission in ("view:erp", "manage:erp"):
+            return any(
+                p.startswith("manage:")
+                or p.startswith("create:")
+                or p.startswith("update:")
+                or p.startswith("delete:")
+                or p.startswith("view:")
+                or p in ("manage:erp", "create:inventory", "manage:inventory", "view:inventory", "inventory", "all")
+                for p in self.permissions
             )
+
+        # 6. Action:Resource wildcard fallback (e.g., permission = "create:inventory", user has "manage:inventory")
+        if ":" in permission:
+            action, resource = permission.split(":", 1)
+            if f"manage:{resource}" in self.permissions or f"*:{resource}" in self.permissions or f"manage:{action}" in self.permissions:
+                return True
+            # Inventory / catalog / import matching
+            if resource in ("inventory", "master_catalog", "products"):
+                if any(p in self.permissions for p in ("manage:inventory", "create:inventory", "update:inventory", "manage:erp", "view:inventory", "inventory")):
+                    return True
+
+        return False
 
 
 async def get_current_user_context(
@@ -110,16 +137,23 @@ async def get_current_user_context(
             pass
 
     permissions: set[str] = set(payload.get("permissions", []))
-    if not permissions:
-        # If permissions are not in token, fall back to aggregate of all roles
-        for user_role in user.user_roles:
+    # Always merge real-time permissions from all assigned user roles in DB
+    for user_role in user.user_roles:
+        if user_role.role and user_role.role.role_permissions:
             for role_perm in user_role.role.role_permissions:
-                permissions.add(role_perm.permission.code)
+                if role_perm.permission and role_perm.permission.code:
+                    permissions.add(role_perm.permission.code)
+
+    if user.is_tenant_owner or (user.tenant and user.tenant.slug == "system"):
+        permissions.add("all")
+        permissions.add("manage:all")
+        permissions.add("manage:erp")
 
     request.state.user = user
     request.state.tenant_id = resolved_tenant_id
     request.state.active_role_id = active_role_id
     return CurrentUserContext(user=user, tenant_id=resolved_tenant_id, permissions=permissions, active_role_id=active_role_id)
+
 
 
 def require_permission(permission: str):

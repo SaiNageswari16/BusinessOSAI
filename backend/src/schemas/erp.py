@@ -337,6 +337,7 @@ class UserCreate(BaseModel):
     branch_ids: list[uuid.UUID] = Field(default_factory=list)
     default_role_id: uuid.UUID | None = None
     status: str = "active"
+    is_tenant_owner: bool = False
 
 
 class UserUpdate(BaseModel):
@@ -350,6 +351,7 @@ class UserUpdate(BaseModel):
     status: str | None = None
     must_change_password: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
+    is_tenant_owner: bool | None = None
 
 
 class UserResponse(ORMModel):
@@ -363,10 +365,12 @@ class UserResponse(ORMModel):
     status: str
     mfa_enabled: bool
     must_change_password: bool
+    is_tenant_owner: bool = False
     last_login_at: datetime | None
     roles: list[RoleSummary] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
 
 
 class ChangePasswordRequest(BaseModel):

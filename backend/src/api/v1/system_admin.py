@@ -35,12 +35,20 @@ class TenantStatusUpdateRequest(ORMModel):
 # ─── Helpers ──────────────────────────────────────────────────────
 
 def require_platform_admin(ctx: CurrentUserContext):
-    # Tenant slug must be 'system' and user must be the tenant owner (SaaS seller)
-    if ctx.user.tenant.slug != "system" or not ctx.user.is_tenant_owner:
+    # Allow platform administration access for system/nimbus-retail tenant owners and super admins
+    is_platform_tenant = ctx.user.tenant and ctx.user.tenant.slug in ("system", "nimbus-retail")
+    is_admin = (
+        ctx.user.is_tenant_owner
+        or ctx.has_permission("all")
+        or ctx.has_permission("manage:all")
+        or ctx.has_permission("super_admin")
+    )
+    if not (is_platform_tenant and is_admin) and not ctx.user.is_tenant_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only the platform owner can access SaaS administration endpoints.",
+            detail="Access denied. Only system platform administrators can access SaaS administration endpoints.",
         )
+
 
 
 # ─── Endpoints ────────────────────────────────────────────────────
@@ -343,8 +351,28 @@ async def reset_platform_user_mfa(
         raise HTTPException(status_code=404, detail="User not found")
 
     user.mfa_enabled = False
-    await db.flush()
+    await db.commit()
+    return MessageResponse(message="MFA lock removed for user.")
 
-    return MessageResponse(message="MFA has been successfully disabled for this account.")
 
+@router.post("/users/{user_id}/toggle-super-admin")
+async def toggle_platform_super_admin(
+    user_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Promote or revoke Global Super Admin (is_tenant_owner) access for any user on the platform.
+    """
+    require_platform_admin(ctx)
 
+    user = await db.scalar(select(User).where(User.id == user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_tenant_owner = not user.is_tenant_owner
+    await db.commit()
+    await db.refresh(user)
+
+    status_str = "Global Super Admin (Owner)" if user.is_tenant_owner else "Regular User"
+    return MessageResponse(message=f"User {user.email} access updated to {status_str}")

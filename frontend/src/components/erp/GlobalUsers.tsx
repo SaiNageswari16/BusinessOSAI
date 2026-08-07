@@ -155,6 +155,24 @@ export function GlobalUsers() {
     }
   };
 
+  const handleToggleSuperAdmin = async (user: PlatformUser) => {
+    if (!accessToken) return;
+    const actionText = user.is_tenant_owner ? "Revoke Global Super Admin access from" : "Promote to Global Super Admin";
+    if (!window.confirm(`${actionText} ${user.email}? This grants unrestricted control across all workspaces and system admin endpoints.`)) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/users/${user.id}/toggle-super-admin`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to update super admin status");
+      toast.success(`Updated Super Admin privileges for ${user.email}`);
+      void load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update super admin status");
+    }
+  };
+
   const handleResetMfa = async (user: PlatformUser) => {
     if (!accessToken) return;
     if (!window.confirm(`Force disable Multi-Factor Authentication (MFA) for ${user.email}?`)) return;
@@ -260,7 +278,7 @@ export function GlobalUsers() {
                         <div className="font-semibold text-foreground flex items-center gap-1.5">
                           {u.full_name}
                           {u.is_tenant_owner && (
-                            <span className="text-[9px] bg-indigo-500/10 text-indigo-600 font-bold px-1 rounded uppercase tracking-wider">Owner</span>
+                            <span className="text-[9px] bg-amber-500/10 text-amber-700 border border-amber-500/20 px-1 rounded uppercase tracking-wider font-bold">👑 Super Admin</span>
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground font-mono mt-0.5">{u.email}</div>
@@ -299,6 +317,15 @@ export function GlobalUsers() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => handleToggleSuperAdmin(u)}
+                          className={cn("h-8 px-2 text-xs font-bold gap-1", u.is_tenant_owner ? "text-amber-600 hover:text-amber-700 bg-amber-50" : "text-indigo-600 hover:text-indigo-700")}
+                          title="Toggle Global Super Admin Privileges"
+                        >
+                          👑 {u.is_tenant_owner ? "Super Admin" : "Make Admin"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => toggleUserStatus(u)}
                           className={cn("h-8 px-2.5 text-xs font-bold gap-1", isActive ? "text-red-500 hover:text-red-600" : "text-emerald-600 hover:text-emerald-700")}
                           title={isActive ? "Suspend login access" : "Reactivate account"}
@@ -333,6 +360,7 @@ export function GlobalUsers() {
           </tbody>
         </table>
       </div>
+
 
       <AnimatePresence>
         {resetUser && <PasswordResetModal user={resetUser} onClose={() => setResetUser(null)} />}

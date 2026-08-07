@@ -40,6 +40,7 @@ interface User {
   roles: RoleSummary[];
   must_change_password: boolean;
   avatar_initials: string | null;
+  is_tenant_owner?: boolean;
 }
 
 interface PaginatedResponse<T> {
@@ -59,7 +60,9 @@ interface UserFormPayload {
   must_change_password?: boolean;
   password?: string;
   send_invite?: boolean;
+  is_tenant_owner?: boolean;
 }
+
 
 function StatusBadge({ status }: { status: UserStatus }) {
   return (
@@ -97,6 +100,7 @@ function UserFormModal({
   const [sendInvite, setSendInvite] = useState(!isEdit);
   const [password, setPassword] = useState("");
   const [mustChangePassword, setMustChangePassword] = useState(user?.must_change_password ?? true);
+  const [isTenantOwner, setIsTenantOwner] = useState(user?.is_tenant_owner ?? false);
 
   const assignableRoles = useMemo(
     () =>
@@ -138,11 +142,13 @@ function UserFormModal({
       role_ids: selectedRoles,
       default_role_id: defaultRoleId || null,
       must_change_password: mustChangePassword,
+      is_tenant_owner: isTenantOwner,
       ...(sendInvite ? { send_invite: true } : {}),
       ...(sendInvite ? {} : { password }),
     });
     onClose();
   };
+
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
@@ -418,7 +424,9 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
             role_ids: payload.role_ids,
             default_role_id: payload.default_role_id,
             must_change_password: payload.must_change_password,
+            is_tenant_owner: payload.is_tenant_owner,
           }),
+
         });
         if (!response.ok) {
           let message = "Failed to save user";
@@ -585,9 +593,17 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
                         {user.avatar_initials || user.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <div className="font-medium">{user.full_name}</div>
+                        <div className="font-medium flex items-center gap-1.5">
+                          {user.full_name}
+                          {user.is_tenant_owner && (
+                            <span className="text-[10px] bg-amber-500/10 text-amber-700 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">
+                              👑 Main Admin
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-muted-foreground">{user.email}</div>
                       </div>
+
                     </div>
                   </td>
                   <td className="px-4 py-3">
