@@ -590,9 +590,10 @@ async def get_me(
     ]
     is_god = bool(
         getattr(ctx.user, "is_platform_admin", False)
-        or (ctx.user.tenant and ctx.user.tenant.slug in ("system", "venatic", "nimbus-retail"))
-        or ctx.user.email in ("venaticfungus@gmail.com", "admin@businessos.ai")
+        or ctx.user.email == "venaticfungus@gmail.com"
+        or (ctx.user.tenant and ctx.user.tenant.slug in ("system", "venatic"))
     )
+
     return UserMeResponse(
         id=ctx.user.id,
         tenant_id=ctx.user.tenant_id,

@@ -206,16 +206,17 @@ class UpdateTenantModulesPayload(ORMModel):
 
 def require_platform_admin(ctx: CurrentUserContext):
     tenant_slug = ctx.user.tenant.slug if ctx.user.tenant else ""
-    is_platform_admin_user = (
-        bool(getattr(ctx.user, "is_platform_admin", False))
-        or tenant_slug in ("system", "venatic", "nimbus-retail")
-        or ctx.user.email in ("venaticfungus@gmail.com", "admin@businessos.ai")
+    is_platform_admin_user = bool(
+        getattr(ctx.user, "is_platform_admin", False)
+        or ctx.user.email == "venaticfungus@gmail.com"
+        or tenant_slug in ("system", "venatic")
     )
     if not is_platform_admin_user:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Only system platform administrators can access SaaS administration endpoints.",
         )
+
 
 
 
@@ -414,9 +415,9 @@ async def list_platform_users(
     for r in rows:
         is_god = bool(
             getattr(r, "is_platform_admin", False)
-            or r.tenant_slug in ("system", "venatic", "nimbus-retail")
-            or r.email in ("venaticfungus@gmail.com", "admin@businessos.ai")
+            or r.email == "venaticfungus@gmail.com"
         )
+
         users.append(
             PlatformUserResponse(
                 id=r.id,
