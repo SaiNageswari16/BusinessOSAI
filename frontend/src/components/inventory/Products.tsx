@@ -764,7 +764,6 @@ export function Products() {
     setIsModalOpen(true);
   };
 
-
   const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this product?")) return;
     try {
@@ -776,7 +775,6 @@ export function Products() {
     }
   };
 
-  // ── Phase 2: Import with preview ─────────────────────────────────
   const handleConfirmImport = async (item: MasterResult) => {
     try {
       setIsImporting(true);
@@ -818,7 +816,7 @@ export function Products() {
     } catch { toast.error("Failed to toggle AI search."); }
   };
 
-  // ── Import from file ─────────────────────────────────────────────
+  // ── Import from file (supports 42k+ rows, flexible column headers & chunking) ──────
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -827,42 +825,105 @@ export function Products() {
     const processData = async (rows: any[]) => {
       try {
         if (!rows?.length) throw new Error("File is empty.");
+
         const items = rows.map((row: any) => {
-          const getVal = (keys: string[]) => {
-            for (const k of keys) { if (row[k] != null) return String(row[k]).trim(); }
+          const rowKeys = Object.keys(row || {});
+          const findVal = (possibleNames: string[], containsSubstrings: string[] = []) => {
+            for (const target of possibleNames) {
+              const targetNorm = target.toLowerCase().replace(/[^a-z0-9]/g, "");
+              for (const k of rowKeys) {
+                const kNorm = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+                if (kNorm === targetNorm && row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") {
+                  return String(row[k]).trim();
+                }
+              }
+            }
+            for (const sub of containsSubstrings) {
+              const subNorm = sub.toLowerCase();
+              for (const k of rowKeys) {
+                const kNorm = k.toLowerCase();
+                if (kNorm.includes(subNorm) && row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") {
+                  return String(row[k]).trim();
+                }
+              }
+            }
             return "";
           };
-          const isActiveRaw = getVal(["is_active", "Active", "Status"]);
-          const isActive = isActiveRaw === "" ? true : (isActiveRaw.toLowerCase() === 'true' || isActiveRaw === '1' || isActiveRaw.toLowerCase() === 'active');
+
+          const nameVal = findVal(
+            ["ITEMNAME", "Product Name", "product_name", "productname", "name", "Name", "Title", "title", "item_name", "itemname", "product", "item", "description", "item_description", "particulars", "material"],
+            ["itemname", "name", "product", "desc", "title", "item", "particular"]
+          ) || "Unnamed Product";
+
+          const barcodeVal = findVal(
+            ["BARCODE", "BarCode", "barcode", "Barcode (EAN/UPC)", "barcode_number", "bar_code", "ean", "EAN", "upc", "UPC", "gtin", "GTIN", "item_code", "itemcode", "code", "Code", "scan_code"],
+            ["barcode", "ean", "upc", "gtin", "code", "sku"]
+          );
+
+          const skuVal = findVal(["SKU", "sku", "sku_code", "skucode", "product_code", "SEARCHCODE"], ["sku", "searchcode"]) || (barcodeVal ? `SKU-${barcodeVal}` : "");
+
+          const isActiveRaw = findVal(["ISACTIVE", "is_active", "Active", "Status", "status"]);
+          const isActive = isActiveRaw === "" ? true : (isActiveRaw.toLowerCase() === "true" || isActiveRaw === "1" || isActiveRaw.toLowerCase() === "active");
+
           return {
-            name: getVal(["Product Name", "name", "ProductName", "Product_Name"]) || "Unnamed",
-            sku: getVal(["SKU", "sku"]) || "",
-            barcode: getVal(["Barcode (EAN/UPC)", "barcode", "Barcode", "EAN", "UPC"]) || "",
-            short_description: getVal(["Description", "description"]) || "",
-            purchase_price: parseFloat(getVal(["Purchase Price", "purchase_price", "PurchasePrice", "Cost Price"])) || 0,
-            mrp: parseFloat(getVal(["MRP", "mrp"])) || 0,
-            selling_price: parseFloat(getVal(["Selling Price", "selling_price", "SellingPrice", "Base Price"])) || 0,
-            tax_percent: parseFloat(getVal(["Tax (%)", "tax_percent", "Tax"])) || 0,
-            discount_limit: parseFloat(getVal(["Discount Limit (%)", "discount_limit", "Discount Limit"])) || 0,
-            initial_stock: parseInt(getVal(["Quantity", "quantity", "stock", "initial_stock", "Stock"]), 10) || 0,
-            reorder_level: parseInt(getVal(["Reorder Level", "reorder_level", "ReorderLevel"]), 10) || 10,
+            name: nameVal,
+            sku: skuVal,
+            barcode: barcodeVal,
+            short_description: findVal(["DESCRIPTION", "Short Description", "short_description", "description", "Description", "details"]),
+            purchase_price: parseFloat(findVal(["PURCHASEPRICEAFTERTAX", "PURCHASEPRICEBEFORETAX", "Purchase Price", "purchase_price", "purchaseprice", "cost_price", "cost", "Cost Price"])) || 0,
+            mrp: parseFloat(findVal(["MRP", "mrp", "retail_price", "list_price"])) || 0,
+            selling_price: parseFloat(findVal(["SALESPRICEAFTERTAX", "SALESPRICEBEFORETAX", "Selling Price", "selling_price", "sellingprice", "price", "Price", "base_price"])) || 0,
+            tax_percent: parseFloat(findVal(["SALESTAXPERCENT", "Tax (%)", "tax_percent", "tax", "Tax"])) || 0,
+            discount_limit: parseFloat(findVal(["Discount Limit (%)", "discount_limit"])) || 0,
+            initial_stock: parseInt(findVal(["STOCK", "Quantity", "quantity", "stock", "initial_stock", "Stock", "qty"]), 10) || 0,
+            reorder_level: parseInt(findVal(["Reorder Level", "reorder_level"]), 10) || 10,
             status: isActive ? "active" : "inactive",
-            brand_name: getVal(["Brand", "brand", "Brand Name"]),
-            category_name: getVal(["Category", "category", "Category Name"]),
-            sub_category_name: getVal(["Sub Category", "sub_category", "Sub Category Name"]),
-            uom_name: getVal(["UOM", "uom", "Unit", "unit", "Unit of Measure", "Unit of Measure (UoM)"]),
+            brand_name: findVal(["Brand", "brand", "Brand Name", "brand_name", "manufacturer"]),
+            category_name: findVal(["CATEGORY", "Category", "category", "Category Name", "category_name"]),
+            sub_category_name: findVal(["Sub Category", "sub_category", "sub_category_name"]),
+            uom_name: findVal(["SALESMEASURINGUNIT", "PURCHASEMEASURINGUNIT", "UOM", "uom", "Unit", "unit", "Unit of Measure", "uom_name"]),
           };
+
         });
-        const res = await inventoryApi.masterImportProducts(items);
-        alert(`Master Import Complete!\n\nProducts Created: ${res.products_created}\nBrands: ${res.brands_created}\nCategories: ${res.categories_created}\nUOMs: ${res.uoms_created}\nDuplicates Skipped: ${res.skipped_count}`);
+
+        // Filter out completely blank rows
+        const validItems = items.filter(it => (it.name && it.name !== "Unnamed Product") || it.barcode || it.sku);
+        if (!validItems.length) throw new Error("No valid products with Name or Barcode found in file.");
+
+        // Chunk into batches of 2,000 items to handle 42,000+ row imports reliably
+        const CHUNK_SIZE = 2000;
+        let totalCreated = 0;
+        let totalSkipped = 0;
+        let totalBrands = 0;
+        let totalCategories = 0;
+        let totalUoms = 0;
+
+        for (let i = 0; i < validItems.length; i += CHUNK_SIZE) {
+          const chunk = validItems.slice(i, i + CHUNK_SIZE);
+          const currentEnd = Math.min(i + CHUNK_SIZE, validItems.length);
+          toast.loading(`Importing rows ${i + 1} to ${currentEnd} of ${validItems.length}...`, { id: "bulk-import-progress" });
+
+          const res = await inventoryApi.masterImportProducts(chunk);
+          totalCreated += res.products_created;
+          totalSkipped += res.skipped_count;
+          totalBrands += res.brands_created;
+          totalCategories += res.categories_created;
+          totalUoms += res.uoms_created;
+        }
+
+        toast.success(
+          `Import Complete!\n\n${totalCreated} products imported into inventory.\n${totalSkipped} duplicates skipped.\nQueued for AI background enrichment (images & details)!`,
+          { id: "bulk-import-progress", duration: 8000 }
+        );
         await loadData();
       } catch (error: any) {
-        alert("Import failed: " + (error.detail || error.message || "Unknown"));
+        toast.error("Import failed: " + (error.detail || error.message || "Unknown error"), { id: "bulk-import-progress" });
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     };
+
 
     if (file.name.endsWith(".csv")) {
       const raw = await file.text();
