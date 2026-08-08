@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap } from "lucide-react";
+import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -389,6 +390,14 @@ export function Products() {
   const [exactMatch, setExactMatch] = useState<InventoryProduct | null>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
+  // ── Pagination & Sorting state ───────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [sortBy, setSortBy] = useState<"name" | "sku" | "created_at" | "mrp" | "selling_price">("name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
   // ── Inventory data ───────────────────────────────────────────────
   const [products, setProducts] = useState<InventoryProduct[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
@@ -396,6 +405,7 @@ export function Products() {
   const [uoms, setUoms] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
 
 
   // ── Column visibility ────────────────────────────────────────────
@@ -528,12 +538,25 @@ export function Products() {
 
   // ── Data loading ─────────────────────────────────────────────────
   const loadData = async () => {
+    setIsLoading(true);
     try {
-      const prodsRes = await inventoryApi.getProducts().catch((err) => {
+      const prodsRes = await inventoryApi.getProducts({
+        page: currentPage,
+        page_size: pageSize,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+      }).catch((err) => {
         console.error("Failed to load products:", err);
-        return { items: [] };
+        return { items: [], total: 0, total_pages: 1 };
       });
-      setProducts(prodsRes.items || []);
+
+      const items = prodsRes.items || [];
+      const total = prodsRes.total ?? items.length;
+      const pages = prodsRes.total_pages ?? Math.max(1, Math.ceil(total / pageSize));
+
+      setProducts(items);
+      setTotalProducts(total);
+      setTotalPages(pages);
     } catch (error) {
       console.error("Failed in loadData:", error);
     } finally {
@@ -546,12 +569,9 @@ export function Products() {
     inventoryApi.getWarehouses().then((res) => setWarehouses(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
   };
 
-
-
-
-
   useEffect(() => { checkAiStatus(); }, []);
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [currentPage, pageSize, sortBy, sortOrder]);
+
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -1332,6 +1352,17 @@ export function Products() {
       <div className="flex gap-3 items-center flex-wrap">
         {renderSearchBar()}
         {activeTab === "inventory" && (
+          <Button
+            variant="outline"
+            onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+            className="flex items-center gap-1.5"
+            title="Toggle Name Sort Order"
+          >
+            <ArrowUpDown className="size-4 text-muted-foreground" />
+            <span className="text-xs font-medium">Sort: Name ({sortOrder === "asc" ? "A-Z ↑" : "Z-A ↓"})</span>
+          </Button>
+        )}
+        {activeTab === "inventory" && (
           <Button variant="outline"><Filter className="size-4 mr-2" /> Filters</Button>
         )}
         {activeTab === "inventory" && renderColumnsMenu()}
@@ -1342,17 +1373,17 @@ export function Products() {
            INVENTORY TAB — Two-source unified view
            ══════════════════════════════════════════════════════════════ */}
       {activeTab === "inventory" && (
-        <div className="bg-card border rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
+        <div className="bg-card border rounded-xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto w-full min-w-full">
+            <table className="w-full text-sm text-left whitespace-nowrap min-w-[1000px]">
               <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
                 <tr>
                   {localVisibleColumns.map((colId) => {
                     const col = LOCAL_COLUMNS.find(c => c.id === colId);
                     if (!col) return null;
-                    return <th key={col.id} className="px-6 py-4">{col.label}</th>;
+                    return <th key={col.id} className="px-6 py-4 whitespace-nowrap">{col.label}</th>;
                   })}
-                  <th className="px-6 py-4 text-right">Actions</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -1474,8 +1505,80 @@ export function Products() {
               </tbody>
             </table>
           </div>
+
+          {/* ── Pagination Footer ────────────────────────────────────────── */}
+          {totalProducts > 0 && !hasSearch && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t bg-muted/20 text-sm">
+              <div className="text-xs text-muted-foreground">
+                Showing <span className="font-semibold text-foreground">{Math.min((currentPage - 1) * pageSize + 1, totalProducts)}</span> to{" "}
+                <span className="font-semibold text-foreground">{Math.min(currentPage * pageSize, totalProducts)}</span> of{" "}
+                <span className="font-semibold text-foreground">{totalProducts}</span> products
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mr-3">
+                  <span>Rows per page:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                    className="bg-background border rounded px-2 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                    <option value={500}>500</option>
+                  </select>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1 || isLoading}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  First
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1 || isLoading}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  <ChevronLeft className="size-3.5 mr-1" /> Previous
+                </Button>
+
+                <span className="text-xs font-semibold px-2">
+                  Page {currentPage} of {totalPages}
+                </span>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage >= totalPages || isLoading}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  Next <ChevronRight className="size-3.5 ml-1" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage >= totalPages || isLoading}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  Last
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
 
       {/* ══════════════════════════════════════════════════════════════
            MASTER CATALOG TAB

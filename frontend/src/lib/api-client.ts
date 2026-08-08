@@ -3382,9 +3382,9 @@ export interface IntelligenceSummary {
 }
 
 export const inventoryApi = {
-  // Products
-  getProducts: (params?: { category_id?: string; brand_id?: string; search?: string; page?: number; page_size?: number }) =>
+  getProducts: (params?: { category_id?: string; brand_id?: string; search?: string; page?: number; page_size?: number; sort_by?: string; sort_order?: string }) =>
     request<PaginatedResponse<InventoryProduct>>("GET", "/inventory/products", undefined, params as Record<string, any>),
+
   createProduct: (data: Record<string, unknown>) => request<InventoryProduct>("POST", "/inventory/products", data),
   masterImportProducts: (items: Record<string, unknown>[]) =>
     request<{ products_created: number; brands_created: number; categories_created: number; uoms_created: number; skipped_count: number; errors: string[] }>("POST", "/inventory/products/master-import", { items }),

@@ -378,10 +378,12 @@ async def list_products(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page_size: int = Query(50, ge=1, le=500),
     search: str | None = None,
     category_id: uuid.UUID | None = None,
     brand_id: uuid.UUID | None = None,
+    sort_by: str = Query("name"),
+    sort_order: str = Query("asc"),
 ):
     query = (
         select(Product)
@@ -406,10 +408,27 @@ async def list_products(
         query = query.where(Product.brand_id == brand_id)
         
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
+
+    sort_col = Product.name
+    if sort_by == "sku":
+        sort_col = Product.sku
+    elif sort_by == "created_at":
+        sort_col = Product.created_at
+    elif sort_by == "mrp":
+        sort_col = Product.mrp
+    elif sort_by == "selling_price":
+        sort_col = Product.selling_price
+
+    if sort_order.lower() == "desc":
+        order_clause = sort_col.desc()
+    else:
+        order_clause = sort_col.asc()
+
     result = await db.execute(
-        query.order_by(Product.name.asc()).offset((page - 1) * page_size).limit(page_size)
+        query.order_by(order_clause, Product.id.asc()).offset((page - 1) * page_size).limit(page_size)
     )
     products = result.scalars().all()
+
     
     out = []
     for p in products:
