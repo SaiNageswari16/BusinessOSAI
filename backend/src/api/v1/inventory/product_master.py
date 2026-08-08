@@ -31,9 +31,51 @@ def _parse_status(value: str) -> EntityStatus:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid status: {value}") from exc
 
+import json
+import os
+
+HSN_DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "src", "data", "hsn_codes_gst.json")
+
+from sqlalchemy import or_
+from src.models.inventory import HSNMaster
+
+@router.get("/hsn-codes")
+async def list_hsn_codes(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    search: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Retrieve official Indian GST HSN codes and corresponding GST tax rates from SQL Database."""
+    try:
+        query = select(HSNMaster)
+        if search and search.strip():
+            s = f"%{search.strip()}%"
+            query = query.where(or_(HSNMaster.hsn_code.ilike(s), HSNMaster.description.ilike(s)))
+        query = query.limit(limit)
+        res = await db.execute(query)
+        rows = res.scalars().all()
+        if rows:
+            return [{"hsn_code": r.hsn_code, "description": r.description, "gst_rate": r.gst_rate} for r in rows]
+    except Exception:
+        pass
+
+    if os.path.exists(HSN_DATA_FILE):
+        try:
+            with open(HSN_DATA_FILE, "r", encoding="utf-8") as f:
+                hsn_list = json.load(f)
+            if search:
+                s = search.lower().strip()
+                hsn_list = [h for h in hsn_list if s in h["hsn_code"].lower() or s in h["description"].lower()]
+            return hsn_list[:limit]
+        except Exception:
+            return []
+    return []
+
+
 # ==========================================
 # Product Categories
 # ==========================================
+
 
 @router.get("/categories", response_model=PaginatedResponse[ProductCategoryResponse])
 @cache_response(expire=300, prefix="pos_categories")
@@ -817,6 +859,8 @@ async def master_import_products(
             purchase_price=item.purchase_price,
             mrp=item.mrp,
             selling_price=item.selling_price,
+            wholesale_price=item.wholesale_price or 0.0,
+            min_wholesale_qty=item.min_wholesale_qty or 1,
             tax_percent=item.tax_percent,
             discount_limit=item.discount_limit,
             initial_stock=item.initial_stock,
@@ -840,13 +884,30 @@ async def master_import_products(
                 select(MasterCatalogProduct).where(MasterCatalogProduct.barcode == clean_barcode)
             )
             existing_mc = existing_mc_res.scalars().first()
+            if existing_mc:
+                # Instant enrichment from pre-existing Master Catalog match
+                is_generic = (
+                    not new_product.name or
+                    new_product.name.strip().lower() in ("unnamed product", "unnamed", "none", "null") or
+                    new_product.name.startswith("SKU-")
+                )
+                if is_generic and existing_mc.name and not existing_mc.name.strip().lower().startswith("unnamed"):
+                    new_product.name = existing_mc.name.strip()
+                if existing_mc.image_url and not new_product.image_url:
+                    new_product.image_url = existing_mc.image_url
+                if existing_mc.short_description and not new_product.short_description:
+                    new_product.short_description = existing_mc.short_description
+                if (not new_product.mrp or new_product.mrp == 0) and existing_mc.mrp and existing_mc.mrp > 0:
+                    new_product.mrp = existing_mc.mrp
+                if (not new_product.selling_price or new_product.selling_price == 0) and existing_mc.sale_price and existing_mc.sale_price > 0:
+                    new_product.selling_price = existing_mc.sale_price
+
             if not existing_mc:
                 # Products imported without images/specs are always queued for background AI enrichment
-                needs_enrichment = not (item.short_description and item.mrp and item.mrp > 0)
                 new_mc = MasterCatalogProduct(
                     id=uuid.uuid4(),
                     tenant_id=None,
-                    name=item.name,
+                    name=new_product.name or item.name,
                     brand=item.brand_name.strip() if item.brand_name else "General",
                     barcode=clean_barcode,
                     sku_code=item.sku,
@@ -870,6 +931,7 @@ async def master_import_products(
             elif not existing_mc.ai_search_done:
                 # Already queued — leave it
                 pass
+
             else:
                 # Re-queue if item was imported with minimal info
                 needs_enrichment = not (item.short_description and item.mrp and item.mrp > 0)

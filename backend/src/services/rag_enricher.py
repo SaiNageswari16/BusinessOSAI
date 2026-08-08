@@ -491,6 +491,16 @@ class RAGEnricherService:
                         if cached_image_url:
                             local_prod.image_url = cached_image_url
                         if success and ai_item:
+                            is_generic_name = (
+                                not local_prod.name or
+                                local_prod.name.strip().lower() in ("unnamed product", "unnamed", "none", "null", "product") or
+                                local_prod.name.strip() == (local_prod.barcode or "").strip() or
+                                local_prod.name.strip() == (local_prod.sku or "").strip() or
+                                local_prod.name.startswith("SKU-")
+                            )
+                            if is_generic_name and ai_item.name and ai_item.name.strip():
+                                local_prod.name = ai_item.name.strip()
+
                             if ai_item.mrp and (not local_prod.mrp or local_prod.mrp == 0):
                                 local_prod.mrp = ai_item.mrp
                             if ai_item.sale_price and (not local_prod.selling_price or local_prod.selling_price == 0):
@@ -498,7 +508,7 @@ class RAGEnricherService:
                             if ai_item.short_description and not local_prod.short_description:
                                 local_prod.short_description = ai_item.short_description
                         await session.commit()
-                        logger.info("[RAG Enricher - Inventory Worker] Enriched local product '%s' (%s) | image=%s", name, barcode, cached_image_url or "none")
+                        logger.info("[RAG Enricher - Inventory Worker] Enriched local product '%s' (%s) | image=%s", local_prod.name, barcode, cached_image_url or "none")
                     return
 
                 # Default: master_catalog target_type
@@ -510,8 +520,14 @@ class RAGEnricherService:
                     return
 
                 if success and ai_item:
-                    if ai_item.name and len(ai_item.name) > len(db_prod.name or ""):
-                        db_prod.name = ai_item.name
+                    is_generic_db_name = (
+                        not db_prod.name or
+                        db_prod.name.strip().lower() in ("unnamed product", "unnamed", "none", "null", "product") or
+                        db_prod.name.startswith("SKU-") or
+                        len(ai_item.name or "") > len(db_prod.name or "")
+                    )
+                    if ai_item.name and is_generic_db_name:
+                        db_prod.name = ai_item.name.strip()
                     if ai_item.brand:
                         db_prod.brand = ai_item.brand
                     if ai_item.category:
@@ -587,23 +603,36 @@ class RAGEnricherService:
             for lp in local_products:
                 updated = []
 
+                if ai_item and ai_item.name and ai_item.name.strip():
+                    is_generic_name = (
+                        not lp.name or
+                        lp.name.strip().lower() in ("unnamed product", "unnamed", "none", "null", "product") or
+                        lp.name.strip() == (lp.barcode or "").strip() or
+                        lp.name.strip() == (lp.sku or "").strip() or
+                        lp.name.startswith("SKU-")
+                    )
+                    if is_generic_name:
+                        lp.name = ai_item.name.strip()
+                        updated.append("name")
+
                 if not lp.image_url and cached_image_url:
                     lp.image_url = cached_image_url
                     updated.append("image_url")
 
-                if not lp.short_description and ai_item.short_description:
+                if ai_item and not lp.short_description and ai_item.short_description:
                     lp.short_description = ai_item.short_description
                     updated.append("desc")
 
-                if (not lp.mrp or lp.mrp == 0) and ai_item.mrp and ai_item.mrp > 0:
+                if ai_item and (not lp.mrp or lp.mrp == 0) and ai_item.mrp and ai_item.mrp > 0:
                     lp.mrp = ai_item.mrp
                     updated.append("mrp")
-                if (not lp.selling_price or lp.selling_price == 0) and ai_item.sale_price and ai_item.sale_price > 0:
+                if ai_item and (not lp.selling_price or lp.selling_price == 0) and ai_item.sale_price and ai_item.sale_price > 0:
                     lp.selling_price = ai_item.sale_price
                     updated.append("sell_price")
-                if (not lp.purchase_price or lp.purchase_price == 0) and ai_item.cost_price and ai_item.cost_price > 0:
+                if ai_item and (not lp.purchase_price or lp.purchase_price == 0) and ai_item.cost_price and ai_item.cost_price > 0:
                     lp.purchase_price = ai_item.cost_price
                     updated.append("cost_price")
+
 
                 # Brand — link only if not set
                 if not lp.brand_id and ai_item.brand:

@@ -1,0 +1,957 @@
+[
+  {
+    "hsn_code": "33019031",
+    "description": "Attars of all kinds in fixed oil base 3301 Essential oils (terpeneless or not), including concretes and absolutes; resinoids; extracted oleoresins; concentrates of essential oils in fats, in fixed oils, in waxes or the like, obtained by enfleurage or",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "33074100",
+    "description": "Agarbatti and other odoriferous preparations which operate by burning 33074100 Agarbatti, lobhan, dhoop batti, dhoop, sambraani",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "3307",
+    "description": "00 Odoriferous preparations which operate by burning [other than agarbattis, lobhan, dhoop batti, dhoop, sambhrani]",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "33074900",
+    "description": "Other 3307 Pre-shave, shaving or after-shave preparations, personal deodorants, bath preparations, depilatories and other perfumery, cosmetic or toilet preparations, not elsewhere specified or included; prepared room deodorisers, whether or not perfu",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "34060010",
+    "description": "Candles 3406 Candles, tapers and the like",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "39231020",
+    "description": "Watch-box, jewellery box and similar containers of plastics 3923 Articles for the conveyance or packing of goods, of plastics; stoppers, lids, caps and other closures, of plastics",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "42022910",
+    "description": "Hand bags of other materials excluding wicker-work or basket work 4202 Trunks, suit-cases, vanity-cases, executive-cases, brief-cases, school satchels, spectacle cases, binocular cases, camera cases, musical instrument cases, gun cases, holsters and ",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "42023110",
+    "description": "With outer surface of leather or of composition of Leather -Jewellery box 4202 22, 4202 29, 4202 31 10, 4202 31 90, 4202 32, 4202 39 Handbags including pouches and purses; jewellery box",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "42023910",
+    "description": "Other -Jewellery box 4202 22, 4202 29, 4202 31 10, 4202 31 90, 4202 32, 4202 39 Handbags including pouches and purses; jewellery box",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "44141000",
+    "description": "WOODEN FRAMES FOR PAINTINGS, PHOTOGRAPHS, MIRRORS OR SIMILAR OBJECTS - Of tropic wood 4414 Wooden frames for painting, photographs, mirrors, etc.",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "44149000",
+    "description": "WOODEN FRAMES FOR PAINTINGS, PHOTOGRAPHS, MIRRORS OR SIMILAR OBJECTS -Other 4414 Wooden frames for painting, photographs, mirrors, etc.",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "44191900",
+    "description": "Other 4419 Tableware and Kitchenware of wood",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "44199090",
+    "description": "Other 4419 Tableware and Kitchenware of wood",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "44201100",
+    "description": "Statuettes and other ornaments, of wood: Of tropical wood 4420 Statuettes & other ornaments of wood, wood marquetry & inlaid, jewellery box, wood lathe and lacquer work (including lathe and lacquer work, ambadi sisal craft)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "44201900",
+    "description": "Statuettes and other ornaments, of wood: -Other 4420 Statuettes & other ornaments of wood, wood marquetry & inlaid, jewellery box, wood lathe and lacquer work (including lathe and lacquer work, ambadi sisal craft)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "44209010",
+    "description": "Wood marquetry and inlaid wood 4420 Wood marquetry and inlaid wood; caskets and cases for jewellery or cutlery, and similar articles, of wood; statuettes and other ornaments, of wood; wooden articles of furniture not falling in Chapter 94",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "44209090",
+    "description": "Other 4420 Wood marquetry and inlaid wood; caskets and cases for jewellery or cutlery, and similar articles, of wood; statuettes and other ornaments, of wood; wooden articles of furniture not falling in Chapter 94",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "44219160",
+    "description": "Parts of domestic decorative articles used as tableware and kitchenware 4421 Other articles of wood; such as clothes hangers, Spools, cops, bobbins, sewing thread reels and the like of turned wood for various textile machinery, Match splints, Pencil ",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "4421",
+    "description": "Wood paving blocks, articles of densified wood not elsewhere included or specified, Parts of domestic decorative articles used as tableware and kitchenware",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "4416",
+    "description": ", 4421 99 90 Carved wood products, art ware/decorative articles of wood (including inlay work, casks, barrel, vats)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "4503",
+    "description": "90, 4504 Art ware of cork (including articles of sholapith)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "46012900",
+    "description": "Mats, matting and screens of vegetable materials -Other 4601 and 4602 Mats, matting and screens of vegetable material, basketwork, wickerwork and other articles of vegetable materials or other plaiting material, articles of loofah [including of bambo",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "46019900",
+    "description": "Other 4601 and 4602 Mats, matting and screens of vegetable material, basketwork, wickerwork and other articles of vegetable materials or other plaiting material, articles of loofah [including of bamboo, rattan, canes and other natural fibres, dry flo",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "46021100",
+    "description": "Of bamboo 4601, 4602 Manufactures of straw, of esparto or of other plaiting materials; basketware and wickerwork",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "46021200",
+    "description": "Of rattan 4601, 4602 Manufactures of straw, of esparto or of other plaiting materials; basketware and wickerwork",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "46021911",
+    "description": "Baskets 4601, 4602 Manufactures of straw, of esparto or of other plaiting materials; basketware and wickerwork",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "46021919",
+    "description": "Other 4601, 4602 Manufactures of straw, of esparto or of other plaiting materials; basketware and wickerwork",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "46021990",
+    "description": "Other 4601, 4602 Manufactures of straw, of esparto or of other plaiting materials; basketware and wickerwork",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "48021010",
+    "description": "Hand-made paper -Paper 4802 Hand-made paper and paperboard",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "48021020",
+    "description": "Hand-made paperboard 4802 Hand-made paper and paperboard",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "4802",
+    "description": "Uncoated paper and paperboard, of a kind used for writing, printing or other graphic purposes, and non-perforated punch-cards and punch tape paper, in rolls or rectangular (including square) sheets, of any size, other than paper of heading 4801 or 48",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "48237030",
+    "description": "Articles made of paper mache other than artware and moulded or pressed goods of wood pulp 4823 Articles made of paper mache",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "48239018",
+    "description": "Products consisting of sheets of paper or paperboard, impregnated, coated or covered with plastics (including thermoset resins or mixtures thereof or chemical ormulations containing melamine, phenol or urea formaldehyde with or without curing agents ",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "56050020",
+    "description": "Imitation zari thread 5605 Metallised yarn, whether or not gimped, being textile yarn, or strip or the like of heading 5404 or 5405, combined with metal in the form of thread, strip or powder or covered with metal, including real zari thread (gold) a",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "56050090",
+    "description": "Metallised yarn, whether or not gimped, being textile yarn, or strip or the like of heading 5404 or 5405, combined with metal in the form of thread, strip or powder or covered with metal :- Other 5605 Metallised yarn, whether or not gimped, being tex",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "5607",
+    "description": ", 5609 Coir articles",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "5609",
+    "description": "20, 5609 Toran, Doorway Decoration made from cotton yarn or woollen yarn and aabhala (mirror) with or without hanging flaps",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58041090",
+    "description": "Tulles and other net fabrics :- Other 5804 Tulles and other net fabrics, not including woven, knitted or crocheted fabrics; lace in the piece, in strips or in motifs, other than fabrics of headings 6002 to 6006",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58043000",
+    "description": "Hand-made lace 5804 30 00 Handmade lace",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58050010",
+    "description": "Tapestries hand made or needle worked by hand, of cotton 5805 Hand-woven tapestries of the type Gobelins, Flanders, Aubusson, Beauvais and the like, and needle-worked tapestries (for example, petit point, cross stitch), whether or not made up",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58081090",
+    "description": "Braids, in the piece :- Other 5808 10 Hand-made braids and ornamental trimming in the piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "5808",
+    "description": "Braids in the piece; ornamental trimmings in the piece, without embroidery, other than knitted or crocheted; tassels, pompons and similar articles; saree fall",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58090010",
+    "description": "Zari border 5809 Woven fabrics of metal thread and woven fabrics of metallised yarn of heading 5605, of a kind used in apparel, as furnishing fabrics or for similar purposes, not elsewhere specified or included; such as Zari borders",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58090090",
+    "description": "Woven fabrics of metal thread and woven fabrics of metallised yarn of heading 5605, of a kind used in apparel, as furnishing fabrics or for similar purposes, not elsewhere specified or included :- Other 5809, 5810 Embroidery or zari articles, that is",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58101000",
+    "description": "Embroidery without visible ground 5810 Hand embroidered articles",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58109210",
+    "description": "Embroidered badges, motifs and the like 5810 Embroidery in the piece, in strips or in motifs, Embroidered badges, motifs and the like",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58110010",
+    "description": "Kantha (multilayer stitched textile fabrics in piece used for bedding, mattress pads or clothing) 5811 Quilted textile products in the piece, composed of one or more layers of textile materials assembled with padding by stitching or otherwise, other ",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "58110020",
+    "description": "Quilted wadding 5811 Quilted textile products in the piece, composed of one or more layers of textile materials assembled with padding by stitching or otherwise, other than embroidery of heading 5810",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "61043100",
+    "description": "Jackets and blazers :- Of wool or fine animal hair 61 Article of apparel and clothing accessories, knitted or crocheted, of sale value not exceeding Rs 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "2500",
+    "description": "per piece",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "61171020",
+    "description": "Shawls, scarves, mufflers, mantillas, veils and the like :- Of wool 6117, 6214 Handmade/hand embroidered shawls",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "63041100",
+    "description": "Bedspreads :- Knitted or crocheted 63 [other than 6305 32 00, 6305 33 00, 6309] Other made up textile articles, sets, of sale value not exceeding Rs. 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "63049190",
+    "description": "Knitted or crocheted :- Other 63 [other than 6305 32 00, 6305 33 00, 6309] Other made up textile articles, sets, of sale value not exceeding Rs. 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "63079011",
+    "description": "Dress materials hand printed :- Of cotton 63 [other than 6305 32 00, 6305 33 00, 6309] Other made up textile articles, sets, of sale value not exceeding Rs. 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "63079012",
+    "description": "Dress materials hand printed :- Of silk 63 [other than 6305 32 00, 6305 33 00, 6309] Other made up textile articles, sets, of sale value not exceeding Rs. 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "63079013",
+    "description": "Dress materials hand printed :- Of man-made fibres 63 [other than 6305 32 00, 6305 33 00, 6309] Other made up textile articles, sets, of sale value not exceeding Rs. 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "63079019",
+    "description": "Dress materials hand printed :- Other 63 [other than 6305 32 00, 6305 33 00, 6309] Other made up textile articles, sets, of sale value not exceeding Rs. 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "63079020",
+    "description": "Dress materials hand printed :- Made up articles of cotton 63 [other than 6305 32 00, 6305 33 00, 6309] Other made up textile articles, sets, of sale value not exceeding Rs. 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "63079090",
+    "description": "Dress materials hand printed :- Other 63 [other than 6305 32 00, 6305 33 00, 6309] Other made up textile articles, sets, of sale value not exceeding Rs. 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "6309",
+    "description": "] Other made-up textile articles, sets of sale value exceeding Rs. 2500 per piece [other than worn clothing and other worn articles; rags]",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "64032040",
+    "description": "Kolapuri chappals and similar footwear 64 Footwear of sale value not exceeding Rs.2500 per pair",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "64061010",
+    "description": "Embroidered uppers of textile materials 64 Footwear of sale value not exceeding Rs.2500 per pair",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "6406",
+    "description": "Parts of footwear (including uppers whether or not attached to soles other than outer soles); removable in-soles, heel cushions and similar articles; gaiters, leggings and similar articles, and parts thereof",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "65040000",
+    "description": "HATS AND OTHER HEADGEAR, PLAITED OR MADE BY ASSEMBLING STRIPS OF ANY MATERIAL, WHETHER ORNOT LINED OR TRIMMED 6504 00 00 Hats and other headgear, plaited or made by assembling strips of any material, whether or not lined or trimme",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "65050090",
+    "description": "Hats and other headgear, knitted or crocheted, or made up from lace, felt or other textile fabric, in the piece (but not in strips), whether or not lined or trimmed; hair-nets of any material, whether or not lined or trimmed - Other 6505 Hats (knitte",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "6505",
+    "description": "Other headgear, knitted or crocheted, or made up from lace, felt or other textile fabric, in the piece (but not in strips), whether or not lined or trimmed; hair-nets of any material, whether or not lined or trimmed",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "66020000",
+    "description": "WALKING-STICKS, SEAT-STICKS, WHIPS, RIDING CROPS AND THE LIKE 6602 00 00 Walking-sticks including seat sticks",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "67010010",
+    "description": "Feather dusters 6701 Skins and other parts of birds with their feathers or down, feathers, parts of feathers, down and articles thereof (other than goods of heading 0505 and worked quills and scapes",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "67029090",
+    "description": "ARTIFICIAL FLOWERS, FOLIAGE AND FRUIT AND PARTS THEREOF; ARTICLES MADE OF ARTIFICIAL FLOWERS, FOLIAGE OR FRUIT - Of other materials :- Other 6702 Artificial flowers, foliage and fruit and parts thereof; articles made of artificial flowers, foliage or",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "68022190",
+    "description": "Others - Marble, travertine and alabaster 6802 Statues, statuettes, pedestals; high or low reliefs, crosses, figures of animals, bowls, vases, cups, cachou boxes, writing sets, ashtrays, paper weights, artificial fruit and foliage, etc.; other orname",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "68159990",
+    "description": "Other 6815 99 90 Stone art ware, stone inlay work",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69111011",
+    "description": "Tableware :- Of bone china and soft porcelain 6911 Tableware, kitchenware, other household articles and toilet articles, of porcelain or china",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69111019",
+    "description": "Tableware :-Other 6911 Tableware, kitchenware, other household articles and toilet articles, of porcelain or china",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69111021",
+    "description": "Kitchenware:- Of Bone china and soft porcelain 6911 Tableware, kitchenware, other household articles and toilet articles, of porcelain or china",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69111029",
+    "description": "Kitchenware:- Other 6911 Tableware, kitchenware, other household articles and toilet articles, of porcelain or china",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69119010",
+    "description": "Toilet articles 6911 Tableware, kitchenware, other household articles and toilet articles, of porcelain or china",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69119090",
+    "description": "Other 6911 Tableware, kitchenware, other household articles and toilet articles, of porcelain or china",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69120010",
+    "description": "Tableware 6912 00 10, Tableware and kitchenware of clay and terracotta, other clay articles",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69120020",
+    "description": "Kitchenware 6912 00 20 Tableware and kitchenware of clay and terracotta, other clay articles",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69120030",
+    "description": "Toilet articles 6912 Tableware, kitchenware, other household articles and toilet articles, other than of porcelain or china",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69120040",
+    "description": "Clay articles 69120040 Earthen pot and clay lamps NIL 70 69120090 Ceramic tableware, kitchenware, other household articles and toilet articles, other than of porcelain or china :- Other 6912 Tableware, kitchenware, other household articles and toilet",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69131000",
+    "description": "Of porcelain or china 6913 Statues and other ornamental articles",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69139000",
+    "description": "STATUETTES AND OTHER ORNAMENTAL CERAMIC ARTICLES:- Other 6913 90 00 Statuettes & other ornamental ceramic articles (incl. blue potteries)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "69141000",
+    "description": "Of porcelain or china 6914 Other ceramic articles",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "69149000",
+    "description": "OTHER CERAMIC ARTICLES:- Other 6914 Other ceramic articles",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "70099200",
+    "description": "Rear-view mirrors for vehicles :- Other:- Framed 7009 92 00 Ornamental framed mirrors",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "70132800",
+    "description": "Stemware drinking glasses, other than of glass-ceramics :- Other 7013 Glassware of a kind used for table, kitchen, toilet, office, indoor decoration or similar purposes (other than that of heading 7010 or 7018)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "70133300",
+    "description": "Other drinking glasses, other than of glassceramics :-Of lead crystal 7013 Glassware of a kind used for table, kitchen, toilet, office, indoor decoration or similar purposes (other than that of heading 7010 or 7018)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "70133700",
+    "description": "Other drinking glasses, other than of glassceramics :- Other 7013 Glassware of a kind used for table, kitchen, toilet, office, indoor decoration or similar purposes (other than that of heading 7010 or 7018)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "70134100",
+    "description": "Of lead crystal 7013 Glassware of a kind used for table, kitchen, toilet, office, indoor decoration or similar purposes (other than that of heading 7010 or 7018)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "70134900",
+    "description": "Other glassware 7013 Glassware of a kind used for table, kitchen, toilet, office, indoor decoration or similar purposes (other than that of heading 7010 or 7018)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "70139100",
+    "description": "Of lead crystal 7013 Glassware of a kind used for table, kitchen, toilet, office, indoor decoration or similar purposes (other than that of heading 7010 or 7018)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "70181010",
+    "description": "Bangles 7018 10 Bangles, beads and small ware",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "7018",
+    "description": "Glass bangles (except those made from precious metals) NIL 83 70181020 Beads 7018 Glass beads",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "70181090",
+    "description": "Glass beads, imitation pearls, imitation precious or semi- precious stones and similar glass smallwares :- Other 7018 Imitation pearls, imitation precious or semi-precious stones and similar glass smallwares, and articles thereof other than imitation",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "70189010",
+    "description": "Glass statues 7018 90 10 Glass statues [other than those of crystal]",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "70200011",
+    "description": "Globes for lamps and lanterns 7020 Globes for lamps and lanterns, Founts for kerosene wick lamps, Glass chimneys for lamps and lanterns",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "70200029",
+    "description": "Glass chimneys :- Other 7020 Other articles of glass [other than Globes for lamps and lanterns, Founts for kerosene wick lamps, Glass chimneys for lamps and lanterns]",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "70200090",
+    "description": "Glass chimneys :- Other 7020 00 90 Glass art ware [ incl. pots, jars, votive, cask, cake cover, tulip bottle, vase]",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "71131110",
+    "description": "Jewellery with filigree work 7113 11 10 Silver filigree work 3% 7113 Articles of jewellery and parts thereof, of precious metal or of metal clad with precious metal 3% 90 71171100 Cuff-links and studs 7117 Handmade imitation jewellery (including natu",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "73239200",
+    "description": "Of cast iron, enamelled 7323 Table, kitchen or other household articles of iron & steel; Utensils",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "73239420",
+    "description": "Utensils 7323 Table, kitchen or other household articles of iron & steel; Utensils",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "73239490",
+    "description": "Of iron (other than cast iron) or steel, enamelled :- Other 7323 Table, kitchen or other household articles of iron & steel; Utensils",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "7323",
+    "description": "Iron or steel wool; pot scourers and scouring or polishing pads, gloves and the like, of iron or steel (other than Milk cans made of Iron or Steel)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "7326",
+    "description": "99 Artware of iron",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "74181021",
+    "description": "Of Brass 7418 Table, kitchen or other household articles of copper; Utensils",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "74181022",
+    "description": "Of Copper 7418 Table, kitchen or other household articles of copper; Utensils",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "74181023",
+    "description": "Of other copper alloys 7418 Table, kitchen or other household articles of copper; Utensils",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "74181024",
+    "description": "E.P.N.S. Ware 7418 Table, kitchen or other household articles of copper; Utensils",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "74181031",
+    "description": "Of E.P.N.S 7418 Table, kitchen or other household articles of copper; Utensils",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "74181039",
+    "description": "Other 7418 All goods (other than table, kitchen or other household articles of",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "74198020",
+    "description": "Articles of copper alloys electro-plated with nickel silver 7419 80 Artware of brass, copper/copper alloys, electro plated with nickel/silver",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "74198030",
+    "description": "Articles of brass 7419 80 30 Brass Kerosene Pressure Stove",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "74198040",
+    "description": "Copper worked articles 7419 80 Artware of brass, copper/copper alloys, electro plated with nickel/silver",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "7419",
+    "description": "Other articles of copper (other than Brass Kerosene Pressure Stove)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "76151030",
+    "description": "Other table, kitchen or household articles 7615 Table, kitchen or other household articles of aluminium; Utensils",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "76151090",
+    "description": "Pressure cookers, solar collectors:- Parts 7616 99 90 Aluminium art ware",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "7615",
+    "description": "All goods (other than table, kitchen or other household articles, of aluminium; Utensils, Milk cans made of Aluminium)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "83061000",
+    "description": "Bells, gongs and the like 8306 Bells, gongs and the like, non-electric, of base metal; statuettes and other ornaments, of base metal; photograph, picture or similar frames, of base metal; mirrors of base metal; metal bidriware",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "83062190",
+    "description": "Plated with precious metal:- Other 8306 Bells, gongs and the like, non-electric, of base metal; statuettes and other ornaments, of base metal; photograph, picture or similar frames, of base metal; mirrors of base metal; metal bidriware",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "83062910",
+    "description": "Statuettes 8306 Bells, gongs and the like, non-electric, of base metal; statuettes and other ornaments, of base metal; photograph, picture or similar frames, of base metal; mirrors of base metal; metal bidriware",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "83062990",
+    "description": "Other 8306 Bells, gongs and the like, non-electric, of base metal; statuettes and other ornaments, of base metal; photograph, picture or similar frames, of base metal; mirrors of base metal; metal bidriware",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "83063000",
+    "description": "Photograph, picture or similar frames; mirrors 8306 Bells, gongs and the like, non-electric, of base metal; statuettes and other ornaments, of base metal; photograph, picture or similar frames, of base metal; mirrors of base metal; metal bidriware",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "83089020",
+    "description": "Imitation zari spangles 8308 Clasps, frames with clasps, buckles, buckle-clasps, hooks, eyes, eyelets and the like, of base metal, of a kind used for clothing or clothing accessories, footwear, jewellery, wrist watches, books, awnings, leather goods,",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "83089031",
+    "description": "For garments, made ups, knitwear, plastic and leather goods 8308 Clasps, frames with clasps, buckles, buckle-clasps, hooks, eyes, eyelets and the like, of base metal, of a kind used for clothing or clothing accessories, footwear, jewellery, wrist wat",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "83089039",
+    "description": "Beads and spangles of base metal:- Other 8308 Clasps, frames with clasps, buckles, buckle-clasps, hooks, eyes, eyelets and the like, of base metal, of a kind used for clothing or clothing accessories, footwear, jewellery, wrist watches, books, awning",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "92029000",
+    "description": "OTHER STRING MUSICAL INSTRUMENTS (FOR EXAMPLE, GUITARS, VIOLINS, HARPS):- Other 9202 Other string musical instruments (for example, guitars, violins, harps)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "92059010",
+    "description": "Flutes 9205 Wind musical instruments (for example, keyboard pipe organs, accordions, clarinets, trumpets, bagpipes), other than fairground organs and mechanical street organs",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "92059090",
+    "description": "Other 9205 Wind musical instruments (for example, keyboard pipe organs, accordions, clarinets, trumpets, bagpipes), other than fairground organs and mechanical street organs",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "92060000",
+    "description": "PERCUSSION MUSICAL INSTRUMENTS (FOR EXAMPLE, DRUMS, XYLOPHONES, CYMBOLS, CASTANETS, MARACAS) 9206 00 00 Percussion musical instruments (for example, drums, xylophones, cymbols, castanets, maracas)",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "9401",
+    "description": ", 9403 80 Furniture of bamboo, rattan, and cane",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "94033010",
+    "description": "Cabinetware 9403 Other furniture [other than furniture wholly made of bamboo, cane or rattan] and parts thereof",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "94033090",
+    "description": "Wooden furniture of a kind used in offices:- Other 9403 Other furniture [other than furniture wholly made of bamboo, cane or rattan] and parts thereof",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "94035010",
+    "description": "Bed stead 9403 Other furniture [other than furniture wholly made of bamboo, cane or rattan] and parts thereof",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "94035090",
+    "description": "Wooden furniture of a kind used in the bed room:- Other 9403 Other furniture [other than furniture wholly made of bamboo, cane or rattan] and parts thereof",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "94036000",
+    "description": "Other wooden furniture 9403 Other furniture [other than furniture wholly made of bamboo, cane or rattan] and parts thereof",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "94038200",
+    "description": "Of bamboo 9403 Furniture wholly made of bamboo, cane or rattan",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "94038900",
+    "description": "Furniture of other materials, including cane, osier, bamboo or similar materials :- Other 9403 Furniture wholly made of bamboo, cane or rattan",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "94039100",
+    "description": "Furniture of other materials, including cane, osier, bamboo or similar materials - Parts - of wood 9403 Furniture wholly made of bamboo, cane or rattan",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "94039900",
+    "description": "Furniture of other materials, including cane, osier, bamboo or similar materials - Parts - Other 9403 Furniture wholly made of bamboo, cane or rattan",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "94049000",
+    "description": "Quilts, bedspreads, eiderdowns and duvets (comforters): Other 9404 Products wholly made of quilted textile materials not exceeding Rs 2500 per piece",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "9404",
+    "description": "Mattress supports; articles of bedding and similar furnishing (for example, mattresses, quilts, eiderdowns, cushions, pouffes and pillows) fitted with springs or stuffed or internally fitted with any material or of cellular rubber or plastics, whethe",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "94051100",
+    "description": "Chandeliers and other electric ceiling or wall lighting fittings, excluding those of a kind used for lighting public open spaces or thoroughfares - Designed for use solely with light-emitting diode (LED) light sources 9405 Hurricane lanterns, Kerosen",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "94051900",
+    "description": "Other 9405 10 Handcrafted lamps (including Panchloga lamp)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "94053100",
+    "description": "Lighting strings of a kind used for Christmas trees: Designed for use solely with light-emitting diode (LED) light sources 9405 10 Handcrafted lamps (including Panchloga lamp)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "94053900",
+    "description": "Other 9405 10 Handcrafted lamps (including Panchloga lamp)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "94055000",
+    "description": "Non-electrical luminaires and lighting fittings 9405 Luminaires and lighting fittings including searchlights and spotlights and parts thereof, not elsewhere specified or included; illuminated signs, illuminated nameplates and the like, having a perma",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "95030010",
+    "description": "Of wood 9503 Toy balloons made of natural rubber latex and Toys like tricycles, scooters, pedal cars etc. (including parts and accessories thereof) [other than electronic toys]",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "95030090",
+    "description": "Tricycles, scooters, pedal cars and similar wheeled toys; dolls' carriages; dolls; other toys; reduced-size (“scale”) models and similar recreational models, working or not; puzzles of all kinds:- Other 9503 Dolls or other toys made of wood or metal ",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "9504",
+    "description": "Ganjifa card",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "95051000",
+    "description": "Articles for Christmas festivities 9505 Festive, carnival or other entertainment articles, including conjuring tricks and novelty jokes",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "95059010",
+    "description": "Magical equipments 9505 Festive, carnival or other entertainment articles, including conjuring tricks and novelty jokes",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "96011000",
+    "description": "Worked ivory and articles of ivory 9601 Worked ivory, bone, tortoise shell, horn, antlers, corals, mother of pearl, and other animal carving material and articles of these materials, articles of coral (including articles obtained by moulding)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96019010",
+    "description": "Worked tortoise-shell and articles thereof 9601 Worked ivory, bone, tortoise shell, horn, antlers, corals, mother of pearl, and other animal carving material and articles of these materials, articles of coral (including articles obtained by moulding)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96019020",
+    "description": "Worked mother-of-pearl and articles thereof 9601 Worked ivory, bone, tortoise shell, horn, antlers, corals, mother of pearl, and other animal carving material and articles of these materials, articles of coral (including articles obtained by moulding",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96019030",
+    "description": "Worked bone (excluding whale bone) and articles thereof 9601 Worked ivory, bone, tortoise shell, horn, antlers, corals, mother of pearl, and other animal carving material and articles of these materials, articles of coral (including articles obtained",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96019040",
+    "description": "Worked horn, coral and other animal carving material and articles thereof 9601 Worked ivory, bone, tortoise shell, horn, antlers, corals, mother of pearl, and other animal carving material and articles of these materials, articles of coral (including",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96019090",
+    "description": "Other 9601 Worked ivory, bone, tortoise shell, horn, antlers, corals, mother of pearl, and other animal carving material and articles of these materials, articles of coral (including articles obtained by moulding)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96020010",
+    "description": "Worked vegetable carving material and articles thereof 9602 Worked vegetable or mineral carving materials and articles thereof; articles of wax, Stearin, natural gums or natural resins, or of modelling pastes, etc. (including articles of lac, shellac",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96020020",
+    "description": "Moulded or carved articles of wax, stearin, natural gums and resins and other moulded or carved articles 9602 Worked vegetable or mineral carving materials and articles thereof; articles of wax, Stearin, natural gums or natural resins, or of modellin",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96020040",
+    "description": "Other articles of unhardened gelatin 9602 Worked vegetable or mineral carving materials and articles thereof; articles of wax, Stearin, natural gums or natural resins, or of modelling pastes, etc. (including articles of lac, shellac)",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96020090",
+    "description": "Worked vegetable or mineral carving material and articles of these materials moulded or carved articles of wax, of stearin, of natural gums or natural resins or of modelling pastes, and other moulded or carved articles, not elsewhere specified or inc",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "9602",
+    "description": "Worked vegetable or mineral carving material and articles of these materials moulded or carved articles of wax, of stearin, of natural gums or natural resins or of modelling pastes, and other moulded or carved articles, not elsewhere specified or inc",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "96031000",
+    "description": "Brooms and brushes, consisting of twigs or other vegetable materials, bound together, with or without handles 9603 [other than 9603 10 00] Broomsticks (other than brooms consisting of twigs or othervegetable materials bound together, with or without ",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "96062200",
+    "description": "Of base metals, not covered with textile material 9606 21 00, 9606 22 00, 9606 29, 9606 30 Buttons, of plastics not covered with the textile material, of base metals, buttons of coconut shell, button blanks",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "96089910",
+    "description": "Pen holders, pencil holders and similar holders 9608 Ball point pens; felt tipped and other porous-tipped pens and markers; fountain pens; stylograph pens and other pens; duplicating stylos; pen holders, pencil holders and similar holders; parts (inc",
+    "gst_rate": 18.0
+  },
+  {
+    "hsn_code": "96140000",
+    "description": "SMOKING PIPES (INCLUDING PIPE BOWLS) AND CIGAR OR CIGARETTE HOLDERS AND PARTS THEREOF 9614 Smoking pipes (including pipe bowls) and cigar or cigarette holders, and parts thereof 4",
+    "gst_rate": 0.0
+  },
+  {
+    "hsn_code": "97012100",
+    "description": "PAINTINGS, DRAWINGS AND PASTELS, EXECUTED ENTIRELY BY HAND, OTHER THAN DRAWINGS OF HEADING 4906 AND OTHER THAN HAND-PAINTED OR HAND-DECORATED MANUFACTURED ARTICLES; COLLAGES, MOSAICS AND SIMILAR DECORATIVE PLAQUES Of an age exceeding 100 years -Paint",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97012200",
+    "description": "PAINTINGS, DRAWINGS AND PASTELS, EXECUTED ENTIRELY BY HAND, OTHER THAN DRAWINGS OF HEADING 4906 AND OTHER THAN HAND-PAINTED OR HAND-DECORATED MANUFACTURED ARTICLES; COLLAGES, MOSAICS AND SIMILAR DECORATIVE PLAQUES Of an age exceeding 100 years -Mosai",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97012900",
+    "description": "PAINTINGS, DRAWINGS AND PASTELS, EXECUTED ENTIRELY BY HAND, OTHER THAN DRAWINGS OF HEADING 4906 AND OTHER THAN HAND-PAINTED OR HAND-DECORATED MANUFACTURED ARTICLES; COLLAGES, MOSAICS AND SIMILAR DECORATIVE PLAQUES Of an age exceeding 100 years -Other",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97019100",
+    "description": "PAINTINGS, DRAWINGS AND PASTELS, EXECUTED ENTIRELY BY HAND, OTHER THAN DRAWINGS OF HEADING 4906 AND OTHER THAN HAND-PAINTED OR HAND-DECORATED MANUFACTURED ARTICLES; COLLAGES, MOSAICS AND SIMILAR DECORATIVE PLAQUES -Other - Paintings, drawings and pas",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97019200",
+    "description": "PAINTINGS, DRAWINGS AND PASTELS, EXECUTED ENTIRELY BY HAND, OTHER THAN DRAWINGS OF HEADING 4906 AND OTHER THAN HAND-PAINTED OR HAND-DECORATED MANUFACTURED ARTICLES; COLLAGES, MOSAICS AND SIMILAR DECORATIVE PLAQUES -Other - Mosaics 9701 Hand paintings",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97019900",
+    "description": "PAINTINGS, DRAWINGS AND PASTELS, EXECUTED ENTIRELY BY HAND, OTHER THAN DRAWINGS OF HEADING 4906 AND OTHER THAN HAND-PAINTED OR HAND-DECORATED MANUFACTURED ARTICLES; COLLAGES, MOSAICS AND SIMILAR DECORATIVE PLAQUES -Other - other 9701 Hand paintings, ",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97021000",
+    "description": "ORIGINAL ENGRAVINGS, PRINTS AND LITHOGRAPHS - Of an age exceeding 100 years 9702 Original engravings, prints and lithographs",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97029000",
+    "description": "ORIGINAL ENGRAVINGS, PRINTS AND LITHOGRAPHS :- other 9702 Original engravings, prints and lithographs",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97031010",
+    "description": "ORIGINAL SCULPTURES AND STATUARY, IN ANY MATERIAL - Of an age exceeding 100 years: Of metal 9703 Original sculptures and statuary, in metal, stone, or any other material",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97031020",
+    "description": "ORIGINAL SCULPTURES AND STATUARY, IN ANY MATERIAL - Of an age exceeding 100 years: Of Stone 9703 Original sculptures and statuary, in metal, stone, or any other material",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97031090",
+    "description": "ORIGINAL SCULPTURES AND STATUARY, IN ANY MATERIAL - Of an age exceeding 100 years: Other 9703 Original sculptures and statuary, in metal, stone, or any other material",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97039010",
+    "description": "ORIGINAL SCULPTURES AND STATUARY, IN ANY MATERIAL - Other - of metal 9703 Original sculptures and statuary, in metal, stone, or any other material",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97039020",
+    "description": "ORIGINAL SCULPTURES AND STATUARY, IN ANY MATERIAL - Other - of stone 9703 Original sculptures and statuary, in metal, stone, or any other material",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97039090",
+    "description": "ORIGINAL SCULPTURES AND STATUARY, IN ANY MATERIAL - Other - other 9703 Original sculptures and statuary, in metal, stone, or any other material",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97040010",
+    "description": "Used postal stamp 9704 Postage or revenue stamps, stamp-postmarks, first-day covers, postal stationery (stamped paper), and the like, used or unused, other than those of heading 4907",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97040020",
+    "description": "Used or unused first-day covers for philatelists 9704 Postage or revenue stamps, stamp-postmarks, first-day covers, postal stationery (stamped paper), and the like, used or unused, other than those of heading 4907",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97040090",
+    "description": "Postage or revenue stamps, stamp-post marks, first-day covers, postal stationery (stamped paper), and the like, used or unused, other than those of heading 490 :- Other 9704 Postage or revenue stamps, stamp-postmarks, first-day covers, postal station",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97051000",
+    "description": "Collections and collectors' pieces of archaeological, ethnographic or historical interest Collections and collectors' pieces of zoological, botanical, mineralogical, anatomical or paleontological interest Collections and collectors' pieces of archaeo",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97052100",
+    "description": "Collections and collectors' pieces of archaeological, ethnographic or historical interest Collections and collectors' pieces of zoological, botanical, mineralogical, anatomical or paleontological interest - Collections and collectors' pieces of zoolo",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97052200",
+    "description": "Collections and collectors' pieces of archaeological, ethnographic or historical interest Collections and collectors' pieces of zoological, botanical, mineralogical, anatomical or paleontological interest - Collections and collectors' pieces of zoolo",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97052900",
+    "description": "Collections and collectors' pieces of archaeological, ethnographic or historical interest Collections and collectors' pieces of zoological, botanical, mineralogical, anatomical or paleontological interest - Collections and collectors' pieces of zoolo",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97053100",
+    "description": "Collections and collectors' pieces of archaeological, ethnographic or historical interest Collections and collectors' pieces of zoological, botanical, mineralogical, anatomical or paleontological interest - Collections and collectors' pieces of numis",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97053900",
+    "description": "Collections and collectors' pieces of archaeological, ethnographic or historical interest Collections and collectors' pieces of zoological, botanical, mineralogical, anatomical or paleontological interest - Collections and collectors' pieces of numis",
+    "gst_rate": 5.0
+  },
+  {
+    "hsn_code": "97061000",
+    "description": "ANTIQUES OF AN AGE EXCEEDING 100 YEARS - Of an age exceeding 250 years 9706 Antiques of an age exceeding one hundred years",
+    "gst_rate": 5.0
+  }
+]

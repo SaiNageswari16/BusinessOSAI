@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, JSON
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from datetime import datetime
@@ -472,6 +472,19 @@ class PickingRule(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_product_categories.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="Active")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class HSNMaster(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "erp_hsn_master"
+
+    hsn_code: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    gst_rate: Mapped[float] = mapped_column(Float, nullable=False, default=18.0)
+    cgst_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sgst_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    igst_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cess_rate: Mapped[float | None] = mapped_column(Float, nullable=True, default=0.0)
+
 
 
 

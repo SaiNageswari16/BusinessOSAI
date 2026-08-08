@@ -1637,6 +1637,8 @@ class POSProductResponse(BaseModel):
     purchase_price: float
     mrp: float
     selling_price: float
+    wholesale_price: float = 0.0
+    min_wholesale_qty: int = 1
     tax_percent: float
     discount: float
     stock: int

@@ -84,7 +84,7 @@ const defaultFormData = () => ({
 
 
 
-const localVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "initial_stock", "status"];
+const localVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "selling_price", "wholesale_price", "min_wholesale_qty", "initial_stock", "status"];
 const masterVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "selling_price", "source"];
 
 // ── Column menu sub-component ───────────────────────────────────────
@@ -405,6 +405,12 @@ export function Products() {
   const [uoms, setUoms] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hsnCodes, setHsnCodes] = useState<Array<{ hsn_code: string; description: string; gst_rate: number }>>([]);
+
+  useEffect(() => {
+    inventoryApi.getHsnCodes().then(res => setHsnCodes(res || [])).catch(() => {});
+  }, []);
+
 
 
 
@@ -1161,8 +1167,46 @@ export function Products() {
                 )}
               </div>
             ))}
+
+            {/* HSN Code Selector */}
+            <div className="col-span-2 bg-muted/20 p-3 rounded-xl border border-dashed space-y-2">
+              <label className="block text-xs font-semibold text-muted-foreground">
+                HSN Code & GST Tax Schedule Lookup
+              </label>
+              <div className="flex gap-2">
+                <select
+                  className="flex-1 h-10 px-3 text-sm rounded-lg border bg-background"
+                  value={(currentForm as any).hsn_code || ""}
+                  onChange={(e) => {
+                    const selectedCode = e.target.value;
+                    const match = hsnCodes.find(h => h.hsn_code === selectedCode);
+                    setCurrentForm(prev => ({
+                      ...prev,
+                      hsn_code: selectedCode,
+                      tax_percent: match ? match.gst_rate : prev.tax_percent
+                    }));
+                    if (match) {
+                      toast.success(`Selected HSN ${selectedCode} (${match.gst_rate}% GST Rate)`);
+                    }
+                  }}
+                >
+                  <option value="">Select Official HSN Code / GST Rate...</option>
+                  {hsnCodes.map((item) => (
+                    <option key={item.hsn_code} value={item.hsn_code}>
+                      {item.hsn_code} — {item.description.slice(0, 55)}... ({item.gst_rate}% GST)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {(currentForm as any).hsn_code && (
+                <p className="text-[11px] text-emerald-600 font-medium">
+                  Auto-assigned GST Tax Rate: {(currentForm as any).tax_percent}%
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t">
+
             <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); }}>Cancel</Button>
             <Button type="submit" disabled={isSubmitting} className="gradient-brand text-white border-0">
               {isSubmitting ? "Saving..." : editingProductId ? "Update Product" : "Create Product"}

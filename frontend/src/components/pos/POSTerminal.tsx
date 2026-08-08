@@ -46,8 +46,15 @@ function PosTerminalInner() {
   const currentView = search.view || 'billing';
 
   const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [activeSubCategory, setActiveSubCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [posPage, setPosPage] = useState<number>(1);
+  const [posPageSize, setPosPageSize] = useState<number>(24);
   const [cart, setCart] = useState<any[]>([]);
+
+  useEffect(() => { setPosPage(1); }, [activeCategory, activeSubCategory, searchQuery]);
+
+
   const [selectedCustomer, setSelectedCustomer] = useState(posCustomers[0]);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [customerList, setCustomerList] = useState<any[]>(posCustomers);
@@ -207,6 +214,8 @@ function PosTerminalInner() {
             barcode: p.barcode || "",
             sku: p.sku || "",
             sellingPrice: p.selling_price || p.mrp || 0,
+            wholesalePrice: p.wholesale_price || 0,
+            minWholesaleQty: p.min_wholesale_qty || 1,
             mrp: p.mrp,
             purchasePrice: p.purchase_price,
             tax: (p.selling_price || p.mrp || 0) * (p.tax_percent / 100),
@@ -320,14 +329,57 @@ function PosTerminalInner() {
     enabled: true
   });
 
-  // Filter products
-  const filteredProducts = products.filter(p => {
-    const matchCat = activeCategory === "all" || p.category === activeCategory;
-    const matchSearch = (p.name?.toLowerCase().includes(searchQuery.toLowerCase()) || false) ||
-      (p.barcode?.includes(searchQuery) || false) ||
-      (p.sku?.toLowerCase().includes(searchQuery.toLowerCase()) || false);
-    return matchCat && matchSearch;
-  });
+  // Category Getters
+  const parentCategories = useMemo(() => {
+    return categories.filter(c => !c.parent_id);
+  }, [categories]);
+
+  const currentSubCategories = useMemo(() => {
+    if (activeCategory === "all") return [];
+    return categories.filter(c => c.parent_id === activeCategory);
+  }, [categories, activeCategory]);
+
+  // Filter products by parent category, sub-category, and search query
+  const filteredProducts = useMemo(() => {
+    return products.filter(p => {
+      // 1. Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchName = p.name?.toLowerCase().includes(q);
+        const matchBarcode = p.barcode?.toLowerCase().includes(q);
+        const matchSku = p.sku?.toLowerCase().includes(q);
+        if (!matchName && !matchBarcode && !matchSku) return false;
+      }
+
+      // 2. Sub-category Filter (if selected)
+      if (activeSubCategory !== "all") {
+        const subCat = categories.find(c => c.id === activeSubCategory);
+        const matchId = p.category === activeSubCategory || p.category_id === activeSubCategory;
+        const matchName = subCat && p.category?.toLowerCase() === subCat.name.toLowerCase();
+        return matchId || matchName;
+      }
+
+      // 3. Parent category Filter (if selected)
+      if (activeCategory !== "all") {
+        const parentCat = categories.find(c => c.id === activeCategory);
+        const matchParentId = p.category === activeCategory || p.category_id === activeCategory;
+        const matchParentName = parentCat && p.category?.toLowerCase() === parentCat.name.toLowerCase();
+
+        const subCatIds = new Set(categories.filter(c => c.parent_id === activeCategory).map(c => c.id));
+        const subCatNames = new Set(categories.filter(c => c.parent_id === activeCategory).map(c => c.name.toLowerCase()));
+        const matchSub = subCatIds.has(p.category) || subCatIds.has(p.category_id) || subCatNames.has(p.category?.toLowerCase());
+
+        return matchParentId || matchParentName || matchSub;
+      }
+
+      return true;
+    });
+  }, [products, searchQuery, activeCategory, activeSubCategory, categories]);
+
+
+  const totalPosPages = Math.ceil(filteredProducts.length / posPageSize) || 1;
+  const paginatedProducts = filteredProducts.slice((posPage - 1) * posPageSize, posPage * posPageSize);
+
 
   // Cart actions
   const addToCart = (product: any, e?: React.MouseEvent) => {
@@ -377,12 +429,34 @@ function PosTerminalInner() {
     }
   };
 
+  const [priceMode, setPriceMode] = useState<"retail" | "wholesale">("retail");
+
+  const getItemEffectivePrice = (item: any, qty: number = item.qty) => {
+    const isWholesaleCustomer = selectedCustomer?.tier?.toLowerCase().includes("wholesale") || selectedCustomer?.tier?.toLowerCase().includes("b2b") || selectedCustomer?.tier?.toLowerCase().includes("retailer");
+    const hasWholesalePrice = Boolean(item.wholesalePrice && item.wholesalePrice > 0);
+    const isQtyQualified = qty >= (item.minWholesaleQty || 1);
+    if (hasWholesalePrice && (priceMode === "wholesale" || isWholesaleCustomer || isQtyQualified)) {
+      return { unitPrice: item.wholesalePrice, isWholesale: true };
+    }
+    return { unitPrice: item.sellingPrice || item.mrp || 0, isWholesale: false };
+  };
+
   // Cart Math
-  const subtotal = cart.reduce((sum, item) => sum + (item.sellingPrice * item.qty), 0);
+  const subtotal = cart.reduce((sum, item) => {
+    const { unitPrice } = getItemEffectivePrice(item);
+    return sum + (unitPrice * item.qty);
+  }, 0);
   const totalDiscount = cart.reduce((sum, item) => sum + (item.discount * item.qty), 0);
   const taxableAmount = subtotal - totalDiscount;
-  const tax = taxableAmount * 0.05; // 5% flat mock tax
+  const tax = cart.reduce((sum, item) => {
+    const { unitPrice } = getItemEffectivePrice(item);
+    const itemTaxPercent = Number(item.tax_percent ?? item.tax ?? 18);
+    const itemNet = Math.max(0, (unitPrice - (item.discount || 0)) * item.qty);
+    return sum + (itemNet * (itemTaxPercent / 100));
+  }, 0);
   const total = taxableAmount + tax;
+
+
 
   const handleCheckout = async () => {
     if (paymentMethod === 'Split') {
@@ -485,13 +559,16 @@ function PosTerminalInner() {
         discount_amount: totalDiscount,
         total_amount: total,
         session_id: currentSession.id,
-        items: resolvedCart.map(item => ({
-          product_id: item.id,
-          quantity: item.qty,
-          unit_price: item.sellingPrice,
-          discount: item.discount || 0,
-          subtotal: (item.sellingPrice - (item.discount || 0)) * item.qty
-        })),
+        items: resolvedCart.map(item => {
+          const { unitPrice } = getItemEffectivePrice(item);
+          return {
+            product_id: item.id,
+            quantity: item.qty,
+            unit_price: unitPrice,
+            discount: item.discount || 0,
+            subtotal: (unitPrice - (item.discount || 0)) * item.qty
+          };
+        }),
         payments: paymentsArray
       };
 
@@ -660,13 +737,16 @@ function PosTerminalInner() {
         discount_amount: totalDiscount,
         total_amount: total,
         session_id: currentSession.id,
-        items: resolvedCart.map(item => ({
-          product_id: item.id,
-          quantity: item.qty,
-          unit_price: item.sellingPrice,
-          discount: item.discount || 0,
-          subtotal: (item.sellingPrice - (item.discount || 0)) * item.qty
-        })),
+        items: resolvedCart.map(item => {
+          const { unitPrice } = getItemEffectivePrice(item);
+          return {
+            product_id: item.id,
+            quantity: item.qty,
+            unit_price: unitPrice,
+            discount: item.discount || 0,
+            subtotal: (unitPrice - (item.discount || 0)) * item.qty
+          };
+        }),
         payments: payments
       };
 
@@ -720,51 +800,132 @@ function PosTerminalInner() {
             );
           })}
         </div>
+
+        {/* B2B Wholesale / Retail Mode Pill Toggle */}
+        <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
+            <button
+              onClick={() => setPriceMode("retail")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${priceMode === "retail" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
+            >
+              🛒 Retail
+            </button>
+            <button
+              onClick={() => setPriceMode("wholesale")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${priceMode === "wholesale" ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20" : "text-emerald-700 hover:bg-emerald-50"}`}
+            >
+              📦 B2B Wholesale
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* 2. MAIN WORKSPACE (3 Columns) OR SUB-VIEW */}
       {currentView === 'billing' || !currentView ? (
         <div className="flex flex-1 overflow-hidden relative">
 
-          {/* COL 1: Categories (15%) */}
-          <div className="w-[15%] min-w-[140px] max-w-[220px] shrink-0 bg-white border-r border-slate-200/40 overflow-y-auto scrollbar-none hidden md:block shadow-[4px_0_24px_rgba(0,0,0,0.01)] z-10">
-            <div className="p-4">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-2">Explorer</h3>
-              <button
-                onClick={() => setActiveCategory("all")}
-                className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all mb-2 ${activeCategory === "all" ? 'bg-white text-indigo-700 shadow-sm border border-indigo-100 ring-1 ring-indigo-500/10 scale-105' : 'text-slate-600 hover:bg-white hover:shadow-sm border border-transparent'}`}
-              >
-                <div className={`p-2 rounded-xl ${activeCategory === "all" ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100'}`}>
-                  <Store className="w-4 h-4" />
-                </div>
-                <span className="text-[13px] font-bold">All Items</span>
-              </button>
+          {/* MAIN PRODUCT AREA WITH TOP CATEGORY & SUB-CATEGORY BAR */}
+          <div className="flex-1 bg-[#F8FAFC] overflow-y-auto relative flex flex-col">
 
-              <div className="space-y-1.5 mt-3">
-                {categories.map(cat => {
-                  const Icon = cat.icon as any;
+            {/* TOP CATEGORIES & SUB-CATEGORIES HORIZONTAL NAVIGATION BAR */}
+            <div className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 p-3 sm:p-4 space-y-2 z-30 shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
+              {/* Row 1: Parent Categories */}
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+                <button
+                  onClick={() => { setActiveCategory("all"); setActiveSubCategory("all"); }}
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+                    activeCategory === "all"
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-2 ring-indigo-600/20 scale-[1.02]"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900 border border-slate-200/60"
+                  }`}
+                >
+                  <Store className="w-4 h-4" />
+                  <span>All Products</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeCategory === "all" ? "bg-indigo-500/40 text-white" : "bg-slate-200 text-slate-600"}`}>
+                    {products.length}
+                  </span>
+                </button>
+
+                {(parentCategories.length > 0 ? parentCategories : categories).map(cat => {
+                  const Icon = (cat.icon && typeof cat.icon === 'function') ? cat.icon : Layers;
                   const isActive = activeCategory === cat.id;
+                  const subCatIds = new Set(categories.filter(c => c.parent_id === cat.id).map(c => c.id));
+                  const count = products.filter(p => p.category === cat.id || p.category_id === cat.id || subCatIds.has(p.category) || subCatIds.has(p.category_id)).length;
+
                   return (
                     <button
                       key={cat.id}
-                      onClick={() => setActiveCategory(cat.id)}
-                      className={`w-full flex items-center justify-between p-3 rounded-2xl transition-all ${isActive ? 'bg-white text-indigo-700 shadow-sm border border-indigo-100 ring-1 ring-indigo-500/10 scale-105' : 'text-slate-600 hover:bg-white hover:shadow-sm border border-transparent'}`}
+                      onClick={() => {
+                        setActiveCategory(cat.id);
+                        setActiveSubCategory("all");
+                      }}
+                      className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+                        isActive
+                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-2 ring-indigo-600/20 scale-[1.02]"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900 border border-slate-200/60"
+                      }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-xl ${isActive ? 'bg-indigo-50 text-indigo-600' : cat.color}`}>
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <span className="text-[13px] font-bold text-left truncate">{cat.name}</span>
+                      <div className={`p-1 rounded-lg ${isActive ? "bg-white/20 text-white" : "bg-white text-indigo-600"}`}>
+                        <Icon className="w-3.5 h-3.5" />
                       </div>
+                      <span className="truncate max-w-[130px]">{cat.name}</span>
+                      {count > 0 && (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] ${isActive ? "bg-indigo-500/40 text-white" : "bg-slate-200 text-slate-600"}`}>
+                          {count}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
-            </div>
-          </div>
 
-          {/* COL 2: Product Grid / Details Drawer (55%) */}
-          <div className="flex-1 bg-[#F8FAFC] p-4 lg:p-6 overflow-y-auto relative">
+              {/* Row 2: Nested Sub-Categories Bar (Appears when active parent has sub-categories) */}
+              {currentSubCategories.length > 0 && (
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600/70 mr-1 shrink-0 flex items-center gap-1">
+                    <ChevronRight className="w-3 h-3" /> Sub-Category:
+                  </span>
+
+                  <button
+                    onClick={() => setActiveSubCategory("all")}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shrink-0 ${
+                      activeSubCategory === "all"
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/70"
+                    }`}
+                  >
+                    All {categories.find(c => c.id === activeCategory)?.name || "Sub-Categories"}
+                  </button>
+
+                  {currentSubCategories.map(subCat => {
+                    const isSubActive = activeSubCategory === subCat.id;
+                    const subCount = products.filter(p => p.category === subCat.id || p.category_id === subCat.id || p.category?.toLowerCase() === subCat.name.toLowerCase()).length;
+
+                    return (
+                      <button
+                        key={subCat.id}
+                        onClick={() => setActiveSubCategory(subCat.id)}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                          isSubActive
+                            ? "bg-indigo-500 text-white shadow-sm scale-105"
+                            : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/70"
+                        }`}
+                      >
+                        <span>{subCat.name}</span>
+                        {subCount > 0 && (
+                          <span className={`px-1.5 py-0.2 rounded-md text-[9px] ${isSubActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>
+                            {subCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 lg:p-6 flex-1">
+
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
@@ -818,7 +979,7 @@ function PosTerminalInner() {
 
             {viewMode === 'grid' ? (
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-                {filteredProducts.map(product => (
+                {paginatedProducts.map(product => (
                   <div
                     key={product.id}
                     onClick={() => addToCart(product)}
@@ -852,7 +1013,20 @@ function PosTerminalInner() {
                       </div>
                       <div className="mt-2 flex items-center justify-between">
                         <div>
-                          {product.discount > 0 ? (
+                          {getItemEffectivePrice(product).isWholesale ? (
+                            <div className="flex flex-col">
+                              <span className="text-[10px] text-slate-400 line-through leading-none">{formatCurrency(product.sellingPrice)}</span>
+                              <span className="font-bold text-emerald-600 leading-none mt-0.5 flex items-center gap-1">
+                                {formatCurrency(product.wholesalePrice)}
+                                <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded font-black uppercase">B2B</span>
+                              </span>
+                            </div>
+                          ) : product.wholesalePrice > 0 ? (
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-900 leading-none">{formatCurrency(product.sellingPrice)}</span>
+                              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5">B2B: {formatCurrency(product.wholesalePrice)} ({product.minWholesaleQty || 1}+ pcs)</span>
+                            </div>
+                          ) : product.discount > 0 ? (
                             <div className="flex flex-col">
                               <span className="text-[10px] text-slate-400 line-through leading-none">{formatCurrency(product.mrp)}</span>
                               <span className="font-bold text-slate-900 leading-none mt-0.5">{formatCurrency(product.sellingPrice)}</span>
@@ -882,7 +1056,7 @@ function PosTerminalInner() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProducts.map(p => (
+                    {paginatedProducts.map(p => (
                       <tr
                         key={p.id}
                         onClick={() => addToCart(p)}
@@ -941,6 +1115,37 @@ function PosTerminalInner() {
                 </table>
               </div>
             )}
+
+            {/* POS Pagination Controls */}
+            {filteredProducts.length > posPageSize && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-xs font-semibold text-slate-500">
+                  Showing <span className="text-slate-900 font-bold">{(posPage - 1) * posPageSize + 1}</span> to{" "}
+                  <span className="text-slate-900 font-bold">{Math.min(posPage * posPageSize, filteredProducts.length)}</span> of{" "}
+                  <span className="text-slate-900 font-bold">{filteredProducts.length}</span> products
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPosPage(p => Math.max(1, p - 1))}
+                    disabled={posPage === 1}
+                    className="px-3 py-1.5 rounded-xl border bg-white text-xs font-bold text-slate-700 disabled:opacity-40 hover:bg-slate-50 shadow-sm"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs font-bold text-slate-800 px-2">
+                    Page {posPage} of {totalPosPages}
+                  </span>
+                  <button
+                    onClick={() => setPosPage(p => Math.min(totalPosPages, p + 1))}
+                    disabled={posPage >= totalPosPages}
+                    className="px-3 py-1.5 rounded-xl border bg-white text-xs font-bold text-slate-700 disabled:opacity-40 hover:bg-slate-50 shadow-sm"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+
 
             {/* PRODUCT DETAILS SLIDEOVER */}
             <AnimatePresence>
@@ -1238,12 +1443,15 @@ function PosTerminalInner() {
                     </>
                   )}
                 </motion.div>
+
               )}
             </AnimatePresence>
-
           </div>
+        </div>
+
 
           {/* COL 3: Billing Workspace (30%) */}
+
           <div className="w-[30%] min-w-[350px] max-w-[480px] shrink-0 bg-white/95 backdrop-blur-3xl flex flex-col shadow-[-8px_0_32px_rgba(0,0,0,0.05)] border-l border-slate-200/50 z-20">
 
             {/* Customer Profile */}
@@ -1314,8 +1522,18 @@ function PosTerminalInner() {
                             <button onClick={(e) => { e.stopPropagation(); updateQty(item.id, 1); }} className="w-6 h-6 flex items-center justify-center rounded-md bg-white text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"><Plus className="w-3.5 h-3.5" /></button>
                           </div>
                           <div className="text-right">
-                            <span className="font-black text-sm text-slate-900 block leading-none">{formatCurrency(item.sellingPrice * item.qty)}</span>
-                            {item.discount > 0 && <span className="text-[10px] text-rose-500 font-bold block leading-none mt-1.5">Saved {formatCurrency(item.discount * item.qty)}</span>}
+                            {(() => {
+                              const { unitPrice, isWholesale } = getItemEffectivePrice(item);
+                              return (
+                                <>
+                                  <span className="font-black text-sm text-slate-900 block leading-none">{formatCurrency(unitPrice * item.qty)}</span>
+                                  {isWholesale && (
+                                    <span className="text-[9px] text-emerald-600 font-bold block leading-none mt-1">B2B Wholesale Rate</span>
+                                  )}
+                                  {item.discount > 0 && <span className="text-[10px] text-rose-500 font-bold block leading-none mt-1">Saved {formatCurrency(item.discount * item.qty)}</span>}
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -1402,6 +1620,9 @@ function PosTerminalInner() {
           </div>
         </div>
       ) : (
+
+
+
         <>
           {currentView === 'barcode' && <BarcodeScannerView addToCart={addToCart} products={products} />}
           {currentView === 'search' && <QuickSearchView />}
@@ -1903,6 +2124,7 @@ function PosTerminalInner() {
                         <option value="Silver">Silver Tier</option>
                         <option value="Gold">Gold Tier</option>
                         <option value="Platinum">Platinum Tier</option>
+                        <option value="Wholesale B2B">B2B Wholesale / Retailer</option>
                       </select>
                     </div>
 

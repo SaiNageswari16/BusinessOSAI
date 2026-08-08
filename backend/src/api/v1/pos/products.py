@@ -129,6 +129,7 @@ async def list_products(
             sku=p.sku, barcode=p.barcode, description=p.short_description, image_url=p.image_url,
             category_id=p.category_id, category_name=p.category.name if p.category else None,
             purchase_price=p.purchase_price, mrp=p.mrp, selling_price=p.selling_price or p.mrp or 0.0,
+            wholesale_price=float(p.wholesale_price or 0.0), min_wholesale_qty=int(p.min_wholesale_qty or 1),
             tax_percent=p.tax_percent, discount=p.discount_limit, stock=p.initial_stock,
             reorder_level=p.reorder_level, is_active=(p.status == EntityStatus.ACTIVE),
             created_at=p.created_at, updated_at=p.updated_at

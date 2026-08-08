@@ -3112,6 +3112,7 @@ export interface POSProduct {
   barcode: string | null; description: string | null; image_url: string | null;
   category_id: string | null; category_name: string | null;
   purchase_price: number; mrp: number; selling_price: number;
+  wholesale_price?: number; min_wholesale_qty?: number;
   tax_percent: number; discount: number; stock: number;
   reorder_level: number; is_active: boolean;
   created_at: string; updated_at: string;
@@ -3229,6 +3230,7 @@ export interface InventoryProduct {
   short_description: string | null; long_description: string | null;
   image_url: string | null;
   purchase_price: number; mrp: number; selling_price: number;
+  wholesale_price?: number; min_wholesale_qty?: number;
   tax_percent: number; discount_limit: number;
   initial_stock: number; stock?: number; reorder_level: number; safety_stock: number;
   supplier: string | null; warehouse: string | null;
@@ -3382,7 +3384,11 @@ export interface IntelligenceSummary {
 }
 
 export const inventoryApi = {
+  getHsnCodes: (search?: string) =>
+    request<Array<{ hsn_code: string; description: string; gst_rate: number }>>("GET", "/inventory/hsn-codes", undefined, search ? { search } : undefined),
+
   getProducts: (params?: { category_id?: string; brand_id?: string; search?: string; page?: number; page_size?: number; sort_by?: string; sort_order?: string }) =>
+
     request<PaginatedResponse<InventoryProduct>>("GET", "/inventory/products", undefined, params as Record<string, any>),
 
   createProduct: (data: Record<string, unknown>) => request<InventoryProduct>("POST", "/inventory/products", data),
