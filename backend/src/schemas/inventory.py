@@ -374,6 +374,8 @@ class MasterCatalogSaveToLocalRequest(BaseModel):
     sku: Optional[str] = None
     barcode: Optional[str] = None
     brand_name: Optional[str] = None
+    category_id: Optional[uuid.UUID] = None
+    sub_category_id: Optional[uuid.UUID] = None
     category_name: Optional[str] = None
     sub_category_name: Optional[str] = None
     short_description: Optional[str] = None

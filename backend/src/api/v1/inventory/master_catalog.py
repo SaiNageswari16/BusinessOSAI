@@ -2155,7 +2155,28 @@ async def import_to_local_inventory(
             
     # 2. Sync / Find Category
     category_id = None
-    if payload.category_name and payload.category_name.strip():
+    if payload.sub_category_id:
+        category_id = payload.sub_category_id
+    elif payload.category_id:
+        category_id = payload.category_id
+    elif payload.sub_category_name and payload.sub_category_name.strip():
+        sc_name = payload.sub_category_name.strip()
+        sc_res = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.ilike(sc_name)))
+        existing_sc = sc_res.scalars().first()
+        if existing_sc:
+            category_id = existing_sc.id
+        elif payload.category_name and payload.category_name.strip():
+            c_name = payload.category_name.strip()
+            c_res = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.ilike(c_name)))
+            parent_cat = c_res.scalars().first()
+            parent_id = parent_cat.id if parent_cat else None
+            import string, random
+            rand_code = f"CAT-{''.join(random.choices(string.ascii_uppercase + string.digits, k=6))}"
+            new_cat = ProductCategory(id=uuid.uuid4(), tenant_id=tenant_id, name=sc_name, parent_id=parent_id, category_code=rand_code, status=EntityStatus.ACTIVE)
+            db.add(new_cat)
+            await db.flush()
+            category_id = new_cat.id
+    elif payload.category_name and payload.category_name.strip():
         c_name = payload.category_name.strip()
         c_res = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.ilike(c_name)))
         existing_cat = c_res.scalars().first()

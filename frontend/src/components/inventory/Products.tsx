@@ -266,18 +266,30 @@ function QuickAddModal({
 //  IMPORT PREVIEW MODAL — shows what will be imported before commit
 // ══════════════════════════════════════════════════════════════════════
 function ImportPreviewModal({
-  item, onClose, onConfirm, isImporting,
+  item, onClose, onConfirm, isImporting, categories,
 }: {
   item: MasterResult;
   onClose: () => void;
   onConfirm: (item: MasterResult) => void;
   isImporting: boolean;
+  categories: InventoryCategory[];
 }) {
-  const [initialStock, setInitialStock] = useState(10);
+  const [initialStock, setInitialStock] = useState(item.initial_stock || 10);
   const [sellingPrice, setSellingPrice] = useState(item.sale_price || item.mrp || 0);
   const [purchasePrice, setPurchasePrice] = useState(item.cost_price || (item.mrp ? item.mrp * 0.7 : 0));
+  // Category selection: default to matching name if found
+  const matchedCat = categories.find(c => !c.parent_id && c.name.toLowerCase() === (item.category_name || "").toLowerCase());
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(matchedCat?.id || "");
+  const [selectedSubCategoryId, setSelectedSubCategoryId] = useState<string>("");
 
   const isAISourced = item.source === "AI_WEB_SEARCH";
+
+  // Top-level categories (parents)
+  const parentCategories = categories.filter(c => !c.parent_id);
+  // Sub-categories of selected parent
+  const subCategories = selectedCategoryId
+    ? categories.filter(c => c.parent_id === selectedCategoryId)
+    : [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -303,7 +315,7 @@ function ImportPreviewModal({
             <div className="min-w-0">
               <p className="text-sm font-bold truncate">{item.name}</p>
               <p className="text-xs text-muted-foreground">
-                {item.brand_name || item.brand || "General"} {item.category_name || item.category ? `• ${item.category_name || item.category}` : ""}
+                {item.brand_name || item.brand || ""}
               </p>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[10px] mt-1 ${isAISourced ? "bg-amber-500/10 text-amber-600" : "bg-indigo-500/10 text-indigo-600"}`}>
                 <Sparkles className="size-3" /> {isAISourced ? "AI Sourced" : "Global Catalog"}
@@ -346,16 +358,57 @@ function ImportPreviewModal({
                   className="w-full h-9 px-3 text-sm rounded-lg border bg-muted/50 text-muted-foreground" />
               </div>
             </div>
+
+            {/* Category Selection */}
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-bold text-indigo-700 uppercase tracking-wider mb-1">Category <span className="text-slate-400 font-normal normal-case">(optional)</span></label>
+                <select
+                  value={selectedCategoryId}
+                  onChange={(e) => { setSelectedCategoryId(e.target.value); setSelectedSubCategoryId(""); }}
+                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background"
+                >
+                  <option value="">— No Category —</option>
+                  {parentCategories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              {subCategories.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-purple-700 uppercase tracking-wider mb-1">Sub-Category <span className="text-slate-400 font-normal normal-case">(optional)</span></label>
+                  <select
+                    value={selectedSubCategoryId}
+                    onChange={(e) => setSelectedSubCategoryId(e.target.value)}
+                    className="w-full h-9 px-3 text-sm rounded-lg border bg-background"
+                  >
+                    <option value="">— No Sub-Category —</option>
+                    {subCategories.map(sc => (
+                      <option key={sc.id} value={sc.id}>{sc.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t">
             <Button variant="outline" onClick={onClose} disabled={isImporting}>Cancel</Button>
-            <Button onClick={() => onConfirm({
-              ...item,
-              cost_price: purchasePrice,
-              sale_price: sellingPrice,
-              initial_stock: initialStock,
-            })} disabled={isImporting} className="gradient-brand text-white border-0">
+            <Button onClick={() => {
+              const selectedCat = categories.find(c => c.id === selectedCategoryId);
+              const selectedSubCat = categories.find(c => c.id === selectedSubCategoryId);
+              onConfirm({
+                ...item,
+                cost_price: purchasePrice,
+                sale_price: sellingPrice,
+                initial_stock: initialStock,
+                // Pass selected category info — IDs take priority for direct DB linkage
+                _selected_category_id: selectedCategoryId || undefined,
+                _selected_sub_category_id: selectedSubCategoryId || undefined,
+                category_name: selectedCat?.name || item.category_name || "",
+                sub_category_name: selectedSubCat?.name || item.sub_category_name || "",
+              });
+            }} disabled={isImporting} className="gradient-brand text-white border-0">
               {isImporting ? <><Loader2 className="size-3 mr-1 animate-spin" /> Importing...</> : <><ShoppingCart className="size-3 mr-1" /> Confirm Import</>}
             </Button>
           </div>
@@ -808,9 +861,14 @@ export function Products() {
         name: item.name,
         sku: item.sku_code || `SKU-${item.barcode || Math.random().toString(36).slice(2, 9)}`,
         barcode: item.barcode || "",
-        brand_name: item.brand_name || item.brand || "General",
-        category_name: item.category_name || item.category || "General",
-        sub_category_name: item.sub_category_name || item.sub_category || "General",
+        // Only send brand_name if it's a real value — don't auto-generate "General"
+        brand_name: item.brand_name || item.brand || "",
+        // Use category_id if user picked from dropdown, otherwise use name if present
+        category_id: item._selected_category_id || undefined,
+        sub_category_id: item._selected_sub_category_id || undefined,
+        // Only send category_name if not empty (prevents auto-creating "General" category)
+        category_name: (item.category_name && item.category_name.trim()) ? item.category_name.trim() : "",
+        sub_category_name: (item.sub_category_name && item.sub_category_name.trim()) ? item.sub_category_name.trim() : "",
         short_description: item.short_description || item.specifications || "",
         specifications: item.specifications || "",
         image_url: item.image_url || "",
@@ -819,8 +877,8 @@ export function Products() {
         selling_price: item.sale_price || item.mrp || 0,
         tax_percent: 18,
         initial_stock: item.initial_stock || 10,
-        supplier: item.supplier || "Global Sourced",
-        warehouse: warehouses[0]?.name || "Main Warehouse",
+        supplier: item.supplier || "",
+        warehouse: warehouses[0]?.name || "",
       });
       toast.success(`"${item.name}" imported to your inventory`);
       setPreviewItem(null);
@@ -1717,6 +1775,7 @@ export function Products() {
             onClose={() => setPreviewItem(null)}
             onConfirm={handleConfirmImport}
             isImporting={isImporting}
+            categories={categories}
           />
         )}
       </AnimatePresence>
