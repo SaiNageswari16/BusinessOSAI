@@ -596,12 +596,13 @@ export function Products() {
   };
 
   // ── Data loading ─────────────────────────────────────────────────
-  const loadData = async () => {
+  const loadData = async (searchQuery = search) => {
     setIsLoading(true);
     try {
       const prodsRes = await inventoryApi.getProducts({
         page: currentPage,
         page_size: pageSize,
+        search: searchQuery.trim(),
         sort_by: sortBy,
         sort_order: sortOrder,
       }).catch((err) => {
@@ -629,7 +630,7 @@ export function Products() {
   };
 
   useEffect(() => { checkAiStatus(); }, []);
-  useEffect(() => { loadData(); }, [currentPage, pageSize, sortBy, sortOrder]);
+  useEffect(() => { loadData(search); }, [currentPage, pageSize, sortBy, sortOrder]);
 
 
   // Close suggestions on outside click
@@ -643,95 +644,38 @@ export function Products() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ── Phase 2: Debounced search with exact-match priority ──────────
+  // ── Debounced search effect: Inventory vs Master Catalog ──────────
   useEffect(() => {
     const cleanSearch = search.trim();
-    const isBarcode = /^\d{8,14}$/.test(cleanSearch);
 
-    if (cleanSearch.length < 2) {
-      setSuggestions([]);
-      if (activeTab === "catalog") setMasterResults([]);
-      setSearchError(null);
-      setExactMatch(null);
-      return;
-    }
-
-    // Phase 2: Check exact match FIRST (barcode/SKU priority)
-    const exact = checkExactMatch(cleanSearch);
-    if (exact) {
-      setExactMatch(exact);
+    if (activeTab === "inventory") {
       setMasterResults([]);
       setSuggestions([]);
       setShowSuggestions(false);
-      return;
-    } else {
-      setExactMatch(null);
-    }
-
-    // ── FAST PATH: Barcode detected → use the instant DB lookup endpoint (~12ms) ──
-    if (isBarcode) {
-      const barcodeTimer = setTimeout(async () => {
+      const timer = setTimeout(() => {
+        setCurrentPage(1);
+        loadData(cleanSearch);
+      }, 300);
+      return () => clearTimeout(timer);
+    } else if (activeTab === "catalog") {
+      if (cleanSearch.length < 2) {
+        setMasterResults([]);
+        return;
+      }
+      const timer = setTimeout(async () => {
         setIsSearchingMaster(true);
-        setSearchError(null);
         try {
-          const res = await inventoryApi.lookupProductByBarcode(cleanSearch);
-          if (res?.success && res?.product) {
-            const p = res.product;
-            // Map to MasterResult shape so the UI renders immediately
-            setMasterResults([{
-              id: p.id,
-              name: p.name,
-              barcode: p.barcode || cleanSearch,
-              brand_name: p.brand || "",
-              category_name: p.category || "",
-              mrp: p.mrp || 0,
-              sale_price: p.selling_price || 0,
-              image_url: p.image || "",
-              short_description: p.package_size || "",
-              source: p.source || "DATABASE",
-            }]);
-            setSuggestions([]);
-          } else {
-            setMasterResults([]);
-            toast.info(`Barcode "${cleanSearch}" not found in database.`);
-          }
+          const res = await inventoryApi.searchMasterCatalog(cleanSearch, false, "auto");
+          setMasterResults(res || []);
         } catch (err: any) {
-          console.error("Barcode lookup failed:", err);
-          setSearchError(err.detail || err.message || "Lookup failed.");
+          console.error("Master search failed:", err);
         } finally {
           setIsSearchingMaster(false);
         }
-      }, 150); // 150ms debounce for barcode (scanner fires all digits at once)
-
-      return () => clearTimeout(barcodeTimer);
+      }, 400);
+      return () => clearTimeout(timer);
     }
-
-    // ── NORMAL PATH: Text search → suggestions + master catalog ──
-    const timer = setTimeout(async () => {
-      // Local suggestions
-      try {
-        const sugs = await inventoryApi.getSearchSuggestions(cleanSearch);
-        setSuggestions(sugs || []);
-      } catch (err) {
-        console.error("Suggestions fetch failed:", err);
-      }
-
-      // Master catalog search (DB search only, searchWeb = false for instant response)
-      setIsSearchingMaster(true);
-      setSearchError(null);
-      try {
-        const res = await inventoryApi.searchMasterCatalog(cleanSearch, false, "auto");
-        setMasterResults(res || []);
-      } catch (err: any) {
-        console.error("Master search failed:", err);
-        setSearchError(err.detail || err.message || "Search failed.");
-      } finally {
-        setIsSearchingMaster(false);
-      }
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [search, aiPaused, activeTab, products]);
+  }, [search, activeTab]);
 
 
   // ── Suggestion select ────────────────────────────────────────────
@@ -1065,15 +1009,15 @@ export function Products() {
     <div className="relative flex-1 max-w-sm" ref={suggestionsRef}>
       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
       <input
-        value={search} onChange={(e) => { setSearch(e.target.value); setShowSuggestions(true); setExactMatch(null); }}
-        onFocus={() => setShowSuggestions(true)}
+        value={search} onChange={(e) => { setSearch(e.target.value); if (activeTab === "catalog") setShowSuggestions(true); setExactMatch(null); }}
+        onFocus={() => { if (activeTab === "catalog") setShowSuggestions(true); }}
         placeholder={activeTab === "inventory"
-          ? "Search by name, SKU, or Barcode..."
+          ? "Search inventory by name, SKU, or Barcode..."
           : "Search master catalog..."}
         className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
       />
-      {/* ── Suggestions dropdown ─────────────────────────────────── */}
-      {showSuggestions && suggestions.length > 0 && (
+      {/* ── Suggestions dropdown (Only on Master Catalog tab) ── */}
+      {activeTab === "catalog" && showSuggestions && suggestions.length > 0 && (
         <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
           <div className="text-[10px] font-bold text-slate-400 px-3 py-1.5 bg-slate-50/50 uppercase border-b border-slate-100">
             Sourcing Suggestions
@@ -1493,123 +1437,25 @@ export function Products() {
                   <tr><td colSpan={localVisibleColumns.length + 1} className="px-6 py-8 text-center text-muted-foreground">
                     <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading...</span>
                   </td></tr>
-                ) : !hasSearch ? (
-                  // ── No search: full product list ─────────────────────
-                  products.length === 0 ? (
-                    <tr><td colSpan={localVisibleColumns.length + 1} className="px-6 py-12 text-center">
-                      <Package className="size-10 mx-auto mb-2 text-muted-foreground/40" />
-                      <p className="text-sm text-muted-foreground font-medium">No products yet</p>
-                      <p className="text-xs text-muted-foreground mt-1">Create your first product or import from the Master Catalog.</p>
-                      <div className="flex gap-2 justify-center mt-3">
-                        <Button size="sm" onClick={openCreateModal} className="gradient-brand text-white border-0">Create Product</Button>
-                        <Button size="sm" variant="outline" onClick={() => setActiveTab("catalog")}>
-                          <Globe className="size-3 mr-1" /> Browse Master Catalog
-                        </Button>
-                      </div>
-                    </td></tr>
-                  ) : (
-                    products.map(p => renderLocalRow(p, localVisibleColumns))
-                  )
-                ) : exactMatch ? (
-                  // ── Phase 2: Exact match found (barcode/SKU priority) ─
-                  <>
-                    <tr className="bg-emerald-50/60 border-y border-emerald-200/50">
-                      <td colSpan={localVisibleColumns.length + 1} className="px-6 py-2.5">
-                        <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 uppercase tracking-wider">
-                          <Barcode className="size-4" />
-                          Exact Match Found
-                          <span className="font-normal normal-case tracking-normal text-emerald-600 ml-1">— matched by barcode or SKU</span>
-                        </span>
-                      </td>
-                    </tr>
-                    {renderLocalRow(exactMatch, localVisibleColumns, true)}
-                  </>
-                ) : fuzzyLocalResults.length > 0 ? (
-                  // ── Phase 2: Two groups — local first, then master ─────
-                  <>
-                    {/* Local results header */}
-                    <tr className="bg-emerald-50/40 border-y border-emerald-100/50">
-                      <td colSpan={localVisibleColumns.length + 1} className="px-6 py-2.5">
-                        <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 uppercase tracking-wider">
-                          <Store className="size-4" />
-                          In Your Inventory
-                          <span className="font-normal normal-case tracking-normal text-emerald-600 ml-1">({fuzzyLocalResults.length} result{fuzzyLocalResults.length !== 1 ? 's' : ''})</span>
-                        </span>
-                      </td>
-                    </tr>
-                    {fuzzyLocalResults.map(p => renderLocalRow(p, localVisibleColumns))}
-
-                    {/* Master catalog results — shown as second group */}
-                    {showMasterResults && (
-                      <>
-                        <tr className="bg-indigo-50/50 border-y">
-                          <td colSpan={localVisibleColumns.length + 1} className="px-6 py-2.5">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 uppercase tracking-wider">
-                              <Globe className="size-4" />
-                              From Master Catalog
-                              <span className="font-normal normal-case tracking-normal text-indigo-600 ml-1">({uniqueMasterResults.length} product{uniqueMasterResults.length !== 1 ? 's' : ''} not yet in your inventory)</span>
-                            </span>
-                          </td>
-                        </tr>
-                        {uniqueMasterResults.map((item, idx) => renderMasterRow(item, localVisibleColumns))}
-                      </>
-                    )}
-                  </>
-                ) : showMasterResults ? (
-                  // ── Only master results (no local matches) ───────────
-                  <>
-                    <tr className="bg-indigo-50/50 border-y">
-                      <td colSpan={localVisibleColumns.length + 1} className="px-6 py-2.5">
-                        <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 uppercase tracking-wider">
-                          <Globe className="size-4" />
-                          From Master Catalog
-                          <span className="font-normal normal-case tracking-normal text-indigo-600 ml-1">(not found in your inventory — import to add)</span>
-                        </span>
-                      </td>
-                    </tr>
-                    {uniqueMasterResults.map((item, idx) => renderMasterRow(item, localVisibleColumns))}
-                  </>
-                ) : null}
-
-                {/* ── Phase 2: Quick-add CTA when nothing found ──────── */}
-                {hasNoResults && (
-                  <tr>
-                    <td colSpan={localVisibleColumns.length + 1} className="px-6 py-8">
-                      <div className="flex flex-col items-center gap-3 text-center">
-                        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
-                          <Search className="size-6 text-muted-foreground/50" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">No results found for "{search}"</p>
-                          <p className="text-xs text-muted-foreground/70 mt-0.5">This product isn't in your inventory or the master catalog.</p>
-                        </div>
-                        <Button size="sm" onClick={handleQuickAdd} className="gradient-brand text-white border-0">
-                          <Zap className="size-3.5 mr-1.5" />
-                          Quick Add "{search.length > 20 ? search.slice(0, 20) + '...' : search}"
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-
-                {isSearchingMaster && showLocalResults && (
-                  <tr><td colSpan={localVisibleColumns.length + 1} className="px-6 py-4 text-center text-indigo-600 font-semibold text-xs">
-                    <span className="inline-flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" /> Searching master catalog...</span>
-                  </td></tr>
-                )}
-                {searchError && (
-                  <tr><td colSpan={localVisibleColumns.length + 1} className="px-6 py-3 bg-rose-50 border-y">
-                    <div className="flex items-center gap-2 text-xs font-bold text-rose-700">
-                      <X className="size-4 text-rose-500 shrink-0" /><span>{searchError}</span>
+                ) : products.length === 0 ? (
+                  <tr><td colSpan={localVisibleColumns.length + 1} className="px-6 py-12 text-center">
+                    <Package className="size-10 mx-auto mb-2 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground font-medium">
+                      {search.trim() ? `No products found matching "${search}" in your inventory.` : "No products in inventory yet."}
+                    </p>
+                    <div className="flex gap-2 justify-center mt-3">
+                      <Button size="sm" onClick={openCreateModal} className="gradient-brand text-white border-0">Create Product</Button>
                     </div>
                   </td></tr>
+                ) : (
+                  products.map(p => renderLocalRow(p, localVisibleColumns))
                 )}
               </tbody>
             </table>
           </div>
 
           {/* ── Pagination Footer ────────────────────────────────────────── */}
-          {totalProducts > 0 && !hasSearch && (
+          {totalProducts > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t bg-muted/20 text-sm">
               <div className="text-xs text-muted-foreground">
                 Showing <span className="font-semibold text-foreground">{Math.min((currentPage - 1) * pageSize + 1, totalProducts)}</span> to{" "}
