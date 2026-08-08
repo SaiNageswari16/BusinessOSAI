@@ -476,20 +476,51 @@ function PosTerminalInner() {
     return { unitPrice: item.sellingPrice || item.mrp || 0, isWholesale: false };
   };
 
-  // Cart Math
+  // Dynamic Cart Discount State
+  const [discountMode, setDiscountMode] = useState<"before_tax" | "after_tax">("before_tax");
+  const [cartDiscountType, setCartDiscountType] = useState<"percent" | "amount">("percent");
+  const [cartDiscountValue, setCartDiscountValue] = useState<number>(0);
+
+  // Cart Math with Dynamic Before-Tax & After-Tax Discount
   const subtotal = cart.reduce((sum, item) => {
     const { unitPrice } = getItemEffectivePrice(item);
     return sum + (unitPrice * item.qty);
   }, 0);
-  const totalDiscount = cart.reduce((sum, item) => sum + (item.discount * item.qty), 0);
-  const taxableAmount = subtotal - totalDiscount;
+  const itemDiscounts = cart.reduce((sum, item) => sum + ((item.discount || 0) * item.qty), 0);
+  const netSubtotal = Math.max(0, subtotal - itemDiscounts);
+
+  // 1. Before-Tax Discount
+  let beforeTaxDiscount = 0;
+  if (discountMode === "before_tax" && cartDiscountValue > 0) {
+    beforeTaxDiscount = cartDiscountType === "percent"
+      ? netSubtotal * (cartDiscountValue / 100)
+      : Math.min(cartDiscountValue, netSubtotal);
+  }
+
+  const taxableAmount = Math.max(0, netSubtotal - beforeTaxDiscount);
+
+  // 2. Tax Calculation on Taxable Value
+  const taxRatio = netSubtotal > 0 ? (taxableAmount / netSubtotal) : 1;
   const tax = cart.reduce((sum, item) => {
     const { unitPrice } = getItemEffectivePrice(item);
     const itemTaxPercent = Number(item.tax_percent ?? item.tax ?? 18);
     const itemNet = Math.max(0, (unitPrice - (item.discount || 0)) * item.qty);
-    return sum + (itemNet * (itemTaxPercent / 100));
+    const effectiveItemTaxable = itemNet * taxRatio;
+    return sum + (effectiveItemTaxable * (itemTaxPercent / 100));
   }, 0);
-  const total = taxableAmount + tax;
+
+  const grossTotal = taxableAmount + tax;
+
+  // 3. After-Tax Discount
+  let afterTaxDiscount = 0;
+  if (discountMode === "after_tax" && cartDiscountValue > 0) {
+    afterTaxDiscount = cartDiscountType === "percent"
+      ? grossTotal * (cartDiscountValue / 100)
+      : Math.min(cartDiscountValue, grossTotal);
+  }
+
+  const totalDiscount = itemDiscounts + beforeTaxDiscount + afterTaxDiscount;
+  const total = Math.max(0, grossTotal - afterTaxDiscount);
 
 
 
@@ -1654,20 +1685,98 @@ function PosTerminalInner() {
             {/* Checkout Summary */}
             <div className="bg-white border-t border-slate-200/80 shadow-[0_-8px_30px_-10px_rgba(0,0,0,0.05)] flex flex-col shrink-0 z-20">
 
+              {/* DYNAMIC CART DISCOUNT BAR */}
+              <div className="p-3 border-b border-slate-200/70 bg-slate-50/90 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                    <Tag className="w-3.5 h-3.5 text-indigo-600" /> Dynamic Cart Discount
+                  </span>
+                  <div className="flex items-center bg-white rounded-lg p-0.5 border border-slate-200/80 text-[10px] font-bold shadow-2xs">
+                    <button
+                      onClick={() => setDiscountMode("before_tax")}
+                      className={`px-2 py-0.5 rounded-md transition-all ${discountMode === "before_tax" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
+                    >
+                      Before Tax
+                    </button>
+                    <button
+                      onClick={() => setDiscountMode("after_tax")}
+                      className={`px-2 py-0.5 rounded-md transition-all ${discountMode === "after_tax" ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
+                    >
+                      After Tax
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Presets & Custom Input */}
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1">
+                    {[0, 5, 10, 15, 20, 25].map(val => (
+                      <button
+                        key={val}
+                        onClick={() => { setCartDiscountType("percent"); setCartDiscountValue(val); }}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all shrink-0 ${cartDiscountType === "percent" && cartDiscountValue === val ? (discountMode === "before_tax" ? "bg-indigo-600 text-white shadow-sm" : "bg-purple-600 text-white shadow-sm") : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100"}`}
+                      >
+                        {val === 0 ? "Off" : `${val}%`}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center bg-white border border-slate-200/80 rounded-lg p-0.5 shrink-0 w-28 shadow-2xs">
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Custom"
+                      value={cartDiscountValue || ""}
+                      onChange={(e) => setCartDiscountValue(Math.max(0, Number(e.target.value)))}
+                      className="w-14 text-center text-xs font-bold text-slate-800 outline-none"
+                    />
+                    <button
+                      onClick={() => setCartDiscountType(cartDiscountType === "percent" ? "amount" : "percent")}
+                      className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-black text-slate-700 hover:bg-slate-200"
+                    >
+                      {cartDiscountType === "percent" ? "%" : "₹"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Totals Box */}
-              <div className="p-4 space-y-2 border-b border-slate-100 border-dashed bg-slate-50/50">
-                <div className="flex justify-between text-[13px]">
+              <div className="p-4 space-y-1.5 border-b border-slate-100 border-dashed bg-slate-50/40">
+                <div className="flex justify-between text-[12px]">
                   <span className="text-slate-500 font-bold">Subtotal ({cart.reduce((s, i) => s + i.qty, 0)} items)</span>
                   <span className="font-black text-slate-700">{formatCurrency(subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-[13px]">
-                  <span className="text-rose-500 font-bold flex items-center gap-1"><Tag className="w-3.5 h-3.5" /> Total Discount</span>
-                  <span className="font-black text-rose-600">-{formatCurrency(totalDiscount)}</span>
+
+                {itemDiscounts > 0 && (
+                  <div className="flex justify-between text-[12px] text-rose-500">
+                    <span className="font-bold">Item Savings</span>
+                    <span className="font-black">-{formatCurrency(itemDiscounts)}</span>
+                  </div>
+                )}
+
+                {beforeTaxDiscount > 0 && (
+                  <div className="flex justify-between text-[12px] text-indigo-600 font-bold">
+                    <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> Before-Tax Discount ({cartDiscountType === "percent" ? `${cartDiscountValue}%` : "Flat"})</span>
+                    <span className="font-black">-{formatCurrency(beforeTaxDiscount)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between text-[12px]">
+                  <span className="text-slate-500 font-bold">Taxable Amount</span>
+                  <span className="font-black text-slate-700">{formatCurrency(taxableAmount)}</span>
                 </div>
-                <div className="flex justify-between text-[13px]">
-                  <span className="text-slate-500 font-bold">Tax (5% GST)</span>
-                  <span className="font-black text-slate-700">{formatCurrency(tax)}</span>
+
+                <div className="flex justify-between text-[12px]">
+                  <span className="text-slate-500 font-bold">GST Tax</span>
+                  <span className="font-black text-slate-700">+{formatCurrency(tax)}</span>
                 </div>
+
+                {afterTaxDiscount > 0 && (
+                  <div className="flex justify-between text-[12px] text-purple-600 font-bold">
+                    <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> After-Tax Discount ({cartDiscountType === "percent" ? `${cartDiscountValue}%` : "Flat"})</span>
+                    <span className="font-black">-{formatCurrency(afterTaxDiscount)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Massive Grand Total */}

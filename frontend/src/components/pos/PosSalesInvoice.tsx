@@ -153,10 +153,14 @@ export function PosSalesInvoice() {
 
   const removeItem = (id: string) => setItems(items.filter((item) => item.id !== id));
 
-  // Calculated totals
+  // Dynamic Invoice Discount State
+  const [invoiceDiscountMode, setInvoiceDiscountMode] = useState<"before_tax" | "after_tax">("before_tax");
+  const [invoiceDiscountType, setInvoiceDiscountType] = useState<"percent" | "amount">("percent");
+  const [invoiceDiscountValue, setInvoiceDiscountValue] = useState<number>(0);
+
+  // Calculated totals with Before-Tax & After-Tax Invoice Discount
   let subtotal = 0;
-  let totalTax = 0;
-  let totalDiscount = 0;
+  let itemDiscountTotal = 0;
 
   items.forEach((item) => {
     const lineGross = item.quantity * item.unit_price;
@@ -164,14 +168,48 @@ export function PosSalesInvoice() {
       item.discount_type === "percent"
         ? lineGross * (item.discount_value / 100)
         : Math.min(item.discount_value, lineGross);
-    const taxable = lineGross - dAmt;
-    const tax = taxable * (item.tax_rate / 100);
     subtotal += lineGross;
-    totalDiscount += dAmt;
-    totalTax += tax;
+    itemDiscountTotal += dAmt;
   });
 
-  const rawTotal = subtotal - totalDiscount + totalTax;
+  const netSubtotal = Math.max(0, subtotal - itemDiscountTotal);
+
+  // 1. Before-Tax Invoice Discount
+  let beforeTaxDiscount = 0;
+  if (invoiceDiscountMode === "before_tax" && invoiceDiscountValue > 0) {
+    beforeTaxDiscount = invoiceDiscountType === "percent"
+      ? netSubtotal * (invoiceDiscountValue / 100)
+      : Math.min(invoiceDiscountValue, netSubtotal);
+  }
+
+  const taxableValue = Math.max(0, netSubtotal - beforeTaxDiscount);
+
+  // 2. GST Tax Calculation on Taxable Value
+  const taxRatio = netSubtotal > 0 ? (taxableValue / netSubtotal) : 1;
+  let totalTax = 0;
+  items.forEach((item) => {
+    const lineGross = item.quantity * item.unit_price;
+    const dAmt =
+      item.discount_type === "percent"
+        ? lineGross * (item.discount_value / 100)
+        : Math.min(item.discount_value, lineGross);
+    const itemNet = Math.max(0, lineGross - dAmt);
+    const effectiveItemTaxable = itemNet * taxRatio;
+    totalTax += effectiveItemTaxable * (item.tax_rate / 100);
+  });
+
+  const grossTotal = taxableValue + totalTax;
+
+  // 3. After-Tax Invoice Discount
+  let afterTaxDiscount = 0;
+  if (invoiceDiscountMode === "after_tax" && invoiceDiscountValue > 0) {
+    afterTaxDiscount = invoiceDiscountType === "percent"
+      ? grossTotal * (invoiceDiscountValue / 100)
+      : Math.min(invoiceDiscountValue, grossTotal);
+  }
+
+  const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
+  const rawTotal = Math.max(0, grossTotal - afterTaxDiscount);
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
   const grandTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
 
@@ -677,29 +715,99 @@ export function PosSalesInvoice() {
 
           {/* Right Billing Totals Box (5 cols) */}
           <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4 flex flex-col justify-between">
-            <div className="space-y-2.5">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 pb-2">
-                Billing Financial Summary
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 pb-2 flex items-center justify-between">
+                <span>Billing Financial Summary</span>
+                <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-black">Invoice Discount</span>
               </h3>
+
+              {/* Dynamic Invoice Discount Selector */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700">Discount Calculation Mode</span>
+                  <div className="flex items-center bg-white rounded-lg p-0.5 border border-slate-200 text-[10px] font-bold">
+                    <button
+                      onClick={() => setInvoiceDiscountMode("before_tax")}
+                      className={`px-2 py-0.5 rounded-md transition-all ${invoiceDiscountMode === "before_tax" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"}`}
+                    >
+                      Before Tax
+                    </button>
+                    <button
+                      onClick={() => setInvoiceDiscountMode("after_tax")}
+                      className={`px-2 py-0.5 rounded-md transition-all ${invoiceDiscountMode === "after_tax" ? "bg-purple-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"}`}
+                    >
+                      After Tax
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1">
+                    {[0, 5, 10, 15, 20, 25].map(val => (
+                      <button
+                        key={val}
+                        onClick={() => { setInvoiceDiscountType("percent"); setInvoiceDiscountValue(val); }}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all shrink-0 ${invoiceDiscountType === "percent" && invoiceDiscountValue === val ? (invoiceDiscountMode === "before_tax" ? "bg-indigo-600 text-white shadow-xs" : "bg-purple-600 text-white shadow-xs") : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"}`}
+                      >
+                        {val === 0 ? "Off" : `${val}%`}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shrink-0 w-28">
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Custom"
+                      value={invoiceDiscountValue || ""}
+                      onChange={(e) => setInvoiceDiscountValue(Math.max(0, Number(e.target.value)))}
+                      className="w-14 text-center text-xs font-bold text-slate-800 outline-none"
+                    />
+                    <button
+                      onClick={() => setInvoiceDiscountType(invoiceDiscountType === "percent" ? "amount" : "percent")}
+                      className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-black text-slate-700 hover:bg-slate-200"
+                    >
+                      {invoiceDiscountType === "percent" ? "%" : "₹"}
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               <div className="flex justify-between text-xs text-slate-600">
                 <span>Gross Subtotal:</span>
                 <span className="font-semibold text-slate-900">₹{subtotal.toFixed(2)}</span>
               </div>
-              {totalDiscount > 0 && (
-                <div className="flex justify-between text-xs text-emerald-600">
-                  <span>Total Discount Savings:</span>
-                  <span className="font-semibold">-₹{totalDiscount.toFixed(2)}</span>
+
+              {itemDiscountTotal > 0 && (
+                <div className="flex justify-between text-xs text-rose-500">
+                  <span>Line Item Savings:</span>
+                  <span className="font-semibold">-₹{itemDiscountTotal.toFixed(2)}</span>
                 </div>
               )}
+
+              {beforeTaxDiscount > 0 && (
+                <div className="flex justify-between text-xs text-indigo-600 font-bold">
+                  <span>Before-Tax Discount ({invoiceDiscountType === "percent" ? `${invoiceDiscountValue}%` : "Flat"}):</span>
+                  <span className="font-black">-₹{beforeTaxDiscount.toFixed(2)}</span>
+                </div>
+              )}
+
               <div className="flex justify-between text-xs text-slate-600">
                 <span>Taxable Value:</span>
-                <span className="font-semibold text-slate-900">₹{(subtotal - totalDiscount).toFixed(2)}</span>
+                <span className="font-semibold text-slate-900">₹{taxableValue.toFixed(2)}</span>
               </div>
+
               <div className="flex justify-between text-xs text-slate-600">
                 <span>GST Tax Amount:</span>
                 <span className="font-semibold text-slate-900">+₹{totalTax.toFixed(2)}</span>
               </div>
+
+              {afterTaxDiscount > 0 && (
+                <div className="flex justify-between text-xs text-purple-600 font-bold">
+                  <span>After-Tax Discount ({invoiceDiscountType === "percent" ? `${invoiceDiscountValue}%` : "Flat"}):</span>
+                  <span className="font-black">-₹{afterTaxDiscount.toFixed(2)}</span>
+                </div>
+              )}
 
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                 <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-600">
