@@ -47,12 +47,13 @@ function PosTerminalInner() {
 
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [activeSubCategory, setActiveSubCategory] = useState<string>("all");
+  const [activeBrand, setActiveBrand] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [posPage, setPosPage] = useState<number>(1);
   const [posPageSize, setPosPageSize] = useState<number>(24);
   const [cart, setCart] = useState<any[]>([]);
 
-  useEffect(() => { setPosPage(1); }, [activeCategory, activeSubCategory, searchQuery]);
+  useEffect(() => { setPosPage(1); }, [activeCategory, activeSubCategory, activeBrand, searchQuery]);
 
 
   const [selectedCustomer, setSelectedCustomer] = useState(posCustomers[0]);
@@ -331,7 +332,9 @@ function PosTerminalInner() {
 
   // Category Getters
   const parentCategories = useMemo(() => {
-    return categories.filter(c => !c.parent_id);
+    const explicitParents = categories.filter(c => !c.parent_id);
+    if (explicitParents.length > 0) return explicitParents;
+    return categories;
   }, [categories]);
 
   const currentSubCategories = useMemo(() => {
@@ -339,7 +342,33 @@ function PosTerminalInner() {
     return categories.filter(c => c.parent_id === activeCategory);
   }, [categories, activeCategory]);
 
-  // Filter products by parent category, sub-category, and search query
+  // Brands available under current Category / Sub-Category
+  const availableBrands = useMemo(() => {
+    const brandSet = new Set<string>();
+    products.forEach(p => {
+      if (!p.brand) return;
+
+      if (activeSubCategory !== "all") {
+        const subCat = categories.find(c => c.id === activeSubCategory);
+        const matchId = p.category === activeSubCategory || p.category_id === activeSubCategory;
+        const matchName = subCat && p.category?.toLowerCase() === subCat.name.toLowerCase();
+        if (matchId || matchName) brandSet.add(p.brand);
+      } else if (activeCategory !== "all") {
+        const parentCat = categories.find(c => c.id === activeCategory);
+        const matchParentId = p.category === activeCategory || p.category_id === activeCategory;
+        const matchParentName = parentCat && p.category?.toLowerCase() === parentCat.name.toLowerCase();
+        const subCatIds = new Set(categories.filter(c => c.parent_id === activeCategory).map(c => c.id));
+        const subCatNames = new Set(categories.filter(c => c.parent_id === activeCategory).map(c => c.name.toLowerCase()));
+        const matchSub = subCatIds.has(p.category) || subCatIds.has(p.category_id) || subCatNames.has(p.category?.toLowerCase());
+        if (matchParentId || matchParentName || matchSub) brandSet.add(p.brand);
+      } else {
+        brandSet.add(p.brand);
+      }
+    });
+    return Array.from(brandSet).sort();
+  }, [products, activeCategory, activeSubCategory, categories]);
+
+  // Filter products by parent category, sub-category, brand, and search query
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
       // 1. Search Query Filter
@@ -351,7 +380,12 @@ function PosTerminalInner() {
         if (!matchName && !matchBarcode && !matchSku) return false;
       }
 
-      // 2. Sub-category Filter (if selected)
+      // 2. Brand Filter (if selected)
+      if (activeBrand !== "all") {
+        if (p.brand?.toLowerCase() !== activeBrand.toLowerCase()) return false;
+      }
+
+      // 3. Sub-category Filter (if selected)
       if (activeSubCategory !== "all") {
         const subCat = categories.find(c => c.id === activeSubCategory);
         const matchId = p.category === activeSubCategory || p.category_id === activeSubCategory;
@@ -359,7 +393,7 @@ function PosTerminalInner() {
         return matchId || matchName;
       }
 
-      // 3. Parent category Filter (if selected)
+      // 4. Parent category Filter (if selected)
       if (activeCategory !== "all") {
         const parentCat = categories.find(c => c.id === activeCategory);
         const matchParentId = p.category === activeCategory || p.category_id === activeCategory;
@@ -374,7 +408,7 @@ function PosTerminalInner() {
 
       return true;
     });
-  }, [products, searchQuery, activeCategory, activeSubCategory, categories]);
+  }, [products, searchQuery, activeCategory, activeSubCategory, activeBrand, categories]);
 
 
   const totalPosPages = Math.ceil(filteredProducts.length / posPageSize) || 1;
@@ -827,12 +861,12 @@ function PosTerminalInner() {
           {/* MAIN PRODUCT AREA WITH TOP CATEGORY & SUB-CATEGORY BAR */}
           <div className="flex-1 bg-[#F8FAFC] overflow-y-auto relative flex flex-col">
 
-            {/* TOP CATEGORIES & SUB-CATEGORIES HORIZONTAL NAVIGATION BAR */}
+            {/* TOP CATEGORIES, SUB-CATEGORIES & BRANDS HORIZONTAL NAVIGATION BAR */}
             <div className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 p-3 sm:p-4 space-y-2 z-30 shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
               {/* Row 1: Parent Categories */}
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
                 <button
-                  onClick={() => { setActiveCategory("all"); setActiveSubCategory("all"); }}
+                  onClick={() => { setActiveCategory("all"); setActiveSubCategory("all"); setActiveBrand("all"); }}
                   className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
                     activeCategory === "all"
                       ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-2 ring-indigo-600/20 scale-[1.02]"
@@ -858,6 +892,7 @@ function PosTerminalInner() {
                       onClick={() => {
                         setActiveCategory(cat.id);
                         setActiveSubCategory("all");
+                        setActiveBrand("all");
                       }}
                       className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
                         isActive
@@ -887,7 +922,7 @@ function PosTerminalInner() {
                   </span>
 
                   <button
-                    onClick={() => setActiveSubCategory("all")}
+                    onClick={() => { setActiveSubCategory("all"); setActiveBrand("all"); }}
                     className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shrink-0 ${
                       activeSubCategory === "all"
                         ? "bg-slate-900 text-white shadow-sm"
@@ -904,7 +939,7 @@ function PosTerminalInner() {
                     return (
                       <button
                         key={subCat.id}
-                        onClick={() => setActiveSubCategory(subCat.id)}
+                        onClick={() => { setActiveSubCategory(subCat.id); setActiveBrand("all"); }}
                         className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 shrink-0 ${
                           isSubActive
                             ? "bg-indigo-500 text-white shadow-sm scale-105"
@@ -917,6 +952,57 @@ function PosTerminalInner() {
                             {subCount}
                           </span>
                         )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Row 3: Brands Bar under selected Category/Sub-category */}
+              {availableBrands.length > 0 && (
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-600/70 mr-1 shrink-0 flex items-center gap-1">
+                    <Tag className="w-3 h-3" /> Brand:
+                  </span>
+
+                  <button
+                    onClick={() => setActiveBrand("all")}
+                    className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all shrink-0 ${
+                      activeBrand === "all"
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/70"
+                    }`}
+                  >
+                    All Brands ({availableBrands.length})
+                  </button>
+
+                  {availableBrands.map(bName => {
+                    const isBrandActive = activeBrand.toLowerCase() === bName.toLowerCase();
+                    const bCount = products.filter(p => {
+                      const matchesBrand = p.brand?.toLowerCase() === bName.toLowerCase();
+                      if (activeSubCategory !== "all") {
+                        return matchesBrand && (p.category === activeSubCategory || p.category_id === activeSubCategory);
+                      }
+                      if (activeCategory !== "all") {
+                        return matchesBrand && (p.category === activeCategory || p.category_id === activeCategory);
+                      }
+                      return matchesBrand;
+                    }).length;
+
+                    return (
+                      <button
+                        key={bName}
+                        onClick={() => setActiveBrand(bName)}
+                        className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                          isBrandActive
+                            ? "bg-purple-600 text-white shadow-sm scale-105"
+                            : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/70"
+                        }`}
+                      >
+                        <span>{bName}</span>
+                        <span className={`px-1.5 py-0.2 rounded-md text-[9px] ${isBrandActive ? "bg-white/20 text-white" : "bg-purple-50 text-purple-600"}`}>
+                          {bCount}
+                        </span>
                       </button>
                     );
                   })}

@@ -89,6 +89,20 @@ export function Brands() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!window.confirm(`ARE YOU SURE YOU WANT TO DELETE ALL ${brands.length} BRANDS? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      const res = await inventoryApi.deleteAllBrands();
+      alert(res.message || "All brands deleted successfully!");
+      loadData();
+    } catch (error) {
+      console.error("Failed to delete brands:", error);
+      alert("Failed to delete all brands");
+    }
+  };
+
   const openCreateModal = () => {
     setFormData(defaultFormData);
     setEditingId(null);
@@ -97,12 +111,19 @@ export function Brands() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Brands</h2>
           <p className="text-sm text-muted-foreground">Manage product brands and manufacturers.</p>
         </div>
-        <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Add Brand</Button>
+        <div className="flex flex-wrap gap-2">
+          {brands.length > 0 && (
+            <Button variant="destructive" onClick={handleDeleteAll} className="bg-rose-600 hover:bg-rose-700 text-white font-bold">
+              <Archive className="size-4 mr-2" /> Delete All Brands
+            </Button>
+          )}
+          <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Add Brand</Button>
+        </div>
       </div>
 
       <div className="flex gap-4 items-center mb-6">

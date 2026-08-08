@@ -3463,6 +3463,7 @@ export const inventoryApi = {
     request<{ created_count: number; skipped_count: number; errors: string[] }>("POST", "/inventory/categories/bulk", { categories }),
   updateCategory: (id: string, data: Record<string, unknown>) => request<InventoryCategory>("PATCH", `/inventory/categories/${id}`, data),
   deleteCategory: (id: string) => request<void>("DELETE", `/inventory/categories/${id}`),
+  deleteAllCategories: () => request<{ message: string; count: number }>("DELETE", "/inventory/categories/all"),
 
   // Brands
   getBrands: (params?: { search?: string; page?: number; page_size?: number }) =>
@@ -3470,6 +3471,7 @@ export const inventoryApi = {
   createBrand: (data: Record<string, unknown>) => request<InventoryBrand>("POST", "/inventory/brands", data),
   updateBrand: (id: string, data: Record<string, unknown>) => request<InventoryBrand>("PATCH", `/inventory/brands/${id}`, data),
   deleteBrand: (id: string) => request<void>("DELETE", `/inventory/brands/${id}`),
+  deleteAllBrands: () => request<{ message: string; count: number }>("DELETE", "/inventory/brands/all"),
 
   // UOMs
   getUOMs: (params?: { search?: string; page?: number; page_size?: number }) =>

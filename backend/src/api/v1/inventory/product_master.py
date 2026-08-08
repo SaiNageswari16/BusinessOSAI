@@ -214,6 +214,28 @@ async def update_product_category(
     return cat
 
 
+@router.delete("/categories/all", status_code=status.HTTP_200_OK)
+async def delete_all_product_categories(
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from sqlalchemy import update
+    await db.execute(
+        update(Product).where(Product.tenant_id == ctx.tenant_id).values(category_id=None)
+    )
+    result = await db.execute(
+        select(ProductCategory).where(ProductCategory.tenant_id == ctx.tenant_id)
+    )
+    cats = result.scalars().all()
+    count = len(cats)
+    for cat in cats:
+        await db.delete(cat)
+    await db.commit()
+    await invalidate_cache_by_prefix("pos_categories")
+    return {"message": f"Successfully deleted {count} categories", "count": count}
+
+
 @router.delete("/categories/{cat_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_product_category(
     cat_id: uuid.UUID,
@@ -295,6 +317,27 @@ async def update_brand(
 
     await db.commit()
     return brand
+
+
+@router.delete("/brands/all", status_code=status.HTTP_200_OK)
+async def delete_all_brands(
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from sqlalchemy import update
+    await db.execute(
+        update(Product).where(Product.tenant_id == ctx.tenant_id).values(brand_id=None)
+    )
+    result = await db.execute(
+        select(Brand).where(Brand.tenant_id == ctx.tenant_id)
+    )
+    brands = result.scalars().all()
+    count = len(brands)
+    for brand in brands:
+        await db.delete(brand)
+    await db.commit()
+    return {"message": f"Successfully deleted {count} brands", "count": count}
 
 
 @router.delete("/brands/{brand_id}", status_code=status.HTTP_204_NO_CONTENT)

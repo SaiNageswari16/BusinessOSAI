@@ -211,14 +211,28 @@ export function Categories() {
     setIsModalOpen(true);
   };
 
+  const handleDeleteAll = async () => {
+    if (!window.confirm(`ARE YOU SURE YOU WANT TO DELETE ALL ${categories.length} CATEGORIES? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      const res = await inventoryApi.deleteAllCategories();
+      alert(res.message || "All categories deleted successfully!");
+      loadData();
+    } catch (error) {
+      console.error("Failed to delete categories:", error);
+      alert("Failed to delete all categories");
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Categories</h2>
-          <p className="text-sm text-muted-foreground">Manage product category hierarchies.</p>
+          <h2 className="text-2xl font-bold tracking-tight">Categories & Sub-categories</h2>
+          <p className="text-sm text-muted-foreground">Manage product category hierarchies (Parent Categories & Sub-categories).</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <input type="file" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" ref={fileInputRef} onChange={handleImport} className="hidden" />
           <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
             <Upload className="size-4 mr-2" />
@@ -228,6 +242,11 @@ export function Categories() {
             <Download className="size-4 mr-2" />
             Export
           </Button>
+          {categories.length > 0 && (
+            <Button variant="destructive" onClick={handleDeleteAll} className="bg-rose-600 hover:bg-rose-700 text-white font-bold">
+              <Archive className="size-4 mr-2" /> Delete All Categories
+            </Button>
+          )}
           <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Add Category</Button>
         </div>
       </div>
@@ -238,10 +257,9 @@ export function Categories() {
           <input 
             value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30" 
-            placeholder="Search categories..." 
+            placeholder="Search categories & sub-categories..." 
           />
         </div>
-        <Button variant="outline"><Filter className="size-4 mr-2" /> Filters</Button>
       </div>
 
       <div className="space-y-4 max-w-4xl">
@@ -249,28 +267,67 @@ export function Categories() {
           <div className="p-8 text-center text-muted-foreground">Loading categories...</div>
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">No categories found.</div>
-        ) : filtered.map((category) => (
-          <Card key={category.id} className="p-4">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <ChevronDown className="size-4 text-muted-foreground" />
-                <FolderTree className="size-5 text-primary" />
-                <div className="flex flex-col">
-                  <h3 className="font-bold">{category.name}</h3>
-                  <span className="text-xs text-muted-foreground font-mono">{category.category_code || 'N/A'}</span>
-                </div>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${category.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
-                  {category.status === 'active' ? 'Active' : 'Inactive'}
-                </span>
-                {category.description && <span className="text-sm text-muted-foreground ml-2 hidden md:block">- {category.description}</span>}
+        ) : (
+          (() => {
+            // Group parent & sub-categories
+            const parentCats = filtered.filter(c => !c.parent_id);
+            const orphanSubCats = filtered.filter(c => c.parent_id && !filtered.some(p => p.id === c.parent_id));
+            const displayParents = parentCats.length > 0 ? parentCats : filtered;
+
+            return (
+              <div className="space-y-3">
+                {displayParents.map((category) => {
+                  const subCats = categories.filter(c => c.parent_id === category.id);
+                  return (
+                    <Card key={category.id} className="p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition-all">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <FolderTree className="size-5 text-indigo-600" />
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-slate-900">{category.name}</h3>
+                              {category.parent_id && (
+                                <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-bold">
+                                  Sub-category of {categories.find(p => p.id === category.parent_id)?.name || "Parent"}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground font-mono">{category.category_code || 'N/A'}</span>
+                          </div>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${category.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
+                            {category.status === 'active' ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDelete(category.id)}><Archive className="size-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-slate-100" onClick={() => handleEdit(category)}><Edit2 className="size-4" /></Button>
+                        </div>
+                      </div>
+
+                      {/* Sub-categories nested under Parent */}
+                      {subCats.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-100 pl-6 space-y-2">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">Sub-Categories ({subCats.length}):</span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                            {subCats.map(sub => (
+                              <div key={sub.id} className="flex items-center justify-between bg-slate-50 border border-slate-200/60 rounded-xl px-3 py-2 text-xs">
+                                <span className="font-semibold text-slate-800">{sub.name}</span>
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => handleEdit(sub)} className="p-1 text-slate-400 hover:text-indigo-600"><Edit2 className="size-3" /></button>
+                                  <button onClick={() => handleDelete(sub.id)} className="p-1 text-slate-400 hover:text-rose-600"><Archive className="size-3" /></button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
               </div>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500" onClick={() => handleDelete(category.id)}><Archive className="size-4" /></Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => handleEdit(category)}><Edit2 className="size-4" /></Button>
-              </div>
-            </div>
-          </Card>
-        ))}
+            );
+          })()
+        )}
       </div>
 
       {/* CREATE MODAL */}
