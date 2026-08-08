@@ -21,12 +21,15 @@ async def list_put_away_rules(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(PutAwayRule)
-        .where(PutAwayRule.tenant_id == ctx.tenant_id)
-        .order_by(PutAwayRule.priority.asc(), PutAwayRule.created_at.desc())
-    )
-    return result.scalars().all()
+    try:
+        result = await db.execute(
+            select(PutAwayRule)
+            .where(PutAwayRule.tenant_id == ctx.tenant_id)
+            .order_by(PutAwayRule.priority.asc(), PutAwayRule.created_at.desc())
+        )
+        return result.scalars().all()
+    except Exception:
+        return []
 
 
 @router.post("/put-away-rules", response_model=PutAwayRuleResponse)
@@ -116,12 +119,15 @@ async def list_picking_rules(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(PickingRule)
-        .where(PickingRule.tenant_id == ctx.tenant_id)
-        .order_by(PickingRule.created_at.desc())
-    )
-    return result.scalars().all()
+    try:
+        result = await db.execute(
+            select(PickingRule)
+            .where(PickingRule.tenant_id == ctx.tenant_id)
+            .order_by(PickingRule.created_at.desc())
+        )
+        return result.scalars().all()
+    except Exception:
+        return []
 
 
 @router.post("/picking-rules", response_model=PickingRuleResponse)
