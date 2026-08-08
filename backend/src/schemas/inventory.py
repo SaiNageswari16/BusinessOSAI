@@ -45,6 +45,7 @@ class ProductBase(BaseModel):
     category_id: Optional[uuid.UUID] = None
     brand_id: Optional[uuid.UUID] = None
     uom_id: Optional[uuid.UUID] = None
+    hsn_code: Optional[str] = Field(None, max_length=100)
     
     short_description: Optional[str] = None
     long_description: Optional[str] = None

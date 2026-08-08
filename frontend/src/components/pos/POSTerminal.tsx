@@ -197,6 +197,7 @@ function PosTerminalInner() {
           const mappedCats = cats.map((c: POSCategory, i: number) => ({
             id: c.id,
             name: c.name,
+            parent_id: c.parent_id || null,
             color: c.color || posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
             icon: posCategories[i % posCategories.length]?.icon || null,
             aiScore: Math.floor(Math.random() * 30) + 70,

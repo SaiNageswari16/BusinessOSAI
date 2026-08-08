@@ -3103,6 +3103,7 @@ export interface SalaryStructure {
 
 export interface POSCategory {
   id: string; name: string; description: string | null;
+  parent_id?: string | null;
   color: string | null; icon: string | null; is_active: boolean;
   created_at: string; updated_at: string;
 }

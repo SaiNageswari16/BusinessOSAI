@@ -1581,6 +1581,7 @@ class POSCategoryResponse(BaseModel):
     id: uuid.UUID
     name: str
     description: str | None
+    parent_id: uuid.UUID | None = None
     color: str | None
     icon: str | None
     is_active: bool

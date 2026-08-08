@@ -37,7 +37,7 @@ async def list_categories(
     out = []
     for c in categories:
         d = POSCategoryResponse.model_construct(
-            id=c.id, name=c.name, description=c.description,
+            id=c.id, name=c.name, description=c.description, parent_id=c.parent_id,
             color=None, icon=None, is_active=(c.status == EntityStatus.ACTIVE),
             created_at=c.created_at, updated_at=c.updated_at
         )

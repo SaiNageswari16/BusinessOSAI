@@ -910,6 +910,7 @@ export function Products() {
             category_name: findVal(["CATEGORY", "Category", "category", "Category Name", "category_name"]),
             sub_category_name: findVal(["Sub Category", "sub_category", "sub_category_name"]),
             uom_name: findVal(["SALESMEASURINGUNIT", "PURCHASEMEASURINGUNIT", "UOM", "uom", "Unit", "unit", "Unit of Measure", "uom_name"]),
+            hsn_code: findVal(["HSN", "hsn", "HSN Code", "hsn_code", "hsncode", "tax_hsn", "HSN/SAC", "hsn/sac"]),
           };
 
         });

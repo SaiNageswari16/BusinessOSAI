@@ -804,43 +804,20 @@ async def master_import_products(
                 brand_map[b_name.lower()] = new_brand.id
                 brands_created += 1
 
-    # 3. Sync Categories
+    # 3. Sync Categories (Only map existing categories, DO NOT auto-create new categories during import!)
     category_map = {}
     if category_names:
         existing_cats = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.in_(category_names)))
         for c in existing_cats.scalars().all():
             category_map[c.name.lower()] = c.id
-        
-        for c_name in category_names:
-            if c_name.lower() not in category_map:
-                import string
-                import random
-                rand_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-                code = f"CAT-{rand_suffix}"
-                new_cat = ProductCategory(id=uuid.uuid4(), tenant_id=tenant_id, name=c_name, category_code=code, status=EntityStatus.ACTIVE)
-                db.add(new_cat)
-                category_map[c_name.lower()] = new_cat.id
-                categories_created += 1
                 
-    # 4. Sync Sub Categories
+    # 4. Sync Sub Categories (Only map existing sub-categories, DO NOT auto-create new sub-categories during import!)
     sub_category_map = {}
     if sub_category_names:
         sub_cat_names_only = {sub for (_, sub) in sub_category_names}
         existing_sub_cats = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.in_(sub_cat_names_only), ProductCategory.parent_id.isnot(None)))
         for sc in existing_sub_cats.scalars().all():
             sub_category_map[sc.name.lower()] = sc.id
-            
-        for parent_name, sub_name in sub_category_names:
-            if sub_name.lower() not in sub_category_map:
-                import string
-                import random
-                rand_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-                code = f"CAT-{rand_suffix}"
-                parent_id = category_map.get(parent_name.lower())
-                new_sub_cat = ProductCategory(id=uuid.uuid4(), tenant_id=tenant_id, name=sub_name, parent_id=parent_id, category_code=code, status=EntityStatus.ACTIVE)
-                db.add(new_sub_cat)
-                sub_category_map[sub_name.lower()] = new_sub_cat.id
-                categories_created += 1
 
     # Flush to get IDs for inserts
     await db.flush()
@@ -860,6 +837,14 @@ async def master_import_products(
                 uoms_created += 1
 
     await db.flush()
+
+    # 4.6 HSN Code & GST Tax Schedule Lookup
+    hsn_codes = {item.hsn_code.strip() for item in payload.items if item.hsn_code and item.hsn_code.strip()}
+    hsn_tax_map = {}
+    if hsn_codes:
+        hsn_res = await db.execute(select(HSNMaster.hsn_code, HSNMaster.gst_rate).where(HSNMaster.hsn_code.in_(hsn_codes)))
+        for hsn_c, gst_r in hsn_res.all():
+            hsn_tax_map[hsn_c.strip()] = float(gst_r)
 
     # 5. Check existing SKUs
     all_skus = {item.sku for item in payload.items if item.sku}
@@ -888,12 +873,19 @@ async def master_import_products(
         if item.uom_name and item.uom_name.strip():
             uom_id = uom_map.get(item.uom_name.strip().lower())
 
+        item_hsn = item.hsn_code.strip() if item.hsn_code and item.hsn_code.strip() else None
+        item_tax = item.tax_percent or 0.0
+        if item_hsn and (not item_tax or item_tax == 0.0):
+            if item_hsn in hsn_tax_map:
+                item_tax = hsn_tax_map[item_hsn]
+
         new_product = Product(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             name=item.name,
             sku=item.sku,
             barcode=item.barcode,
+            hsn_code=item_hsn,
             short_description=item.short_description,
             long_description=item.long_description,
             brand_id=brand_id,
@@ -904,7 +896,7 @@ async def master_import_products(
             selling_price=item.selling_price,
             wholesale_price=item.wholesale_price or 0.0,
             min_wholesale_qty=item.min_wholesale_qty or 1,
-            tax_percent=item.tax_percent,
+            tax_percent=item_tax,
             discount_limit=item.discount_limit,
             initial_stock=item.initial_stock,
             reorder_level=item.reorder_level,

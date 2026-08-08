@@ -55,6 +55,7 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     barcode: Mapped[str | None] = mapped_column(String(100), index=True)
+    hsn_code: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
     
     category_id = mapped_column(ForeignKey("erp_product_categories.id", ondelete="SET NULL"), nullable=True)
     brand_id = mapped_column(ForeignKey("erp_brands.id", ondelete="SET NULL"), nullable=True)
