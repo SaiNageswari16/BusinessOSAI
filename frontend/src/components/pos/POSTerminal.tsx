@@ -331,13 +331,13 @@ function PosTerminalInner() {
     enabled: true
   });
 
-  // Category Getters (Filter to categories that actually contain products)
+  // Category Getters (Strict Top-Level Main Categories on left sidebar)
   const parentCategories = useMemo(() => {
-    const explicitParents = categories.filter(c => !c.parent_id);
-    const candidateList = explicitParents.length > 0 ? explicitParents : categories;
-    
-    // Only show categories that have at least 1 product in inventory
-    const categoriesWithProducts = candidateList.filter(cat => {
+    // Only top-level main categories (where parent_id is null/undefined/empty)
+    const mainCats = categories.filter(c => !c.parent_id);
+
+    // Filter to main categories that actually contain products (directly or via sub-categories)
+    const categoriesWithProducts = mainCats.filter(cat => {
       const subCatIds = new Set(categories.filter(c => c.parent_id === cat.id).map(c => c.id));
       const count = products.filter(p =>
         p.category === cat.id ||
@@ -349,7 +349,7 @@ function PosTerminalInner() {
       return count > 0;
     });
 
-    return categoriesWithProducts.length > 0 ? categoriesWithProducts : candidateList;
+    return categoriesWithProducts.length > 0 ? categoriesWithProducts : mainCats;
   }, [categories, products]);
 
   const currentSubCategories = useMemo(() => {

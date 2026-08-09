@@ -634,7 +634,7 @@ class RAGEnricherService:
                     updated.append("cost_price")
 
 
-                # Brand — link only if not set
+                # Brand — link only if an existing brand matches
                 if not lp.brand_id and ai_item.brand:
                     brand_name = ai_item.brand.strip()
                     b_res = await session.execute(
@@ -646,17 +646,7 @@ class RAGEnricherService:
                     existing_brand = b_res.scalars().first()
                     if existing_brand:
                         lp.brand_id = existing_brand.id
-                    else:
-                        new_brand = Brand(
-                            id=uuid.uuid4(),
-                            tenant_id=lp.tenant_id,
-                            name=brand_name,
-                            status=EntityStatus.ACTIVE,
-                        )
-                        session.add(new_brand)
-                        await session.flush()
-                        lp.brand_id = new_brand.id
-                    updated.append("brand")
+                        updated.append("brand")
 
                 # Category — link only if an existing category matches
                 if not lp.category_id and ai_item.category:
