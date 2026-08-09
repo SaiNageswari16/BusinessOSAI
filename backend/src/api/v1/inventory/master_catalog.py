@@ -975,8 +975,9 @@ async def _deprecated_perform_ai_rag_web_search(query_str: str, provider: str = 
 # the older helpers above while keeping the route and response contracts intact.
 _IMAGE_TIMEOUT = (5, 20)
 _SOURCE_HEADERS = {
-    "User-Agent": "BusinessOSAI/1.0 (+https://businessos.ai)",
-    "Accept": "application/json,text/html,application/xhtml+xml,image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
 }
 
 
@@ -1038,20 +1039,16 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
         logger.warning("Rejected invalid product image URL: %r", image_url)
         return None
 
-    response = None
     try:
-        # Check HTTP response — accept image/* as well as application/octet-stream
-        head = requests.head(image_url, headers=_SOURCE_HEADERS, timeout=_IMAGE_TIMEOUT, allow_redirects=True)
-        if head.status_code == 200:
-            content_type = (head.headers.get("Content-Type") or "").split(";", 1)[0].lower()
-            _ALLOWED_TYPES = ("image/", "application/octet-stream", "binary/octet-stream", "")
-            if not any(content_type.startswith(t) for t in _ALLOWED_TYPES):
-                logger.warning("Rejected product image %s: MIME type %s", image_url, content_type or "missing")
-                return None
-
         response = requests.get(image_url, headers=_SOURCE_HEADERS, timeout=_IMAGE_TIMEOUT, allow_redirects=True)
         if response.status_code != 200 or not response.content:
             logger.warning("Rejected product image %s: GET status=%s empty=%s", image_url, response.status_code, not response.content)
+            return None
+
+        content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+        _ALLOWED_TYPES = ("image/", "application/octet-stream", "binary/octet-stream", "")
+        if not any(content_type.startswith(t) for t in _ALLOWED_TYPES):
+            logger.warning("Rejected product image %s: MIME type %s", image_url, content_type or "missing")
             return None
 
         from PIL import Image, UnidentifiedImageError
