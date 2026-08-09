@@ -199,6 +199,66 @@ export function getActiveBarcodeTemplate(): any {
   };
 }
 
+export function getActiveInvoicePrintTemplate(): any {
+  if (typeof window !== 'undefined') {
+    try {
+      const invTemplatesRaw = localStorage.getItem('businessos_print_templates_v1');
+      const userActiveDefaultsRaw = localStorage.getItem('user_active_print_templates_v1');
+
+      if (invTemplatesRaw) {
+        const invTemplates = JSON.parse(invTemplatesRaw);
+        const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
+
+        const activeInvoiceId = activeDefaults.invoices;
+        let matched = invTemplates.find((t: any) => t.id === activeInvoiceId);
+
+        if (!matched) {
+          matched = invTemplates.find((t: any) => t.category === 'invoices' && t.isDefault) ||
+                    invTemplates.find((t: any) => t.category === 'invoices') ||
+                    invTemplates.find((t: any) => t.id === 'tpl-inv-stylish');
+        }
+
+        if (matched) return matched;
+      }
+    } catch (e) {
+      console.error('Error loading active invoice template:', e);
+    }
+  }
+
+  return {
+    id: 'tpl-inv-stylish',
+    name: 'Stylish Theme',
+    category: 'invoices',
+    isDefault: true,
+    paperSize: 'A4',
+    primaryColor: '#2563eb',
+    fontFamily: 'Inter, sans-serif',
+    headerTitle: 'TAX INVOICE',
+    storeName: 'LazyMonkeyAI Store',
+    storeAddress: 'KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360',
+    storePhone: '+91 9849344919',
+    gstin: '37AABCCH694G1Z4',
+    footerText: 'Thank you for shopping at LazyMonkeyAI!',
+    termsText: '1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. will be charged if payment is not made within due date.',
+    bankDetails: 'Bank: SBI | A/C: 334455667788 | IFSC: SBIN0001234',
+    fields: {
+      showLogo: true,
+      showHSN: true,
+      showTaxSplit: true,
+      showBankDetails: true,
+      showSignature: true,
+      showCustomerDetails: true,
+      showProductName: true,
+      showPrice: true,
+      showMRP: true,
+      showSKU: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showTime: true,
+    }
+  };
+}
+
 export function saveReceiptTemplates(templates: ReceiptTemplate[]): void {
   if (typeof window === 'undefined') return;
   try {

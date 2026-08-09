@@ -190,20 +190,56 @@ async def create_invoice(
 
     invoice_number = await generate_number(db, ctx.tenant_id, "invoice", payload.company_id)
 
-    invoice = Invoice(
-        tenant_id=ctx.tenant_id,
-        invoice_number=invoice_number,
-        status="draft",
-        currency_code=payload.currency_code,
-        exchange_rate=payload.exchange_rate,
+    inv_kwargs = payload.model_dump(exclude={"lines", "payment_status", "payment_method"})
+
+    initial_status = "draft"
+    if payload.payment_status and payload.payment_status.upper() == "PAID":
+        initial_status = "paid"
+    elif payload.payment_method and payload.payment_method.lower() != "credit":
+        initial_status = "paid"
+
+    inv_kwargs.update({
+        "tenant_id": ctx.tenant_id,
+        "invoice_number": invoice_number,
+        "status": initial_status,
         **totals,
-        **payload.model_dump(exclude={"lines"}),
-    )
+    })
+
+    if initial_status == "paid":
+        inv_kwargs["amount_paid"] = totals["total_amount"]
+        inv_kwargs["balance_due"] = 0.0
+
+    invoice = Invoice(**inv_kwargs)
     db.add(invoice)
     await db.flush()
 
     for idx, line_payload in enumerate(payload.lines):
-        line = InvoiceLine(invoice_id=invoice.id, line_number=idx + 1, **line_payload.model_dump())
+        line_dict = line_payload.model_dump()
+        qty = line_dict.get("quantity", 1.0) or 1.0
+        price = line_dict.get("unit_price", 0.0) or 0.0
+        gross = qty * price
+
+        d_val = line_dict.get("discount_value", 0.0) or 0.0
+        d_type = line_dict.get("discount_type")
+        d_amt = 0.0
+        if d_type == "percent" and d_val:
+            d_amt = gross * (d_val / 100)
+        elif d_type == "amount" and d_val:
+            d_amt = min(d_val, gross)
+
+        taxable = gross - d_amt
+        tax_rate = line_dict.get("tax_rate", 0.0) or 0.0
+        tax = taxable * (tax_rate / 100)
+
+        line_dict.update({
+            "discount_amount": round(d_amt, 2),
+            "taxable_amount": round(taxable, 2),
+            "cgst_amount": round(tax / 2, 2),
+            "sgst_amount": round(tax / 2, 2),
+            "igst_amount": round(tax, 2),
+            "line_total": round(taxable + tax, 2),
+        })
+        line = InvoiceLine(invoice_id=invoice.id, line_number=idx + 1, **line_dict)
         db.add(line)
 
     # If customer had past unpaid invoices and today's invoice is paid, clear past dues
