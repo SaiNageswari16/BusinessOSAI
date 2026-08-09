@@ -89,11 +89,12 @@ const masterVisibleDefault = ["image", "name", "sku", "barcode", "category", "br
 
 // ── Column menu sub-component ───────────────────────────────────────
 function ColumnMenu({
-  columns, visible, onToggle, onSave, onReset, onClose,
+  columns, visible, onToggle, onToggleAll, onSave, onReset, onClose,
 }: {
   columns: typeof LOCAL_COLUMNS;
   visible: string[];
   onToggle: (id: string) => void;
+  onToggleAll: () => void;
   onSave: () => void;
   onReset: () => void;
   onClose: () => void;
@@ -104,9 +105,7 @@ function ColumnMenu({
         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Columns</span>
         <button
           type="button"
-          onClick={() => visible.length === columns.length
-            ? onReset()
-            : onToggle(columns.map(c => c.id).filter(id => !visible.includes(id))[0] || columns[0].id)}
+          onClick={onToggleAll}
           className="text-[10px] font-bold text-indigo-600 hover:text-indigo-500 transition-colors uppercase cursor-pointer"
         >
           {visible.length === columns.length ? "Deselect All" : "Select All"}
@@ -118,7 +117,7 @@ function ColumnMenu({
             <input
               type="checkbox"
               checked={visible.includes(col.id)}
-              onChange={(e) => { if (e.target.checked) onToggle(col.id); }}
+              onChange={() => onToggle(col.id)}
               className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 size-3.5 cursor-pointer"
             />
             {col.label}
@@ -1053,6 +1052,17 @@ export function Products() {
               const setter = activeTab === "inventory" ? setLocalVisibleColumns : setMasterVisibleColumns;
               setter(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
             }}
+            onToggleAll={() => {
+              const cols = activeTab === "inventory" ? LOCAL_COLUMNS : MASTER_COLUMNS;
+              const visible = activeTab === "inventory" ? localVisibleColumns : masterVisibleColumns;
+              const setter = activeTab === "inventory" ? setLocalVisibleColumns : setMasterVisibleColumns;
+              if (visible.length === cols.length) {
+                const def = activeTab === "inventory" ? localVisibleDefault : masterVisibleDefault;
+                setter(def);
+              } else {
+                setter(cols.map(c => c.id));
+              }
+            }}
             onSave={() => {
               const key = activeTab === "inventory" ? "products_local_visible_columns" : "products_master_visible_columns";
               const cols = activeTab === "inventory" ? localVisibleColumns : masterVisibleColumns;
@@ -1326,66 +1336,87 @@ export function Products() {
   // ══════════════════════════════════════════════════════════════════
   const renderLocalRow = (product: InventoryProduct, visible: string[], isExact = false) => (
     <tr key={product.id} className={`hover:bg-muted/30 transition-colors ${isExact ? "bg-emerald-500/5 ring-1 ring-emerald-500/20" : ""}`}>
-      {visible.includes("image") && (
-        <td className="px-6 py-4">
-          {product.image_url ? (
-            <img src={resolveImageUrl(product.image_url)} alt={product.name}
-              onClick={() => setPreviewImage(resolveImageUrl(product.image_url))}
-              className="size-10 rounded-lg object-cover border bg-white cursor-zoom-in hover:opacity-90 transition-opacity" />
-          ) : (
-            <div className="size-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-              <Package className="size-5 text-muted-foreground" />
-            </div>
-          )}
-        </td>
-      )}
-      {visible.includes("name") && (
-        <td className="px-6 py-4 font-bold">
-          {product.name}
-          {isExact && <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold text-[10px]">
-            <Barcode className="size-3" /> Exact Match
-          </span>}
-        </td>
-      )}
-      {visible.includes("sku") && <td className="px-6 py-4 font-mono font-bold text-xs">{product.sku || '-'}</td>}
-      {visible.includes("barcode") && <td className="px-6 py-4 font-mono text-xs">{product.barcode || '-'}</td>}
-      {visible.includes("category") && <td className="px-6 py-4 text-xs font-medium">{product.category_name || (categories.find(c => c.id === product.category_id)?.name) || '-'}</td>}
-      {visible.includes("brand") && <td className="px-6 py-4 text-xs font-medium">{product.brand_name || (brands.find(b => b.id === product.brand_id)?.name) || (product as any).brand || '-'}</td>}
-      {visible.includes("uom") && <td className="px-6 py-4 text-xs font-medium">{product.uom_name || (uoms.find(u => u.id === product.uom_id)?.name) || '-'}</td>}
-
-      {/* Selling Prices */}
-      {visible.includes("purchase_price") && <td className="px-6 py-4">{formatCurrency(product.purchase_price)}</td>}
-      {visible.includes("mrp") && <td className="px-6 py-4 font-bold">{formatCurrency(product.mrp)}</td>}
-      {visible.includes("selling_price") && <td className="px-6 py-4">{formatCurrency(product.selling_price)}</td>}
-      {visible.includes("wholesale_price") && <td className="px-6 py-4 text-emerald-700 font-semibold">{formatCurrency((product as any).wholesale_price || 0)}</td>}
-      {visible.includes("min_wholesale_qty") && <td className="px-6 py-4 text-xs font-mono">{(product as any).min_wholesale_qty || 1} pcs</td>}
-      {visible.includes("tax_percent") && <td className="px-6 py-4 text-xs">{product.tax_percent}%</td>}
-
-      {visible.includes("initial_stock") && (
-        <td className="px-6 py-4">
-          <div className="flex items-center gap-2">
-            <div className="w-full bg-muted rounded-full h-1.5 max-w-[80px]">
-              <div className={`h-1.5 rounded-full ${(product.stock ?? product.initial_stock) <= product.reorder_level ? 'bg-rose-500' : 'bg-primary'}`}
-                style={{ width: `${Math.min(100, ((product.stock ?? product.initial_stock) / (product.reorder_level > 0 ? product.reorder_level * 3 : 100)) * 100)}%` }} />
-            </div>
-            <span className="font-bold">{product.stock ?? product.initial_stock}</span>
-          </div>
-          {(product.stock ?? product.initial_stock) <= product.reorder_level && (
-            <div className="text-[10px] text-rose-500 font-bold mt-1">Low Stock!</div>
-          )}
-        </td>
-      )}
-      {visible.includes("reorder_level") && <td className="px-6 py-4 text-xs">{product.reorder_level}</td>}
-      {visible.includes("safety_stock") && <td className="px-6 py-4 text-xs">{product.safety_stock}</td>}
-      {visible.includes("status") && (
-        <td className="px-6 py-4">
-          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${product.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
-            <span className={`size-1.5 rounded-full ${product.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-            {product.status === 'active' ? 'Active' : 'Inactive'}
-          </span>
-        </td>
-      )}
-      {visible.includes("source") && <td className="px-6 py-4 text-xs"><span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold text-[10px]"><Store className="size-3" /> My Inventory</span></td>}
+      {LOCAL_COLUMNS.filter(c => visible.includes(c.id)).map(col => {
+        switch (col.id) {
+          case "image":
+            return (
+              <td key="image" className="px-6 py-4">
+                {product.image_url ? (
+                  <img src={resolveImageUrl(product.image_url)} alt={product.name}
+                    onClick={() => setPreviewImage(resolveImageUrl(product.image_url))}
+                    className="size-10 rounded-lg object-cover border bg-white cursor-zoom-in hover:opacity-90 transition-opacity" />
+                ) : (
+                  <div className="size-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                    <Package className="size-5 text-muted-foreground" />
+                  </div>
+                )}
+              </td>
+            );
+          case "name":
+            return (
+              <td key="name" className="px-6 py-4 font-bold">
+                {product.name}
+                {isExact && <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold text-[10px]">
+                  <Barcode className="size-3" /> Exact Match
+                </span>}
+              </td>
+            );
+          case "sku":
+            return <td key="sku" className="px-6 py-4 font-mono font-bold text-xs">{product.sku || '-'}</td>;
+          case "barcode":
+            return <td key="barcode" className="px-6 py-4 font-mono text-xs">{product.barcode || '-'}</td>;
+          case "category":
+            return <td key="category" className="px-6 py-4 text-xs font-medium">{product.category_name || (categories.find(c => c.id === product.category_id)?.name) || '-'}</td>;
+          case "brand":
+            return <td key="brand" className="px-6 py-4 text-xs font-medium">{product.brand_name || (brands.find(b => b.id === product.brand_id)?.name) || (product as any).brand || '-'}</td>;
+          case "uom":
+            return <td key="uom" className="px-6 py-4 text-xs font-medium">{product.uom_name || (uoms.find(u => u.id === product.uom_id)?.name) || '-'}</td>;
+          case "purchase_price":
+            return <td key="purchase_price" className="px-6 py-4">{formatCurrency(product.purchase_price)}</td>;
+          case "mrp":
+            return <td key="mrp" className="px-6 py-4 font-bold">{formatCurrency(product.mrp)}</td>;
+          case "selling_price":
+            return <td key="selling_price" className="px-6 py-4">{formatCurrency(product.selling_price)}</td>;
+          case "wholesale_price":
+            return <td key="wholesale_price" className="px-6 py-4 text-emerald-700 font-semibold">{formatCurrency((product as any).wholesale_price || 0)}</td>;
+          case "min_wholesale_qty":
+            return <td key="min_wholesale_qty" className="px-6 py-4 text-xs font-mono">{(product as any).min_wholesale_qty || 1} pcs</td>;
+          case "tax_percent":
+            return <td key="tax_percent" className="px-6 py-4 text-xs">{product.tax_percent}%</td>;
+          case "initial_stock":
+            return (
+              <td key="initial_stock" className="px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-full bg-muted rounded-full h-1.5 max-w-[80px]">
+                    <div className={`h-1.5 rounded-full ${(product.stock ?? product.initial_stock) <= product.reorder_level ? 'bg-rose-500' : 'bg-primary'}`}
+                      style={{ width: `${Math.min(100, ((product.stock ?? product.initial_stock) / (product.reorder_level > 0 ? product.reorder_level * 3 : 100)) * 100)}%` }} />
+                  </div>
+                  <span className="font-bold">{product.stock ?? product.initial_stock}</span>
+                </div>
+                {(product.stock ?? product.initial_stock) <= product.reorder_level && (
+                  <div className="text-[10px] text-rose-500 font-bold mt-1">Low Stock!</div>
+                )}
+              </td>
+            );
+          case "reorder_level":
+            return <td key="reorder_level" className="px-6 py-4 text-xs">{product.reorder_level}</td>;
+          case "safety_stock":
+            return <td key="safety_stock" className="px-6 py-4 text-xs">{product.safety_stock}</td>;
+          case "status":
+            return (
+              <td key="status" className="px-6 py-4">
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${product.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
+                  <span className={`size-1.5 rounded-full ${product.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  {product.status === 'active' ? 'Active' : 'Inactive'}
+                </span>
+              </td>
+            );
+          case "source":
+            return <td key="source" className="px-6 py-4 text-xs"><span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold text-[10px]"><Store className="size-3" /> My Inventory</span></td>;
+          default:
+            return null;
+        }
+      })}
       <td className="px-6 py-4 text-right">
         <div className="flex justify-end gap-1">
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => handleDuplicate(product)}><Copy className="size-4" /></Button>
@@ -1404,39 +1435,57 @@ export function Products() {
     const sourceLabel = isAISourced ? "AI Sourced" : "Global Catalog";
     return (
       <tr key={item.id || Math.random()} className="hover:bg-indigo-50/20 bg-indigo-50/5 transition-colors border-b border-indigo-100/50">
-        {visible.includes("image") && (
-          <td className="px-6 py-4">
-            {item.image_url ? (
-              <img src={resolveImageUrl(item.image_url)} alt={item.name}
-                onClick={() => setPreviewImage(resolveImageUrl(item.image_url))}
-                className="size-10 rounded-lg object-cover border bg-white cursor-zoom-in hover:opacity-90 transition-opacity" />
-            ) : (
-              <div className="size-10 rounded-lg bg-indigo-100/30 flex items-center justify-center shrink-0">
-                <Globe className="size-5 text-indigo-500" />
-              </div>
-            )}
-          </td>
-        )}
-        {visible.includes("name") && (
-          <td className="px-6 py-4 font-bold text-indigo-950">
-            <div>{item.name}</div>
-            <div className="text-[10px] text-indigo-500 font-semibold uppercase mt-0.5">{sourceLabel}</div>
-          </td>
-        )}
-        {visible.includes("sku") && <td className="px-6 py-4 font-mono font-bold text-xs text-indigo-900">{item.sku_code || '-'}</td>}
-        {visible.includes("barcode") && <td className="px-6 py-4 font-mono text-xs text-indigo-750">{item.barcode || '-'}</td>}
-        {visible.includes("category") && <td className="px-6 py-4 text-xs text-indigo-800">{item.category_name || item.category || '-'}</td>}
-        {visible.includes("brand") && <td className="px-6 py-4 text-xs text-indigo-800">{item.brand_name || item.brand || '-'}</td>}
-        {visible.includes("mrp") && <td className="px-6 py-4 font-bold text-indigo-950">{formatCurrency(item.mrp)}</td>}
-        {visible.includes("selling_price") && <td className="px-6 py-4 text-indigo-800">{formatCurrency(item.sale_price)}</td>}
-        {visible.includes("specifications") && <td className="px-6 py-4 text-xs text-indigo-800 max-w-xs truncate">{item.specifications || '-'}</td>}
-        {visible.includes("source") && (
-          <td className="px-6 py-4">
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[10px] ${isAISourced ? "bg-amber-500/10 text-amber-600" : "bg-indigo-500/10 text-indigo-600"}`}>
-              <Sparkles className="size-3" /> {sourceLabel}
-            </span>
-          </td>
-        )}
+        {MASTER_COLUMNS.filter(c => visible.includes(c.id)).map(col => {
+          switch (col.id) {
+            case "image":
+              return (
+                <td key="image" className="px-6 py-4">
+                  {item.image_url ? (
+                    <img src={resolveImageUrl(item.image_url)} alt={item.name}
+                      onClick={() => setPreviewImage(resolveImageUrl(item.image_url))}
+                      className="size-10 rounded-lg object-cover border bg-white cursor-zoom-in hover:opacity-90 transition-opacity" />
+                  ) : (
+                    <div className="size-10 rounded-lg bg-indigo-100/30 flex items-center justify-center shrink-0">
+                      <Globe className="size-5 text-indigo-500" />
+                    </div>
+                  )}
+                </td>
+              );
+            case "name":
+              return (
+                <td key="name" className="px-6 py-4 font-bold text-indigo-950">
+                  <div>{item.name}</div>
+                  <div className="text-[10px] text-indigo-500 font-semibold uppercase mt-0.5">{sourceLabel}</div>
+                </td>
+              );
+            case "sku":
+              return <td key="sku" className="px-6 py-4 font-mono font-bold text-xs text-indigo-900">{item.sku_code || '-'}</td>;
+            case "barcode":
+              return <td key="barcode" className="px-6 py-4 font-mono text-xs text-indigo-750">{item.barcode || '-'}</td>;
+            case "category":
+              return <td key="category" className="px-6 py-4 text-xs text-indigo-800">{item.category_name || item.category || '-'}</td>;
+            case "brand":
+              return <td key="brand" className="px-6 py-4 text-xs text-indigo-800">{item.brand_name || item.brand || '-'}</td>;
+            case "mrp":
+              return <td key="mrp" className="px-6 py-4 font-bold text-indigo-950">{formatCurrency(item.mrp)}</td>;
+            case "selling_price":
+              return <td key="selling_price" className="px-6 py-4 text-indigo-800">{formatCurrency(item.sale_price)}</td>;
+            case "wholesale_price":
+              return <td key="wholesale_price" className="px-6 py-4 text-indigo-800">{formatCurrency(item.wholesale_price || 0)}</td>;
+            case "specifications":
+              return <td key="specifications" className="px-6 py-4 text-xs text-indigo-800 max-w-xs truncate">{item.specifications || '-'}</td>;
+            case "source":
+              return (
+                <td key="source" className="px-6 py-4">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[10px] ${isAISourced ? "bg-amber-500/10 text-amber-600" : "bg-indigo-500/10 text-indigo-600"}`}>
+                    <Sparkles className="size-3" /> {sourceLabel}
+                  </span>
+                </td>
+              );
+            default:
+              return null;
+          }
+        })}
         <td className="px-6 py-4 text-right">
           <Button variant="default" size="sm" className="h-7 text-[11px] font-bold"
             onClick={() => setPreviewItem(item)}>
@@ -1526,11 +1575,9 @@ export function Products() {
             <table className="w-full text-sm text-left whitespace-nowrap min-w-[1000px]">
               <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
                 <tr>
-                  {localVisibleColumns.map((colId) => {
-                    const col = LOCAL_COLUMNS.find(c => c.id === colId);
-                    if (!col) return null;
-                    return <th key={col.id} className="px-6 py-4 whitespace-nowrap">{col.label}</th>;
-                  })}
+                  {LOCAL_COLUMNS.filter(c => localVisibleColumns.includes(c.id)).map((col) => (
+                    <th key={col.id} className="px-6 py-4 whitespace-nowrap">{col.label}</th>
+                  ))}
                   <th className="px-6 py-4 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
@@ -1648,11 +1695,9 @@ export function Products() {
               <table className="w-full text-sm text-left">
                 <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
                   <tr>
-                    {masterVisibleColumns.map((colId) => {
-                    const col = MASTER_COLUMNS.find(c => c.id === colId);
-                    if (!col) return null;
-                    return <th key={col.id} className="px-6 py-4">{col.label}</th>;
-                  })}
+                    {MASTER_COLUMNS.filter(c => masterVisibleColumns.includes(c.id)).map((col) => (
+                      <th key={col.id} className="px-6 py-4">{col.label}</th>
+                    ))}
                     <th className="px-6 py-4 text-right">Action</th>
                   </tr>
                 </thead>
