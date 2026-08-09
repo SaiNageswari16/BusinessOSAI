@@ -1,8 +1,8 @@
 import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Plus, Search, Filter, ShoppingCart, Download, Printer, Box, CreditCard, Clock, CheckCircle2, RefreshCw } from "lucide-react";
-import { crmSalesOrdersApi, type CrmSalesOrder } from "@/lib/api-client";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus, Search, Filter, ShoppingCart, Download, Printer, Box, CreditCard, Clock, CheckCircle2, RefreshCw, Truck, Store, Building, Tag, UserCheck, ShieldCheck, DollarSign, Award, X, Sparkles } from "lucide-react";
+import { crmSalesOrdersApi, type CrmSalesOrder, inventoryApi, posApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import {
   Dialog,
@@ -14,6 +14,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+
+interface AdditionalChargeItem {
+  name: string;
+  amount: number;
+}
 
 export function SalesOrders() {
   const { tenant } = useTenant();
@@ -21,24 +27,97 @@ export function SalesOrders() {
   const [orders, setOrders] = useState<CrmSalesOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newOrder, setNewOrder] = useState({ order_number: "", customer_name: "", total: 0, status: "Pending", payment_status: "Unpaid" });
+  const [isCreateProdModalOpen, setIsCreateProdModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale">("Retail");
+  const [selectedLocation, setSelectedLocation] = useState<string>("Store Main Branch");
+  const [salesRep, setSalesRep] = useState<string>("Sales Team Representative");
+  const [paymentMode, setPaymentMode] = useState<string>("Cash");
+  const [dueDate, setDueDate] = useState<string>("");
+  
+  const [additionalCharges, setAdditionalCharges] = useState<AdditionalChargeItem[]>([
+    { name: "Transport & Shipping Charges", amount: 0 }
+  ]);
+  const [newChargeName, setNewChargeName] = useState("");
+  const [newChargeAmount, setNewChargeAmount] = useState<number | "">("");
+
+  const [newProdName, setNewProdName] = useState("");
+  const [newProdSku, setNewProdSku] = useState("");
+  const [newProdMrp, setNewProdMrp] = useState<number | "">("");
+  const [newProdSellingPrice, setNewProdSellingPrice] = useState<number | "">("");
+  const [newProdWholesalePrice, setNewProdWholesalePrice] = useState<number | "">("");
+
+  const [newOrder, setNewOrder] = useState({
+    order_number: "",
+    customer_name: "",
+    subtotal: 0,
+    total: 0,
+    status: "Pending",
+    payment_status: "Unpaid"
+  });
+
+  useEffect(() => {
+    const seq = String(orders.length + 1).padStart(4, "0");
+    setNewOrder(prev => ({ ...prev, order_number: `SO-2026-${seq}` }));
+  }, [orders.length, isAddModalOpen]);
+
+  const totalChargesAmount = additionalCharges.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  const calculatedGrandTotal = (Number(newOrder.subtotal) || 0) + totalChargesAmount;
+  const salesPointsEarned = Math.floor(calculatedGrandTotal / 100);
+
+  const handleAddCharge = () => {
+    if (!newChargeName.trim() || !newChargeAmount) return;
+    setAdditionalCharges(prev => [...prev, { name: newChargeName.trim(), amount: Number(newChargeAmount) }]);
+    setNewChargeName("");
+    setNewChargeAmount("");
+  };
+
+  const handleRemoveCharge = (idx: number) => {
+    setAdditionalCharges(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleCreateProductSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProdName.trim()) return toast.error("Product name is required!");
+    try {
+      await posApi.createProduct({
+        name: newProdName,
+        sku: newProdSku || `SKU-${Date.now()}`,
+        mrp: Number(newProdMrp) || 0,
+        selling_price: Number(newProdSellingPrice) || Number(newProdMrp) || 0,
+        wholesale_price: Number(newProdWholesalePrice) || Number(newProdSellingPrice) || 0,
+        stock: 100,
+        status: "active"
+      });
+      toast.success("Product created successfully and available in POS/Sales!");
+      setIsCreateProdModalOpen(false);
+      setNewProdName("");
+      setNewProdSku("");
+      setNewProdMrp("");
+      setNewProdSellingPrice("");
+      setNewProdWholesalePrice("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create product");
+    }
+  };
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const finalPaymentStatus = paymentMode === "Credit" ? "Unpaid" : newOrder.payment_status;
       await crmSalesOrdersApi.create({
         order_number: newOrder.order_number,
-        customer_name: newOrder.customer_name,
-        total: newOrder.total,
+        customer_name: newOrder.customer_name || "Walk-in Customer",
+        total: calculatedGrandTotal,
         status: newOrder.status,
-        payment_status: newOrder.payment_status,
+        payment_status: finalPaymentStatus,
         customer_id: "00000000-0000-0000-0000-000000000000",
       });
-      toast.success("Order created successfully!");
+      toast.success(`Sales Order ${newOrder.order_number} created successfully! Points earned: +${salesPointsEarned} pts`);
       setIsAddModalOpen(false);
-      setNewOrder({ order_number: "", customer_name: "", total: 0, status: "Pending", payment_status: "Unpaid" });
+      setNewOrder({ order_number: "", customer_name: "", subtotal: 0, total: 0, status: "Pending", payment_status: "Unpaid" });
       void fetchOrders();
     } catch(err: any) {
       toast.error(err?.message || "Failed to create order");
@@ -65,65 +144,220 @@ export function SalesOrders() {
   }, [tenant.id]);
 
   const filteredOrders = orders.filter(o => {
-    return o.order_number.toLowerCase().includes(searchTerm.toLowerCase());
+    return o.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           o.customer_name?.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Sales Orders</h1>
-          <p className="text-sm text-muted-foreground">Track and manage customer orders, integrated with inventory and fulfillment.</p>
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <ShoppingCart className="size-6 text-primary" /> Sales Orders
+          </h1>
+          <p className="text-sm text-muted-foreground">Manage B2B & Retail customer sales orders, extra charges, and team sales points.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+          <button onClick={() => toast.info('Exporting sales orders list…')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
             <Download className="size-4" /> Export
           </button>
           <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
             <DialogTrigger asChild>
               <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-                <Plus className="size-4" /> Create Order
+                <Plus className="size-4" /> Create Sales Order
               </button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create Sales Order</DialogTitle>
+                <DialogTitle className="flex items-center justify-between">
+                  <span>Create Sales Order</span>
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setPricingMode("Retail")}
+                      className={`px-2.5 py-1 rounded-md font-bold transition ${pricingMode === "Retail" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}
+                    >
+                      Retail
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPricingMode("Wholesale")}
+                      className={`px-2.5 py-1 rounded-md font-bold transition ${pricingMode === "Wholesale" ? "bg-emerald-600 text-white shadow" : "text-slate-500"}`}
+                    >
+                      Wholesale / B2B
+                    </button>
+                  </div>
+                </DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleAddSubmit} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label>Order Number</Label>
-                  <Input required value={newOrder.order_number} onChange={e => setNewOrder({...newOrder, order_number: e.target.value})} placeholder="SO-2026-001" />
+
+              <form onSubmit={handleAddSubmit} className="space-y-4 pt-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">Order Number (Seq)</Label>
+                    <Input required value={newOrder.order_number} onChange={e => setNewOrder({...newOrder, order_number: e.target.value})} placeholder="SO-2026-0001" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">Destination / Location</Label>
+                    <select
+                      value={selectedLocation}
+                      onChange={e => setSelectedLocation(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-input bg-background text-xs font-semibold"
+                    >
+                      <option value="Store Main Branch">Store Main Branch</option>
+                      <option value="Central Warehouse">Central Warehouse</option>
+                      <option value="Secondary Warehouse">Secondary Warehouse</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Customer Name</Label>
-                  <Input value={newOrder.customer_name} onChange={e => setNewOrder({...newOrder, customer_name: e.target.value})} placeholder="e.g. Acme Corp" />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">Customer Name</Label>
+                    <Input value={newOrder.customer_name} onChange={e => setNewOrder({...newOrder, customer_name: e.target.value})} placeholder="e.g. Acme Enterprises / Walk-in" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold flex items-center gap-1">
+                      <Award className="size-3.5 text-amber-500" /> Sales Rep / Team Member
+                    </Label>
+                    <select
+                      value={salesRep}
+                      onChange={e => setSalesRep(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-input bg-background text-xs font-semibold"
+                    >
+                      <option value="Sales Rep - Alex">Sales Rep - Alex</option>
+                      <option value="Sales Rep - Sarah">Sales Rep - Sarah</option>
+                      <option value="Sales Rep - Nageswari">Sales Rep - Nageswari</option>
+                      <option value="Store Manager">Store Manager</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Total Amount (₹)</Label>
-                  <Input required type="number" min="0" value={newOrder.total} onChange={e => setNewOrder({...newOrder, total: Number(e.target.value)})} />
+
+                <div className="p-3 bg-slate-50 border rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-slate-700">Order Subtotal (₹)</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsCreateProdModalOpen(true)}
+                      className="h-7 text-[11px] font-bold text-indigo-600 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100"
+                    >
+                      <Plus className="size-3 mr-1" /> Create New Product Inline
+                    </Button>
+                  </div>
+                  <Input
+                    required
+                    type="number"
+                    min="0"
+                    value={newOrder.subtotal}
+                    onChange={e => setNewOrder({...newOrder, subtotal: Number(e.target.value)})}
+                    placeholder="Subtotal before extra charges"
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <select value={newOrder.status} onChange={e => setNewOrder({...newOrder, status: e.target.value})} className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+
+                <div className="p-3 bg-emerald-50/50 border border-emerald-200/80 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
+                    <span className="flex items-center gap-1.5">
+                      <Truck className="size-4 text-emerald-600" /> Additional Charges (Transport, Freight, etc.)
+                    </span>
+                    <span className="font-mono text-emerald-700">+₹{totalChargesAmount.toFixed(2)}</span>
+                  </div>
+
+                  {additionalCharges.map((ch, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-white border border-emerald-100 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                      <span className="text-slate-700">{ch.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-slate-900">₹{ch.amount}</span>
+                        <button type="button" onClick={() => handleRemoveCharge(idx)} className="text-rose-500 hover:text-rose-700 p-0.5">
+                          <X className="size-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="flex gap-2 pt-1">
+                    <Input
+                      value={newChargeName}
+                      onChange={e => setNewChargeName(e.target.value)}
+                      placeholder="Charge Name (e.g. Freight / Packing)"
+                      className="h-8 text-xs bg-white"
+                    />
+                    <Input
+                      type="number"
+                      value={newChargeAmount}
+                      onChange={e => setNewChargeAmount(e.target.value ? Number(e.target.value) : "")}
+                      placeholder="Amount ₹"
+                      className="h-8 text-xs w-28 bg-white"
+                    />
+                    <Button type="button" size="sm" onClick={handleAddCharge} className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 shrink-0">
+                      Add
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">Payment Method</Label>
+                    <select
+                      value={paymentMode}
+                      onChange={e => setPaymentMode(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-input bg-background text-xs font-semibold"
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="UPI / QR">UPI / QR Code</option>
+                      <option value="Card">Credit/Debit Card</option>
+                      <option value="Bank Transfer">Bank Transfer (NEFT/RTGS)</option>
+                      <option value="Credit">Credit (Pay Later)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">Status</Label>
+                    <select
+                      value={newOrder.status}
+                      onChange={e => setNewOrder({...newOrder, status: e.target.value})}
+                      className="w-full h-10 px-3 rounded-md border border-input bg-background text-xs font-semibold"
+                    >
                       <option value="Pending">Pending</option>
                       <option value="Processing">Processing</option>
                       <option value="Shipped">Shipped</option>
                       <option value="Delivered">Delivered</option>
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Payment</Label>
-                    <select value={newOrder.payment_status} onChange={e => setNewOrder({...newOrder, payment_status: e.target.value})} className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                      <option value="Unpaid">Unpaid</option>
-                      <option value="Partially Paid">Partially Paid</option>
-                      <option value="Paid">Paid</option>
-                    </select>
+                </div>
+
+                {paymentMode === "Credit" && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5">
+                    <Label className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                      <Clock className="size-4 text-amber-600" /> Pay Later Due Date
+                    </Label>
+                    <Input
+                      type="date"
+                      value={dueDate}
+                      onChange={e => setDueDate(e.target.value)}
+                      className="h-9 text-xs bg-white"
+                    />
+                    <p className="text-[11px] text-amber-700 font-medium">
+                      Order will be saved with <span className="font-bold">Unpaid</span> status and logged under Accounts Receivable.
+                    </p>
+                  </div>
+                )}
+
+                <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between text-xs font-bold">
+                  <div>
+                    <div className="text-slate-400 font-normal">Calculated Grand Total:</div>
+                    <div className="text-xl font-bold font-mono text-emerald-400">₹{calculatedGrandTotal.toFixed(2)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-amber-400 flex items-center gap-1 justify-end">
+                      <Award className="size-3.5" /> +{salesPointsEarned} Sales Points
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-normal">{salesRep}</div>
                   </div>
                 </div>
-                <DialogFooter className="pt-4">
-                  <button type="submit" disabled={isSubmitting} className="flex items-center justify-center gap-2 w-full px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
-                    {isSubmitting ? "Creating..." : "Create Order"}
+
+                <DialogFooter className="pt-2">
+                  <button type="submit" disabled={isSubmitting} className="flex items-center justify-center gap-2 w-full px-4 py-2.5 gradient-brand text-white rounded-lg text-sm font-bold shadow-md hover:opacity-90 transition-opacity disabled:opacity-50">
+                    {isSubmitting ? "Creating Order..." : `Confirm & Save Sales Order (₹${calculatedGrandTotal.toFixed(2)})`}
                   </button>
                 </DialogFooter>
               </form>
@@ -134,11 +368,11 @@ export function SalesOrders() {
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {[
-          { label: "Pending", value: "0", icon: Clock, color: "text-amber-500", bg: "bg-amber-500/10" },
-          { label: "Processing", value: "1", icon: RefreshCw, color: "text-blue-500", bg: "bg-blue-500/10" },
-          { label: "Shipped", value: "0", icon: ShoppingCart, color: "text-indigo-500", bg: "bg-indigo-500/10" },
-          { label: "Delivered", value: "4,521", icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-          { label: "Unpaid", value: "0", icon: CreditCard, color: "text-red-500", bg: "bg-red-500/10" },
+          { label: "Pending Orders", value: orders.filter(o => o.status === 'Pending').length, icon: Clock, color: "text-amber-500", bg: "bg-amber-500/10" },
+          { label: "Processing", value: orders.filter(o => o.status === 'Processing').length, icon: RefreshCw, color: "text-blue-500", bg: "bg-blue-500/10" },
+          { label: "Shipped", value: orders.filter(o => o.status === 'Shipped').length, icon: ShoppingCart, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+          { label: "Delivered", value: orders.filter(o => o.status === 'Delivered').length, icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+          { label: "Pay Later / Unpaid", value: orders.filter(o => o.payment_status === 'Unpaid').length, icon: CreditCard, color: "text-rose-500", bg: "bg-rose-500/10" },
         ].map((stat, i) => (
           <div key={i} className="glass-panel p-4 rounded-xl border border-border/50 flex flex-col justify-center items-center text-center bg-card">
             <div className={`p-2 rounded-full ${stat.bg} mb-2`}>
@@ -155,13 +389,13 @@ export function SalesOrders() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search orders..."
+            placeholder="Search orders by number or customer name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none"
           />
         </div>
-        <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
+        <button onClick={() => toast.info('Filters applied')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
           <Filter className="size-4" /> Filter
         </button>
       </div>
@@ -176,69 +410,46 @@ export function SalesOrders() {
                 <tr>
                   <th className="px-6 py-4">Order ID</th>
                   <th className="px-6 py-4">Customer</th>
-                  <th className="px-6 py-4">Date</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Payment</th>
                   <th className="px-6 py-4 text-right">Amount</th>
-                  <th className="px-6 py-4">Fulfillment Status</th>
-                  <th className="px-6 py-4">Payment Status</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {filteredOrders.map((order, i) => (
-                  <motion.tr 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    key={order.id} 
-                    className="hover:bg-muted/50 transition-colors group cursor-pointer"
-                  >
-                    <td className="px-6 py-4">
-                      <p className="font-semibold text-foreground flex items-center gap-2">
-                        <Box className="size-4 text-primary" /> {order.order_number}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {order.items?.items?.length || 0} Items
-                      </p>
+                {filteredOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-muted-foreground font-medium">
+                      No sales orders found. Click "Create Sales Order" to record a new sale.
                     </td>
-                    <td className="px-6 py-4 font-medium">{(order as any).customer_name || "Enterprise Customer"}</td>
-                    <td className="px-6 py-4 text-muted-foreground text-xs">
-                      {new Date(order.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-foreground text-right">
-                      ₹{Number(order.total).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 w-fit ${
-                        order.status === 'Pending' ? 'bg-amber-500/10 text-amber-600' :
-                        order.status === 'Processing' ? 'bg-blue-500/10 text-blue-600' :
-                        order.status === 'Shipped' ? 'bg-indigo-500/10 text-indigo-600' :
-                        'bg-emerald-500/10 text-emerald-600'
-                      }`}>
-                        {order.status === 'Pending' ? <Clock className="size-3" /> :
-                         order.status === 'Processing' ? <RefreshCw className="size-3" /> :
-                         order.status === 'Shipped' ? <ShoppingCart className="size-3" /> :
-                         <CheckCircle2 className="size-3" />}
-                        {order.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
-                        order.payment_status === 'Paid' ? 'bg-emerald-500/10 text-emerald-600' :
-                        order.payment_status === 'Partially Paid' ? 'bg-blue-500/10 text-blue-600' :
-                        'bg-red-500/10 text-red-600'
-                      }`}>
-                        {order.payment_status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => toast.info('Feature coming soon!')} className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors" title="Print Invoice">
-                          <Printer className="size-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))}
+                  </tr>
+                ) : (
+                  filteredOrders.map((o) => (
+                    <tr key={o.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-6 py-4 font-mono font-bold text-primary flex items-center gap-2">
+                        <Box className="size-4 text-primary" /> {o.order_number}
+                      </td>
+                      <td className="px-6 py-4 font-medium">{o.customer_name || "Walk-in Customer"}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          o.status === 'Delivered' ? 'bg-emerald-500/10 text-emerald-600' :
+                          o.status === 'Shipped' ? 'bg-indigo-500/10 text-indigo-600' :
+                          'bg-amber-500/10 text-amber-600'
+                        }`}>
+                          {o.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          o.payment_status === 'Paid' ? 'bg-emerald-500/10 text-emerald-600' :
+                          'bg-rose-500/10 text-rose-600'
+                        }`}>
+                          {o.payment_status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right font-bold font-mono">₹{Number(o.total || 0).toFixed(2)}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           )}

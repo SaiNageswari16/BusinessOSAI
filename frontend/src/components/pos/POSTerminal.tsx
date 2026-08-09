@@ -1887,6 +1887,54 @@ function PosTerminalInner() {
                 </div>
               </div>
 
+              {/* DYNAMIC ADDITIONAL CHARGES BAR (Freight, Packing, Transport, etc.) */}
+              <div className="px-3 py-2.5 border-b border-slate-200/70 bg-emerald-50/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5 text-emerald-600" /> Additional Charges (Freight / Transport)
+                  </span>
+                  <button
+                    onClick={handleAddPosChargeRow}
+                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 bg-white border border-emerald-200 hover:bg-emerald-100 px-2 py-0.5 rounded-md transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" /> Add Charge
+                  </button>
+                </div>
+
+                {posCustomCharges.length > 0 && (
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {posCustomCharges.map(ch => (
+                      <div key={ch.id} className="flex items-center gap-1.5 bg-white border border-emerald-200/70 rounded-lg p-1 shadow-2xs">
+                        <input
+                          type="text"
+                          value={ch.name}
+                          onChange={e => handleUpdatePosCharge(ch.id, "name", e.target.value)}
+                          placeholder="Charge name (e.g. Transport)"
+                          className="w-full text-xs font-semibold text-slate-800 outline-none px-1.5"
+                        />
+                        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-md px-1 shrink-0">
+                          <span className="text-[10px] text-slate-400 font-bold">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={ch.amount || ""}
+                            onChange={e => handleUpdatePosCharge(ch.id, "amount", e.target.value)}
+                            placeholder="0"
+                            className="w-14 text-right text-xs font-bold text-slate-900 outline-none py-0.5"
+                          />
+                        </div>
+                        <button
+                          onClick={() => handleDeletePosCharge(ch.id)}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors shrink-0"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Totals Box */}
               <div className="p-4 space-y-1.5 border-b border-slate-100 border-dashed bg-slate-50/40">
                 <div className="flex justify-between text-[12px]">
@@ -1917,6 +1965,13 @@ function PosTerminalInner() {
                   <span className="text-slate-500 font-bold">GST Tax</span>
                   <span className="font-black text-slate-700">+{formatCurrency(tax)}</span>
                 </div>
+
+                {posAdditionalChargesTotal > 0 && (
+                  <div className="flex justify-between text-[12px] text-emerald-700 font-bold">
+                    <span className="flex items-center gap-1"><Truck className="w-3 h-3 text-emerald-600" /> Extra Additional Charges</span>
+                    <span className="font-black">+{formatCurrency(posAdditionalChargesTotal)}</span>
+                  </div>
+                )}
 
                 {afterTaxDiscount > 0 && (
                   <div className="flex justify-between text-[12px] text-purple-600 font-bold">
