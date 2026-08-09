@@ -109,6 +109,54 @@ async def list_invoices(
     return paginate(result.scalars().all(), total or 0, page, page_size)
 
 
+@router.get("/customer-summary/{customer_id}")
+async def get_customer_invoice_summary(
+    customer_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    res = await db.execute(
+        select(Invoice)
+        .where(Invoice.customer_id == customer_id, Invoice.tenant_id == ctx.tenant_id)
+        .order_by(Invoice.invoice_date.desc())
+    )
+    invoices = res.scalars().all()
+
+    total_invoices = len(invoices)
+    total_spent = sum(float(inv.total_amount or 0) for inv in invoices)
+
+    unpaid_invoices = [
+        inv for inv in invoices
+        if str(inv.status).lower() not in ("paid", "voided", "cancelled") or float(inv.balance_due or 0) > 0
+    ]
+
+    total_pending_due = sum(
+        float(inv.balance_due) if (inv.balance_due is not None and float(inv.balance_due) > 0) else (float(inv.total_amount or 0) if str(inv.status).lower() not in ("paid", "voided", "cancelled") else 0.0)
+        for inv in invoices
+    )
+
+    last_purchase_date = invoices[0].invoice_date.isoformat() if (invoices and invoices[0].invoice_date) else None
+
+    return {
+        "customer_id": str(customer_id),
+        "total_invoices": total_invoices,
+        "total_spent": round(total_spent, 2),
+        "total_pending_due": round(total_pending_due, 2),
+        "last_purchase_date": last_purchase_date,
+        "unpaid_invoices": [
+            {
+                "id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+                "total_amount": float(inv.total_amount or 0),
+                "balance_due": float(inv.balance_due) if inv.balance_due is not None else float(inv.total_amount or 0),
+                "status": str(inv.status),
+            }
+            for inv in unpaid_invoices
+        ]
+    }
+
+
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
 async def get_invoice(
     invoice_id: uuid.UUID,
@@ -157,6 +205,21 @@ async def create_invoice(
     for idx, line_payload in enumerate(payload.lines):
         line = InvoiceLine(invoice_id=invoice.id, line_number=idx + 1, **line_payload.model_dump())
         db.add(line)
+
+    # If customer had past unpaid invoices and today's invoice is paid, clear past dues
+    if payload.customer_id and (str(invoice.status).lower() == "paid" or getattr(payload, "payment_status", "").upper() == "PAID"):
+        past_res = await db.execute(
+            select(Invoice).where(
+                Invoice.customer_id == payload.customer_id,
+                Invoice.tenant_id == ctx.tenant_id,
+                Invoice.id != invoice.id,
+                Invoice.status != "paid",
+            )
+        )
+        for past_inv in past_res.scalars().all():
+            past_inv.status = "paid"
+            past_inv.balance_due = 0.0
+            past_inv.amount_paid = past_inv.total_amount
 
     await write_audit_log(
         db,

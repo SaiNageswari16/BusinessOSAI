@@ -21,7 +21,9 @@ import {
   Receipt,
   Sparkles,
   ArrowLeft,
-  DollarSign
+  DollarSign,
+  History,
+  Wallet
 } from "lucide-react";
 import { posApi, crmApi, invoicesApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -74,6 +76,15 @@ export function PosSalesInvoice() {
   const [newPartyEmail, setNewPartyEmail] = useState("");
   const [newPartyCompany, setNewPartyCompany] = useState("");
 
+  // Customer History & Pending Due Tracking
+  const [customerSummary, setCustomerSummary] = useState<{
+    total_invoices: number;
+    total_spent: number;
+    total_pending_due: number;
+    last_purchase_date: string | null;
+  } | null>(null);
+  const [includePreviousDueInBill, setIncludePreviousDueInBill] = useState(false);
+
   useEffect(() => {
     posApi
       .getProducts()
@@ -84,6 +95,24 @@ export function PosSalesInvoice() {
       .then((data: any) => setCustomers(data.items || data))
       .catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setCustomerSummary(null);
+      setIncludePreviousDueInBill(false);
+      return;
+    }
+    invoicesApi
+      .getCustomerSummary(selectedCustomer)
+      .then((data: any) => {
+        if (data) {
+          setCustomerSummary(data);
+        }
+      })
+      .catch(() => {
+        setCustomerSummary(null);
+      });
+  }, [selectedCustomer]);
 
   const handleAddItem = () => {
     setItems([
@@ -209,30 +238,50 @@ export function PosSalesInvoice() {
   }
 
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
-  const rawTotal = Math.max(0, grossTotal - afterTaxDiscount);
+  const previousDueAmount = (includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
+  const baseRawTotal = Math.max(0, grossTotal - afterTaxDiscount);
+  const rawTotal = baseRawTotal + previousDueAmount;
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
   const grandTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
 
   const activeCustomerObj = customers.find((c) => c.id === selectedCustomer);
 
-  const handleCreateNewParty = (e: React.FormEvent) => {
+  const handleCreateNewParty = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPartyName.trim()) return toast.error("Party name is required");
-    const newCust = {
-      id: `party-${Date.now()}`,
-      name: newPartyName.trim(),
-      phone: newPartyPhone.trim() || undefined,
-      email: newPartyEmail.trim() || undefined,
-      company: newPartyCompany.trim() || undefined,
-    };
-    setCustomers([newCust, ...customers]);
-    setSelectedCustomer(newCust.id);
-    setIsAddPartyOpen(false);
-    setNewPartyName("");
-    setNewPartyPhone("");
-    setNewPartyEmail("");
-    setNewPartyCompany("");
-    toast.success(`Party "${newCust.name}" created and selected!`);
+    try {
+      const created = await crmApi.createCustomer({
+        name: newPartyName.trim(),
+        phone: newPartyPhone.trim() || undefined,
+        email: newPartyEmail.trim() || undefined,
+        company_name: newPartyCompany.trim() || undefined,
+      });
+      const customerObj = created.data || created;
+      setCustomers([customerObj, ...customers]);
+      setSelectedCustomer(customerObj.id);
+      setIsAddPartyOpen(false);
+      setNewPartyName("");
+      setNewPartyPhone("");
+      setNewPartyEmail("");
+      setNewPartyCompany("");
+      toast.success(`Party "${customerObj.name}" saved to database & selected!`);
+    } catch (err) {
+      const newCust = {
+        id: `party-${Date.now()}`,
+        name: newPartyName.trim(),
+        phone: newPartyPhone.trim() || undefined,
+        email: newPartyEmail.trim() || undefined,
+        company: newPartyCompany.trim() || undefined,
+      };
+      setCustomers([newCust, ...customers]);
+      setSelectedCustomer(newCust.id);
+      setIsAddPartyOpen(false);
+      setNewPartyName("");
+      setNewPartyPhone("");
+      setNewPartyEmail("");
+      setNewPartyCompany("");
+      toast.success(`Party "${newCust.name}" created and selected!`);
+    }
   };
 
   const [printedBill, setPrintedBill] = useState<any>(null);
@@ -380,33 +429,80 @@ export function PosSalesInvoice() {
               </select>
 
               {activeCustomerObj ? (
-                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex items-center justify-between text-xs">
-                  <div className="space-y-1">
-                    <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                      {activeCustomerObj.name}
-                      <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                        Active Party
-                      </span>
-                    </div>
-                    <div className="text-slate-500 flex items-center gap-4 text-[11px]">
-                      {activeCustomerObj.phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="w-3 h-3 text-slate-400" /> {activeCustomerObj.phone}
+                <div className="space-y-3">
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex items-center justify-between text-xs">
+                    <div className="space-y-1">
+                      <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                        {activeCustomerObj.name}
+                        <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                          Active Party
                         </span>
-                      )}
-                      {activeCustomerObj.email && (
-                        <span className="flex items-center gap-1">
-                          <Mail className="w-3 h-3 text-slate-400" /> {activeCustomerObj.email}
-                        </span>
-                      )}
+                      </div>
+                      <div className="text-slate-500 flex items-center gap-4 text-[11px]">
+                        {activeCustomerObj.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="w-3 h-3 text-slate-400" /> {activeCustomerObj.phone}
+                          </span>
+                        )}
+                        {activeCustomerObj.email && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="w-3 h-3 text-slate-400" /> {activeCustomerObj.email}
+                          </span>
+                        )}
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCustomer("")}
+                      className="text-xs text-slate-400 hover:text-red-500 font-semibold"
+                    >
+                      Change Party
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setSelectedCustomer("")}
-                    className="text-xs text-slate-400 hover:text-red-500 font-semibold"
-                  >
-                    Change Party
-                  </button>
+
+                  {/* Customer History & Outstanding Dues Summary */}
+                  {customerSummary && (
+                    <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-3.5 space-y-2.5 shadow-md border border-indigo-900/50">
+                      <div className="flex items-center justify-between text-xs border-b border-white/10 pb-2">
+                        <span className="font-bold text-indigo-200 flex items-center gap-1.5">
+                          <History className="w-3.5 h-3.5 text-indigo-400" /> Complete Purchase History
+                        </span>
+                        <span className="text-[11px] text-slate-300">
+                          Total Orders: <strong className="text-white">{customerSummary.total_invoices}</strong> | Total Spent: <strong className="text-emerald-400">₹{customerSummary.total_spent.toFixed(2)}</strong>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs pt-0.5">
+                        <div className="flex items-center gap-2">
+                          <Wallet className="w-4 h-4 text-amber-400" />
+                          <div>
+                            <div className="text-[10px] text-slate-300 font-medium">Pending Outstanding Due</div>
+                            <div className={`text-sm font-extrabold ${customerSummary.total_pending_due > 0 ? "text-amber-300" : "text-emerald-400"}`}>
+                              ₹{customerSummary.total_pending_due.toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {customerSummary.total_pending_due > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setIncludePreviousDueInBill(!includePreviousDueInBill)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                              includePreviousDueInBill
+                                ? "bg-amber-500 text-slate-950 shadow-sm"
+                                : "bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 border border-amber-500/40"
+                            }`}
+                          >
+                            {includePreviousDueInBill ? "✓ Previous Due Added to Bill" : `+ Add Previous Due (₹${customerSummary.total_pending_due.toFixed(2)})`}
+                          </button>
+                        ) : (
+                          <span className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                            ✓ Clear Account (No Pending Dues)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-4 border border-dashed border-slate-300 rounded-xl bg-slate-50/50">
@@ -808,6 +904,15 @@ export function PosSalesInvoice() {
                 <div className="flex justify-between text-xs text-purple-600 font-bold">
                   <span>After-Tax Discount ({invoiceDiscountType === "percent" ? `${invoiceDiscountValue}%` : "Flat"}):</span>
                   <span className="font-black">-₹{afterTaxDiscount.toFixed(2)}</span>
+                </div>
+              )}
+
+              {includePreviousDueInBill && previousDueAmount > 0 && (
+                <div className="flex justify-between text-xs text-amber-800 font-bold bg-amber-50/90 p-2 rounded-lg border border-amber-200">
+                  <span className="flex items-center gap-1">
+                    <Wallet className="w-3.5 h-3.5 text-amber-600" /> Previous Outstanding Due:
+                  </span>
+                  <span>+₹{previousDueAmount.toFixed(2)}</span>
                 </div>
               )}
 

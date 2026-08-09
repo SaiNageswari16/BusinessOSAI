@@ -3899,6 +3899,7 @@ export const invoicesApi = {
   listInvoices: (params?: { page?: number; page_size?: number; status?: string; invoice_type?: string; search?: string }) =>
     request<PaginatedResponse<Invoice>>("GET", "/invoices", undefined, params),
   getInvoice: (id: string) => request<Invoice>("GET", `/invoices/${id}`),
+  getCustomerSummary: (customerId: string) => request<any>("GET", `/invoices/customer-summary/${customerId}`),
   createInvoice: (data: any) => request<Invoice>("POST", "/invoices", data),
   sendInvoice: (id: string) => request<{ message: string }>("POST", `/invoices/${id}/send`),
   recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string }) =>
@@ -4076,6 +4077,7 @@ export const crmApi = {
   getOpportunities: () => request<any>("GET", "/crm/opportunities"),
   getLeads: (page = 1, pageSize = 100) => request<any>("GET", "/crm/leads", undefined, { page, page_size: pageSize }),
   getCustomers: (page = 1, pageSize = 200) => request<any>("GET", "/crm/customers", undefined, { page, page_size: pageSize }),
+  createCustomer: (data: any) => request<any>("POST", "/crm/customers", data),
   getQuotations: () => request<any>("GET", "/crm/quotations"),
   getSalesOrders: () => request<any>("GET", "/crm/sales-orders")
 };
