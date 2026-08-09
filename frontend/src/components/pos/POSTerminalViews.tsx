@@ -655,77 +655,36 @@ export const DeliveryView = () => {
   );
 };
 export const ExchangeView = () => {
-  const returnItem = posProducts[0];
-  const newItem = posProducts[5];
-  const diff = newItem.sellingPrice - returnItem.sellingPrice;
-
   return (
-    <div className="flex-1 bg-slate-50/50 flex flex-col p-6 overflow-hidden">
+    <div className="flex-1 bg-slate-50/50 flex flex-col p-6 overflow-y-auto">
       <div className="mb-6 shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-amber-100 text-amber-700 rounded-xl flex items-center justify-center">
             <RefreshCw className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-slate-900">Product Exchange</h2>
-            <p className="text-slate-500 text-sm font-medium">Scan returned item and replacement item.</p>
-          </div>
-        </div>
-        <button className="bg-slate-900 text-white font-bold px-6 py-2 rounded-lg hover:bg-slate-800 transition-colors shadow-md">
-          Process Exchange
-        </button>
-      </div>
-
-      <div className="flex-1 flex gap-6">
-        {/* Return Pane */}
-        <div className="flex-1 bg-white border border-slate-200 rounded-2xl flex flex-col overflow-hidden shadow-sm">
-          <div className="bg-rose-50 border-b border-rose-100 p-4 text-rose-700 font-bold uppercase tracking-widest text-sm flex items-center justify-between">
-            <span>Item to Return (Inbound)</span>
-            <span className="bg-rose-200 text-rose-800 px-2 rounded">-1</span>
-          </div>
-          <div className="p-6 flex-1 flex flex-col items-center text-center">
-            <img src={returnItem.image} alt={returnItem.name} className="w-48 h-48 object-cover rounded-xl border border-slate-200 mb-6" />
-            <h3 className="text-xl font-bold text-slate-900 mb-2">{returnItem.name}</h3>
-            <p className="text-sm font-mono text-slate-500 mb-6">{returnItem.barcode}</p>
-            <div className="mt-auto w-full bg-slate-50 border border-slate-200 rounded-xl p-4 flex justify-between items-center">
-              <span className="font-bold text-slate-500">Value Credit</span>
-              <span className="text-2xl font-black text-rose-600">-{formatCurrency(returnItem.sellingPrice)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Exchange Icon */}
-        <div className="flex flex-col justify-center">
-          <div className="w-12 h-12 bg-white border border-slate-200 rounded-full flex items-center justify-center shadow-sm text-slate-400">
-            <ArrowRightLeft className="w-6 h-6" />
-          </div>
-        </div>
-
-        {/* New Item Pane */}
-        <div className="flex-1 bg-white border border-slate-200 rounded-2xl flex flex-col overflow-hidden shadow-sm">
-          <div className="bg-emerald-50 border-b border-emerald-100 p-4 text-emerald-700 font-bold uppercase tracking-widest text-sm flex items-center justify-between">
-            <span>Replacement Item (Outbound)</span>
-            <span className="bg-emerald-200 text-emerald-800 px-2 rounded">+1</span>
-          </div>
-          <div className="p-6 flex-1 flex flex-col items-center text-center">
-            <img src={newItem.image} alt={newItem.name} className="w-48 h-48 object-cover rounded-xl border border-slate-200 mb-6" />
-            <h3 className="text-xl font-bold text-slate-900 mb-2">{newItem.name}</h3>
-            <p className="text-sm font-mono text-slate-500 mb-6">{newItem.barcode}</p>
-            <div className="mt-auto w-full bg-slate-50 border border-slate-200 rounded-xl p-4 flex justify-between items-center">
-              <span className="font-bold text-slate-500">New Charge</span>
-              <span className="text-2xl font-black text-emerald-600">{formatCurrency(newItem.sellingPrice)}</span>
-            </div>
+            <h2 className="text-2xl font-black text-slate-900">Exchange Policy Notice</h2>
+            <p className="text-slate-500 text-sm font-medium">Policy Enforced: Direct item exchange is disabled.</p>
           </div>
         </div>
       </div>
 
-      <div className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
-        <span className="text-lg font-bold text-slate-600 uppercase tracking-widest">Net Exchange Difference</span>
-        <div className="text-right">
-          <span className={`text-4xl font-black ${diff > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-            {diff > 0 ? `+${formatCurrency(diff)}` : formatCurrency(diff)}
-          </span>
-          <p className="text-sm font-bold text-slate-500 mt-1">{diff > 0 ? 'Amount due from customer' : 'Amount to refund to customer'}</p>
+      <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl p-8 max-w-2xl mx-auto my-auto text-center space-y-4">
+        <div className="size-14 bg-amber-500/20 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+          <ShieldAlert className="size-8" />
+        </div>
+        <h3 className="text-xl font-black text-amber-900">Strict "Sales Return Only" Policy Active</h3>
+        <p className="text-sm text-slate-700 font-medium leading-relaxed">
+          As per enterprise store configuration, direct item-for-item exchange is <strong>not allowed</strong>. 
+          All returned products must be processed under <strong>Returns & Refunds</strong> to restore inventory stock, issue a Sales Return Receipt / Credit Note, and then initiate a new sales transaction.
+        </p>
+        <div className="pt-4 flex justify-center gap-4">
+          <button
+            onClick={() => window.location.href = '/pos?view=returns'}
+            className="bg-slate-900 text-white font-bold px-6 py-3 rounded-xl hover:bg-slate-800 transition-colors shadow-md flex items-center gap-2"
+          >
+            <ArrowRightLeft className="size-4" /> Go to Returns & Refunds
+          </button>
         </div>
       </div>
     </div>

@@ -544,6 +544,24 @@ export function PosSalesInvoice() {
             </select>
           </div>
 
+          {/* Sales Representative Selector & Commission Points */}
+          <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 rounded-xl px-2.5 py-1 text-xs font-semibold">
+            <span className="text-amber-700 font-normal">Sales Rep:</span>
+            <select
+              value={salesExecutive}
+              onChange={(e) => setSalesExecutive(e.target.value)}
+              className="bg-transparent text-amber-950 font-bold outline-none cursor-pointer"
+            >
+              <option value="Nageswari (Sales Lead)">Nageswari (Sales Lead)</option>
+              <option value="Abhilash (Senior Executive)">Abhilash (Senior Executive)</option>
+              <option value="Rajesh Kumar (Account Exec)">Rajesh Kumar (Account Exec)</option>
+              <option value="Priya Sharma (Retail Asst)">Priya Sharma (Retail Asst)</option>
+            </select>
+            <span className="bg-amber-500 text-white px-1.5 py-0.5 rounded text-[10px] font-black">
+              +{Math.floor(grandTotal / 100)} Pts
+            </span>
+          </div>
+
           {/* Pricing Tier Mode Selector */}
           <div className="flex items-center bg-slate-100 p-1 border border-slate-200 rounded-xl text-xs font-bold">
             <button
