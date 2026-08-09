@@ -41,7 +41,8 @@ export function PurchaseReturns() {
   }, []);
 
   const handleOpenNew = () => {
-    setReturnNo(`RET-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+    const seq = String(returns.length + 1).padStart(4, '0');
+    setReturnNo(`PRET-2026-${seq}`);
     setPoId(purchaseOrders[0]?.id || "");
     setProductId(products[0]?.id || "");
     setQty(1);

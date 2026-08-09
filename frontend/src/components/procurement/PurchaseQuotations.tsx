@@ -41,7 +41,8 @@ export function PurchaseQuotations() {
   }, []);
 
   const handleOpenNew = () => {
-    setRfqNo(`RFQ-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+    const seq = String(quotations.length + 1).padStart(4, '0');
+    setRfqNo(`RFQ-2026-${seq}`);
     setSupplierId(suppliers[0]?.id || "");
     setProductId(products[0]?.id || "");
     setQty(1);

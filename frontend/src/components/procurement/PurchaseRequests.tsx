@@ -11,7 +11,9 @@ export function PurchaseRequests() {
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
 
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [prNo, setPrNo] = useState("");
+  const [supplierId, setSupplierId] = useState("");
   const [productId, setProductId] = useState("");
   const [qty, setQty] = useState(1);
   const [estimatedPrice, setEstimatedPrice] = useState(100);
@@ -19,6 +21,9 @@ export function PurchaseRequests() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      const supps = await inventoryApi.getSuppliers().catch(() => []);
+      setSuppliers(supps || []);
+
       const prs = await inventoryApi.getPurchaseRequests();
       setRequests(prs || []);
 
@@ -36,7 +41,9 @@ export function PurchaseRequests() {
   }, []);
 
   const handleOpenNew = () => {
-    setPrNo(`PR-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+    const seq = String(requests.length + 1).padStart(4, '0');
+    setPrNo(`PR-2026-${seq}`);
+    setSupplierId(suppliers[0]?.id || "");
     setProductId(products[0]?.id || "");
     setQty(1);
     setEstimatedPrice(100);
@@ -87,6 +94,7 @@ export function PurchaseRequests() {
             <thead>
               <tr className="bg-muted/50 border-b text-muted-foreground text-xs uppercase font-semibold">
                 <th className="py-4 px-6">PR Number</th>
+                <th className="py-4 px-6">Target Vendor / Supplier</th>
                 <th className="py-4 px-6">Requested Items</th>
                 <th className="py-4 px-6 text-right">Total Amount</th>
                 <th className="py-4 px-6">Date Raised</th>
@@ -96,52 +104,58 @@ export function PurchaseRequests() {
             <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-muted-foreground">
+                  <td colSpan={6} className="py-16 text-center text-muted-foreground">
                     <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-2" />
                     Loading purchase requests...
                   </td>
                 </tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-muted-foreground font-semibold">
+                  <td colSpan={6} className="py-16 text-center text-muted-foreground font-semibold">
                     No purchase requests raised yet. Click "Raise PR" to create one.
                   </td>
                 </tr>
               ) : (
-                requests.map((pr) => (
-                  <tr key={pr.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="py-4 px-6">
-                      <div className="font-bold text-primary font-mono">{pr.request_number}</div>
-                    </td>
-                    <td className="py-4 px-6">
-                      {pr.items && pr.items.length > 0 ? (
-                        <div className="space-y-1">
-                          {pr.items.map((it: any) => (
-                            <div key={it.id} className="text-foreground font-medium">
-                              • {it.product_name || "Unknown Product"} (x{it.quantity})
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">No items specified</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-6 text-right font-bold">
-                      ₹{pr.total_amount.toLocaleString("en-IN")}
-                    </td>
-                    <td className="py-4 px-6 font-mono text-xs text-muted-foreground">
-                      {pr.request_date ? new Date(pr.request_date).toLocaleDateString() : "—"}
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        pr.status === "Approved" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
-                      }`}>
-                        {pr.status === "Approved" ? <ShieldCheck className="size-3" /> : <Clock className="size-3" />}
-                        {pr.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                requests.map((pr) => {
+                  const suppName = suppliers.find(s => s.id === pr.supplier_id)?.name || "Preferred Vendor";
+                  return (
+                    <tr key={pr.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="py-4 px-6">
+                        <div className="font-bold text-primary font-mono">{pr.request_number}</div>
+                      </td>
+                      <td className="py-4 px-6 font-semibold text-foreground">
+                        {suppName}
+                      </td>
+                      <td className="py-4 px-6">
+                        {pr.items && pr.items.length > 0 ? (
+                          <div className="space-y-1">
+                            {pr.items.map((it: any) => (
+                              <div key={it.id} className="text-foreground font-medium">
+                                • {it.product_name || "Unknown Product"} (x{it.quantity})
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">No items specified</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-right font-bold">
+                        ₹{pr.total_amount.toLocaleString("en-IN")}
+                      </td>
+                      <td className="py-4 px-6 font-mono text-xs text-muted-foreground">
+                        {pr.request_date ? new Date(pr.request_date).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          pr.status === "Approved" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
+                        }`}>
+                          {pr.status === "Approved" ? <ShieldCheck className="size-3" /> : <Clock className="size-3" />}
+                          {pr.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -164,7 +178,7 @@ export function PurchaseRequests() {
 
             <form onSubmit={handleSubmit} className="space-y-4 text-sm">
               <div className="space-y-1.5">
-                <label className="font-semibold text-muted-foreground">PR Document Number *</label>
+                <label className="font-semibold text-muted-foreground">PR Sequence Number *</label>
                 <input
                   type="text"
                   required
@@ -172,6 +186,21 @@ export function PurchaseRequests() {
                   onChange={(e) => setPrNo(e.target.value)}
                   className="w-full p-2.5 bg-background border rounded-lg text-foreground text-sm font-mono focus:ring-1 focus:ring-primary focus:outline-none"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-muted-foreground">Target Vendor / Supplier *</label>
+                <select
+                  required
+                  value={supplierId}
+                  onChange={(e) => setSupplierId(e.target.value)}
+                  className="w-full p-2.5 bg-background border rounded-lg text-foreground text-sm cursor-pointer focus:ring-1 focus:ring-primary focus:outline-none"
+                >
+                  <option value="">Select Target Vendor / Supplier</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.code || 'Vendor'})</option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1.5">
