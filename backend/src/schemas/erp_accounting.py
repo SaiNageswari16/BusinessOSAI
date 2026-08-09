@@ -326,6 +326,47 @@ class InvoiceResponse(ORMModel):
     updated_at: datetime
 
 
+class InvoiceReturnLineCreate(BaseModel):
+    product_id: uuid.UUID | None = None
+    product_name: str
+    quantity: float
+    unit_price: float
+    line_total: float | None = None
+    tax_amount: float = 0.0
+
+
+class InvoiceReturnCreate(BaseModel):
+    invoice_id: uuid.UUID | None = None
+    invoice_number: str | None = None
+    reason: str = "Defective / Wrong Size"
+    refund_method: str = "Cash Refund"
+    lines: list[InvoiceReturnLineCreate]
+
+
+class InvoiceReturnLineResponse(ORMModel):
+    id: uuid.UUID
+    product_id: uuid.UUID | None
+    product_name: str
+    quantity: float
+    unit_price: float
+    line_total: float
+    tax_amount: float
+
+
+class InvoiceReturnResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    invoice_id: uuid.UUID
+    return_number: str
+    return_date: date
+    reason: str | None
+    total_amount: float
+    status: str
+    lines: list[InvoiceReturnLineResponse] = Field(default_factory=list)
+    created_at: datetime
+
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  BANK
 # ═══════════════════════════════════════════════════════════════════

@@ -31,9 +31,12 @@ export interface FullInvoiceData {
   subtotal?: number;
   discount_amount?: number;
   tax_amount?: number;
+  additional_charges?: Array<{ name: string; amount: number }>;
+  round_off?: number;
   grand_total?: number;
   payment_method?: string;
   payment_status?: string;
+  amount_received?: number;
   notes?: string;
   terms?: string;
 }
@@ -52,7 +55,7 @@ export function FullInvoicePrinter({
   onClose,
   autoPrint = false,
   customTemplate,
-}: FullInvoicePropsWrapper) {
+}: FullInvoicePrinterProps) {
   const printContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -453,6 +456,22 @@ export function FullInvoicePrinter({
                     </>
                   )}
 
+                  {/* Additional Charges (Freight, Packing, etc.) */}
+                  {(invoice.additional_charges || []).filter(c => Number(c.amount) > 0).map((charge, idx) => (
+                    <div key={idx} className="flex justify-between text-slate-600">
+                      <span>{charge.name}:</span>
+                      <span>+₹{Number(charge.amount).toFixed(2)}</span>
+                    </div>
+                  ))}
+
+                  {/* Round Off */}
+                  {invoice.round_off !== undefined && invoice.round_off !== 0 && (
+                    <div className="flex justify-between text-slate-500 italic">
+                      <span>Round Off:</span>
+                      <span>{invoice.round_off >= 0 ? '+' : ''}₹{invoice.round_off.toFixed(2)}</span>
+                    </div>
+                  )}
+
                   <div
                     className="flex justify-between items-center pt-3 border-t-2 border-slate-300 font-black text-sm text-slate-900"
                     style={{ borderColor: primaryColor }}
@@ -462,6 +481,27 @@ export function FullInvoicePrinter({
                       ₹{grandTotal.toFixed(2)}
                     </span>
                   </div>
+
+                  {/* Amount Received & Balance */}
+                  {invoice.amount_received !== undefined && invoice.amount_received > 0 && (
+                    <>
+                      <div className="flex justify-between text-slate-600 font-semibold pt-1">
+                        <span>Amount Received:</span>
+                        <span className="text-emerald-700">₹{Number(invoice.amount_received).toFixed(2)}</span>
+                      </div>
+                      {Number(invoice.amount_received) >= grandTotal ? (
+                        <div className="flex justify-between text-emerald-600 font-bold">
+                          <span>Change Returned:</span>
+                          <span>₹{(Number(invoice.amount_received) - grandTotal).toFixed(2)}</span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between text-red-600 font-bold">
+                          <span>Balance Due:</span>
+                          <span>₹{(grandTotal - Number(invoice.amount_received)).toFixed(2)}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 

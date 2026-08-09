@@ -70,10 +70,36 @@ export function PosSalesInvoice() {
   const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [paymentMode, setPaymentMode] = useState("Cash");
 
-  // Additional Charges State
-  const [freightCharges, setFreightCharges] = useState<number>(0);
-  const [packingCharges, setPackingCharges] = useState<number>(0);
-  const [otherCharges, setOtherCharges] = useState<number>(0);
+  // Dynamic Custom Additional Charges State
+  const [customCharges, setCustomCharges] = useState<{ id: string; name: string; amount: number | "" }[]>([
+    { id: "1", name: "Freight / Transport", amount: 0 },
+    { id: "2", name: "Packing Charge", amount: 0 }
+  ]);
+
+  const handleAddChargeRow = () => {
+    setCustomCharges((prev) => [
+      ...prev,
+      { id: Date.now().toString(), name: "Custom Charge", amount: "" }
+    ]);
+  };
+
+  const handleUpdateCharge = (id: string, field: "name" | "amount", value: any) => {
+    setCustomCharges((prev) =>
+      prev.map((c) => {
+        if (c.id === id) {
+          return {
+            ...c,
+            [field]: field === "amount" ? (value === "" ? "" : Math.max(0, Number(value))) : value
+          };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleDeleteCharge = (id: string) => {
+    setCustomCharges((prev) => prev.filter((c) => c.id !== id));
+  };
 
   // Pricing Mode, Location & Sales Executive State
   const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale">("Retail");
@@ -140,6 +166,21 @@ export function PosSalesInvoice() {
       });
   }, [selectedCustomer]);
 
+  const handlePricingModeChange = (mode: "Retail" | "Wholesale") => {
+    setPricingMode(mode);
+    setItems((prevItems) =>
+      prevItems.map((item) => {
+        if (!item.product_id) return item;
+        const product = products.find((p) => p.id === item.product_id);
+        if (!product) return item;
+        const basePrice = product.selling_price || product.price || product.mrp || 0;
+        const wholesalePrice = product.wholesale_price || (basePrice * 0.9);
+        const targetPrice = mode === "Wholesale" ? wholesalePrice : basePrice;
+        return { ...item, unit_price: targetPrice };
+      })
+    );
+  };
+
   const handleAddItem = () => {
     setItems([
       ...items,
@@ -159,6 +200,10 @@ export function PosSalesInvoice() {
     if (e.key === "Enter" && barcodeInput.trim() !== "") {
       const product = products.find((p) => p.barcode === barcodeInput.trim() || p.sku === barcodeInput.trim());
       if (product) {
+        const basePrice = product.selling_price || product.price || product.mrp || 0;
+        const wholesalePrice = product.wholesale_price || (basePrice * 0.9);
+        const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
+
         setItems([
           ...items,
           {
@@ -166,14 +211,14 @@ export function PosSalesInvoice() {
             product_id: product.id,
             product_name: product.name,
             quantity: 1,
-            unit_price: product.selling_price || product.price || product.mrp || 0,
+            unit_price: targetPrice,
             mrp: product.mrp || 0,
             discount_value: 0,
             discount_type: "percent",
             tax_rate: product.tax_percent || 18,
           },
         ]);
-        toast.success(`Added ${product.name}`);
+        toast.success(`Added ${product.name} (${pricingMode} Price)`);
         setBarcodeInput("");
       } else {
         toast.error("Product not found with this barcode / SKU");
@@ -189,8 +234,12 @@ export function PosSalesInvoice() {
           if (field === "product_id" && value) {
             const product = products.find((p) => p.id === value);
             if (product) {
+              const basePrice = product.selling_price || product.price || product.mrp || 0;
+              const wholesalePrice = product.wholesale_price || (basePrice * 0.9);
+              const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
+
               updated.product_name = product.name;
-              updated.unit_price = product.selling_price || product.price || product.mrp || 0;
+              updated.unit_price = targetPrice;
               updated.mrp = product.mrp || 0;
               updated.hsn_code = product.hsn_code || "";
               updated.tax_rate = product.tax_percent || 18;
@@ -265,7 +314,7 @@ export function PosSalesInvoice() {
 
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
   const previousDueAmount = (includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
-  const totalAdditionalCharges = Number(freightCharges || 0) + Number(packingCharges || 0) + Number(otherCharges || 0);
+  const totalAdditionalCharges = customCharges.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const baseRawTotal = Math.max(0, grossTotal - afterTaxDiscount) + totalAdditionalCharges;
   const rawTotal = baseRawTotal + previousDueAmount;
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
@@ -400,12 +449,18 @@ export function PosSalesInvoice() {
       subtotal: subtotal,
       discount_amount: totalDiscount,
       tax_amount: totalTax,
+      additional_charges: customCharges
+        .filter(c => Number(c.amount) > 0)
+        .map(c => ({ name: c.name || 'Additional Charge', amount: Number(c.amount) })),
+      round_off: autoRoundOff ? roundOff : undefined,
       grand_total: grandTotal,
       payment_method: paymentMode,
       payment_status: paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL'),
+      amount_received: paymentMode !== "Credit" && amountReceived !== "" ? Number(amountReceived) : undefined,
       terms: notes || undefined,
     };
   };
+
 
   const handlePreviewFullInvoice = () => {
     if (items.length === 0) return toast.error("Please add at least one item to preview invoice.");
@@ -1125,44 +1180,55 @@ export function PosSalesInvoice() {
                 </div>
               )}
 
-              {/* Additional Charges Input Fields */}
+              {/* Dynamic Custom Additional Charges */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2">
-                <span className="text-[11px] font-bold text-slate-700 block">Additional Charges (Freight & Packing)</span>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Freight / Transport</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="₹0"
-                      value={freightCharges || ""}
-                      onChange={(e) => setFreightCharges(Math.max(0, Number(e.target.value)))}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Packing Charge</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="₹0"
-                      value={packingCharges || ""}
-                      onChange={(e) => setPackingCharges(Math.max(0, Number(e.target.value)))}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Other Fee</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="₹0"
-                      value={otherCharges || ""}
-                      onChange={(e) => setOtherCharges(Math.max(0, Number(e.target.value)))}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none"
-                    />
-                  </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] font-bold text-slate-700">Additional Charges</span>
+                  <button
+                    type="button"
+                    onClick={handleAddChargeRow}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-md transition-all flex items-center gap-1"
+                  >
+                    + Add Charge Field
+                  </button>
                 </div>
+
+                {customCharges.length === 0 ? (
+                  <p className="text-[10px] text-slate-400 italic">No additional charges added. Click "+ Add Charge Field" to add fees.</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {customCharges.map((charge) => (
+                      <div key={charge.id} className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Charge Name (e.g. Freight, Packing, Handling)"
+                          value={charge.name}
+                          onChange={(e) => handleUpdateCharge(charge.id, "name", e.target.value)}
+                          className="flex-1 bg-white border border-slate-200 rounded-md px-2 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400"
+                        />
+                        <div className="relative w-24">
+                          <span className="absolute left-2 top-1 text-[10px] text-slate-400 font-bold">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={charge.amount}
+                            onChange={(e) => handleUpdateCharge(charge.id, "amount", e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-md pl-5 pr-2 py-1 text-xs font-bold text-slate-800 outline-none focus:border-blue-400 text-right"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCharge(charge.id)}
+                          title="Delete charge row"
+                          className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between text-xs text-slate-600">

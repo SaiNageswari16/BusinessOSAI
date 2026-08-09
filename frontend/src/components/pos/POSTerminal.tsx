@@ -573,6 +573,30 @@ function PosTerminalInner() {
   const [cartDiscountType, setCartDiscountType] = useState<"percent" | "amount">("percent");
   const [cartDiscountValue, setCartDiscountValue] = useState<number>(0);
 
+  // Dynamic Custom Additional Charges State (Freight, Packing, Transport, etc.)
+  const [posCustomCharges, setPosCustomCharges] = useState<{ id: string; name: string; amount: number }[]>([]);
+
+  const handleAddPosChargeRow = () => {
+    setPosCustomCharges(prev => [
+      ...prev,
+      { id: `chg_${Date.now()}_${Math.floor(Math.random() * 1000)}`, name: "Freight / Delivery Fee", amount: 0 }
+    ]);
+  };
+
+  const handleUpdatePosCharge = (id: string, field: "name" | "amount", value: any) => {
+    setPosCustomCharges(prev =>
+      prev.map(c => (c.id === id ? { ...c, [field]: field === "amount" ? Math.max(0, Number(value)) : value } : c))
+    );
+  };
+
+  const handleDeletePosCharge = (id: string) => {
+    setPosCustomCharges(prev => prev.filter(c => c.id !== id));
+  };
+
+  const posAdditionalChargesTotal = useMemo(() => {
+    return posCustomCharges.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+  }, [posCustomCharges]);
+
   // Cart Math with Dynamic Before-Tax & After-Tax Discount
   const subtotal = cart.reduce((sum, item) => {
     const { unitPrice } = getItemEffectivePrice(item);
@@ -615,9 +639,7 @@ function PosTerminalInner() {
   const previousDueToAdd = (includePreviousDueInBill && customerSummary?.total_pending_due > 0)
     ? Number(customerSummary.total_pending_due)
     : 0;
-  const total = Math.max(0, grossTotal - afterTaxDiscount) + previousDueToAdd;
-
-
+  const total = Math.max(0, grossTotal - afterTaxDiscount) + previousDueToAdd + posAdditionalChargesTotal;
 
   const handleCheckout = async () => {
     if (paymentMethod === 'Split') {
@@ -627,6 +649,15 @@ function PosTerminalInner() {
     if (paymentMethod === 'Cash') {
       setCashTendered(total.toString());
       setCashModalOpen(true);
+      return;
+    }
+    if (paymentMethod === 'Credit') {
+      if (!selectedCustomer || selectedCustomer.id === 'walk-in') {
+        toast.error("Please select or add a registered customer for Pay Later (Credit) sales!");
+        setIsCustomerModalOpen(true);
+        return;
+      }
+      await executeCheckout([{ payment_method: 'credit', amount: total }]);
       return;
     }
     await executeCheckout([{ payment_method: paymentMethod.toLowerCase(), amount: total }]);
