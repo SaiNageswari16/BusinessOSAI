@@ -151,17 +151,7 @@ async def resolve_or_create_category(
     cat = res.scalars().first()
     if cat:
         return str(cat.id)
-    try:
-        new_cat = ProductCategory(
-            name=category_name.strip(),
-            category_code=f"CAT-{uuid.uuid4().hex[:6].upper()}"
-        )
-        db.add(new_cat)
-        await db.flush()
-        return str(new_cat.id)
-    except Exception as e:
-        logger.warning(f"Could not auto-create category {category_name}: {e}")
-        return None
+    return None
 
 async def resolve_or_create_brand(
     db: AsyncSession,

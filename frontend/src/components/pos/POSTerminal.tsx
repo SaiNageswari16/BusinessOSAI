@@ -331,12 +331,26 @@ function PosTerminalInner() {
     enabled: true
   });
 
-  // Category Getters
+  // Category Getters (Filter to categories that actually contain products)
   const parentCategories = useMemo(() => {
     const explicitParents = categories.filter(c => !c.parent_id);
-    if (explicitParents.length > 0) return explicitParents;
-    return categories;
-  }, [categories]);
+    const candidateList = explicitParents.length > 0 ? explicitParents : categories;
+    
+    // Only show categories that have at least 1 product in inventory
+    const categoriesWithProducts = candidateList.filter(cat => {
+      const subCatIds = new Set(categories.filter(c => c.parent_id === cat.id).map(c => c.id));
+      const count = products.filter(p =>
+        p.category === cat.id ||
+        p.category_id === cat.id ||
+        (p.category && p.category.toLowerCase() === cat.name.toLowerCase()) ||
+        subCatIds.has(p.category) ||
+        subCatIds.has(p.category_id)
+      ).length;
+      return count > 0;
+    });
+
+    return categoriesWithProducts.length > 0 ? categoriesWithProducts : candidateList;
+  }, [categories, products]);
 
   const currentSubCategories = useMemo(() => {
     if (activeCategory === "all") return [];

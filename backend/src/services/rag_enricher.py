@@ -658,7 +658,7 @@ class RAGEnricherService:
                         lp.brand_id = new_brand.id
                     updated.append("brand")
 
-                # Category — link only if not set
+                # Category — link only if an existing category matches
                 if not lp.category_id and ai_item.category:
                     cat_name = ai_item.category.strip()
                     c_res = await session.execute(
@@ -670,33 +670,7 @@ class RAGEnricherService:
                     existing_cat = c_res.scalars().first()
                     if existing_cat:
                         lp.category_id = existing_cat.id
-                    else:
-                        try:
-                            code = "CAT-" + "".join(
-                                random.choices(string.ascii_uppercase + string.digits, k=8)
-                            )
-                            new_cat = ProductCategory(
-                                id=uuid.uuid4(),
-                                tenant_id=lp.tenant_id,
-                                name=cat_name,
-                                category_code=code,
-                                status=EntityStatus.ACTIVE,
-                            )
-                            session.add(new_cat)
-                            await session.flush()
-                            lp.category_id = new_cat.id
-                        except Exception:
-                            await session.rollback()
-                            c2 = await session.execute(
-                                select(ProductCategory).where(
-                                    ProductCategory.tenant_id == lp.tenant_id,
-                                    ProductCategory.name.ilike(cat_name),
-                                )
-                            )
-                            ec = c2.scalars().first()
-                            if ec:
-                                lp.category_id = ec.id
-                    updated.append("category")
+                        updated.append("category")
 
                 if updated:
                     logger.info(
