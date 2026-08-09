@@ -28,6 +28,7 @@ import {
 import { posApi, crmApi, invoicesApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
+import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 
 interface InvoiceItem {
@@ -75,6 +76,9 @@ export function PosSalesInvoice() {
   const [newPartyPhone, setNewPartyPhone] = useState("");
   const [newPartyEmail, setNewPartyEmail] = useState("");
   const [newPartyCompany, setNewPartyCompany] = useState("");
+  const [newPartyType, setNewPartyType] = useState("Retail");
+  const [newPartyGST, setNewPartyGST] = useState("");
+  const [newPartyAddress, setNewPartyAddress] = useState("");
 
   // Customer History & Pending Due Tracking
   const [customerSummary, setCustomerSummary] = useState<{
@@ -255,6 +259,9 @@ export function PosSalesInvoice() {
         phone: newPartyPhone.trim() || undefined,
         email: newPartyEmail.trim() || undefined,
         company_name: newPartyCompany.trim() || undefined,
+        customer_type: newPartyType || "Retail",
+        gst_number: newPartyGST.trim() || undefined,
+        address: newPartyAddress.trim() || undefined,
       });
       const customerObj = created.data || created;
       setCustomers([customerObj, ...customers]);
@@ -264,6 +271,9 @@ export function PosSalesInvoice() {
       setNewPartyPhone("");
       setNewPartyEmail("");
       setNewPartyCompany("");
+      setNewPartyGST("");
+      setNewPartyAddress("");
+      setNewPartyType("Retail");
       toast.success(`Party "${customerObj.name}" saved to database & selected!`);
     } catch (err) {
       const newCust = {
@@ -272,6 +282,9 @@ export function PosSalesInvoice() {
         phone: newPartyPhone.trim() || undefined,
         email: newPartyEmail.trim() || undefined,
         company: newPartyCompany.trim() || undefined,
+        customer_type: newPartyType || "Retail",
+        gst_number: newPartyGST.trim() || undefined,
+        address: newPartyAddress.trim() || undefined,
       };
       setCustomers([newCust, ...customers]);
       setSelectedCustomer(newCust.id);
@@ -280,11 +293,59 @@ export function PosSalesInvoice() {
       setNewPartyPhone("");
       setNewPartyEmail("");
       setNewPartyCompany("");
+      setNewPartyGST("");
+      setNewPartyAddress("");
+      setNewPartyType("Retail");
       toast.success(`Party "${newCust.name}" created and selected!`);
     }
   };
 
   const [printedBill, setPrintedBill] = useState<any>(null);
+  const [fullInvoiceModalData, setFullInvoiceModalData] = useState<FullInvoiceData | null>(null);
+  const [isFullInvoiceOpen, setIsFullInvoiceOpen] = useState(false);
+  const [autoPrintFullInvoice, setAutoPrintFullInvoice] = useState(false);
+
+  const constructFullInvoicePayload = (): FullInvoiceData => {
+    const customerObj = customers.find((c) => c.id === selectedCustomer);
+    return {
+      invoice_number: invoiceNumber,
+      invoice_date: invoiceDate,
+      due_date: dueDate,
+      customerName: customerObj?.name || 'Walk-in Customer',
+      customerPhone: customerObj?.phone || '',
+      customerEmail: customerObj?.email || '',
+      customerCompany: customerObj?.company || '',
+      customerGST: customerObj?.gst_number || '',
+      customerAddress: customerObj?.address || '',
+      customerType: customerObj?.customer_type || 'Retail',
+      items: items.map(it => ({
+        product_id: it.product_id,
+        product_name: it.product_name || 'Item',
+        hsn_code: it.hsn_code,
+        quantity: Number(it.quantity || 0),
+        unit_price: Number(it.unit_price || 0),
+        mrp: Number(it.mrp || 0),
+        discount_type: it.discount_type,
+        discount_value: Number(it.discount_value || 0),
+        tax_rate: Number(it.tax_rate || 0),
+      })),
+      subtotal: subtotal,
+      discount_amount: totalDiscount,
+      tax_amount: totalTax,
+      grand_total: grandTotal,
+      payment_method: paymentMode,
+      payment_status: paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL'),
+      terms: notes || undefined,
+    };
+  };
+
+  const handlePreviewFullInvoice = () => {
+    if (items.length === 0) return toast.error("Please add at least one item to preview invoice.");
+    const payload = constructFullInvoicePayload();
+    setFullInvoiceModalData(payload);
+    setAutoPrintFullInvoice(false);
+    setIsFullInvoiceOpen(true);
+  };
 
   const handlePrintThermal = () => {
     if (items.length === 0) return toast.error("Please add items to invoice before printing receipt.");
@@ -315,19 +376,36 @@ export function PosSalesInvoice() {
     }, 100);
   };
 
-  const handleSave = async () => {
+  const resetInvoiceForm = () => {
+    setItems([]);
+    setSelectedCustomer("");
+    setCustomerSummary(null);
+    setAmountReceived("");
+    setNotes("");
+    setInvoiceDiscountValue(0);
+    setIncludePreviousDueInBill(false);
+    const seq = Math.floor(10000 + Math.random() * 90000);
+    setInvoiceNumber(`INV-${seq}`);
+  };
+
+  const handleSave = async (printMode: 'a4' | 'thermal' | 'none' = 'a4') => {
     if (!selectedCustomer) return toast.error("Please select a customer or party first.");
     if (items.length === 0) return toast.error("Please add at least one item.");
     try {
       setIsSaving(true);
       const customer = customers.find((c) => c.id === selectedCustomer);
+      const isCredit = paymentMode === "Credit";
+      const calculatedPaymentStatus = isCredit
+        ? "UNPAID"
+        : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "PAID" : "PARTIAL");
+
       await invoicesApi.createInvoice({
         customer_id: customer.id,
         customer_name: customer.name,
         invoice_date: invoiceDate,
         due_date: dueDate,
         payment_method: paymentMode,
-        payment_status: paymentMode === "Credit" ? "UNPAID" : (Number(amountReceived) >= grandTotal ? "PAID" : "PARTIAL"),
+        payment_status: calculatedPaymentStatus,
         lines: items.map((it) => ({
           product_id: it.product_id,
           product_name: it.product_name || "Unknown Item",
@@ -343,9 +421,19 @@ export function PosSalesInvoice() {
           tax_rate: it.tax_rate,
         })),
       });
-      toast.success("Sales Invoice created successfully!");
-      // Automatically trigger thermal print upon successful save
-      handlePrintThermal();
+      toast.success("Sales Invoice saved successfully!");
+
+      if (printMode === 'a4') {
+        const payload = constructFullInvoicePayload();
+        setFullInvoiceModalData(payload);
+        setAutoPrintFullInvoice(true);
+        setIsFullInvoiceOpen(true);
+      } else if (printMode === 'thermal') {
+        handlePrintThermal();
+      }
+
+      // Auto-reset form state to prepare for next invoice transaction
+      resetInvoiceForm();
     } catch (error: any) {
       toast.error(error?.detail || "Failed to create invoice");
     } finally {
@@ -373,25 +461,48 @@ export function PosSalesInvoice() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={handlePrintThermal}
-            className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+            onClick={handlePreviewFullInvoice}
+            className="px-3 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+            title="Preview A4 Invoice using selected print template"
           >
-            <QrCode className="w-4 h-4 text-indigo-600" /> Print Thermal (80mm)
+            <FileText className="w-4 h-4 text-blue-600" /> Preview Invoice
           </button>
           <button
-            onClick={() => setItems([])}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
+            onClick={handlePrintThermal}
+            className="px-3 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+            title="Print 80mm Thermal Receipt"
+          >
+            <QrCode className="w-4 h-4 text-indigo-600" /> Thermal 80mm
+          </button>
+          <button
+            onClick={resetInvoiceForm}
+            className="px-3 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
           >
             Clear All
           </button>
           <button
             disabled={isSaving}
-            onClick={handleSave}
-            className="px-6 py-2 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2 disabled:opacity-50"
+            onClick={() => handleSave('none')}
+            className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl transition-all shadow-sm disabled:opacity-50"
           >
-            {isSaving ? "Saving Invoice..." : "Save & Print Receipt"}
+            Save Only
+          </button>
+          <button
+            disabled={isSaving}
+            onClick={() => handleSave('thermal')}
+            className="px-4 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <QrCode className="w-3.5 h-3.5" /> Save & Thermal
+          </button>
+          <button
+            disabled={isSaving}
+            onClick={() => handleSave('a4')}
+            className="px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <FileText className="w-4 h-4" />
+            {isSaving ? "Saving..." : "Save & Download A4 Invoice (PDF)"}
           </button>
         </div>
       </div>
@@ -975,14 +1086,33 @@ export function PosSalesInvoice() {
                   <span className="text-emerald-700">₹{(Number(amountReceived) - grandTotal).toFixed(2)}</span>
                 </div>
               )}
+              <div className="space-y-2">
+                <button
+                  disabled={isSaving}
+                  onClick={() => handleSave('a4')}
+                  className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <FileText className="w-4 h-4" />
+                  {isSaving ? "Saving Invoice..." : `Save & Download PDF Invoice (₹${grandTotal.toFixed(2)})`}
+                </button>
 
-              <button
-                disabled={isSaving}
-                onClick={handleSave}
-                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isSaving ? "Saving Sales Invoice..." : `Save Invoice (₹${grandTotal.toFixed(2)})`}
-              </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    disabled={isSaving}
+                    onClick={() => handleSave('thermal')}
+                    className="py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    <QrCode className="w-3.5 h-3.5" /> Save & Thermal
+                  </button>
+                  <button
+                    disabled={isSaving}
+                    onClick={() => handleSave('none')}
+                    className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-all flex items-center justify-center gap-1 disabled:opacity-50"
+                  >
+                    Save Only
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1009,7 +1139,7 @@ export function PosSalesInvoice() {
                 <label className="text-xs font-bold text-slate-700 block mb-1">Party / Customer Name *</label>
                 <input
                   type="text"
-                  placeholder="Rahul Sharma / Acme Traders"
+                  placeholder="e.g. Acme Corp / John Doe"
                   value={newPartyName}
                   onChange={(e) => setNewPartyName(e.target.value)}
                   required
@@ -1019,7 +1149,7 @@ export function PosSalesInvoice() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Phone / Mobile</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
                   <input
                     type="text"
                     placeholder="+91 9876543210"
@@ -1032,7 +1162,7 @@ export function PosSalesInvoice() {
                   <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
                   <input
                     type="email"
-                    placeholder="rahul@example.com"
+                    placeholder="contact@company.com"
                     value={newPartyEmail}
                     onChange={(e) => setNewPartyEmail(e.target.value)}
                     className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
@@ -1040,15 +1170,52 @@ export function PosSalesInvoice() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Company / Organization</label>
-                <input
-                  type="text"
-                  placeholder="Acme Pvt Ltd"
-                  value={newPartyCompany}
-                  onChange={(e) => setNewPartyCompany(e.target.value)}
-                  className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Company Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Acme Pvt Ltd"
+                    value={newPartyCompany}
+                    onChange={(e) => setNewPartyCompany(e.target.value)}
+                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Customer Category / Type</label>
+                  <select
+                    value={newPartyType}
+                    onChange={(e) => setNewPartyType(e.target.value)}
+                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Retail">Retail Customer</option>
+                    <option value="Wholesale">Wholesale Client</option>
+                    <option value="B2B">B2B Business Party</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">GSTIN / Tax ID Number</label>
+                  <input
+                    type="text"
+                    placeholder="37AAAAA0000A1Z5"
+                    value={newPartyGST}
+                    onChange={(e) => setNewPartyGST(e.target.value)}
+                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Billing & Shipping Address</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Street, City, State, Pincode"
+                    value={newPartyAddress}
+                    onChange={(e) => setNewPartyAddress(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
@@ -1070,6 +1237,14 @@ export function PosSalesInvoice() {
           </div>
         </div>
       )}
+
+      {/* Full A4 Printable Invoice Modal */}
+      <FullInvoicePrinter
+        invoice={fullInvoiceModalData}
+        isOpen={isFullInvoiceOpen}
+        onClose={() => setIsFullInvoiceOpen(false)}
+        autoPrint={autoPrintFullInvoice}
+      />
     </div>
   );
 }

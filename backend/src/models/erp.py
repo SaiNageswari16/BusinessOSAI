@@ -264,10 +264,10 @@ class Invoice(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     shipping_address: Mapped[str | None] = mapped_column(Text)
 
     invoice_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    invoice_type: Mapped[InvoiceType] = mapped_column(Enum(InvoiceType, name="invoice_type", create_constraint=False), default=InvoiceType.TAX_INVOICE)
+    invoice_type: Mapped[str] = mapped_column(String(50), default="tax_invoice")
     reference_number: Mapped[str | None] = mapped_column(String(100))
     order_number: Mapped[str | None] = mapped_column(String(100))
-    status: Mapped[InvoiceStatus] = mapped_column(Enum(InvoiceStatus, name="invoice_status", create_constraint=False), default=InvoiceStatus.DRAFT)
+    status: Mapped[str] = mapped_column(String(50), default="draft")
 
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)

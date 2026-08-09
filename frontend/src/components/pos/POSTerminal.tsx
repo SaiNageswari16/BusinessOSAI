@@ -3,9 +3,9 @@ import {
   Search, ScanBarcode, Store, Clock, User as UserIcon,
   Trash2, X, ChevronRight, Plus, Minus, CreditCard, Banknote, QrCode, Tag, ShoppingCart,
   Info, Camera, Sparkles, Printer, Database, Boxes, LayoutGrid, List as ListIcon, Combine, ArrowRightLeft, ArrowLeft,
-  Truck, RefreshCw, Heart, History, Wallet, Layers
+  Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus
 } from "lucide-react";
-import { posApi, inventoryApi, crmApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
+import { posApi, inventoryApi, crmApi, invoicesApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { posStore, posSession, posCustomers, paymentMethods, posCategories } from "../../lib/pos-fallback";
 import { motion, AnimatePresence } from "framer-motion";
@@ -64,7 +64,14 @@ function PosTerminalInner() {
   const [newCustName, setNewCustName] = useState("");
   const [newCustPhone, setNewCustPhone] = useState("");
   const [newCustEmail, setNewCustEmail] = useState("");
+  const [newCustCompany, setNewCustCompany] = useState("");
+  const [newCustType, setNewCustType] = useState("Retail");
+  const [newCustGST, setNewCustGST] = useState("");
+  const [newCustAddress, setNewCustAddress] = useState("");
   const [newCustTier, setNewCustTier] = useState("Silver");
+
+  const [customerSummary, setCustomerSummary] = useState<any | null>(null);
+  const [includePreviousDueInBill, setIncludePreviousDueInBill] = useState<boolean>(false);
 
   useEffect(() => {
     crmApi.getCustomers(1, 100)
@@ -76,6 +83,10 @@ function PosTerminalInner() {
             name: c.name || "Customer",
             phone: c.phone || "",
             email: c.email || "",
+            company: c.company_name || "",
+            customer_type: c.customer_type || "Retail",
+            gstin: c.gst_number || "",
+            address: c.address || "",
             points: c.loyalty_points || 150,
             tier: c.tier || "Silver",
             wallet: c.wallet_balance || 0,
@@ -88,26 +99,93 @@ function PosTerminalInner() {
       .catch(() => {});
   }, []);
 
-  const handleCreateCustomer = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!selectedCustomer || selectedCustomer.id === 'walk-in' || !selectedCustomer.id) {
+      setCustomerSummary(null);
+      setIncludePreviousDueInBill(false);
+      return;
+    }
+    invoicesApi
+      .getCustomerSummary(selectedCustomer.id)
+      .then((data: any) => {
+        if (data) setCustomerSummary(data);
+      })
+      .catch(() => {
+        setCustomerSummary(null);
+      });
+  }, [selectedCustomer?.id]);
+
+  const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustName.trim()) return;
-    const newCust = {
-      id: `CUST${Date.now().toString().slice(-4)}`,
-      name: newCustName.trim(),
-      phone: newCustPhone.trim(),
-      email: newCustEmail.trim(),
-      points: 100,
-      tier: newCustTier,
-      wallet: 0,
-      totalSpent: "₹0.00",
-      lastVisit: "Just Now"
-    };
-    setCustomerList(prev => [posCustomers[0], newCust, ...prev.filter(c => c.id !== 'walk-in')]);
-    setSelectedCustomer(newCust);
-    setIsCustomerModalOpen(false);
-    setNewCustName("");
-    setNewCustPhone("");
-    setNewCustEmail("");
+    if (!newCustName.trim()) return toast.error("Customer name is required");
+
+    try {
+      const created = await crmApi.createCustomer({
+        name: newCustName.trim(),
+        phone: newCustPhone.trim() || undefined,
+        email: newCustEmail.trim() || undefined,
+        company_name: newCustCompany.trim() || undefined,
+        customer_type: newCustType || "Retail",
+        gst_number: newCustGST.trim() || undefined,
+        address: newCustAddress.trim() || undefined,
+      });
+
+      const customerObj = created.data || created;
+      const formatted = {
+        id: customerObj.id,
+        name: customerObj.name,
+        phone: customerObj.phone || "",
+        email: customerObj.email || "",
+        company: customerObj.company_name || "",
+        customer_type: customerObj.customer_type || "Retail",
+        gstin: customerObj.gst_number || "",
+        address: customerObj.address || "",
+        points: 100,
+        tier: newCustTier,
+        wallet: 0,
+        totalSpent: "₹0.00",
+        lastVisit: "Just Now"
+      };
+
+      setCustomerList(prev => [posCustomers[0], formatted, ...prev.filter(c => c.id !== 'walk-in')]);
+      setSelectedCustomer(formatted);
+      setIsCustomerModalOpen(false);
+      setNewCustName("");
+      setNewCustPhone("");
+      setNewCustEmail("");
+      setNewCustCompany("");
+      setNewCustGST("");
+      setNewCustAddress("");
+      setNewCustType("Retail");
+      toast.success(`Customer "${formatted.name}" created and selected!`);
+    } catch {
+      const newCust = {
+        id: `CUST${Date.now().toString().slice(-4)}`,
+        name: newCustName.trim(),
+        phone: newCustPhone.trim(),
+        email: newCustEmail.trim(),
+        company: newCustCompany.trim(),
+        customer_type: newCustType,
+        gstin: newCustGST.trim(),
+        address: newCustAddress.trim(),
+        points: 100,
+        tier: newCustTier,
+        wallet: 0,
+        totalSpent: "₹0.00",
+        lastVisit: "Just Now"
+      };
+      setCustomerList(prev => [posCustomers[0], newCust, ...prev.filter(c => c.id !== 'walk-in')]);
+      setSelectedCustomer(newCust);
+      setIsCustomerModalOpen(false);
+      setNewCustName("");
+      setNewCustPhone("");
+      setNewCustEmail("");
+      setNewCustCompany("");
+      setNewCustGST("");
+      setNewCustAddress("");
+      setNewCustType("Retail");
+      toast.success(`Customer "${newCust.name}" created and selected!`);
+    }
   };
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [isEditingProduct, setIsEditingProduct] = useState(false);
@@ -534,7 +612,10 @@ function PosTerminalInner() {
   }
 
   const totalDiscount = itemDiscounts + beforeTaxDiscount + afterTaxDiscount;
-  const total = Math.max(0, grossTotal - afterTaxDiscount);
+  const previousDueToAdd = (includePreviousDueInBill && customerSummary?.total_pending_due > 0)
+    ? Number(customerSummary.total_pending_due)
+    : 0;
+  const total = Math.max(0, grossTotal - afterTaxDiscount) + previousDueToAdd;
 
 
 
@@ -1614,13 +1695,34 @@ function PosTerminalInner() {
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-900 leading-tight">{selectedCustomer.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">{selectedCustomer.tier} Tier</span>
-                      <span className="text-[10px] text-slate-500 font-medium">{selectedCustomer.points} Pts • ${selectedCustomer.wallet} Wallet</span>
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">{selectedCustomer.customer_type || selectedCustomer.tier || 'Retail'}</span>
+                      <span className="text-[10px] text-slate-500 font-medium">{selectedCustomer.points} Pts • ₹{selectedCustomer.wallet} Wallet</span>
                     </div>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400" />
+                <ChevronRight className="w-4 h-4 text-slate-400 text-slate-400" />
               </button>
+
+              {/* Customer Pending Dues Banner */}
+              {customerSummary && customerSummary.total_pending_due > 0 && (
+                <div className="mb-2 p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl text-xs flex flex-col gap-1.5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-amber-900 flex items-center gap-1">
+                      ⚠️ Previous Outstanding Due:
+                    </span>
+                    <span className="font-extrabold text-amber-700">₹{customerSummary.total_pending_due?.toFixed(2)}</span>
+                  </div>
+                  <label className="flex items-center gap-2 text-slate-700 cursor-pointer pt-1 border-t border-amber-200/60 font-medium">
+                    <input
+                      type="checkbox"
+                      checked={includePreviousDueInBill}
+                      onChange={(e) => setIncludePreviousDueInBill(e.target.checked)}
+                      className="rounded border-amber-400 text-amber-600 focus:ring-amber-500 h-4 w-4"
+                    />
+                    <span>Add previous due to current bill total</span>
+                  </label>
+                </div>
+              )}
 
               <div className="flex items-center gap-2">
                 <button
@@ -2339,19 +2441,67 @@ function PosTerminalInner() {
                       </div>
                     </div>
 
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Company / Business Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Acme Corp"
+                          value={newCustCompany}
+                          onChange={(e) => setNewCustCompany(e.target.value)}
+                          className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Customer Category / Type</label>
+                        <select
+                          value={newCustType}
+                          onChange={(e) => setNewCustType(e.target.value)}
+                          className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="Retail">Retail Customer</option>
+                          <option value="Wholesale">Wholesale Client</option>
+                          <option value="B2B">B2B Business Party</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">GSTIN / Tax ID Number</label>
+                        <input
+                          type="text"
+                          placeholder="37AAAAA0000A1Z5"
+                          value={newCustGST}
+                          onChange={(e) => setNewCustGST(e.target.value)}
+                          className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 uppercase"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Loyalty Tier</label>
+                        <select
+                          value={newCustTier}
+                          onChange={(e) => setNewCustTier(e.target.value)}
+                          className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="Bronze">Bronze Tier</option>
+                          <option value="Silver">Silver Tier</option>
+                          <option value="Gold">Gold Tier</option>
+                          <option value="Platinum">Platinum Tier</option>
+                          <option value="Wholesale B2B">B2B Wholesale / Retailer</option>
+                        </select>
+                      </div>
+                    </div>
+
                     <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Customer Tier</label>
-                      <select
-                        value={newCustTier}
-                        onChange={(e) => setNewCustTier(e.target.value)}
-                        className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="Bronze">Bronze Tier</option>
-                        <option value="Silver">Silver Tier</option>
-                        <option value="Gold">Gold Tier</option>
-                        <option value="Platinum">Platinum Tier</option>
-                        <option value="Wholesale B2B">B2B Wholesale / Retailer</option>
-                      </select>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Billing & Shipping Address</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Street address, City, State, Pincode"
+                        value={newCustAddress}
+                        onChange={(e) => setNewCustAddress(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
                     </div>
 
                     <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
