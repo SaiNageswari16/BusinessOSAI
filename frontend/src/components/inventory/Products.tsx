@@ -1309,7 +1309,6 @@ export function Products() {
                 </p>
               )}
             </div>
-          </div>
           <div className="flex justify-end gap-3 pt-4 border-t">
 
             <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); }}>Cancel</Button>
