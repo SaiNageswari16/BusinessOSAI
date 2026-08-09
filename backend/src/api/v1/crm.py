@@ -1693,10 +1693,11 @@ async def generate_campaign_poster(
 ):
     import uuid
     import os
-    
-    os.makedirs("images", exist_ok=True)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) # backend
+    images_dir = os.path.join(base_dir, "images")
+    os.makedirs(images_dir, exist_ok=True)
     filename = f"poster_{uuid.uuid4().hex}.jpg"
-    filepath = os.path.join("images", filename)
+    filepath = os.path.join(images_dir, filename)
 
     try:
         image_bytes, enhanced_prompt = call_ai_image(
@@ -1777,7 +1778,9 @@ async def publish_to_facebook(
         # Check if the image is hosted locally on the static server path
         if "/images/" in payload.image_url:
             filename = payload.image_url.split("/images/")[1]
-            local_path = os.path.join("images", filename)
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) # backend
+            images_dir = os.path.join(base_dir, "images")
+            local_path = os.path.join(images_dir, filename)
             if os.path.exists(local_path):
                 with open(local_path, "rb") as f:
                     image_bytes = f.read()

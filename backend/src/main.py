@@ -82,11 +82,16 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 from fastapi.staticfiles import StaticFiles
 import os
 
-# Ensure backend/images & static folders exist
-os.makedirs("images", exist_ok=True)
-os.makedirs("static", exist_ok=True)
-app.mount("/images", StaticFiles(directory="images"), name="images")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # backend/src
+BACKEND_DIR = os.path.dirname(BASE_DIR)              # backend
+IMAGES_DIR = os.path.join(BACKEND_DIR, "images")
+STATIC_DIR = os.path.join(BACKEND_DIR, "static")
+
+# Ensure backend/images & static folders exist with absolute pathing
+os.makedirs(IMAGES_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
+app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 from fastapi.responses import FileResponse
 

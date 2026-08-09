@@ -119,7 +119,9 @@ def _deprecated_download_and_cache_product_image(image_url: str, barcode: str = 
         
     try:
         import os
-        os.makedirs("images", exist_ok=True)
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) # backend
+        images_dir = os.path.join(base_dir, "images")
+        os.makedirs(images_dir, exist_ok=True)
         
         # Generate a safe filename
         ext = ".jpg"
@@ -129,7 +131,7 @@ def _deprecated_download_and_cache_product_image(image_url: str, barcode: str = 
             ext = ".gif"
             
         filename = f"{barcode}{ext}" if barcode else f"{uuid.uuid4()}{ext}"
-        local_path = os.path.join("images", filename)
+        local_path = os.path.join(images_dir, filename)
         
         # Download the image bytes
         headers = {
@@ -1067,7 +1069,8 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
                     image = image.convert("RGB")
                 
                 filename = f"{barcode.strip() if barcode else uuid.uuid4()}{extension}"
-                images_dir = os.path.join("images")
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) # backend
+                images_dir = os.path.join(base_dir, "images")
                 os.makedirs(images_dir, exist_ok=True)
                 local_path = os.path.join(images_dir, filename)
 

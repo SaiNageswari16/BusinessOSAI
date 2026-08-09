@@ -997,15 +997,17 @@ async def upload_product_image(
 ):
     import os
     import shutil
-    
-    os.makedirs("images", exist_ok=True)
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) # backend
+    images_dir = os.path.join(base_dir, "images")
+    os.makedirs(images_dir, exist_ok=True)
     ext = os.path.splitext(file.filename)[1] or ".jpg"
     filename = f"prod_{uuid.uuid4().hex}{ext}"
-    filepath = os.path.join("images", filename)
-    
+    filepath = os.path.join(images_dir, filename)
+
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
+
     return {"image_url": f"/images/{filename}"}
 
 
