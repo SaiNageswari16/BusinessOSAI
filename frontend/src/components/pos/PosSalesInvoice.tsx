@@ -258,7 +258,7 @@ export function PosSalesInvoice() {
       tax_amount: totalTax,
       grand_total: grandTotal,
       payment_method: paymentMode,
-      payment_status: 'PAID'
+      payment_status: paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')
     };
     setPrintedBill(billData);
     setTimeout(() => {
@@ -277,6 +277,8 @@ export function PosSalesInvoice() {
         customer_name: customer.name,
         invoice_date: invoiceDate,
         due_date: dueDate,
+        payment_method: paymentMode,
+        payment_status: paymentMode === "Credit" ? "UNPAID" : (Number(amountReceived) >= grandTotal ? "PAID" : "PARTIAL"),
         lines: items.map((it) => ({
           product_id: it.product_id,
           product_name: it.product_name || "Unknown Item",
@@ -834,13 +836,20 @@ export function PosSalesInvoice() {
                   <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Mode</label>
                   <select
                     value={paymentMode}
-                    onChange={(e) => setPaymentMode(e.target.value)}
-                    className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none"
+                    onChange={(e) => {
+                      const mode = e.target.value;
+                      setPaymentMode(mode);
+                      if (mode === "Credit") {
+                        setAmountReceived(0);
+                      }
+                    }}
+                    className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="Cash">Cash</option>
                     <option value="UPI">UPI / QR</option>
                     <option value="Card">Credit/Debit Card</option>
                     <option value="NetBanking">Net Banking</option>
+                    <option value="Credit">Credit (Pay Later)</option>
                   </select>
                 </div>
                 <div>

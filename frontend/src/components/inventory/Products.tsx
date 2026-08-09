@@ -1129,47 +1129,149 @@ export function Products() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: "Product Name", name: "name", required: true },
-              { label: "SKU", name: "sku" },
-              { label: "Barcode", name: "barcode" },
-              { label: "Brand", name: "brand_id", type: "select", options: brands },
-              { label: "Category", name: "category_id", type: "select", options: categories },
-              { label: "UoM", name: "uom_id", type: "select", options: uoms },
+          {/* Form Fields */}
+          {(() => {
+            const selectedCatObj = categories.find(c => c.id === currentForm.category_id);
+            const activeParentId = selectedCatObj ? (selectedCatObj.parent_id || selectedCatObj.id) : "";
+            const activeSubId = selectedCatObj && selectedCatObj.parent_id ? selectedCatObj.id : "";
+            
+            const mainCategories = categories.filter(c => !c.parent_id);
+            const subCategories = categories.filter(c => c.parent_id && c.parent_id === activeParentId);
 
-              { label: "Purchase Price", name: "purchase_price", type: "number", step: "0.01" },
-              { label: "MRP", name: "mrp", type: "number", step: "0.01" },
-              { label: "Retail Selling Price", name: "selling_price", type: "number", step: "0.01" },
-              { label: "Wholesale Price", name: "wholesale_price", type: "number", step: "0.01" },
-              { label: "Min Wholesale Qty", name: "min_wholesale_qty", type: "number" },
-              { label: "Tax (%)", name: "tax_percent", type: "number" },
-
-              { label: "Discount Limit (%)", name: "discount_limit", type: "number" },
-              { label: "Initial Stock", name: "initial_stock", type: "number" },
-              { label: "Reorder Level", name: "reorder_level", type: "number" },
-              { label: "Safety Stock", name: "safety_stock", type: "number" },
-              { label: "Warehouse", name: "warehouse" },
-              { label: "Supplier", name: "supplier" },
-            ].map(field => (
-              <div key={field.name} className={field.name === "name" ? "col-span-2" : ""}>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">{field.label}{(field as any).required && <span className="text-red-500 ml-0.5">*</span>}</label>
-                {field.type === "select" ? (
-                  <select name={field.name} value={(currentForm as any)[field.name]} onChange={handleFormChange}
-                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background">
-                    <option value="">Select {field.label}</option>
-                    {(field.options || []).map((opt: any) => (
-                      <option key={opt.id} value={opt.id}>{opt.name}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input type={(field as any).type || "text"} name={field.name} step={(field as any).step || "any"}
-                    value={(currentForm as any)[field.name]} onChange={handleFormChange}
+            return (
+              <div className="grid grid-cols-2 gap-4">
+                {/* Product Name */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    Product Name<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={currentForm.name}
+                    onChange={handleFormChange}
+                    required
                     className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
                   />
-                )}
+                </div>
+
+                {/* SKU & Barcode */}
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">SKU</label>
+                  <input
+                    type="text"
+                    name="sku"
+                    value={currentForm.sku}
+                    onChange={handleFormChange}
+                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Barcode</label>
+                  <input
+                    type="text"
+                    name="barcode"
+                    value={currentForm.barcode}
+                    onChange={handleFormChange}
+                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
+                  />
+                </div>
+
+                {/* Brand & Category */}
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Brand</label>
+                  <select
+                    name="brand_id"
+                    value={currentForm.brand_id}
+                    onChange={handleFormChange}
+                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
+                  >
+                    <option value="">Select Brand</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Category</label>
+                  <select
+                    value={activeParentId}
+                    onChange={(e) => {
+                      const newParentId = e.target.value;
+                      setCurrentForm(prev => ({ ...prev, category_id: newParentId }));
+                    }}
+                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
+                  >
+                    <option value="">Select Category</option>
+                    {mainCategories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Sub-Category & UoM */}
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Sub-Category</label>
+                  <select
+                    value={activeSubId}
+                    disabled={!activeParentId}
+                    onChange={(e) => {
+                      const newSubId = e.target.value;
+                      setCurrentForm(prev => ({ ...prev, category_id: newSubId || activeParentId }));
+                    }}
+                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">{activeParentId ? "Select Sub-Category (Optional)" : "Select Category First"}</option>
+                    {subCategories.map((sc) => (
+                      <option key={sc.id} value={sc.id}>{sc.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">UoM</label>
+                  <select
+                    name="uom_id"
+                    value={currentForm.uom_id}
+                    onChange={handleFormChange}
+                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
+                  >
+                    <option value="">Select UoM</option>
+                    {uoms.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Pricing & Stock Fields */}
+                {[
+                  { label: "Purchase Price", name: "purchase_price", type: "number", step: "0.01" },
+                  { label: "MRP", name: "mrp", type: "number", step: "0.01" },
+                  { label: "Retail Selling Price", name: "selling_price", type: "number", step: "0.01" },
+                  { label: "Wholesale Price", name: "wholesale_price", type: "number", step: "0.01" },
+                  { label: "Min Wholesale Qty", name: "min_wholesale_qty", type: "number" },
+                  { label: "Tax (%)", name: "tax_percent", type: "number" },
+                  { label: "Discount Limit (%)", name: "discount_limit", type: "number" },
+                  { label: "Initial Stock", name: "initial_stock", type: "number" },
+                  { label: "Reorder Level", name: "reorder_level", type: "number" },
+                  { label: "Safety Stock", name: "safety_stock", type: "number" },
+                  { label: "Warehouse", name: "warehouse" },
+                  { label: "Supplier", name: "supplier" },
+                ].map((field) => (
+                  <div key={field.name}>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">{field.label}</label>
+                    <input
+                      type={field.type || "text"}
+                      name={field.name}
+                      step={field.step || "any"}
+                      value={(currentForm as any)[field.name]}
+                      onChange={handleFormChange}
+                      className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
+            );
+          })()}
 
             {/* HSN Code Selector */}
             <div className="col-span-2 bg-muted/20 p-3 rounded-xl border border-dashed space-y-2">
