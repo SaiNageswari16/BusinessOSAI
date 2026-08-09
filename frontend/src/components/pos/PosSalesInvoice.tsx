@@ -70,6 +70,28 @@ export function PosSalesInvoice() {
   const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [paymentMode, setPaymentMode] = useState("Cash");
 
+  // Additional Charges State
+  const [freightCharges, setFreightCharges] = useState<number>(0);
+  const [packingCharges, setPackingCharges] = useState<number>(0);
+  const [otherCharges, setOtherCharges] = useState<number>(0);
+
+  // Pricing Mode, Location & Sales Executive State
+  const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale">("Retail");
+  const [selectedLocation, setSelectedLocation] = useState<string>("Store Main Branch");
+  const [salesExecutive, setSalesExecutive] = useState<string>("Default Salesperson");
+
+  // Inline Create Product Modal State
+  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [newProdName, setNewProdName] = useState("");
+  const [newProdSku, setNewProdSku] = useState("");
+  const [newProdBarcode, setNewProdBarcode] = useState("");
+  const [newProdCategory, setNewProdCategory] = useState("General");
+  const [newProdPrice, setNewProdPrice] = useState<number | "">("");
+  const [newProdWholesalePrice, setNewProdWholesalePrice] = useState<number | "">("");
+  const [newProdMrp, setNewProdMrp] = useState<number | "">("");
+  const [newProdTax, setNewProdTax] = useState<number>(18);
+  const [newProdStock, setNewProdStock] = useState<number>(100);
+
   // Add Party Modal State
   const [isAddPartyOpen, setIsAddPartyOpen] = useState(false);
   const [newPartyName, setNewPartyName] = useState("");
@@ -243,7 +265,8 @@ export function PosSalesInvoice() {
 
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
   const previousDueAmount = (includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
-  const baseRawTotal = Math.max(0, grossTotal - afterTaxDiscount);
+  const totalAdditionalCharges = Number(freightCharges || 0) + Number(packingCharges || 0) + Number(otherCharges || 0);
+  const baseRawTotal = Math.max(0, grossTotal - afterTaxDiscount) + totalAdditionalCharges;
   const rawTotal = baseRawTotal + previousDueAmount;
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
   const grandTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
@@ -298,6 +321,51 @@ export function PosSalesInvoice() {
       setNewPartyType("Retail");
       toast.success(`Party "${newCust.name}" created and selected!`);
     }
+  };
+
+  const handleCreateNewProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProdName.trim()) return toast.error("Product name is required");
+    const unitPriceVal = Number(newProdPrice) || 0;
+    const mrpVal = Number(newProdMrp) || unitPriceVal;
+    const wholesaleVal = Number(newProdWholesalePrice) || unitPriceVal;
+    const generatedProduct = {
+      id: `prod-${Date.now()}`,
+      name: newProdName.trim(),
+      sku: newProdSku.trim() || `SKU-${Date.now().toString().slice(-4)}`,
+      barcode: newProdBarcode.trim() || `BC-${Date.now().toString().slice(-4)}`,
+      category: newProdCategory,
+      selling_price: unitPriceVal,
+      wholesale_price: wholesaleVal,
+      mrp: mrpVal,
+      tax_percent: Number(newProdTax) || 18,
+      stock_quantity: Number(newProdStock) || 100,
+    };
+
+    setProducts([generatedProduct, ...products]);
+    setItems([
+      ...items,
+      {
+        id: Math.random().toString(36).substr(2, 9),
+        product_id: generatedProduct.id,
+        product_name: generatedProduct.name,
+        quantity: 1,
+        unit_price: pricingMode === "Wholesale" ? generatedProduct.wholesale_price : generatedProduct.selling_price,
+        mrp: generatedProduct.mrp,
+        discount_value: 0,
+        discount_type: "percent",
+        tax_rate: generatedProduct.tax_percent,
+      },
+    ]);
+
+    setIsAddProductOpen(false);
+    setNewProdName("");
+    setNewProdSku("");
+    setNewProdBarcode("");
+    setNewProdPrice("");
+    setNewProdWholesalePrice("");
+    setNewProdMrp("");
+    toast.success(`Created "${generatedProduct.name}" & added to bill!`);
   };
 
   const [printedBill, setPrintedBill] = useState<any>(null);
@@ -462,6 +530,44 @@ export function PosSalesInvoice() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Location Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs font-semibold">
+            <span className="text-slate-400 font-normal">Location:</span>
+            <select
+              value={selectedLocation}
+              onChange={(e) => setSelectedLocation(e.target.value)}
+              className="bg-transparent text-slate-800 font-bold outline-none cursor-pointer"
+            >
+              <option value="Store Main Branch">Store Main Branch</option>
+              <option value="Central Warehouse">Central Warehouse</option>
+              <option value="Secondary Warehouse">Secondary Warehouse</option>
+            </select>
+          </div>
+
+          {/* Pricing Tier Mode Selector */}
+          <div className="flex items-center bg-slate-100 p-1 border border-slate-200 rounded-xl text-xs font-bold">
+            <button
+              onClick={() => setPricingMode("Retail")}
+              className={`px-2.5 py-1 rounded-lg transition-all ${pricingMode === "Retail" ? "bg-white text-blue-600 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            >
+              Retail Tier
+            </button>
+            <button
+              onClick={() => setPricingMode("Wholesale")}
+              className={`px-2.5 py-1 rounded-lg transition-all ${pricingMode === "Wholesale" ? "bg-purple-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            >
+              Wholesale/B2B Tier
+            </button>
+          </div>
+
+          {/* Inline Create Product Trigger Button */}
+          <button
+            onClick={() => setIsAddProductOpen(true)}
+            className="px-3 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-xl transition-all shadow-sm flex items-center gap-1"
+          >
+            <Plus className="w-3.5 h-3.5" /> + New Product
+          </button>
+
           <button
             onClick={handlePreviewFullInvoice}
             className="px-3 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-all shadow-sm flex items-center gap-1.5"
@@ -1000,6 +1106,46 @@ export function PosSalesInvoice() {
                   <span className="font-black">-₹{beforeTaxDiscount.toFixed(2)}</span>
                 </div>
               )}
+
+              {/* Additional Charges Input Fields */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2">
+                <span className="text-[11px] font-bold text-slate-700 block">Additional Charges (Freight & Packing)</span>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-500 block">Freight / Transport</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="₹0"
+                      value={freightCharges || ""}
+                      onChange={(e) => setFreightCharges(Math.max(0, Number(e.target.value)))}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 block">Packing Charge</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="₹0"
+                      value={packingCharges || ""}
+                      onChange={(e) => setPackingCharges(Math.max(0, Number(e.target.value)))}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 block">Other Fee</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="₹0"
+                      value={otherCharges || ""}
+                      onChange={(e) => setOtherCharges(Math.max(0, Number(e.target.value)))}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
 
               <div className="flex justify-between text-xs text-slate-600">
                 <span>Taxable Value:</span>
