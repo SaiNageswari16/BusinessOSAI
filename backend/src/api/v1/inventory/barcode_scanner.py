@@ -31,7 +31,31 @@ def _sync_fetch_google_barcode(barcode: str) -> Optional[dict]:
         "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
     }
 
-    # 1. Google Instant Search (~120ms)
+    # 1. Go-UPC Direct Search (~150ms)
+    try:
+        url = f"https://go-upc.com/search?q={clean_code}"
+        resp = requests.get(url, headers=headers, timeout=2.0)
+        if resp.status_code == 200:
+            h1s = re.findall(r'<h1[^>]*>([\s\S]*?)</h1>', resp.text)
+            if h1s:
+                prod_title = unescape(re.sub(r'<[^>]+>', '', h1s[0])).strip()
+                if prod_title and len(prod_title) > 3 and prod_title != clean_code and not prod_title.replace('-', '').replace(' ', '').isdigit():
+                    imgs = re.findall(r'<img[^>]+src=["\'](https://[^"\']+)["\']', resp.text)
+                    img_url = imgs[0] if imgs else "/static/uploads/products/default_product.jpg"
+                    brand = prod_title.split()[0] if prod_title.split() else ""
+                    return {
+                        "name": prod_title,
+                        "brand": brand,
+                        "category": "FMCG / Retail",
+                        "image": img_url,
+                        "mrp": 0.0,
+                        "selling_price": 0.0,
+                        "source": "GO_UPC_REGISTRY"
+                    }
+    except Exception as ex:
+        logger.debug(f"Go-UPC fetch skipped: {ex}")
+
+    # 2. Google Instant Search (~120ms)
     try:
         url = f"https://www.google.com/search?q={urllib.parse.quote(clean_code)}"
         resp = requests.get(url, headers=headers, timeout=2.0)
@@ -51,7 +75,7 @@ def _sync_fetch_google_barcode(barcode: str) -> Optional[dict]:
                     '', raw_title, flags=re.IGNORECASE
                 ).strip()
 
-                if len(cleaned_name) > 3:
+                if len(cleaned_name) > 3 and cleaned_name != clean_code and not cleaned_name.replace('-', '').replace(' ', '').isdigit():
                     price = 0.0
                     price_match = re.search(r'(?:₹|Rs\.?|\$)\s*([\d,]+(?:\.\d{2})?)', html_text)
                     if price_match:
@@ -83,7 +107,7 @@ def _sync_fetch_google_barcode(barcode: str) -> Optional[dict]:
     except Exception as ex:
         logger.debug(f"Google instant barcode fetch skipped: {ex}")
 
-    # 2. Open Food Facts (~150ms)
+    # 3. Open Food Facts (~150ms)
     try:
         url = f"https://world.openfoodfacts.org/api/v2/product/{clean_code}.json"
         resp = requests.get(url, headers=headers, timeout=1.8)
@@ -91,10 +115,10 @@ def _sync_fetch_google_barcode(barcode: str) -> Optional[dict]:
             data = resp.json()
             if data.get("status") == 1 and "product" in data:
                 p = data["product"]
-                name = p.get("product_name") or p.get("product_name_en") or p.get("product_name_fr") or ""
-                if name and len(name.strip()) > 2:
+                name = (p.get("product_name") or p.get("product_name_en") or p.get("product_name_fr") or "").strip()
+                if name and len(name) > 2 and name != clean_code and not name.replace('-', '').replace(' ', '').isdigit():
                     return {
-                        "name": name.strip(),
+                        "name": name,
                         "brand": p.get("brands") or p.get("brand") or "",
                         "category": (p.get("categories") or "General").split(",")[0].strip(),
                         "image": p.get("image_front_url") or p.get("image_url") or "/static/uploads/products/default_product.jpg",

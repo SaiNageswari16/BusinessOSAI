@@ -3163,6 +3163,8 @@ export const posApi = {
     request<any>("GET", "/pos/transactions/reports/daily-summary", undefined, params as Record<string, string | number | boolean | null | undefined>),
   deleteTransaction: (id: string) => request<void>("DELETE", `/pos/transactions/${id}`),
   // Products & Categories
+  lookupBarcode: (barcode: string) =>
+    request<{ success: boolean; message?: string; product?: any }>("GET", `/products/barcode/${barcode}`),
   getCategories: () => request<POSCategory[]>("GET", "/pos/categories"),
   getProducts: (params?: { category_id?: string; search?: string }) =>
     request<POSProduct[]>("GET", "/pos/products", undefined, params as Record<string, string | number | boolean | null | undefined>),
