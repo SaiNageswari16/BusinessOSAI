@@ -207,16 +207,17 @@ export function PosSalesInvoice() {
     ]);
   };
 
-  const handleBarcodeSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleBarcodeSubmit = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && barcodeInput.trim() !== "") {
-      const product = products.find((p) => p.barcode === barcodeInput.trim() || p.sku === barcodeInput.trim());
+      const queryCode = barcodeInput.trim();
+      const product = products.find((p) => p.barcode === queryCode || p.sku === queryCode);
       if (product) {
         const basePrice = product.selling_price || product.price || product.mrp || 0;
         const wholesalePrice = product.wholesale_price || (basePrice * 0.9);
         const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
 
-        setItems([
-          ...items,
+        setItems((prev) => [
+          ...prev,
           {
             id: Math.random().toString(36).substr(2, 9),
             product_id: product.id,
@@ -231,8 +232,40 @@ export function PosSalesInvoice() {
         ]);
         toast.success(`Added ${product.name} (${pricingMode} Price)`);
         setBarcodeInput("");
-      } else {
-        toast.error("Product not found with this barcode / SKU");
+        return;
+      }
+
+      // If not in local products state, trigger real-time Master Catalog / RAG / Go-UPC Lookup
+      toast.info(`Searching master catalog & web RAG for barcode ${queryCode}...`);
+      try {
+        const res = await posApi.lookupBarcode(queryCode);
+        if (res && res.success && res.product && res.product.name) {
+          const p = res.product;
+          const basePrice = p.selling_price || p.mrp || 0;
+          const wholesalePrice = basePrice * 0.9;
+          const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
+
+          setItems((prev) => [
+            ...prev,
+            {
+              id: Math.random().toString(36).substr(2, 9),
+              product_id: p.id,
+              product_name: p.name,
+              quantity: 1,
+              unit_price: targetPrice,
+              mrp: p.mrp || 0,
+              discount_value: 0,
+              discount_type: "percent",
+              tax_rate: p.gst || 18,
+            },
+          ]);
+          toast.success(`Found & Added: ${p.name} (${p.source || "Master Catalog"})`);
+          setBarcodeInput("");
+        } else {
+          toast.error(`Barcode ${queryCode} not found in catalog or RAG web registry`);
+        }
+      } catch (err: any) {
+        toast.error(`Barcode search error: ${err.message || "Failed lookup"}`);
       }
     }
   };
