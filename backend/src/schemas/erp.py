@@ -1188,6 +1188,7 @@ class EmployeeBase(BaseModel):
     employment_type: str = "Full-Time"  # Full-Time|Part-Time|Contract|Internship
     status: str = "Active"  # Active|On Leave|Inactive
     basic_salary: float | None = None
+    sales_points: float | None = 0.0
     company_id: uuid.UUID | None = None
     branch_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
@@ -1210,6 +1211,7 @@ class EmployeeUpdate(BaseModel):
     employment_type: str | None = None
     status: str | None = None
     basic_salary: float | None = None
+    sales_points: float | None = None
     company_id: uuid.UUID | None = None
     branch_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
@@ -1230,6 +1232,7 @@ class EmployeeResponse(ORMModel):
     employment_type: str
     status: str
     basic_salary: float | None
+    sales_points: float | None = 0.0
     company_id: uuid.UUID | None
     branch_id: uuid.UUID | None
     department_id: uuid.UUID | None

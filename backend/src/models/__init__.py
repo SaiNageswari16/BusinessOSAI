@@ -870,6 +870,7 @@ class Employee(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     employment_type: Mapped[str] = mapped_column(String(50), default="Full-Time")  # Full-Time|Part-Time|Contract|Internship
     status: Mapped[str] = mapped_column(String(30), default="Active")  # Active|On Leave|Inactive
     basic_salary: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    sales_points: Mapped[float | None] = mapped_column(Numeric(12, 2), default=0.0)
     
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
     branch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="SET NULL"))

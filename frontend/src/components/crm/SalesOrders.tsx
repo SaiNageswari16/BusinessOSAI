@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Search, Filter, ShoppingCart, Download, Printer, Box, CreditCard, Clock, CheckCircle2, RefreshCw, Truck, Store, Building, Tag, UserCheck, ShieldCheck, DollarSign, Award, X, Sparkles } from "lucide-react";
-import { crmSalesOrdersApi, type CrmSalesOrder, inventoryApi, posApi } from "@/lib/api-client";
+import { crmSalesOrdersApi, type CrmSalesOrder, inventoryApi, posApi, employeesApi, fetchSalesEmployees } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import {
   Dialog,
@@ -32,7 +32,8 @@ export function SalesOrders() {
 
   const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale">("Retail");
   const [selectedLocation, setSelectedLocation] = useState<string>("Store Main Branch");
-  const [salesRep, setSalesRep] = useState<string>("Sales Team Representative");
+  const [salesRep, setSalesRep] = useState<string>("");
+  const [salesEmployees, setSalesEmployees] = useState<any[]>([]);
   const [paymentMode, setPaymentMode] = useState<string>("Cash");
   const [dueDate, setDueDate] = useState<string>("");
   
@@ -115,7 +116,15 @@ export function SalesOrders() {
         payment_status: finalPaymentStatus,
         customer_id: "00000000-0000-0000-0000-000000000000",
       });
-      toast.success(`Sales Order ${newOrder.order_number} created successfully! Points earned: +${salesPointsEarned} pts`);
+      const selectedEmp = salesEmployees.find(e => e.full_name === salesRep);
+      if (selectedEmp && salesPointsEarned > 0) {
+        employeesApi.addSalesPoints(selectedEmp.id, salesPointsEarned).then((updatedEmp) => {
+          if (updatedEmp) {
+            setSalesEmployees(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
+          }
+        }).catch(console.error);
+      }
+      toast.success(`Sales Order ${newOrder.order_number} created! +${salesPointsEarned} pts awarded to ${salesRep || 'Sales Rep'}.`);
       setIsAddModalOpen(false);
       setNewOrder({ order_number: "", customer_name: "", subtotal: 0, total: 0, status: "Pending", payment_status: "Unpaid" });
       void fetchOrders();
@@ -141,6 +150,16 @@ export function SalesOrders() {
 
   useEffect(() => {
     void fetchOrders();
+    fetchSalesEmployees()
+      .then((emps) => {
+        setSalesEmployees(emps);
+        if (emps && emps.length > 0) {
+          setSalesRep(emps[0].full_name);
+        } else {
+          setSalesRep("Sales Representative");
+        }
+      })
+      .catch(console.error);
   }, [tenant.id]);
 
   const filteredOrders = orders.filter(o => {
@@ -224,10 +243,20 @@ export function SalesOrders() {
                       onChange={e => setSalesRep(e.target.value)}
                       className="w-full h-10 px-3 rounded-md border border-input bg-background text-xs font-semibold"
                     >
-                      <option value="Sales Rep - Alex">Sales Rep - Alex</option>
-                      <option value="Sales Rep - Sarah">Sales Rep - Sarah</option>
-                      <option value="Sales Rep - Nageswari">Sales Rep - Nageswari</option>
-                      <option value="Store Manager">Store Manager</option>
+                      {salesEmployees && salesEmployees.length > 0 ? (
+                        salesEmployees.map((emp) => (
+                          <option key={emp.id} value={emp.full_name}>
+                            {emp.full_name} ({emp.employee_code})
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="Sales Rep - Alex">Sales Rep - Alex</option>
+                          <option value="Sales Rep - Sarah">Sales Rep - Sarah</option>
+                          <option value="Sales Rep - Nageswari">Sales Rep - Nageswari</option>
+                          <option value="Store Manager">Store Manager</option>
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>
@@ -262,7 +291,6 @@ export function SalesOrders() {
                     </span>
                     <span className="font-mono text-emerald-700">+₹{totalChargesAmount.toFixed(2)}</span>
                   </div>
-
                   {additionalCharges.map((ch, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-white border border-emerald-100 px-3 py-1.5 rounded-lg text-xs font-semibold">
                       <span className="text-slate-700">{ch.name}</span>
@@ -351,7 +379,15 @@ export function SalesOrders() {
                     <div className="text-amber-400 flex items-center gap-1 justify-end">
                       <Award className="size-3.5" /> +{salesPointsEarned} Sales Points
                     </div>
-                    <div className="text-[10px] text-slate-400 font-normal">{salesRep}</div>
+                    {(() => {
+                      const selectedEmp = salesEmployees.find(e => e.full_name === salesRep);
+                      const totalPts = ((selectedEmp?.sales_points || 0) + salesPointsEarned).toFixed(0);
+                      return (
+                        <div className="text-[10px] text-slate-400 font-normal">
+                          {salesRep || 'Sales Rep'} {selectedEmp ? `(Total: ${totalPts} Pts)` : ''}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 

@@ -518,6 +518,7 @@ export interface Employee {
   date_of_birth: string | null;
   date_of_joining: string | null;
   employment_type: string;
+  sales_points?: number;
   gender: string | null;
   marital_status: string | null;
   address: string | null;
@@ -941,7 +942,7 @@ export const auditLogsApi = {
 // â”€â”€â”€ HRMS â€” Employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const employeesApi = {
-  list: (page = 1, pageSize = 20, search?: string, companyId?: string, departmentId?: string, status?: string) =>
+  list: (page = 1, pageSize = 20, search?: string, companyId?: string, departmentId?: string, status?: string, role?: string) =>
     request<PaginatedResponse<Employee>>("GET", "/hrms/employees", undefined, {
       page,
       page_size: pageSize,
@@ -949,6 +950,7 @@ export const employeesApi = {
       company_id: companyId,
       department_id: departmentId,
       status,
+      role,
     }),
   getMe: () => request<Employee>("GET", "/hrms/employees/me"),
   get: (id: string) => request<Employee>("GET", `/hrms/employees/${id}`),
@@ -963,7 +965,23 @@ export const employeesApi = {
     request<EmployeeDocument[]>("GET", `/hrms/employees/${empId}/documents`),
   createDocument: (empId: string, data: Record<string, unknown>) =>
     request<EmployeeDocument>("POST", `/hrms/employees/${empId}/documents`, data),
+  addSalesPoints: (empId: string, points: number) =>
+    request<Employee>("POST", `/hrms/employees/${empId}/add-points`, undefined, { points }),
 };
+
+export async function fetchSalesEmployees(): Promise<Employee[]> {
+  try {
+    const salesRes = await employeesApi.list(1, 100, undefined, undefined, undefined, "Active", "sales");
+    if (salesRes?.items && salesRes.items.length > 0) {
+      return salesRes.items;
+    }
+    const allRes = await employeesApi.list(1, 100, undefined, undefined, undefined, "Active");
+    return allRes?.items || [];
+  } catch (err) {
+    console.error("Failed to fetch sales employees:", err);
+    return [];
+  }
+}
 
 // â”€â”€â”€ HRMS â€” Attendance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

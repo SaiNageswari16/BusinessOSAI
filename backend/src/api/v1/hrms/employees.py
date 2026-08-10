@@ -20,6 +20,8 @@ from src.models import (
     UserRole,
     Permission,
     UserStatus,
+    Department,
+    Designation,
 )
 from src.utils.security import hash_password
 from src.schemas.erp import (
@@ -58,6 +60,7 @@ async def list_employees(
     department_id: uuid.UUID | None = None,
     designation_id: uuid.UUID | None = None,
     status_filter: str | None = Query(None, alias="status"),
+    role: str | None = Query(None, alias="role"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = None,
@@ -69,6 +72,15 @@ async def list_employees(
         query = query.where(Employee.designation_id == designation_id)
     if status_filter:
         query = query.where(Employee.status.ilike(status_filter))
+    if role:
+        matching_user_ids = select(UserRole.user_id).join(Role, UserRole.role_id == Role.id).where(Role.name.ilike(f"%{role}%"))
+        matching_dept_ids = select(Department.id).where(Department.name.ilike(f"%{role}%"))
+        matching_desig_ids = select(Designation.id).where(Designation.name.ilike(f"%{role}%"))
+        query = query.where(
+            (Employee.user_id.in_(matching_user_ids))
+            | (Employee.department_id.in_(matching_dept_ids))
+            | (Employee.designation_id.in_(matching_desig_ids))
+        )
     if search:
         query = query.where(
             Employee.full_name.ilike(f"%{search}%")
@@ -313,6 +325,24 @@ async def update_employee(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
+    return emp
+
+
+@router.post("/employees/{emp_id}/add-points", response_model=EmployeeResponse)
+async def add_employee_sales_points(
+    emp_id: uuid.UUID,
+    points: float = Query(..., ge=0),
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    emp = await db.scalar(
+        select(Employee).where(Employee.id == emp_id, Employee.tenant_id == ctx.tenant_id)
+    )
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    emp.sales_points = (emp.sales_points or 0.0) + points
+    await db.commit()
+    await db.refresh(emp)
     return emp
 
 

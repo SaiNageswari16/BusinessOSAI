@@ -149,5 +149,20 @@ async def migrate():
             except Exception as e:
                 logger.info(f"'job_openings.{col_name}' alter skipped or already widened: {e}")
 
+    # Add sales_points column to employees table
+    emp_cols = [
+        ("sales_points", "NUMERIC(12, 2) DEFAULT 0.0")
+    ]
+    for name, col_type in emp_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE employees ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'employees' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in 'employees'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to 'employees': {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())

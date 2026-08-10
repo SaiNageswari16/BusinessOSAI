@@ -25,7 +25,7 @@ import {
   History,
   Wallet
 } from "lucide-react";
-import { posApi, crmApi, invoicesApi } from "../../lib/api-client";
+import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
@@ -104,7 +104,8 @@ export function PosSalesInvoice() {
   // Pricing Mode, Location & Sales Executive State
   const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale">("Retail");
   const [selectedLocation, setSelectedLocation] = useState<string>("Store Main Branch");
-  const [salesExecutive, setSalesExecutive] = useState<string>("Default Salesperson");
+  const [salesExecutive, setSalesExecutive] = useState<string>("");
+  const [salesEmployees, setSalesEmployees] = useState<any[]>([]);
 
   // Inline Create Product Modal State
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -145,6 +146,16 @@ export function PosSalesInvoice() {
     crmApi
       .getCustomers(1, 100)
       .then((data: any) => setCustomers(data.items || data))
+      .catch(console.error);
+    fetchSalesEmployees()
+      .then((emps) => {
+        setSalesEmployees(emps);
+        if (emps && emps.length > 0) {
+          setSalesExecutive(emps[0].full_name);
+        } else {
+          setSalesExecutive("Sales Executive");
+        }
+      })
       .catch(console.error);
   }, []);
 
@@ -544,7 +555,18 @@ export function PosSalesInvoice() {
           tax_rate: it.tax_rate,
         })),
       });
-      toast.success("Sales Invoice saved successfully!");
+
+      const earnedPts = Math.floor(grandTotal / 100);
+      const selectedEmp = salesEmployees.find(e => e.full_name === salesExecutive);
+      if (selectedEmp && earnedPts > 0) {
+        employeesApi.addSalesPoints(selectedEmp.id, earnedPts).then((updatedEmp) => {
+          if (updatedEmp) {
+            setSalesEmployees(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
+          }
+        }).catch(console.error);
+      }
+
+      toast.success(`Sales Invoice saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
 
       if (printMode === 'a4') {
         const payload = constructFullInvoicePayload();
@@ -607,14 +629,30 @@ export function PosSalesInvoice() {
               onChange={(e) => setSalesExecutive(e.target.value)}
               className="bg-transparent text-amber-950 font-bold outline-none cursor-pointer"
             >
-              <option value="Nageswari (Sales Lead)">Nageswari (Sales Lead)</option>
-              <option value="Abhilash (Senior Executive)">Abhilash (Senior Executive)</option>
-              <option value="Rajesh Kumar (Account Exec)">Rajesh Kumar (Account Exec)</option>
-              <option value="Priya Sharma (Retail Asst)">Priya Sharma (Retail Asst)</option>
+              {salesEmployees && salesEmployees.length > 0 ? (
+                salesEmployees.map((emp) => (
+                  <option key={emp.id} value={emp.full_name}>
+                    {emp.full_name} ({emp.employee_code})
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="Nageswari (Sales Lead)">Nageswari (Sales Lead)</option>
+                  <option value="Abhilash (Senior Executive)">Abhilash (Senior Executive)</option>
+                  <option value="Rajesh Kumar (Account Exec)">Rajesh Kumar (Account Exec)</option>
+                  <option value="Priya Sharma (Retail Asst)">Priya Sharma (Retail Asst)</option>
+                </>
+              )}
             </select>
-            <span className="bg-amber-500 text-white px-1.5 py-0.5 rounded text-[10px] font-black">
-              +{Math.floor(grandTotal / 100)} Pts
-            </span>
+            {(() => {
+              const selectedEmp = salesEmployees.find(e => e.full_name === salesExecutive);
+              const totalPts = ((selectedEmp?.sales_points || 0) + Math.floor(grandTotal / 100)).toFixed(0);
+              return (
+                <span className="bg-amber-500 text-white px-1.5 py-0.5 rounded text-[10px] font-black" title="Points earned for this invoice (Total accumulated points)">
+                  +{Math.floor(grandTotal / 100)} Pts {selectedEmp ? `(Total: ${totalPts} Pts)` : ''}
+                </span>
+              );
+            })()}
           </div>
 
           {/* Pricing Tier Mode Selector */}
