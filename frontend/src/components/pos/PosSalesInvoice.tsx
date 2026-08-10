@@ -636,12 +636,7 @@ export function PosSalesInvoice() {
                   </option>
                 ))
               ) : (
-                <>
-                  <option value="Nageswari (Sales Lead)">Nageswari (Sales Lead)</option>
-                  <option value="Abhilash (Senior Executive)">Abhilash (Senior Executive)</option>
-                  <option value="Rajesh Kumar (Account Exec)">Rajesh Kumar (Account Exec)</option>
-                  <option value="Priya Sharma (Retail Asst)">Priya Sharma (Retail Asst)</option>
-                </>
+                <option value="">Select Sales Executive</option>
               )}
             </select>
             {(() => {

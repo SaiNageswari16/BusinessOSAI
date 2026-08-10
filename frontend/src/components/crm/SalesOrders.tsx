@@ -208,7 +208,6 @@ export function SalesOrders() {
                   </div>
                 </DialogTitle>
               </DialogHeader>
-
               <form onSubmit={handleAddSubmit} className="space-y-4 pt-2">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -250,12 +249,7 @@ export function SalesOrders() {
                           </option>
                         ))
                       ) : (
-                        <>
-                          <option value="Sales Rep - Alex">Sales Rep - Alex</option>
-                          <option value="Sales Rep - Sarah">Sales Rep - Sarah</option>
-                          <option value="Sales Rep - Nageswari">Sales Rep - Nageswari</option>
-                          <option value="Store Manager">Store Manager</option>
-                        </>
+                        <option value="">Select Sales Representative</option>
                       )}
                     </select>
                   </div>
