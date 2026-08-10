@@ -331,9 +331,9 @@ async def update_employee(
 @router.post("/employees/{emp_id}/add-points", response_model=EmployeeResponse)
 async def add_employee_sales_points(
     emp_id: uuid.UUID,
-    points: float = Query(..., ge=0),
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    points: float = Query(..., ge=0),
 ):
     emp = await db.scalar(
         select(Employee).where(Employee.id == emp_id, Employee.tenant_id == ctx.tenant_id)

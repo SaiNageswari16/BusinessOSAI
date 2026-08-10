@@ -4,7 +4,10 @@ import time
 import logging
 from functools import wraps
 from fastapi.encoders import jsonable_encoder
-import redis.asyncio as redis
+try:
+    import redis.asyncio as redis
+except ImportError:
+    redis = None
 
 logger = logging.getLogger("redis_cache")
 
@@ -17,22 +20,23 @@ REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 redis_client = None
 _redis_disabled_until = 0  # Timestamp until which Redis is bypassed if offline
 
-try:
-    if REDIS_URL:
-        redis_client = redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=0.1, socket_connect_timeout=0.1)
-    else:
-        redis_client = redis.Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            password=REDIS_PASSWORD,
-            decode_responses=True,
-            socket_timeout=0.1,
-            socket_connect_timeout=0.1
-        )
-    logger.info("Redis cache client initialized.")
-except Exception as e:
-    logger.warning(f"Redis client initialization skipped: {e}")
-    redis_client = None
+if redis:
+    try:
+        if REDIS_URL:
+            redis_client = redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=0.1, socket_connect_timeout=0.1)
+        else:
+            redis_client = redis.Redis(
+                host=REDIS_HOST,
+                port=REDIS_PORT,
+                password=REDIS_PASSWORD,
+                decode_responses=True,
+                socket_timeout=0.1,
+                socket_connect_timeout=0.1
+            )
+        logger.info("Redis cache client initialized.")
+    except Exception as e:
+        logger.warning(f"Redis client initialization skipped: {e}")
+        redis_client = None
 
 
 def _is_redis_ready() -> bool:
