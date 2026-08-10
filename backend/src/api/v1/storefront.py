@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 from src.database.session import get_db
-from src.models.storefront import StorefrontWallet, StorefrontJourney, StorefrontNotification
-from src.schemas.storefront import StorefrontUserContextResponse, StorefrontWalletResponse, StorefrontJourneyResponse, StorefrontNotificationResponse
+from src.models.storefront import StorefrontWallet, StorefrontJourney, StorefrontNotification, StorefrontWishlist
+from src.schemas.storefront import StorefrontUserContextResponse, StorefrontWalletResponse, StorefrontJourneyResponse, StorefrontNotificationResponse, StorefrontWishlistResponse, StorefrontWishlistAddRequest
 
 router = APIRouter(prefix="/storefront/public", tags=["Storefront Context"])
 

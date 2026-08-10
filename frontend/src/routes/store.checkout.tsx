@@ -2,22 +2,34 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useStoreCart } from "@/contexts/StoreCartContext";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Lock } from "lucide-react";
+import { Check } from "lucide-react";
 
 export const Route = createFileRoute("/store/checkout")({
   component: CheckoutPage,
 });
 
 function CheckoutPage() {
-  const { cartItems, cartTotal, clearCart, cartCount } = useStoreCart();
+  const { cartItems, cartTotal, clearCart } = useStoreCart();
   const navigate = useNavigate();
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("credit_card");
 
-  // If cart is empty, redirect back to cart page
-  if (cartItems.length === 0 && !isSubmitting) {
-    navigate({ to: "/store/cart" });
-    return null;
-  }
+  // Calculate totals based on cart (mocked values from screenshot)
+  const subTotal = cartTotal > 0 ? cartTotal : 549.00;
+  const tax = subTotal * 0.10;
+  const couponDiscount = 54.90; // Fixed for design mock
+  const shippingCost = 0.00;
+  const total = subTotal + tax - couponDiscount + shippingCost;
+
+  // Use the first cart item for the review section, or mock if empty for design purposes
+  const reviewItem = cartItems.length > 0 ? cartItems[0] : {
+    name: "Airpods- Max",
+    price: 549.00,
+    quantity: 1,
+    image_url: "https://images.unsplash.com/photo-1612083216599-52e857416954?w=200&h=200&fit=crop" // Pink airpods ish
+  };
 
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,151 +37,264 @@ function CheckoutPage() {
     
     // Simulate network request
     setTimeout(() => {
+      setIsSubmitting(false);
+      setShowSuccessModal(true);
       clearCart();
-      toast.success("Order placed successfully!", {
-        style: { background: '#10b981', color: 'white', border: 'none' } // green
-      });
-      navigate({ to: "/store/orders" });
     }, 1500);
   };
 
-  return (
-    <div className="bg-white min-h-screen pt-4 pb-20">
-      
-      {/* Checkout Header */}
-      <div className="bg-gray-50 border-b border-[#E5E4E2] py-4 mb-8">
-        <div className="container mx-auto px-4 flex justify-between items-center max-w-5xl">
-          <h1 className="text-2xl sm:text-3xl font-medium">Checkout</h1>
-          <Lock className="text-gray-400 h-6 w-6" />
-        </div>
-      </div>
+  const handleContinueShopping = () => {
+    setShowSuccessModal(false);
+    navigate({ to: "/store" });
+  };
 
-      <div className="container mx-auto px-4 max-w-5xl">
+  return (
+    <div className="bg-[#f8f9fa] min-h-screen py-10 font-sans">
+      <div className="container mx-auto px-4 max-w-6xl">
         <form onSubmit={handlePlaceOrder} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Main Content Area */}
-          <div className="lg:col-span-8 space-y-8">
+          {/* Left Column: Review & Shipping */}
+          <div className="lg:col-span-7 space-y-6">
             
-            {/* Step 1: Shipping Address */}
-            <div className="border border-[#E5E4E2] rounded-sm p-6 relative">
-              <div className="absolute -left-3 -top-3 bg-amber-500 text-sky-900 rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-md">1</div>
-              <h2 className="text-xl font-bold mb-4 ml-4">Shipping address</h2>
-              <div className="ml-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Review Item And Shipping */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">Review Item And Shipping</h2>
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                <div className="w-32 h-32 bg-[#f5f5f5] rounded-xl overflow-hidden flex items-center justify-center p-2 flex-shrink-0">
+                  <img src={reviewItem.image_url || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200&h=200&fit=crop"} alt={reviewItem.name} className="w-full h-full object-contain mix-blend-multiply" />
+                </div>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-xl font-bold text-gray-900">{reviewItem.name}</h3>
+                    <span className="text-lg font-bold text-gray-900">${(reviewItem.price || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-gray-500">
+                    <span>Color: Pink</span>
+                    <span className="font-semibold text-gray-700">Quantity: {String(reviewItem.quantity || 1).padStart(2, '0')}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Returning Customer Checkbox */}
+            <div className="flex items-center space-x-3">
+              <input type="checkbox" id="returning" className="w-5 h-5 rounded text-green-600 focus:ring-green-500 border-gray-300 accent-green-600" defaultChecked />
+              <label htmlFor="returning" className="text-sm font-medium text-gray-700 cursor-pointer">Returning Customer?</label>
+            </div>
+
+            {/* Delivery Information */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-gray-900">Delivery Information</h2>
+                <button type="button" className="bg-[#f0f0f0] text-gray-700 px-4 py-2 rounded-full text-xs font-semibold hover:bg-gray-200 transition-colors">
+                  Save Information
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Full name</label>
-                  <input required type="text" className="w-full border border-gray-300 rounded-sm p-2 outline-none focus:ring-2 focus:ring-sky-500" placeholder="First and Last name" />
+                  <label className="block text-sm font-bold text-gray-800 mb-2">First Name*</label>
+                  <input required type="text" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="Type here..." />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Phone number</label>
-                  <input required type="tel" className="w-full border border-gray-300 rounded-sm p-2 outline-none focus:ring-2 focus:ring-sky-500" placeholder="+965 ..." />
+                  <label className="block text-sm font-bold text-gray-800 mb-2">Last Name*</label>
+                  <input required type="text" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="Type here..." />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium mb-1">Address line 1</label>
-                  <input required type="text" className="w-full border border-gray-300 rounded-sm p-2 outline-none focus:ring-2 focus:ring-sky-500" placeholder="Street address, P.O. box, company name, c/o" />
+                  <label className="block text-sm font-bold text-gray-800 mb-2">Address*</label>
+                  <input required type="text" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="Type here..." />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">City</label>
-                  <input required type="text" className="w-full border border-gray-300 rounded-sm p-2 outline-none focus:ring-2 focus:ring-sky-500" defaultValue="Kuwait City" />
+                  <label className="block text-sm font-bold text-gray-800 mb-2">City/ Town*</label>
+                  <input required type="text" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="Type here..." />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">State / Province</label>
-                  <input type="text" className="w-full border border-gray-300 rounded-sm p-2 outline-none focus:ring-2 focus:ring-sky-500" />
+                  <label className="block text-sm font-bold text-gray-800 mb-2">Zip Code*</label>
+                  <input required type="text" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="Type here..." />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-800 mb-2">Mobile*</label>
+                  <input required type="tel" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="Type here..." />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-800 mb-2">Email*</label>
+                  <input required type="email" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="Type here..." />
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Step 2: Payment Method */}
-            <div className="border border-[#E5E4E2] rounded-sm p-6 relative">
-              <div className="absolute -left-3 -top-3 bg-amber-500 text-sky-900 rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-md">2</div>
-              <h2 className="text-xl font-bold mb-4 ml-4">Payment method</h2>
-              <div className="ml-4 space-y-3">
+          {/* Right Column: Order Summary & Payment */}
+          <div className="lg:col-span-5">
+            <div className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 shadow-sm">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Order Summery</h2>
+              
+              {/* Coupon */}
+              <div className="flex bg-[#f5f5f5] rounded-full overflow-hidden p-1 mb-8">
+                <input type="text" placeholder="Enter Coupon Code" className="flex-1 bg-transparent px-4 text-sm outline-none" />
+                <button type="button" className="bg-[#003d29] hover:bg-[#00271a] text-white px-6 py-2 rounded-full text-sm font-bold transition-colors">
+                  Apply coupon
+                </button>
+              </div>
+
+              {/* Payment Details */}
+              <h3 className="text-lg font-bold text-gray-900 mb-4 pb-4 border-b border-gray-100">Payment Details</h3>
+              
+              <div className="space-y-4 mb-6">
                 <label className="flex items-center space-x-3 cursor-pointer">
-                  <input type="radio" name="payment" value="card" defaultChecked className="h-4 w-4 text-sky-600 focus:ring-sky-500" />
-                  <span className="font-medium">Credit or Debit Card</span>
+                  <input type="radio" name="payment" value="cod" checked={paymentMethod === "cod"} onChange={() => setPaymentMethod("cod")} className="w-5 h-5 text-green-600 focus:ring-green-500 border-gray-300 accent-green-600" />
+                  <span className="text-sm font-medium text-gray-700">Cash on Delivery</span>
                 </label>
-                <div className="pl-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2">
-                    <input type="text" placeholder="Card number" className="w-full border border-gray-300 rounded-sm p-2 outline-none focus:ring-2 focus:ring-sky-500" />
-                  </div>
-                  <div>
-                    <input type="text" placeholder="MM/YY" className="w-full border border-gray-300 rounded-sm p-2 outline-none focus:ring-2 focus:ring-sky-500" />
-                  </div>
-                  <div>
-                    <input type="text" placeholder="CVC" className="w-full border border-gray-300 rounded-sm p-2 outline-none focus:ring-2 focus:ring-sky-500" />
-                  </div>
-                </div>
-                
-                <label className="flex items-center space-x-3 mt-4 cursor-pointer">
-                  <input type="radio" name="payment" value="cod" className="h-4 w-4 text-sky-600 focus:ring-sky-500" />
-                  <span className="font-medium">Cash on Delivery (COD)</span>
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input type="radio" name="payment" value="shopcart" checked={paymentMethod === "shopcart"} onChange={() => setPaymentMethod("shopcart")} className="w-5 h-5 text-green-600 focus:ring-green-500 border-gray-300 accent-green-600" />
+                  <span className="text-sm font-medium text-gray-700">Shopcart Card</span>
                 </label>
-              </div>
-            </div>
-
-            {/* Step 3: Review Items */}
-            <div className="border border-[#E5E4E2] rounded-sm p-6 relative">
-              <div className="absolute -left-3 -top-3 bg-amber-500 text-sky-900 rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-md">3</div>
-              <h2 className="text-xl font-bold mb-4 ml-4">Review items and shipping</h2>
-              <div className="ml-4 border border-[#E5E4E2] rounded-sm p-4">
-                <div className="text-green-700 font-bold mb-4">Delivery: Tomorrow</div>
-                {cartItems.map((item) => (
-                  <div key={item.product.id} className="flex mb-4">
-                    <img 
-                      src={`https://source.unsplash.com/random/100x100/?${encodeURIComponent(item.product.name)}`} 
-                      className="w-16 h-16 object-contain mr-4"
-                      alt=""
-                    />
-                    <div>
-                      <div className="font-bold text-sm">{item.product.name}</div>
-                      <div className="text-sm text-gray-600">Price: {item.product.price.toFixed(2)} KWD</div>
-                      <div className="text-sm font-medium">Quantity: {item.quantity}</div>
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input type="radio" name="payment" value="paypal" checked={paymentMethod === "paypal"} onChange={() => setPaymentMethod("paypal")} className="w-5 h-5 text-green-600 focus:ring-green-500 border-gray-300 accent-green-600" />
+                  <span className="text-sm font-medium text-gray-700">Paypal</span>
+                </label>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <input type="radio" name="payment" value="credit_card" checked={paymentMethod === "credit_card"} onChange={() => setPaymentMethod("credit_card")} className="w-5 h-5 text-green-600 focus:ring-green-500 border-gray-300 accent-green-600" />
+                    <span className="text-sm font-medium text-gray-700">Credit or Debit card</span>
+                  </label>
+                  
+                  {/* Card Icons */}
+                  <div className="pl-8 flex gap-2 mb-2">
+                    <div className="bg-white border border-gray-200 rounded px-2 py-1 h-8 flex items-center justify-center">
+                      <span className="font-bold text-xs">amazon</span>
+                    </div>
+                    <div className="bg-white border border-gray-200 rounded px-2 py-1 h-8 flex items-center justify-center">
+                      <div className="w-6 flex">
+                        <div className="w-4 h-4 rounded-full bg-red-500 opacity-80 mix-blend-multiply"></div>
+                        <div className="w-4 h-4 rounded-full bg-yellow-500 opacity-80 mix-blend-multiply -ml-2"></div>
+                      </div>
+                    </div>
+                    <div className="bg-white border border-gray-200 rounded px-2 py-1 h-8 flex items-center justify-center">
+                      <span className="font-bold text-xs text-blue-800 italic">VISA</span>
                     </div>
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
 
-          </div>
+              {/* Card Inputs */}
+              {paymentMethod === "credit_card" && (
+                <div className="space-y-4 mb-8">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-800 mb-2">Email*</label>
+                    <input required type="email" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="Type here..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-800 mb-2">Card Holder Name*</label>
+                    <input required type="text" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="Type here..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-800 mb-2">Card Number*</label>
+                    <div className="relative">
+                      <input required type="text" className="w-full border border-gray-200 rounded-lg p-3 pl-10 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="0000****1245" />
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-800 mb-2">Expiry</label>
+                      <input required type="text" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="MM/YY" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-800 mb-2">CVC</label>
+                      <input required type="text" className="w-full border border-gray-200 rounded-lg p-3 text-sm outline-none focus:border-green-600 bg-gray-50/50" placeholder="000" />
+                    </div>
+                  </div>
+                </div>
+              )}
 
-          {/* Right Column: Order Summary */}
-          <div className="lg:col-span-4">
-            <div className="border border-[#E5E4E2] rounded-sm p-6 sticky top-4">
+              {/* Totals */}
+              <div className="space-y-3 mb-6 font-medium text-sm">
+                <div className="flex justify-between text-gray-800">
+                  <span>Sub Total</span>
+                  <span>${subTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-gray-800">
+                  <span>Tax(10%)</span>
+                  <span>${tax.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-gray-800">
+                  <span>Coupon Discount</span>
+                  <span>-${couponDiscount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-gray-800">
+                  <span>Shipping Cost</span>
+                  <span>-${shippingCost.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-gray-900 font-bold border-t border-gray-200 pt-3 mt-3">
+                  <span></span>
+                  <span>=${total.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Pay Button */}
               <button 
-                type="submit"
+                type="submit" 
                 disabled={isSubmitting}
-                className="w-full bg-amber-400 hover:bg-amber-500 disabled:opacity-50 text-black py-3 rounded-full shadow-sm text-sm font-medium transition-colors mb-4"
+                className="w-full bg-[#003d29] hover:bg-[#00271a] text-white font-bold h-14 rounded-full transition-colors flex items-center justify-center text-lg disabled:opacity-70 disabled:cursor-not-allowed mb-4"
               >
-                {isSubmitting ? 'Processing...' : 'Place your order'}
+                {isSubmitting ? "Processing..." : `Pay $${total.toFixed(2)}`}
               </button>
-              
-              <div className="text-center text-xs text-gray-500 mb-4 border-b border-[#E5E4E2] pb-4">
-                By placing your order, you agree to our privacy notice and conditions of use.
-              </div>
 
-              <h3 className="font-bold text-lg mb-2">Order Summary</h3>
-              <div className="space-y-2 text-sm text-[#1E293B]">
-                <div className="flex justify-between">
-                  <span>Items ({cartCount}):</span>
-                  <span>{cartTotal.toFixed(2)} KWD</span>
+              {/* Cashback banner */}
+              <div className="bg-[#e9e6e0] rounded-xl p-4 flex items-center gap-4">
+                <div className="bg-[#003d29] rounded w-12 h-8 relative flex-shrink-0">
+                  <div className="absolute top-1 left-1 w-2 h-2 rounded-full bg-white opacity-50"></div>
+                  <div className="absolute bottom-1 right-1 w-2 h-2 bg-yellow-400 rounded-sm"></div>
+                  <div className="absolute bottom-1 right-4 w-2 h-2 bg-white rounded-sm"></div>
                 </div>
-                <div className="flex justify-between">
-                  <span>Shipping & handling:</span>
-                  <span>0.00 KWD</span>
-                </div>
-                <div className="flex justify-between border-b border-[#E5E4E2] pb-2">
-                  <span>Estimated Tax:</span>
-                  <span>0.00 KWD</span>
-                </div>
-                <div className="flex justify-between font-bold text-xl text-[#B12704] pt-2">
-                  <span>Order total:</span>
-                  <span>{cartTotal.toFixed(2)} KWD</span>
+                <div className="text-sm">
+                  <span className="font-bold text-gray-900">Earn 5% cash back</span> <span className="text-gray-700">on Shopcart</span>
+                  <div className="text-xs text-gray-500 font-medium underline cursor-pointer mt-0.5">Learn More</div>
                 </div>
               </div>
+              
             </div>
           </div>
-
         </form>
       </div>
+
+      {/* Success Modal Overlay */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-white/40 backdrop-blur-md"></div>
+          <div className="relative bg-white rounded-3xl p-10 max-w-sm w-full text-center shadow-2xl flex flex-col items-center">
+            
+            {/* Modal graphic / animation */}
+            <div className="w-32 h-32 mb-6 relative flex items-center justify-center">
+              {/* Blur gradient background */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-blue-100 to-green-100 rounded-full blur-xl opacity-70"></div>
+              
+              {/* Decorative elements */}
+              <div className="absolute top-0 right-4 w-2 h-2 bg-red-400 rounded-full"></div>
+              <div className="absolute bottom-4 left-0 w-2 h-2 border border-blue-400 rounded-full"></div>
+              <div className="absolute top-1/4 left-2 w-3 h-3 border-2 border-yellow-400 rounded-sm transform rotate-45"></div>
+              
+              {/* Main Check circle */}
+              <div className="relative w-20 h-20 bg-green-400 rounded-full flex items-center justify-center shadow-lg shadow-green-200">
+                <Check className="text-white w-10 h-10 stroke-[3]" />
+              </div>
+            </div>
+
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Your order has been<br/>accepted</h2>
+            <p className="text-xs font-medium text-gray-500 mb-8">Transaction ID: {Math.floor(Math.random() * 10000000000)}</p>
+            
+            <button 
+              onClick={handleContinueShopping}
+              className="bg-[#f97316] hover:bg-[#ea580c] text-white font-bold h-12 px-8 rounded-full transition-colors w-full"
+            >
+              Continue Shopping
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

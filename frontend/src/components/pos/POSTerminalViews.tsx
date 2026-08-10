@@ -4,7 +4,7 @@ import {
   ScanBarcode, Search, Clock, Combine, Truck, RefreshCw, CreditCard,
   Tag, Heart, History, Sparkles, AlertCircle, ShoppingCart, ArrowRightLeft,
   Banknote, Camera, QrCode, LayoutGrid, List as ListIcon, Edit2, Trash2, X, Info, Boxes,
-  CheckCircle2, Keyboard, MonitorSmartphone, Wallet, Printer
+  CheckCircle2, Keyboard, MonitorSmartphone, Wallet, Printer, ShieldAlert
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { posProducts, posTransactions, posCustomers, posCategories } from "../../lib/pos-fallback";

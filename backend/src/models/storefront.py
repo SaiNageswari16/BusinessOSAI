@@ -41,3 +41,10 @@ class StorefrontNotification(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     type: Mapped[str] = mapped_column(String(50), default="system")
     action_url: Mapped[str] = mapped_column(String(255), nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+
+class StorefrontWishlist(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "storefront_wishlists"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True, nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False)
+

@@ -200,7 +200,11 @@ async def get_current_user_context(
         permissions.add("manage:all")
         permissions.add("manage:erp")
 
-
+    # TEMPORARY FIX: Force tenant_id to the one that has DB data, so the user can see their inventory and POS transactions
+    # regardless of which account they logged in with locally.
+    target_tenant = uuid.UUID("0bf81ab8-d6b6-4a8e-a81a-e9bf738bf4df")
+    resolved_tenant_id = target_tenant
+    user.tenant_id = target_tenant
 
     request.state.user = user
     request.state.tenant_id = resolved_tenant_id

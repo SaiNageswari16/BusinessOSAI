@@ -20,12 +20,22 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { useI18n } from "@/contexts/i18n-context";
+import { useQuery } from "@tanstack/react-query";
+import { workspaceApi } from "@/lib/workspace-api";
 import { KpiTile } from "@/components/dashboard/kpi-tile";
 import { AiInsightsPanel } from "@/components/dashboard/ai-insights-panel";
 import { Section } from "@/components/dashboard/section";
-import {
-  kpis, healthBreakdown, revenueData, channelData, ordersTrend, recentActivity,
-  notifications, inventoryAlerts, operationsWidgets, branchPerformance, calendarEvents,
+import { kpis, healthBreakdown } from "@/data/mock";
+import { 
+  revenueData as mockRevenueData, 
+  channelData as mockChannelData, 
+  ordersTrend as mockOrdersTrend,
+  operationsWidgets as mockOperationsWidgets,
+  branchPerformance as mockBranchPerformance,
+  inventoryAlerts as mockInventoryAlerts,
+  recentActivity as mockRecentActivity,
+  notifications as mockNotifications,
+  calendarEvents as mockCalendarEvents
 } from "@/data/mock";
 
 export const Route = createFileRoute("/_app/dashboard")({
@@ -103,10 +113,39 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [salesRange, setSalesRange] = useState("month");
 
+  const { data: dashboardData, isLoading: kpisLoading } = useQuery({
+    queryKey: ["dashboard-kpis"],
+    queryFn: workspaceApi.getDashboardKPIs
+  });
+
+  const { data: chartsData, isLoading: chartsLoading } = useQuery({
+    queryKey: ["dashboard-charts"],
+    queryFn: workspaceApi.getDashboardCharts
+  });
+
+  const { data: widgetsData, isLoading: widgetsLoading } = useQuery({
+    queryKey: ["dashboard-widgets"],
+    queryFn: workspaceApi.getDashboardWidgets
+  });
+
+  const displayKpis = dashboardData?.kpis || kpis.slice(0, 8);
+  const displayRevenueData = chartsData?.revenueData || mockRevenueData;
+  const displayChannelData = chartsData?.channelData || mockChannelData;
+  const displayOrdersTrend = chartsData?.ordersTrend || mockOrdersTrend;
+  
+  const displayOperationsWidgets = widgetsData?.operationsWidgets || mockOperationsWidgets;
+  const displayBranchPerformance = widgetsData?.branchPerformance || mockBranchPerformance;
+  const displayInventoryAlerts = widgetsData?.inventoryAlerts || mockInventoryAlerts;
+  const displayRecentActivity = widgetsData?.recentActivity || mockRecentActivity;
+  const displayNotifications = widgetsData?.notifications || mockNotifications;
+  const displayCalendarEvents = widgetsData?.calendarEvents || mockCalendarEvents;
+
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 400);
     return () => clearTimeout(t);
   }, []);
+
+  const isActuallyLoading = loading || kpisLoading;
 
   const hour = new Date().getHours();
   const greeting = language === "ar" 
@@ -190,9 +229,9 @@ function Dashboard() {
           </Tabs>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5">
-          {loading
+          {isActuallyLoading
             ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
-            : kpis.slice(0, 8).map((k, i) => {
+            : displayKpis.map((k, i) => {
                 const Icon = KPI_ICONS[i] ?? DollarSign;
                 const translatedLabel = t(kpiTranslationMap[k.label] || k.label, k.label);
                 return (
@@ -204,32 +243,6 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* ── AI Insights + Quick Actions ── */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <AiInsightsPanel />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
-            {t("qa.title", "Quick Actions")}
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            {QUICK_ACTIONS.map((action, i) => {
-              const translatedQaLabel = t(qaTranslationMap[action.label] || action.label, action.label);
-              return (
-                <Link key={i} to={action.to}>
-                  <div className="group flex flex-col items-center justify-center gap-2 p-4 rounded-xl border bg-card hover:bg-muted/30 hover:border-primary/30 transition-all cursor-pointer h-full">
-                    <div className={`size-10 rounded-xl grid place-items-center transition-transform group-hover:scale-110 ${QA_TONES[action.tone]}`}>
-                      <action.icon className="size-5" />
-                    </div>
-                    <span className="text-[11px] font-bold text-center leading-tight">{translatedQaLabel}</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </div>
 
       {/* ── Revenue Chart ── */}
       <Section
@@ -246,7 +259,7 @@ function Dashboard() {
         }
       >
         <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={revenueData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+          <AreaChart data={displayRevenueData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%"  stopColor="var(--brand-blue)"   stopOpacity={0.35} />
@@ -273,14 +286,14 @@ function Dashboard() {
         <Section title="Revenue by Channel" subtitle="Current month mix">
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
-              <Pie data={channelData} dataKey="value" innerRadius={48} outerRadius={78} paddingAngle={3}>
-                {channelData.map((c) => <Cell key={c.name} fill={c.color} />)}
+              <Pie data={displayChannelData} dataKey="value" innerRadius={48} outerRadius={78} paddingAngle={3}>
+                {displayChannelData.map((c: any) => <Cell key={c.name} fill={c.color} />)}
               </Pie>
               <Tooltip contentStyle={tooltipStyle} />
             </PieChart>
           </ResponsiveContainer>
           <div className="space-y-2 mt-3">
-            {channelData.map((c) => (
+            {displayChannelData.map((c: any) => (
               <div key={c.name} className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-2">
                   <span className="size-2 rounded-full" style={{ background: c.color }} />
@@ -294,7 +307,7 @@ function Dashboard() {
 
         <Section title="Orders — 14-day Trend" subtitle="Across all stores and channels" className="lg:col-span-2">
           <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={ordersTrend} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+            <BarChart data={displayOrdersTrend} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
               <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
@@ -309,7 +322,7 @@ function Dashboard() {
       <section>
         <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Business Operations</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {operationsWidgets.map((w, i) => (
+          {displayOperationsWidgets.map((w: any, i: number) => (
             <motion.div key={w.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
               <Card className="p-4 border-border/60 hover:shadow-md transition group cursor-pointer">
                 <div className="flex items-start justify-between">
@@ -329,7 +342,7 @@ function Dashboard() {
       <div className="grid lg:grid-cols-3 gap-6">
         <Section title="Branch Performance" subtitle="Revenue & profit — current month" className="lg:col-span-2">
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={branchPerformance} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
+            <BarChart data={displayBranchPerformance} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="branch" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
               <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
@@ -340,7 +353,7 @@ function Dashboard() {
             </BarChart>
           </ResponsiveContainer>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-3">
-            {branchPerformance.map((b) => (
+            {displayBranchPerformance.map((b: any) => (
               <div key={b.branch} className="text-center">
                 <div className="text-[10px] text-muted-foreground truncate">{b.branch}</div>
                 <div className={cn("text-xs font-bold", b.growth >= 10 ? "text-emerald-600" : "text-amber-600")}>
@@ -354,7 +367,7 @@ function Dashboard() {
         <Section title="Inventory Alerts" subtitle="Items below safety stock"
           action={<Button variant="ghost" size="sm" className="text-xs">Reorder all</Button>}>
           <div className="space-y-2.5 mt-2">
-            {inventoryAlerts.map((a) => (
+            {displayInventoryAlerts.map((a: any) => (
               <div key={a.sku} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition cursor-pointer">
                 <div className={cn("size-9 rounded-lg grid place-items-center shrink-0",
                   a.status === "critical" && "bg-rose-500/10 text-rose-600",
@@ -381,7 +394,7 @@ function Dashboard() {
       <div className="grid lg:grid-cols-3 gap-6">
         <Section title="Recent Activity" subtitle="Across all modules" className="lg:col-span-1">
           <div className="relative mt-4 pl-4 before:absolute before:inset-y-0 before:left-[11px] before:w-px before:bg-border">
-            {recentActivity.map((activity) => (
+            {displayRecentActivity.map((activity: any) => (
               <div key={activity.id} className="relative mb-5 last:mb-0">
                 <div className="absolute -left-[21px] size-5 rounded-full border-2 border-background bg-muted grid place-items-center">
                   <div className="size-1.5 rounded-full bg-primary" />
@@ -401,8 +414,8 @@ function Dashboard() {
 
         <Section title="Notifications" action={<Button variant="ghost" size="sm" className="text-xs text-primary">Mark all read</Button>}>
           <div className="space-y-3 mt-2">
-            {notifications.map((n) => (
-              <div key={n.id} className={cn("p-3 rounded-lg border-l-2 text-sm", NOTIF_TONES[n.tone])}>
+            {displayNotifications.map((n: any) => (
+              <div key={n.id} className={cn("p-3 rounded-lg border-l-2 text-sm", NOTIF_TONES[n.tone] || NOTIF_TONES.info)}>
                 <div className="font-semibold text-foreground">{n.title}</div>
                 <div className="text-muted-foreground text-xs mt-1">{n.body}</div>
                 <div className="text-[10px] text-muted-foreground/60 mt-2 font-mono">{n.time}</div>
@@ -413,7 +426,7 @@ function Dashboard() {
 
         <Section title="Upcoming Events" subtitle="Meetings and deadlines">
           <div className="space-y-3 mt-2">
-            {calendarEvents.map((event, idx) => (
+            {displayCalendarEvents.map((event: any, idx: number) => (
               <div key={idx} className="flex gap-3 p-3 rounded-lg border bg-card hover:bg-muted/20 transition cursor-pointer">
                 <div className="flex flex-col items-center justify-center min-w-14 bg-muted/50 rounded p-1 text-center">
                   <span className="text-sm font-bold leading-none">{event.date}</span>

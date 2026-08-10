@@ -49,3 +49,13 @@ class StorefrontNotificationResponse(BaseModel):
 class StorefrontUserContextResponse(BaseModel):
     wallet: Optional[StorefrontWalletResponse] = None
     active_journey: Optional[StorefrontJourneyResponse] = None
+
+class StorefrontWishlistAddRequest(BaseModel):
+    product_id: uuid.UUID
+
+class StorefrontWishlistResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    product_id: uuid.UUID
+    
+    model_config = ConfigDict(from_attributes=True)

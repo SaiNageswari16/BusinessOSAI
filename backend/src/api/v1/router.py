@@ -22,6 +22,7 @@ from src.api.v1.hrms.exit_management import router as hrms_exit_router
 from src.api.v1.hrms.intelligence import router as hrms_intelligence_router
 from src.api.v1.system_admin import router as system_admin_router
 from src.api.v1.crm import router as crm_router
+from src.api.v1.workspace import router as workspace_router
 
 from src.api.v1.inventory.product_master import router as inventory_product_master_router
 from src.api.v1.inventory.master_catalog import router as inventory_master_catalog_router
@@ -95,6 +96,14 @@ api_router.include_router(whatsapp_automation_router)
 
 # Storefront
 api_router.include_router(storefront_router)
+
+# Workspace
+api_router.include_router(workspace_router)
+
+# POS (Point of Sale)
+api_router.include_router(pos_products.router, prefix="/pos", tags=["POS - Products"])
+api_router.include_router(pos_sessions.router, prefix="/pos", tags=["POS - Sessions"])
+api_router.include_router(pos_transactions.router, prefix="/pos", tags=["POS - Transactions"])
 
 from src.api.v1.inventory.barcode_scanner import router as barcode_scanner_router
 

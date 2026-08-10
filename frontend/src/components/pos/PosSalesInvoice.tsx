@@ -57,7 +57,7 @@ export function PosSalesInvoice() {
   const [barcodeInput, setBarcodeInput] = useState("");
 
   // Invoice Fields
-  const [invoiceNumber] = useState(`INV-${Date.now().toString().slice(-5)}`);
+  const [invoiceNumber, setInvoiceNumber] = useState(`INV-${Date.now().toString().slice(-5)}`);
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
   const [paymentTerms, setPaymentTerms] = useState("30");
@@ -453,7 +453,7 @@ export function PosSalesInvoice() {
         quantity: Number(it.quantity || 0),
         unit_price: Number(it.unit_price || 0),
         mrp: Number(it.mrp || 0),
-        discount_type: it.discount_type,
+        discount_type: it.discount_type === 'amount' ? 'fixed' : (it.discount_type as any),
         discount_value: Number(it.discount_value || 0),
         tax_rate: Number(it.tax_rate || 0),
       })),
