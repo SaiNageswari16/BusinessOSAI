@@ -90,6 +90,33 @@ async def list_employees(
             ))
         await db.commit()
 
+    # Auto-link any workspace User who doesn't have an Employee profile yet
+    users_without_emp = await db.scalars(
+        select(User).where(
+            User.tenant_id == ctx.tenant_id,
+            ~User.id.in_(select(Employee.user_id).where(Employee.user_id.is_not(None)))
+        )
+    )
+    unlinked_users = users_without_emp.all()
+    if unlinked_users:
+        emp_count = await db.scalar(
+            select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
+        ) or 0
+        for i, u in enumerate(unlinked_users):
+            seq = str(emp_count + i + 1).zfill(4)
+            db.add(Employee(
+                tenant_id=ctx.tenant_id,
+                user_id=u.id,
+                employee_code=f"EMP-{seq}",
+                full_name=u.full_name or u.email.split('@')[0].capitalize(),
+                email=u.email,
+                date_of_joining=date.today(),
+                employment_type="Full-Time",
+                status="Active",
+                sales_points=0.0,
+            ))
+        await db.commit()
+
     query = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
     if department_id:
         query = query.where(Employee.department_id == department_id)
