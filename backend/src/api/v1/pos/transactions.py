@@ -246,11 +246,36 @@ async def get_daily_summary(
     split_res  = await db.execute(split_stmt)
     split_count = int(split_res.scalar() or 0)
 
+    # 5. Hourly Sales Trend
+    hourly_stmt = select(
+        func.extract('hour', POSTransaction.created_at).label("hour"),
+        func.coalesce(func.sum(POSTransaction.total_amount), 0).label("revenue"),
+        func.count(POSTransaction.id).label("orders")
+    ).where(*completed_cond).group_by(func.extract('hour', POSTransaction.created_at)).order_by(func.extract('hour', POSTransaction.created_at))
+
+    hourly_res = await db.execute(hourly_stmt)
+    hourly_sales = []
+    
+    # Initialize 24 hours to 0 to provide a continuous graph
+    hourly_dict = {f"{h:02d}:00": {"hour": f"{h:02d}:00", "revenue": 0.0, "orders": 0} for h in range(24)}
+    
+    for row in hourly_res:
+        h_idx = int(row.hour)
+        time_label = f"{h_idx:02d}:00"
+        if time_label in hourly_dict:
+            hourly_dict[time_label]["revenue"] = float(row.revenue or 0)
+            hourly_dict[time_label]["orders"] = int(row.orders or 0)
+            
+    # Return from min hour to max hour based on current time (up to current hour + 1 for aesthetics, or all 24)
+    # Let's return from 06:00 to 22:00 for a typical retail day, or filter based on data
+    retail_hours = [hourly_dict[f"{h:02d}:00"] for h in range(6, 23)]
+
     return {
         "transactions_count": transactions_count,
         "total_revenue":      total_revenue,
         "total_returns":      total_returns,
         "breakdown":          breakdown,
         "split_count":        split_count,
+        "hourly_sales":       retail_hours,
         "date":               today_start.strftime("%Y-%m-%d"),
     }

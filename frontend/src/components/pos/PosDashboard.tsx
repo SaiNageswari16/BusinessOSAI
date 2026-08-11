@@ -4,9 +4,15 @@ import {
   TrendingUp, Users, AlertTriangle, ArrowRightLeft,
   Clock, Zap, CheckCircle2, ChevronRight, Store, RotateCcw
 } from "lucide-react";
-import { posDashboardStats, posTransactions, posSession, posStore } from "../../lib/pos-fallback";
+import { posSession, posStore } from "../../lib/pos-fallback";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 
 import { formatCurrency } from "../../lib/utils";
+import { posApi } from "../../lib/pos-api";
+import { workspaceApi } from "../../lib/workspace-api";
+import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { useAuth } from "../../contexts/auth-context";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -22,6 +28,48 @@ export function PosDashboard() {
 }
 
 function PosDashboardInner() {
+  const { user } = useAuth();
+  
+  const { data: workspaceData } = useQuery({
+    queryKey: ["current-workspace"],
+    queryFn: workspaceApi.getCurrentWorkspace,
+    staleTime: Infinity,
+  });
+
+  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+    queryKey: ["pos-daily-summary"],
+    queryFn: posApi.getDailySummary,
+    refetchInterval: 60000, // Refresh every minute
+  });
+
+  const { data: historyData, isLoading: historyLoading, error: historyError } = useQuery({
+    queryKey: ["pos-transactions-history"],
+    queryFn: () => posApi.getTransactionHistory(6),
+    refetchInterval: 30000,
+  });
+
+  const { data: widgetsData } = useQuery({
+    queryKey: ["dashboard-widgets"],
+    queryFn: workspaceApi.getDashboardWidgets,
+    refetchInterval: 60000,
+  });
+
+  const todayRevenue = summaryData?.total_revenue || 0;
+  const todayOrders = summaryData?.transactions_count || 0;
+  const totalReturns = summaryData?.total_returns || 0;
+  const avgBill = todayOrders > 0 ? todayRevenue / todayOrders : 0;
+
+  const displayTransactions = historyData || [];
+  const displayInventoryAlerts = widgetsData?.inventoryAlerts || [];
+
+  if (historyError) {
+    return (
+      <div className="p-8 text-rose-500 font-bold text-xl">
+        Error loading transactions: {(historyError as any).detail || (historyError as any).message || JSON.stringify(historyError)}
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 lg:p-8 space-y-8 max-w-full">
       {/* Header section with Store / Shift Details */}
@@ -29,7 +77,7 @@ function PosDashboardInner() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">POS Dashboard</h1>
           <p className="text-slate-500 mt-1">
-            {posStore.name} ({posStore.branch}) &mdash; Register: {posSession.registerId}
+            {workspaceData?.name || "Store HQ"} &mdash; Register: REG-01
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -38,7 +86,7 @@ function PosDashboardInner() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            Shift Open: {posSession.cashier}
+            Shift Open: {user?.full_name || "Cashier"}
           </div>
           <button className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-lg font-medium shadow-sm transition-all active:scale-95 flex items-center gap-2">
             <ShoppingCart className="w-4 h-4" />
@@ -47,63 +95,70 @@ function PosDashboardInner() {
         </div>
       </div>
 
-      {/* AI Business Score Widget */}
-      <div className="relative rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-[1px] shadow-sm">
-        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-pink-500/20 blur-xl"></div>
-        <div className="relative bg-white/90 backdrop-blur-xl rounded-[15px] p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            <div className="h-14 w-14 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-              <Zap className="h-7 w-7 text-indigo-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                AI Business Score: <span className="text-emerald-600">94/100</span>
-              </h3>
-              <p className="text-sm text-slate-600 mt-1 max-w-xl">
-                Store performance is <strong>14% higher</strong> than usual for a weekday morning.
-                AI predicts a surge in walk-ins between 1:00 PM and 3:00 PM. Make sure 2 registers are active.
-              </p>
-            </div>
+      {/* Hourly Sales Graph */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+        <h3 className="text-lg font-bold text-slate-900 mb-6">Today's Hourly Sales Trend</h3>
+        {summaryData?.hourly_sales && summaryData.hourly_sales.length > 0 ? (
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={summaryData.hourly_sales} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="hour" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  formatter={(value: number) => [formatCurrency(value), "Revenue"]}
+                />
+                <Area type="monotone" dataKey="revenue" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-          <button className="text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
-            View Insights
-          </button>
-        </div>
+        ) : (
+          <div className="h-64 flex items-center justify-center text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+            No hourly sales data available for today yet.
+          </div>
+        )}
       </div>
 
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <StatCard
           title="Today's Revenue"
-          value={formatCurrency(posDashboardStats.todayRevenue)}
-          trend="+12.5%"
+          value={formatCurrency(todayRevenue)}
+          trend="Live"
           isPositive={true}
           icon={DollarSign}
           color="bg-emerald-100 text-emerald-600"
         />
         <StatCard
           title="Total Orders"
-          value={posDashboardStats.todayOrders.toString()}
-          trend="+5.2%"
+          value={todayOrders.toString()}
+          trend="Live"
           isPositive={true}
           icon={ShoppingCart}
           color="bg-blue-100 text-blue-600"
         />
         <StatCard
           title="Average Bill"
-          value={formatCurrency(posDashboardStats.avgBill)}
-          trend="-1.4%"
-          isPositive={false}
+          value={formatCurrency(avgBill)}
+          trend="Live"
+          isPositive={true}
           icon={CreditCard}
           color="bg-purple-100 text-purple-600"
         />
         <StatCard
           title="Returns & Refunds"
-          value={formatCurrency(posDashboardStats.refunds)}
-          trend={posDashboardStats.refundCount.toString() + " items"}
+          value={formatCurrency(totalReturns)}
+          trend="Live"
           isPositive={false}
           icon={RotateCcw}
-          color="bg-orange-100 text-orange-600"
+          color="bg-rose-100 text-rose-600"
         />
       </div>
 
@@ -127,12 +182,15 @@ function PosDashboardInner() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center justify-between">
               Low Stock Alerts
-              <span className="bg-rose-100 text-rose-700 text-xs px-2 py-1 rounded-full font-bold">3 items</span>
+              <span className="bg-rose-100 text-rose-700 text-xs px-2 py-1 rounded-full font-bold">{displayInventoryAlerts.length} items</span>
             </h3>
             <div className="space-y-4">
-              <StockAlertItem name="LG 4K Smart TV 55\" stock={8} />
-              <StockAlertItem name="Sony WH-1000XM5" stock={12} />
-              <StockAlertItem name="Ceramic Dinner Set" stock={22} />
+              {displayInventoryAlerts.slice(0, 3).map((a: any) => (
+                <StockAlertItem key={a.sku} name={a.name} stock={a.level} />
+              ))}
+              {displayInventoryAlerts.length === 0 && (
+                <div className="text-sm text-slate-500 text-center py-4">No critical stock alerts.</div>
+              )}
             </div>
           </div>
         </div>
@@ -159,34 +217,47 @@ function PosDashboardInner() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {posTransactions.slice(0, 8).map((trx) => (
-                    <tr key={trx.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-slate-900">{trx.id}</td>
-                      <td className="px-6 py-4 text-slate-500">
-                        {new Date(trx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td className="px-6 py-4 text-slate-700">{trx.customerName}</td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-medium uppercase tracking-wide">
-                          {trx.paymentMethod}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right font-bold text-slate-900">
-                        {formatCurrency(trx.total)}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {trx.status === "Completed" ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full text-xs font-medium">
-                            <CheckCircle2 className="w-3 h-3" /> Completed
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-rose-600 bg-rose-50 px-2 py-1 rounded-full text-xs font-medium">
-                            <RotateCcw className="w-3 h-3" /> Refunded
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                {displayTransactions.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                      No recent transactions found.
+                    </td>
+                  </tr>
+                )}
+                {displayTransactions.slice(0, 5).map((tx: any) => (
+                  <tr key={tx.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 px-4 whitespace-nowrap">
+                      <span className="font-medium text-slate-900">
+                        {tx.receipt_number || (tx.id?.length > 18 ? tx.id.substring(0, 8) + '...' : tx.id)}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 whitespace-nowrap text-slate-600">
+                      {tx.created_at ? format(new Date(tx.created_at), 'hh:mm a') : format(new Date(tx.date || new Date()), 'hh:mm a')}
+                    </td>
+                    <td className="py-4 px-4 whitespace-nowrap text-slate-900">
+                      {tx.customer?.name || tx.customerName || "Walk-in"}
+                    </td>
+                    <td className="py-4 px-4 whitespace-nowrap">
+                      <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-slate-100 text-slate-600 border border-slate-200">
+                        {tx.payments?.[0]?.payment_method || tx.paymentMethod || "UNKNOWN"}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 whitespace-nowrap text-right font-bold text-slate-900">
+                      {formatCurrency(tx.total_amount || tx.total || 0)}
+                    </td>
+                    <td className="py-4 px-4 whitespace-nowrap text-center">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${(tx.status || 'completed').toLowerCase() === "completed"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : (tx.status || 'completed').toLowerCase() === "refunded"
+                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {(tx.status || 'completed').toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
                 </tbody>
               </table>
             </div>

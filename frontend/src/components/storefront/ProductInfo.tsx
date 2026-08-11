@@ -1,7 +1,9 @@
 import { StorefrontProduct } from "@/lib/storefront-api";
-import { Star, ShoppingBag, Heart, Share2, Check } from "lucide-react";
-import { useState } from "react";
 import { useStoreCart } from "@/contexts/StoreCartContext";
+import { useWishlist } from "@/contexts/StoreWishlistContext";
+import { useState } from "react";
+import { Truck, RotateCcw, Heart } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 
 interface ProductInfoProps {
   product: StorefrontProduct;
@@ -9,160 +11,159 @@ interface ProductInfoProps {
 
 export function ProductInfo({ product }: ProductInfoProps) {
   const [quantity, setQuantity] = useState(1);
-  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
-    product.variants && product.variants.length > 0 ? product.variants[0].id : null
-  );
-  const [mainImage, setMainImage] = useState<string | undefined>(product.image_url);
-
   const { addToCart } = useStoreCart();
+  const { isInWishlist, toggleWishlist } = useWishlist();
+  const isWished = isInWishlist(product.id);
 
-  const selectedVariant = product.variants?.find(v => v.id === selectedVariantId);
-  
-  // Calculate price based on variant
-  const finalPrice = product.selling_price + (selectedVariant ? selectedVariant.additional_price : 0);
-
-  const handleAddToCart = () => {
-    addToCart({
-      id: product.id + (selectedVariant ? `-${selectedVariant.id}` : ''),
-      name: product.name + (selectedVariant ? ` (${selectedVariant.variant_name})` : ''),
-      price: finalPrice,
-      mrp: product.mrp,
-      image_url: mainImage || product.image_url,
-      category_name: product.category_name,
-      brand: product.brand,
-      stock: selectedVariant?.stock_override !== null ? selectedVariant?.stock_override : product.stock,
-    }, quantity);
+  const handleWishlistToggle = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await toggleWishlist(product.id);
   };
 
-  const increment = () => setQuantity(q => q + 1);
-  const decrement = () => setQuantity(q => q > 1 ? q - 1 : 1);
+  const handleAddToCart = () => {
+    addToCart(
+      {
+        id: product.id,
+        name: product.name,
+        price: product.selling_price || product.mrp || 0,
+        mrp: product.mrp,
+        image_url: product.image_url,
+        category_name: product.category_name,
+        brand: product.brand,
+        stock: product.stock,
+      },
+      quantity,
+    );
+  };
 
-  const allImages = [
-    ...(product.image_url ? [{ id: 'main', url: product.image_url }] : []),
-    ...(product.images || []).map(img => ({ id: img.id, url: img.image_url }))
-  ];
+  const increment = () => setQuantity((q) => q + 1);
+  const decrement = () => setQuantity((q) => (q > 1 ? q - 1 : 1));
+
+  const price = (product.selling_price || product.mrp || 0).toFixed(2);
+  const monthly = ((product.selling_price || product.mrp || 0) / 6).toFixed(2);
+
+  const navigate = useNavigate();
+
+  const handleBuyNow = () => {
+    handleAddToCart();
+    navigate({ to: "/store/checkout" });
+  };
 
   return (
-    <div className="flex flex-col space-y-6">
-      
-      {/* Title */}
-      <h1 className="text-3xl sm:text-4xl font-bold text-[#1A1A1A] leading-tight">
-        {product.name}
-      </h1>
-
-      {/* Ratings & Brand */}
-      <div className="flex items-center space-x-6 text-sm text-gray-500">
-        <div className="flex items-center">
-           <div className="flex text-[#FFA41C] mr-2">
-             {'★★★★★'}
-           </div>
-           (12 reviews)
+    <div className="flex flex-col space-y-6 max-w-lg">
+      {/* Title & Desc */}
+      <div>
+        <div className="flex justify-between items-start mb-2">
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 pr-4">{product.name}</h1>
+          <button
+            onClick={handleWishlistToggle}
+            className="flex-shrink-0 w-10 h-10 bg-[#f5f5f5] rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"
+          >
+            <Heart size={20} className={`${isWished ? 'fill-green-600 text-green-600' : 'text-gray-400 hover:text-red-500'}`} />
+          </button>
         </div>
-        {product.brand && (
-          <div className="border-l border-gray-300 pl-6">
-             Brand: <span className="text-blue-600 font-bold">{product.brand}</span>
-          </div>
-        )}
+        <p className="text-sm text-gray-600 mb-3 leading-relaxed">
+          {product.short_description ||
+            "A perfect balance of exhilarating high-fidelity audio and the effortless magic of this product."}
+        </p>
+        <div className="flex items-center space-x-2">
+          <div className="flex text-green-600 text-sm">{"★★★★★"}</div>
+          <span className="text-xs text-gray-500 font-semibold">(121)</span>
+        </div>
       </div>
 
-      {/* Price */}
-      <div className="py-2 border-b border-gray-100 pb-6">
-        <div className="flex items-end space-x-3">
-          <span className="text-4xl font-bold text-blue-600">{finalPrice.toFixed(2)} KWD</span>
-          {product.mrp > finalPrice && (
-            <span className="text-lg text-gray-400 line-through">{product.mrp.toFixed(2)} KWD</span>
+      <hr className="border-gray-200" />
+
+      {/* Pricing */}
+      <div>
+        <div className="flex items-baseline space-x-2 mb-1">
+          <span className="text-2xl font-bold text-gray-900">${price}</span>
+          <span className="text-lg font-bold text-gray-900">or ${monthly}/month</span>
+        </div>
+        <p className="text-xs text-gray-500 font-medium">
+          Suggested payments with 6 months special financing
+        </p>
+      </div>
+
+      <hr className="border-gray-200" />
+
+      {/* Colors */}
+      <div>
+        <h3 className="text-sm font-bold text-gray-900 mb-3">Choose a Color</h3>
+        <div className="flex space-x-3">
+          {["bg-[#ffb6a3]", "bg-gray-800", "bg-[#c1d3c0]", "bg-gray-200", "bg-[#4b5b78]"].map(
+            (color, idx) => (
+              <button
+                key={idx}
+                className={`w-8 h-8 rounded-full ${color} border-2 ${idx === 0 ? "border-gray-900 shadow-sm ring-2 ring-offset-2 ring-gray-900" : "border-white ring-1 ring-gray-200"}`}
+              />
+            ),
           )}
         </div>
-        <p className="text-sm text-gray-500 mt-2">Tax included. Delivery calculated at checkout.</p>
       </div>
 
-      {/* Mini Image Gallery (if more than 1 image) */}
-      {allImages.length > 1 && (
-        <div className="flex space-x-2 py-2">
-          {allImages.map(img => (
-            <img 
-              key={img.id}
-              src={img.url} 
-              alt={product.name}
-              onClick={() => setMainImage(img.url)}
-              className={`w-16 h-16 object-cover rounded-md cursor-pointer border-2 ${mainImage === img.url ? 'border-blue-600' : 'border-transparent opacity-70 hover:opacity-100'}`}
-            />
-          ))}
-        </div>
-      )}
-      
-      {/* Short Description */}
-      <p className="text-gray-600 leading-relaxed">
-        {product.short_description || "Premium quality organic product sourced directly for you. Experience the freshest ingredients and finest materials, carefully selected to ensure your utmost satisfaction. Perfect for everyday use."}
-      </p>
+      <hr className="border-gray-100" />
 
-      {/* Variants */}
-      {product.variants && product.variants.length > 0 && (
-        <div className="pt-2">
-          <h3 className="font-bold text-[#1A1A1A] mb-3">Options:</h3>
-          <div className="flex flex-wrap gap-2">
-            {product.variants.map(variant => (
-              <button
-                key={variant.id}
-                onClick={() => setSelectedVariantId(variant.id)}
-                className={`px-4 py-2 border rounded-md text-sm font-medium transition-colors ${
-                  selectedVariantId === variant.id 
-                  ? 'border-blue-600 bg-blue-600 text-white' 
-                  : 'border-gray-300 text-gray-700 hover:border-gray-400'
-                }`}
-              >
-                {variant.variant_name}
-                {variant.additional_price > 0 && ` (+${variant.additional_price} KWD)`}
-              </button>
-            ))}
+      {/* Quantity & Stock */}
+      <div className="flex items-center space-x-6">
+        <div className="flex items-center bg-[#f2f4f5] rounded-full px-4 h-12 w-32 justify-between">
+          <button
+            onClick={decrement}
+            className="text-gray-600 hover:text-gray-900 font-medium text-xl"
+          >
+            -
+          </button>
+          <span className="font-bold text-gray-900">{quantity}</span>
+          <button
+            onClick={increment}
+            className="text-gray-600 hover:text-gray-900 font-medium text-xl"
+          >
+            +
+          </button>
+        </div>
+
+        <div className="text-sm">
+          <div className="font-semibold text-gray-900">
+            Only <span className="text-orange-500">12 Items</span> Left!
           </div>
+          <div className="text-gray-500">Don't miss it</div>
         </div>
-      )}
-
-      {/* Stock Status */}
-      <div className="flex items-center text-blue-600 font-bold">
-        <Check className="w-5 h-5 mr-2" />
-        {selectedVariant?.stock_override ?? product.stock} In stock
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center space-x-4 pt-4">
-        {/* Quantity */}
-        <div className="flex items-center border border-[#E5E4E2] rounded-full h-12">
-          <button onClick={decrement} className="px-4 text-gray-500 hover:text-blue-600 transition-colors">-</button>
-          <span className="w-8 text-center font-bold text-[#1A1A1A]">{quantity}</span>
-          <button onClick={increment} className="px-4 text-gray-500 hover:text-blue-600 transition-colors">+</button>
-        </div>
-
-        {/* Add to Cart */}
+      {/* Buttons */}
+      <div className="flex space-x-4 pt-2">
         <button 
-          onClick={handleAddToCart}
-          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 rounded-full transition-colors flex items-center justify-center uppercase tracking-wide"
+          onClick={handleBuyNow}
+          className="flex-1 bg-[#003d29] hover:bg-[#00271a] text-white font-bold h-12 rounded-full transition-colors flex items-center justify-center"
         >
-          <ShoppingBag className="w-5 h-5 mr-2" />
+          Buy Now
+        </button>
+        <button
+          onClick={handleAddToCart}
+          className="flex-1 border border-[#003d29] text-[#003d29] hover:bg-gray-50 font-bold h-12 rounded-full transition-colors flex items-center justify-center"
+        >
           Add to Cart
         </button>
-
-        {/* Wishlist */}
-        <button className="w-12 h-12 flex items-center justify-center border border-[#E5E4E2] rounded-full text-gray-500 hover:border-blue-600 hover:text-blue-600 transition-colors">
-          <Heart className="w-5 h-5" />
-        </button>
       </div>
 
-      {/* Meta */}
-      <div className="pt-6 border-t border-gray-100 space-y-3 text-sm text-gray-500">
-        <div><span className="font-bold text-[#1A1A1A] w-24 inline-block">SKU:</span> {selectedVariant?.sku || product.sku}</div>
-        {product.category_name && (
-          <div><span className="font-bold text-[#1A1A1A] w-24 inline-block">Category:</span> {product.category_name}</div>
-        )}
-        <div className="flex items-center">
-          <span className="font-bold text-[#1A1A1A] w-24 inline-block">Share:</span>
-          <div className="flex space-x-3 text-gray-400">
-            <Share2 className="w-4 h-4 cursor-pointer hover:text-blue-600" />
+      {/* Delivery Info */}
+      <div className="border border-gray-200 rounded-xl mt-6 divide-y divide-gray-200">
+        <div className="p-4 flex items-start space-x-4">
+          <Truck className="w-6 h-6 text-orange-500 mt-1 flex-shrink-0" />
+          <div>
+            <h4 className="font-bold text-gray-900 text-sm mb-1">Free Delivery</h4>
+            <a href="#" className="text-xs text-gray-500 underline hover:text-gray-700">Enter your Postal code for Delivery Availability</a>
+          </div>
+        </div>
+        <div className="p-4 flex items-start space-x-4">
+          <RotateCcw className="w-6 h-6 text-orange-500 mt-1 flex-shrink-0" />
+          <div>
+            <h4 className="font-bold text-gray-900 text-sm mb-1">Return Delivery</h4>
+            <p className="text-xs text-gray-500">Free 30days Delivery Returns. <a href="#" className="underline hover:text-gray-700">Details</a></p>
           </div>
         </div>
       </div>
-
     </div>
   );
 }

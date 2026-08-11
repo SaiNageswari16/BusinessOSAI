@@ -1,5 +1,5 @@
 import uuid
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -49,6 +49,7 @@ class ProductBase(BaseModel):
     
     short_description: Optional[str] = None
     long_description: Optional[str] = None
+    specifications: Optional[Any] = None
     image_url: Optional[str] = Field(None, max_length=1024)
     
     purchase_price: Optional[float] = 0.0
@@ -420,6 +421,7 @@ class PublicProductResponse(BaseModel):
     category_name: Optional[str] = None
     brand: Optional[str] = None
     short_description: Optional[str] = None
+    specifications: Optional[Any] = None
     image_url: Optional[str] = None
     mrp: float
     selling_price: float

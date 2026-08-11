@@ -63,6 +63,7 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     
     short_description: Mapped[str | None] = mapped_column(Text)
     long_description: Mapped[str | None] = mapped_column(Text)
+    specifications: Mapped[dict | list | None] = mapped_column(JSONB)
     image_url: Mapped[str | None] = mapped_column(String(1024))
     
     purchase_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0)

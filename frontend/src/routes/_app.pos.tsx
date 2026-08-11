@@ -525,6 +525,19 @@ function PosPayments() {
 function PosStoreOperations() {
   const view = useView();
 
+  const { data: summaryData } = useQuery({
+    queryKey: ["pos-daily-summary"],
+    queryFn: posApi.getDailySummary,
+    refetchInterval: 60000,
+  });
+
+  const todayRevenue = summaryData?.total_revenue || 0;
+  const cashSales = summaryData?.breakdown?.cash || 0;
+  const cardSales = summaryData?.breakdown?.card || 0;
+  const upiSales = summaryData?.breakdown?.upi || 0;
+  const totalRefunds = summaryData?.total_returns || 0;
+  const expectedCash = posSession.openingFloat + cashSales;
+
   if (view === "shift") return (
     <div className="p-8">
       <h2 className="text-2xl font-bold mb-6">Open / Close Shift</h2>
@@ -571,8 +584,8 @@ function PosStoreOperations() {
       <h2 className="text-2xl font-bold mb-6">Cash Drawer Management</h2>
       <div className="grid grid-cols-3 gap-6 mb-8">
         <div className="bg-white p-6 rounded-xl border-l-4 border-l-emerald-600 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Opening Float</p><h3 className="text-2xl font-black mt-1">{fmt(posSession.openingFloat)}</h3></div>
-        <div className="bg-white p-6 rounded-xl border-l-4 border-l-indigo-600 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Cash Sales Today</p><h3 className="text-2xl font-black mt-1">{fmt(4510)}</h3></div>
-        <div className="bg-white p-6 rounded-xl border-l-4 border-l-amber-500 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Expected Drawer Balance</p><h3 className="text-2xl font-black mt-1">{fmt(posSession.openingFloat + 4510)}</h3></div>
+        <div className="bg-white p-6 rounded-xl border-l-4 border-l-indigo-600 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Cash Sales Today</p><h3 className="text-2xl font-black mt-1">{fmt(cashSales)}</h3></div>
+        <div className="bg-white p-6 rounded-xl border-l-4 border-l-amber-500 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Expected Drawer Balance</p><h3 className="text-2xl font-black mt-1">{fmt(expectedCash)}</h3></div>
       </div>
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
@@ -634,7 +647,7 @@ function PosStoreOperations() {
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="font-bold mb-5 text-lg border-b pb-3">Closing Summary</h3>
           <div className="space-y-3 text-sm">
-            {[{ label: "Opening Float", val: fmt(posSession.openingFloat) }, { label: "Cash Sales", val: fmt(4510) }, { label: "Card Sales", val: fmt(8450) }, { label: "UPI Sales", val: fmt(3240) }, { label: "Total Revenue", val: fmt(posDashboardStats.todayRevenue), bold: true }, { label: "Total Refunds", val: `-${fmt(posDashboardStats.refunds)}`, red: true }, { label: "Expected Cash", val: fmt(posSession.openingFloat + 4510), bold: true }].map(r => (
+            {[{ label: "Opening Float", val: fmt(posSession.openingFloat) }, { label: "Cash Sales", val: fmt(cashSales) }, { label: "Card Sales", val: fmt(cardSales) }, { label: "UPI Sales", val: fmt(upiSales) }, { label: "Total Revenue", val: fmt(todayRevenue), bold: true }, { label: "Total Refunds", val: `-${fmt(totalRefunds)}`, red: true }, { label: "Expected Cash", val: fmt(expectedCash), bold: true }].map(r => (
               <div key={r.label} className={`flex justify-between py-2 ${r.bold ? "border-t border-slate-200 pt-3" : "border-b border-slate-50"}`}>
                 <span className="text-slate-500">{r.label}</span>
                 <span className={`${r.bold ? "font-black text-lg" : "font-medium"} ${r.red ? "text-rose-600" : ""}`}>{r.val}</span>

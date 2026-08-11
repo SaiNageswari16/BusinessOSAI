@@ -51,7 +51,7 @@ export const Route = createFileRoute("/")({
 
 type NavPage = "home" | "modules" | "services" | "solutions" | "pricing" | "about";
 
-export function MarketingLandingPage() {
+function MarketingLandingPage() {
   const navigate = useNavigate();
   const { isAuthed, user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

@@ -41,6 +41,7 @@ export interface StorefrontProduct {
   category_name?: string;
   brand?: string;
   short_description?: string;
+  specifications?: any;
   image_url?: string;
   mrp: number;
   selling_price: number;
@@ -124,5 +125,29 @@ export const topUpWallet = async (amount: number): Promise<any> => {
     body: JSON.stringify({ amount })
   });
   if (!response.ok) throw new Error('Failed to top up wallet');
+  return response.json();
+};
+
+export const fetchWishlist = async (): Promise<any[]> => {
+  const response = await fetch(`${API_BASE_URL}/storefront/public/wishlist`);
+  if (!response.ok) throw new Error('Failed to fetch wishlist');
+  return response.json();
+};
+
+export const addToWishlist = async (productId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/storefront/public/wishlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product_id: productId })
+  });
+  if (!response.ok) throw new Error('Failed to add to wishlist');
+  return response.json();
+};
+
+export const removeFromWishlist = async (productId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/storefront/public/wishlist/${productId}`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) throw new Error('Failed to remove from wishlist');
   return response.json();
 };

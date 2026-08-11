@@ -510,7 +510,7 @@ export function PosSalesInvoice() {
         quantity: Number(it.quantity || 0),
         unit_price: Number(it.unit_price || 0),
         mrp: Number(it.mrp || 0),
-        discount_type: it.discount_type === "amount" ? "fixed" : it.discount_type,
+        discount_type: it.discount_type === 'amount' ? 'fixed' : (it.discount_type as any),
         discount_value: Number(it.discount_value || 0),
         tax_rate: Number(it.tax_rate || 0),
       })),

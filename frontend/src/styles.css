@@ -59,7 +59,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.20 0.02 250);
-  --primary: oklch(0.60 0.15 250); /* Smooth Slate Blue */
+  --primary: oklch(0.35 0.15 150); /* Shopcart Green */
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.96 0.01 250);
   --secondary-foreground: oklch(0.25 0.02 250);
@@ -100,7 +100,7 @@
   --card-foreground: oklch(0.97 0.005 250);
   --popover: oklch(0.15 0.015 250);
   --popover-foreground: oklch(0.97 0.005 250);
-  --primary: oklch(0.60 0.15 250);
+  --primary: oklch(0.35 0.15 150);
   --primary-foreground: oklch(0.12 0.01 250);
   --secondary: oklch(0.22 0.02 250);
   --secondary-foreground: oklch(0.97 0.005 250);
