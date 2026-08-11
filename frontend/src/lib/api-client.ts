@@ -3405,6 +3405,31 @@ export interface IntelligenceSummary {
 }
 
 export const inventoryApi = {
+  verifyGstin: (gstin: string) =>
+    request<{
+      valid: boolean;
+      gstin: string;
+      legal_name: string;
+      trade_name: string;
+      pan: string;
+      state: string;
+      state_code: string;
+      taxpayer_type: string;
+      status: string;
+      city: string;
+      pincode: string;
+      address: string;
+      business_nature: string;
+      // Extended auto-fill fields
+      contact_person?: string;
+      email?: string;
+      phone?: string;
+      bank_name?: string;
+      account_number?: string;
+      ifsc_code?: string;
+      is_fallback?: boolean;
+    }>("POST", "/inventory/procurement/verify-gstin", { gstin }),
+
   getHsnCodes: (search?: string) =>
     request<Array<{ hsn_code: string; description: string; gst_rate: number }>>("GET", "/inventory/hsn-codes", undefined, search ? { search } : undefined),
 

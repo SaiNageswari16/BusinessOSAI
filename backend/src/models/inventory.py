@@ -71,6 +71,7 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     wholesale_price: Mapped[float | None] = mapped_column(Numeric(10, 2), default=0)
     min_wholesale_qty: Mapped[int | None] = mapped_column(Integer, default=1)
     tax_percent: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    is_tax_inclusive: Mapped[bool] = mapped_column(Boolean, default=True)
     discount_limit: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
 
     
@@ -342,6 +343,7 @@ class MasterCatalogProduct(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     near_expiry_quantity: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
     
     tax: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+    is_tax_inclusive: Mapped[bool | None] = mapped_column(Boolean, default=True)
     type: Mapped[str | None] = mapped_column(String(100))
     cess: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
     cess_on: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)

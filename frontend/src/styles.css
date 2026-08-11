@@ -244,8 +244,80 @@
     color: black !important;
   }
 
+
+@media print {
+  /* Hide all web UI elements when printing thermal receipts */
+  body.printing-receipt > *:not(#printable-receipt-portal),
+  body.printing-receipt #root > *:not(#printable-receipt-portal),
+  header, nav, footer, .no-print, [data-no-print] {
+    display: none !important;
+  }
+
+  body, html {
+    background-color: white !important;
+    color: black !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Target 80mm HS-KH80 / POS80 Thermal Printer Portal */
+  #printable-receipt-portal {
+    display: block !important;
+    visibility: visible !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 72mm !important;
+    max-width: 72mm !important;
+    padding: 1mm 2mm !important;
+    margin: 0 !important;
+    background: white !important;
+    color: black !important;
+    font-family: monospace, "Courier New", Courier, monospace !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+  }
+
+  #printable-receipt-portal * {
+    visibility: visible !important;
+    color: black !important;
+  }
+
   @page {
     margin: 0mm !important;
     size: auto !important;
+  }
+
+  /* ── Barcode Labels Print Portal ─────────────────────────────────── */
+  /* When printing barcode labels, hide everything in body except #printable-barcode-portal */
+  body:has(#printable-barcode-portal) > *:not(#printable-barcode-portal) {
+    display: none !important;
+  }
+
+  #printable-barcode-portal {
+    display: block !important;
+    visibility: visible !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    background: white !important;
+    color: black !important;
+    z-index: 999999 !important;
+  }
+
+  #printable-barcode-portal * {
+    visibility: visible !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Ensure SVG barcode bars print cleanly without rounding */
+  #printable-barcode-portal svg rect {
+    shape-rendering: crispEdges !important;
+    image-rendering: pixelated !important;
   }
 }

@@ -10,74 +10,9 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ProductBarcode, type InventoryCategory } from "../../lib/api-client";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
-import { getHardwareScannableBarcode } from "../../lib/code128";
+import { RealBarcodeSvg, SingleBarcodeLabelCard as SharedBarcodeLabelCard } from "../../lib/barcode-svg";
 
-// ISO/IEC 15417 Code-128 & GS1 EAN-13 Hardware-Scannable Vector SVG Renderer
-function RealBarcodeSvg({
-  code,
-  format = "Code-128",
-  width = 220,
-  height = 52,
-  unitPx = 2.0
-}: {
-  code: string;
-  format?: string;
-  width?: number;
-  height?: number;
-  unitPx?: number;
-}) {
-  const bars = useMemo(() => getHardwareScannableBarcode(code || "8901234567890"), [code]);
-
-  const quietZonePx = 16;
-  let contentModules = 0;
-  bars.forEach(b => { contentModules += b.width; });
-  const totalSvgWidth = Math.max(width, Math.ceil(contentModules * unitPx + (quietZonePx * 2)));
-  const barHeight = Math.max(28, height - 16);
-
-  return (
-    <div className="flex flex-col items-center justify-center bg-white p-0.5 rounded overflow-hidden">
-      <svg
-        width={totalSvgWidth}
-        height={height}
-        shapeRendering="crispEdges"
-        className="block mx-auto"
-      >
-        <rect width={totalSvgWidth} height={height} fill="white" />
-        {(() => {
-          let x = quietZonePx;
-          return bars.map((b, i) => {
-            const w = b.width * unitPx;
-            const el = b.isBlack ? (
-              <rect
-                key={i}
-                x={Math.round(x)}
-                y={2}
-                width={Math.max(1.8, Math.round(w))}
-                height={barHeight}
-                fill="black"
-              />
-            ) : null;
-            x += w;
-            return el;
-          });
-        })()}
-        <text
-          x={totalSvgWidth / 2}
-          y={height - 2}
-          textAnchor="middle"
-          fontSize="9.5"
-          fontFamily="monospace"
-          fontWeight="bold"
-          fill="black"
-        >
-          {code}
-        </text>
-      </svg>
-    </div>
-  );
-}
-
-// Single Label Renderer Following Active Master Barcode Template
+// LocalBarcodeLabelCard adapts ProductBarcode to the shared label shape
 function SingleBarcodeLabelCard({
   item,
   template,
@@ -87,56 +22,20 @@ function SingleBarcodeLabelCard({
   template: any;
   isPrint?: boolean;
 }) {
-  const f = template.fields || {};
-  const storeName = template.storeName || "LAZYMONKEY AI SUPERSTORE";
-
   return (
-    <div className={`bg-white text-black border border-slate-300 rounded ${isPrint ? 'p-1 h-[24mm]' : 'p-2.5 min-h-[210px]'} flex flex-col justify-between font-sans shadow-sm select-none overflow-hidden box-border`}>
-      {/* Company Header */}
-      {f.showCompanyName && (
-        <div className="flex items-center justify-between border-b border-slate-200 pb-0.5 mb-0.5">
-          <span className={`font-bold ${isPrint ? 'text-[8px]' : 'text-[9px]'} tracking-wider uppercase truncate`} style={{ color: template.primaryColor || "#000" }}>
-            {storeName}
-          </span>
-          {f.showCategoryBrand && item.category_name && (
-            <span className={`font-semibold text-slate-500 uppercase ${isPrint ? 'text-[7px]' : 'text-[7.5px]'}`}>{item.category_name}</span>
-          )}
-        </div>
-      )}
-
-      {/* Product Name & SKU */}
-      <div>
-        {f.showProductName && (
-          <h4 className={`font-bold leading-tight text-slate-900 line-clamp-1 ${isPrint ? 'text-[9px]' : 'text-[11px]'}`}>
-            {item.product_name}
-          </h4>
-        )}
-        {f.showSKU && item.sku && <p className={`font-mono text-slate-600 ${isPrint ? 'text-[7.5px]' : 'text-[8.5px]'}`}>SKU: {item.sku}</p>}
-
-        {/* Price & MRP */}
-        <div className="flex items-baseline gap-1.5 mt-0.5">
-          {f.showPrice && item.selling_price != null && (
-            <span className={`font-extrabold text-slate-900 ${isPrint ? 'text-[10px]' : 'text-xs'}`}>₹{Number(item.selling_price).toFixed(2)}</span>
-          )}
-          {f.showMRP && item.mrp != null && (
-            <span className={`text-slate-500 line-through ${isPrint ? 'text-[7.5px]' : 'text-[8.5px]'}`}>MRP: ₹{Number(item.mrp).toFixed(2)}</span>
-          )}
-        </div>
-      </div>
-
-      {/* Barcode Graphic */}
-      {f.showBarcodeGraphic && item.barcode && (
-        <div className="mt-0.5">
-          <RealBarcodeSvg
-            code={item.barcode}
-            format={item.format}
-            width={isPrint ? 160 : 220}
-            height={isPrint ? 36 : 54}
-            unitPx={isPrint ? 1.5 : 2.0}
-          />
-        </div>
-      )}
-    </div>
+    <SharedBarcodeLabelCard
+      item={{
+        product_name: item.product_name,
+        barcode: item.barcode,
+        sku: item.sku,
+        selling_price: item.selling_price ?? null,
+        mrp: null, // ProductBarcode doesn't carry mrp — omit
+        category_name: item.category_name ?? undefined,
+        format: item.format ?? undefined,
+      }}
+      template={template}
+      isPrint={isPrint}
+    />
   );
 }
 

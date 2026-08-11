@@ -23,7 +23,10 @@ import {
   ArrowLeft,
   DollarSign,
   History,
-  Wallet
+  Wallet,
+  MessageSquare,
+  StickyNote,
+  Tag
 } from "lucide-react";
 import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -45,6 +48,11 @@ interface InvoiceItem {
   discount_value: number;
   discount_type: "amount" | "percent";
   tax_rate: number;
+  is_tax_inclusive?: boolean;
+  custom_note?: string;
+  is_note_open?: boolean;
+  is_search_open?: boolean;
+  search_query?: string;
 }
 
 export function PosSalesInvoice() {
@@ -57,7 +65,7 @@ export function PosSalesInvoice() {
   const [barcodeInput, setBarcodeInput] = useState("");
 
   // Invoice Fields
-  const [invoiceNumber] = useState(`INV-${Date.now().toString().slice(-5)}`);
+  const [invoiceNumber, setInvoiceNumber] = useState(`INV-${Date.now().toString().slice(-5)}`);
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
   const [paymentTerms, setPaymentTerms] = useState("30");
@@ -203,6 +211,11 @@ export function PosSalesInvoice() {
         discount_value: 0,
         discount_type: "percent",
         tax_rate: 18,
+        is_tax_inclusive: true,
+        custom_note: "",
+        is_note_open: false,
+        is_search_open: false,
+        search_query: "",
       },
     ]);
   };
@@ -228,6 +241,7 @@ export function PosSalesInvoice() {
             discount_value: 0,
             discount_type: "percent",
             tax_rate: product.tax_percent || 18,
+            is_tax_inclusive: product.is_tax_inclusive !== false,
           },
         ]);
         toast.success(`Added ${product.name} (${pricingMode} Price)`);
@@ -257,6 +271,7 @@ export function PosSalesInvoice() {
               discount_value: 0,
               discount_type: "percent",
               tax_rate: p.gst || 18,
+              is_tax_inclusive: p.is_tax_inclusive !== false,
             },
           ]);
           toast.success(`Found & Added: ${p.name} (${p.source || "Master Catalog"})`);
@@ -287,6 +302,7 @@ export function PosSalesInvoice() {
               updated.mrp = product.mrp || 0;
               updated.hsn_code = product.hsn_code || "";
               updated.tax_rate = product.tax_percent || 18;
+              updated.is_tax_inclusive = product.is_tax_inclusive !== false;
               if (!updated.quantity || updated.quantity === 0) {
                 updated.quantity = 1;
               }
@@ -306,18 +322,41 @@ export function PosSalesInvoice() {
   const [invoiceDiscountType, setInvoiceDiscountType] = useState<"percent" | "amount">("percent");
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState<number>(0);
 
-  // Calculated totals with Before-Tax & After-Tax Invoice Discount
+  // Calculated totals with GST Inclusive vs Exclusive Tax Modes
   let subtotal = 0;
   let itemDiscountTotal = 0;
+  let totalTaxableValue = 0;
+  let totalTax = 0;
 
   items.forEach((item) => {
-    const lineGross = item.quantity * item.unit_price;
-    const dAmt =
-      item.discount_type === "percent"
-        ? lineGross * (item.discount_value / 100)
-        : Math.min(item.discount_value, lineGross);
-    subtotal += lineGross;
+    const isIncl = item.is_tax_inclusive !== false;
+    const price = Number(item.unit_price) || 0;
+    const qty = Number(item.quantity) || 1;
+    const taxRate = Number(item.tax_rate) || 0;
+
+    let lineFinal = 0;
+    let lineTaxable = 0;
+    let lineTax = 0;
+
+    if (isIncl) {
+      lineFinal = qty * price;
+      lineTaxable = taxRate > 0 ? lineFinal / (1 + taxRate / 100) : lineFinal;
+      lineTax = lineFinal - lineTaxable;
+    } else {
+      lineTaxable = qty * price;
+      lineTax = (lineTaxable * taxRate) / 100;
+      lineFinal = lineTaxable + lineTax;
+    }
+
+    const dAmt = item.discount_type === "percent"
+      ? lineFinal * (item.discount_value / 100)
+      : Math.min(item.discount_value, lineFinal);
+
+    subtotal += lineFinal;
     itemDiscountTotal += dAmt;
+    const discRatio = lineFinal > 0 ? dAmt / lineFinal : 0;
+    totalTaxableValue += lineTaxable * (1 - discRatio);
+    totalTax += lineTax * (1 - discRatio);
   });
 
   const netSubtotal = Math.max(0, subtotal - itemDiscountTotal);
@@ -330,23 +369,8 @@ export function PosSalesInvoice() {
       : Math.min(invoiceDiscountValue, netSubtotal);
   }
 
-  const taxableValue = Math.max(0, netSubtotal - beforeTaxDiscount);
-
-  // 2. GST Tax Calculation on Taxable Value
-  const taxRatio = netSubtotal > 0 ? (taxableValue / netSubtotal) : 1;
-  let totalTax = 0;
-  items.forEach((item) => {
-    const lineGross = item.quantity * item.unit_price;
-    const dAmt =
-      item.discount_type === "percent"
-        ? lineGross * (item.discount_value / 100)
-        : Math.min(item.discount_value, lineGross);
-    const itemNet = Math.max(0, lineGross - dAmt);
-    const effectiveItemTaxable = itemNet * taxRatio;
-    totalTax += effectiveItemTaxable * (item.tax_rate / 100);
-  });
-
-  const grossTotal = taxableValue + totalTax;
+  const taxableValue = Math.max(0, totalTaxableValue - beforeTaxDiscount);
+  const grossTotal = Math.max(0, netSubtotal - beforeTaxDiscount);
 
   // 3. After-Tax Invoice Discount
   let afterTaxDiscount = 0;
@@ -486,7 +510,7 @@ export function PosSalesInvoice() {
         quantity: Number(it.quantity || 0),
         unit_price: Number(it.unit_price || 0),
         mrp: Number(it.mrp || 0),
-        discount_type: it.discount_type,
+        discount_type: it.discount_type === "amount" ? "fixed" : it.discount_type,
         discount_value: Number(it.discount_value || 0),
         tax_rate: Number(it.tax_rate || 0),
       })),
@@ -599,7 +623,44 @@ export function PosSalesInvoice() {
         }).catch(console.error);
       }
 
-      toast.success(`Sales Invoice saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
+      // Persist to pos_saved_invoices in localStorage for instant Invoices History tab sync
+      const newInvoiceRecord = {
+        id: `inv-${Date.now()}`,
+        invoice_number: invoiceNumber,
+        customer_name: customer?.name || "Walk-in Customer",
+        customer_phone: customer?.phone || "",
+        customer_gstin: customer?.gst_number || "",
+        sales_executive: salesExecutive || "Sales Executive",
+        sales_points_earned: earnedPts,
+        invoice_date: invoiceDate,
+        due_date: dueDate,
+        payment_mode: paymentMode,
+        payment_status: isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
+        subtotal: subtotal,
+        total_tax: totalTax,
+        discount_amount: totalDiscount,
+        grand_total: grandTotal,
+        amount_received: Number(amountReceived) || grandTotal,
+        print_status: printMode === 'thermal' ? 'Thermal Printed' : printMode === 'a4' ? 'A4 PDF Generated' : 'Pending Print',
+        items: items.map(it => ({
+          product_name: it.product_name || "Item",
+          quantity: it.quantity,
+          unit_price: it.unit_price,
+          mrp: it.mrp || 0,
+          hsn_code: it.hsn_code || "",
+          tax_rate: it.tax_rate || 18,
+        }))
+      };
+
+      try {
+        const stored = localStorage.getItem("pos_saved_invoices");
+        const list = stored ? JSON.parse(stored) : [];
+        localStorage.setItem("pos_saved_invoices", JSON.stringify([newInvoiceRecord, ...list]));
+      } catch (e) {
+        console.error(e);
+      }
+
+      toast.success(`Sales Invoice ${invoiceNumber} saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
 
       if (printMode === 'a4') {
         const payload = constructFullInvoicePayload();
@@ -824,7 +885,7 @@ export function PosSalesInvoice() {
                           <History className="w-3.5 h-3.5 text-indigo-400" /> Complete Purchase History
                         </span>
                         <span className="text-[11px] text-slate-300">
-                          Total Orders: <strong className="text-white">{customerSummary.total_invoices}</strong> | Total Spent: <strong className="text-emerald-400">₹{customerSummary.total_spent.toFixed(2)}</strong>
+                          Total Orders: <strong className="text-white">{customerSummary.total_invoices}</strong> | Total Spent: <strong className="text-emerald-400">₹{Number(customerSummary.total_spent || 0).toFixed(2)}</strong>
                         </span>
                       </div>
 
@@ -833,13 +894,13 @@ export function PosSalesInvoice() {
                           <Wallet className="w-4 h-4 text-amber-400" />
                           <div>
                             <div className="text-[10px] text-slate-300 font-medium">Pending Outstanding Due</div>
-                            <div className={`text-sm font-extrabold ${customerSummary.total_pending_due > 0 ? "text-amber-300" : "text-emerald-400"}`}>
-                              ₹{customerSummary.total_pending_due.toFixed(2)}
+                            <div className={`text-sm font-extrabold ${Number(customerSummary.total_pending_due || 0) > 0 ? "text-amber-300" : "text-emerald-400"}`}>
+                              ₹{Number(customerSummary.total_pending_due || 0).toFixed(2)}
                             </div>
                           </div>
                         </div>
 
-                        {customerSummary.total_pending_due > 0 ? (
+                        {Number(customerSummary.total_pending_due || 0) > 0 ? (
                           <button
                             type="button"
                             onClick={() => setIncludePreviousDueInBill(!includePreviousDueInBill)}
@@ -849,7 +910,7 @@ export function PosSalesInvoice() {
                                 : "bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 border border-amber-500/40"
                             }`}
                           >
-                            {includePreviousDueInBill ? "✓ Previous Due Added to Bill" : `+ Add Previous Due (₹${customerSummary.total_pending_due.toFixed(2)})`}
+                            {includePreviousDueInBill ? "✓ Previous Due Added to Bill" : `+ Add Previous Due (₹${Number(customerSummary.total_pending_due || 0).toFixed(2)})`}
                           </button>
                         ) : (
                           <span className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/30">
@@ -972,46 +1033,180 @@ export function PosSalesInvoice() {
               <tbody className="divide-y divide-slate-100">
                 {items.length > 0 ? (
                   items.map((item, idx) => {
-                    const lineGross = item.quantity * item.unit_price;
-                    const dAmt =
-                      item.discount_type === "percent"
-                        ? lineGross * (item.discount_value / 100)
-                        : Math.min(item.discount_value, lineGross);
-                    const taxable = lineGross - dAmt;
-                    const tax = taxable * (item.tax_rate / 100);
-                    const lineAmount = taxable + tax;
+                    const isIncl = item.is_tax_inclusive !== false;
+                    const price = Number(item.unit_price) || 0;
+                    const qty = Number(item.quantity) || 1;
+                    const taxRate = Number(item.tax_rate) || 0;
+
+                    let baseUnitPrice = price;
+                    if (isIncl && taxRate > 0) {
+                      baseUnitPrice = price / (1 + taxRate / 100);
+                    }
+
+                    const lineGross = qty * baseUnitPrice;
+                    const dAmt = item.discount_type === "percent"
+                      ? lineGross * (item.discount_value / 100)
+                      : Math.min(item.discount_value, lineGross);
+
+                    const lineTaxable = Math.max(0, lineGross - dAmt);
+                    const lineTaxAmount = isIncl
+                      ? (qty * price - dAmt) - lineTaxable
+                      : (lineTaxable * taxRate) / 100;
+                    const lineAmount = isIncl ? (qty * price - dAmt) : (lineTaxable + lineTaxAmount);
+
+                    const matchingProducts = products.filter(
+                      (p) =>
+                        !item.search_query ||
+                        p.name.toLowerCase().includes((item.search_query || "").toLowerCase()) ||
+                        (p.barcode && p.barcode.toLowerCase().includes((item.search_query || "").toLowerCase())) ||
+                        (p.sku && p.sku.toLowerCase().includes((item.search_query || "").toLowerCase()))
+                    );
 
                     return (
                       <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-3 py-3 text-center text-slate-400 font-bold">{idx + 1}</td>
-                        <td className="px-3 py-3">
-                          <select
-                            value={item.product_id || ""}
-                            onChange={(e) => updateItem(item.id, "product_id", e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none mb-1"
-                          >
-                            <option value="">-- Select Product --</option>
-                            {products.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="text"
-                            placeholder="Description / custom name..."
-                            value={item.product_name}
-                            onChange={(e) => updateItem(item.id, "product_name", e.target.value)}
-                            className="w-full text-[11px] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none text-slate-700"
-                          />
+
+                        {/* Product Search & Autocomplete Cell */}
+                        <td className="px-3 py-3 relative">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-2.5 py-1 focus-within:ring-2 focus-within:ring-blue-500 shadow-xs">
+                              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <input
+                                type="text"
+                                placeholder="Search product by name / SKU..."
+                                value={item.search_query !== undefined ? item.search_query : item.product_name}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setItems(
+                                    items.map((it) =>
+                                      it.id === item.id
+                                        ? { ...it, search_query: val, product_name: val, is_search_open: true }
+                                        : it
+                                    )
+                                  );
+                                }}
+                                onFocus={() =>
+                                  setItems(items.map((it) => (it.id === item.id ? { ...it, is_search_open: true } : it)))
+                                }
+                                className="w-full bg-transparent text-xs font-bold text-slate-800 outline-none"
+                              />
+
+                              {/* GST Identification Tag (Inclusive vs Exclusive) */}
+                              <button
+                                type="button"
+                                onClick={() => updateItem(item.id, "is_tax_inclusive", !isIncl)}
+                                title="Click to toggle GST Inclusive vs Exclusive mode"
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 transition-all ${
+                                  isIncl
+                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200"
+                                    : "bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200"
+                                }`}
+                              >
+                                {isIncl ? "Incl. GST" : "Excl. GST"}
+                              </button>
+
+                              {/* Custom Note Icon Button */}
+                              <button
+                                type="button"
+                                onClick={() => updateItem(item.id, "is_note_open", !item.is_note_open)}
+                                title="Add custom item note / instructions"
+                                className={`p-1 rounded-lg transition-all ${
+                                  item.custom_note
+                                    ? "bg-blue-100 text-blue-700 font-bold"
+                                    : "text-slate-400 hover:text-blue-600 hover:bg-slate-100"
+                                }`}
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Custom Note Popover / Text Box */}
+                            {item.is_note_open && (
+                              <div className="p-2 bg-blue-50/90 border border-blue-200 rounded-xl space-y-1 shadow-md">
+                                <div className="flex items-center justify-between text-[10px] font-bold text-blue-800">
+                                  <span className="flex items-center gap-1">
+                                    <StickyNote className="w-3 h-3 text-blue-600" /> Item Custom Instruction Note
+                                  </span>
+                                  <button
+                                    onClick={() => updateItem(item.id, "is_note_open", false)}
+                                    className="text-blue-600 hover:text-blue-900"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Serial #98123, Less spicy, Gift wrap request..."
+                                  value={item.custom_note || ""}
+                                  onChange={(e) => updateItem(item.id, "custom_note", e.target.value)}
+                                  className="w-full bg-white border border-blue-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 outline-none"
+                                />
+                              </div>
+                            )}
+
+                            {/* Active Custom Note Badge */}
+                            {!item.is_note_open && item.custom_note && (
+                              <div
+                                onClick={() => updateItem(item.id, "is_note_open", true)}
+                                className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg cursor-pointer flex items-center gap-1 w-fit"
+                              >
+                                <StickyNote className="w-3 h-3 text-blue-500" /> Note: {item.custom_note}
+                              </div>
+                            )}
+
+                            {/* Autocomplete Dropdown List */}
+                            {item.is_search_open && (
+                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-100">
+                                {matchingProducts.slice(0, 10).map((prod) => (
+                                  <div
+                                    key={prod.id}
+                                    onClick={() => {
+                                      const basePrice = prod.selling_price || prod.price || prod.mrp || 0;
+                                      const wholesalePrice = prod.wholesale_price || (basePrice * 0.9);
+                                      const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
+
+                                      setItems((prev) =>
+                                        prev.map((it) =>
+                                          it.id === item.id
+                                            ? {
+                                                ...it,
+                                                product_id: prod.id,
+                                                product_name: prod.name,
+                                                search_query: prod.name,
+                                                unit_price: targetPrice,
+                                                mrp: prod.mrp || 0,
+                                                hsn_code: prod.hsn_code || "",
+                                                tax_rate: prod.tax_percent || 18,
+                                                is_tax_inclusive: prod.is_tax_inclusive !== false,
+                                                is_search_open: false,
+                                              }
+                                            : it
+                                        )
+                                      );
+                                    }}
+                                    className="p-2.5 hover:bg-blue-50 cursor-pointer text-xs flex items-center justify-between"
+                                  >
+                                    <div>
+                                      <div className="font-bold text-slate-900">{prod.name}</div>
+                                      <div className="text-[10px] text-slate-500">SKU: {prod.sku || "N/A"} | Stock: {prod.stock ?? prod.initial_stock ?? 0}</div>
+                                    </div>
+                                    <div className="text-right font-extrabold text-blue-700">
+                                      ₹{Number(pricingMode === "Wholesale" ? (prod.wholesale_price || prod.selling_price || 0) : (prod.selling_price || prod.mrp || 0)).toFixed(2)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </td>
+
                         <td className="px-3 py-3">
                           <input
                             type="text"
                             placeholder="HSN"
                             value={item.hsn_code || ""}
                             onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center outline-none"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center outline-none font-mono"
                           />
                         </td>
                         <td className="px-3 py-3">
@@ -1020,7 +1215,7 @@ export function PosSalesInvoice() {
                             placeholder="Batch"
                             value={item.batch_number || ""}
                             onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center outline-none"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center outline-none font-mono"
                           />
                         </td>
                         <td className="px-3 py-3">
@@ -1081,7 +1276,7 @@ export function PosSalesInvoice() {
                           <select
                             value={item.tax_rate}
                             onChange={(e) => updateItem(item.id, "tax_rate", Number(e.target.value))}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-right text-[11px] outline-none"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-right text-[11px] outline-none font-bold"
                           >
                             <option value={0}>0% GST</option>
                             <option value={5}>5% GST</option>
@@ -1091,7 +1286,7 @@ export function PosSalesInvoice() {
                           </select>
                         </td>
                         <td className="px-3 py-3 text-right font-extrabold text-slate-900 text-sm">
-                          ₹{lineAmount.toFixed(2)}
+                          ₹{Number(lineAmount || 0).toFixed(2)}
                         </td>
                         <td className="px-3 py-3 text-center">
                           <button

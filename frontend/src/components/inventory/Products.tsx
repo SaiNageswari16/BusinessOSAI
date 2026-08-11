@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3 } from "lucide-react";
 
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -10,6 +11,8 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { formatCurrency } from "../../lib/utils";
+import { RealBarcodeSvg, SingleBarcodeLabelCard } from "../../lib/barcode-svg";
+import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 
 // ── Types ───────────────────────────────────────────────────────────
 interface MasterResult {
@@ -78,6 +81,7 @@ const defaultFormData = () => ({
   name: "", brand: "", brand_id: "", sku: "", barcode: "", category_id: "",
   uom_id: "", warehouse: "", supplier: "",
   purchase_price: 0, mrp: 0, selling_price: 0, wholesale_price: 0, min_wholesale_qty: 1, tax_percent: 0,
+  is_tax_inclusive: true,
   discount_limit: 0, initial_stock: 0, reorder_level: 0, safety_stock: 0,
   image_url: "", short_description: "", long_description: "", status: "active"
 });
@@ -133,6 +137,303 @@ function ColumnMenu({
         </Button>
       </div>
     </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  INLINE CREATE POPOVER — for Category, Sub-Category, Brand
+// ══════════════════════════════════════════════════════════════════════
+function InlineCreatePopover({
+  label,
+  onSave,
+  onClose,
+}: {
+  label: string;
+  onSave: (name: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50); }, []);
+
+  const handleSave = async () => {
+    const name = value.trim();
+    if (!name) return;
+    setSaving(true);
+    try {
+      await onSave(name);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="absolute z-[200] top-full left-0 mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-2xl p-3 space-y-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-bold text-slate-700">New {label}</span>
+        <button type="button" onClick={onClose} className="p-0.5 rounded hover:bg-slate-100"><X className="size-3.5 text-slate-500" /></button>
+      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder={`Enter ${label} name...`}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSave(); } if (e.key === 'Escape') onClose(); }}
+        className="w-full h-9 px-3 text-sm rounded-lg border border-slate-300 bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-500"
+      />
+      <div className="flex gap-2 pt-1">
+        <button type="button" onClick={onClose} className="flex-1 h-8 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">Cancel</button>
+        <button type="button" onClick={handleSave} disabled={!value.trim() || saving} className="flex-1 h-8 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
+          {saving ? "Saving..." : `Create ${label}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  BARCODE PRINT DRAWER — embedded in Products page
+// ══════════════════════════════════════════════════════════════════════
+type LayoutType = "1up" | "2up" | "3up" | "a4";
+
+function BarcodePrintDrawer({
+  products,
+  onClose,
+}: {
+  products: InventoryProduct[];
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(products.filter(p => p.barcode).map(p => p.id)));
+  const [copies, setCopies] = useState(1);
+  const [layout, setLayout] = useState<LayoutType>("2up");
+  const activeTemplate = getActiveBarcodeTemplate();
+  const productsWithBarcodes = products.filter(p => p.barcode);
+
+  const toggleAll = () => {
+    if (selected.size === productsWithBarcodes.length) setSelected(new Set());
+    else setSelected(new Set(productsWithBarcodes.map(p => p.id)));
+  };
+
+  const toggleProduct = (id: string) => {
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  // Build print items (with repetition for copies)
+  const printItems = useMemo(() => {
+    const items: { product_name: string; barcode: string; sku: string; selling_price: number | null; mrp: number | null; category_name: string; format: string }[] = [];
+    products
+      .filter(p => p.barcode && selected.has(p.id))
+      .forEach(p => {
+        for (let i = 0; i < copies; i++) {
+          items.push({
+            product_name: p.name,
+            barcode: p.barcode!,
+            sku: p.sku || "",
+            selling_price: Number(p.selling_price) || null,
+            mrp: Number(p.mrp) || null,
+            category_name: p.category_name || "",
+            format: "Code-128",
+          });
+        }
+      });
+    return items;
+  }, [products, selected, copies]);
+
+  const handlePrint = () => {
+    if (printItems.length === 0) return toast.warning("Select at least one product with a barcode.");
+    
+    let styleEl = document.getElementById("barcode-print-style-tag");
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.id = "barcode-print-style-tag";
+      document.head.appendChild(styleEl);
+    }
+
+    let pageCss = "@page { size: 50mm 25mm portrait !important; margin: 0mm !important; }";
+    if (layout === "2up") {
+      pageCss = "@page { size: 100mm 25mm portrait !important; margin: 0mm !important; }";
+    } else if (layout === "3up") {
+      pageCss = "@page { size: 114mm 25mm portrait !important; margin: 0mm !important; }";
+    } else if (layout === "a4") {
+      pageCss = "@page { size: A4 portrait !important; margin: 5mm !important; }";
+    }
+
+    styleEl.innerHTML = `
+      @media print {
+        ${pageCss}
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #ffffff !important;
+          width: 100% !important;
+        }
+        body > *:not(#printable-barcode-portal) {
+          display: none !important;
+        }
+        #printable-barcode-portal {
+          display: block !important;
+          visibility: visible !important;
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          background: #ffffff !important;
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+        #printable-barcode-portal * {
+          visibility: visible !important;
+        }
+      }
+    `;
+
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+  const gridClass = layout === "a4" ? "grid-cols-3" : layout === "3up" ? "grid-cols-3" : layout === "2up" ? "grid-cols-2" : "grid-cols-1";
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Drawer */}
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 30, stiffness: 400 }}
+        className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-2xl rounded-t-2xl max-h-[80vh] flex flex-col"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+              <Printer className="size-5 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Print Barcodes</h3>
+              <p className="text-xs text-slate-500">{selected.size} of {productsWithBarcodes.length} products selected · {printItems.length} labels total</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100"><X className="size-5" /></button>
+        </div>
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left: Product List */}
+          <div className="w-72 shrink-0 border-r border-slate-100 flex flex-col">
+            <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase">Products with Barcodes</span>
+              <button type="button" onClick={toggleAll} className="text-[11px] font-bold text-indigo-600 hover:underline">
+                {selected.size === productsWithBarcodes.length ? "Deselect All" : "Select All"}
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 divide-y divide-slate-50">
+              {productsWithBarcodes.length === 0 ? (
+                <div className="px-4 py-8 text-center text-xs text-slate-400">
+                  <Barcode className="size-8 mx-auto mb-2 opacity-30" />
+                  No products with barcodes found.
+                </div>
+              ) : productsWithBarcodes.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => toggleProduct(p.id)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50 transition ${selected.has(p.id) ? "bg-emerald-50/60" : ""}`}
+                >
+                  {selected.has(p.id)
+                    ? <CheckSquare className="size-4 text-emerald-500 shrink-0" />
+                    : <Square className="size-4 text-slate-300 shrink-0" />}
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-800 truncate">{p.name}</div>
+                    <div className="text-[10px] font-mono text-slate-500 truncate">{p.barcode}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Right: Settings + Preview */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Controls */}
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-6 shrink-0 flex-wrap">
+              {/* Layout */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500">Layout:</span>
+                {([
+                  { key: "1up", label: "1-Up Roll", icon: <Rows3 className="size-3.5" /> },
+                  { key: "2up", label: "2-Up", icon: <LayoutGrid className="size-3.5" /> },
+                  { key: "3up", label: "3-Up", icon: <LayoutGrid className="size-3.5" /> },
+                  { key: "a4", label: "A4 Sheet", icon: <Package className="size-3.5" /> },
+                ] as { key: LayoutType; label: string; icon: React.ReactNode }[]).map(l => (
+                  <button key={l.key} type="button" onClick={() => setLayout(l.key)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition ${layout === l.key ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-200 hover:bg-slate-50 text-slate-600"}`}>
+                    {l.icon}{l.label}
+                  </button>
+                ))}
+              </div>
+              {/* Copies */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500">Copies:</span>
+                {[1, 2, 5, 10].map(n => (
+                  <button key={n} type="button" onClick={() => setCopies(n)}
+                    className={`w-9 h-8 rounded-lg text-xs font-bold border transition ${copies === n ? "bg-slate-900 text-white border-slate-900" : "border-slate-200 hover:bg-slate-50"}`}>{n}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div className="flex-1 overflow-auto p-4">
+              <p className="text-xs font-bold text-slate-400 uppercase mb-3">Preview (first 6)</p>
+              <div className={`grid ${gridClass} gap-2`}>
+                {printItems.slice(0, 6).map((item, idx) => (
+                  <SingleBarcodeLabelCard key={idx} item={item} template={activeTemplate} isPrint={false} />
+                ))}
+              </div>
+              {printItems.length === 0 && (
+                <div className="py-12 text-center text-slate-400 text-sm">Select products to preview barcodes</div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <span className="text-xs font-semibold text-slate-500">{printItems.length} barcode labels ready to print</span>
+              <div className="flex gap-3">
+                <button type="button" onClick={onClose} className="px-4 h-9 rounded-xl border border-slate-200 text-xs font-semibold hover:bg-slate-50">Cancel</button>
+                <button type="button" onClick={handlePrint} disabled={printItems.length === 0}
+                  className="px-5 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 disabled:opacity-50 shadow-sm">
+                  <Printer className="size-3.5" /> Print Now ({printItems.length})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Printable Portal */}
+      {typeof document !== "undefined" && createPortal(
+        <div id="printable-barcode-portal" className="hidden print:block text-black bg-white p-0">
+          <div className={`grid ${gridClass} gap-2 w-full p-2`}>
+            {printItems.map((item, idx) => (
+              <div key={idx} className="h-[24mm]">
+                <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
+              </div>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
@@ -488,6 +789,14 @@ export function Products() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formData = useMemo(() => defaultFormData(), []);
 
+  // ── Barcode Print Drawer state ───────────────────────────────────
+  const [isBarcodeDrawerOpen, setIsBarcodeDrawerOpen] = useState(false);
+
+  // ── Inline popover state (brand / category / sub-category) ───────
+  const [brandPopoverOpen, setBrandPopoverOpen] = useState(false);
+  const [catPopoverOpen, setCatPopoverOpen] = useState(false);
+  const [subCatPopoverOpen, setSubCatPopoverOpen] = useState(false);
+
   // ── Quick-add modal state ────────────────────────────────────────
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [quickAddName, setQuickAddName] = useState("");
@@ -625,7 +934,7 @@ export function Products() {
     inventoryApi.getCategories().then((res) => setCategories(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
     inventoryApi.getBrands().then((res) => setBrands(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
     inventoryApi.getUOMs().then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
-    inventoryApi.getWarehouses().then((res) => setWarehouses(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    inventoryApi.getWarehouses().then((res) => setWarehouses(Array.isArray(res) ? res : [])).catch(() => {});
   };
 
   useEffect(() => { checkAiStatus(); }, []);
@@ -743,6 +1052,7 @@ export function Products() {
       wholesale_price: product.wholesale_price || 0,
       min_wholesale_qty: product.min_wholesale_qty || 1,
       tax_percent: product.tax_percent || 0,
+      is_tax_inclusive: product.is_tax_inclusive !== false,
       discount_limit: product.discount_limit || 0,
       initial_stock: product.stock ?? product.initial_stock ?? 0,
       reorder_level: product.reorder_level || 0,
@@ -773,6 +1083,7 @@ export function Products() {
       wholesale_price: product.wholesale_price || 0,
       min_wholesale_qty: product.min_wholesale_qty || 1,
       tax_percent: product.tax_percent || 0,
+      is_tax_inclusive: product.is_tax_inclusive !== false,
       discount_limit: product.discount_limit || 0,
       initial_stock: product.stock ?? product.initial_stock ?? 0,
       reorder_level: product.reorder_level || 0,
@@ -1190,52 +1501,125 @@ export function Products() {
                 {/* Brand & Category */}
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Brand</label>
-                  <select
-                    name="brand_id"
-                    value={currentForm.brand_id}
-                    onChange={handleFormChange}
-                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
-                  >
-                    <option value="">Select Brand</option>
-                    {brands.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <div className="flex gap-1.5">
+                      <select
+                        name="brand_id"
+                        value={currentForm.brand_id}
+                        onChange={handleFormChange}
+                        className="flex-1 h-10 px-3 text-sm rounded-lg border bg-background"
+                      >
+                        <option value="">Select Brand</option>
+                        {brands.map((b) => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => { setBrandPopoverOpen(v => !v); setCatPopoverOpen(false); setSubCatPopoverOpen(false); }}
+                        title="Create new brand"
+                        className="w-10 h-10 shrink-0 rounded-lg border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 flex items-center justify-center transition"
+                      >
+                        <Plus className="size-4" />
+                      </button>
+                    </div>
+                    {brandPopoverOpen && (
+                      <InlineCreatePopover
+                        label="Brand"
+                        onClose={() => setBrandPopoverOpen(false)}
+                        onSave={async (name) => {
+                          const created = await inventoryApi.createBrand({ name });
+                          setBrands(prev => [...prev, created]);
+                          setCurrentForm(prev => ({ ...prev, brand_id: created.id }));
+                          toast.success(`Brand "${name}" created!`);
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Category</label>
-                  <select
-                    value={activeParentId}
-                    onChange={(e) => {
-                      const newParentId = e.target.value;
-                      setCurrentForm(prev => ({ ...prev, category_id: newParentId }));
-                    }}
-                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
-                  >
-                    <option value="">Select Category</option>
-                    {mainCategories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <div className="flex gap-1.5">
+                      <select
+                        value={activeParentId}
+                        onChange={(e) => {
+                          const newParentId = e.target.value;
+                          setCurrentForm(prev => ({ ...prev, category_id: newParentId }));
+                        }}
+                        className="flex-1 h-10 px-3 text-sm rounded-lg border bg-background"
+                      >
+                        <option value="">Select Category</option>
+                        {mainCategories.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => { setCatPopoverOpen(v => !v); setBrandPopoverOpen(false); setSubCatPopoverOpen(false); }}
+                        title="Create new category"
+                        className="w-10 h-10 shrink-0 rounded-lg border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 flex items-center justify-center transition"
+                      >
+                        <Plus className="size-4" />
+                      </button>
+                    </div>
+                    {catPopoverOpen && (
+                      <InlineCreatePopover
+                        label="Category"
+                        onClose={() => setCatPopoverOpen(false)}
+                        onSave={async (name) => {
+                          const created = await inventoryApi.createCategory({ name });
+                          setCategories(prev => [...prev, created]);
+                          setCurrentForm(prev => ({ ...prev, category_id: created.id }));
+                          toast.success(`Category "${name}" created!`);
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 {/* Sub-Category & UoM */}
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Sub-Category</label>
-                  <select
-                    value={activeSubId}
-                    disabled={!activeParentId}
-                    onChange={(e) => {
-                      const newSubId = e.target.value;
-                      setCurrentForm(prev => ({ ...prev, category_id: newSubId || activeParentId }));
-                    }}
-                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="">{activeParentId ? "Select Sub-Category (Optional)" : "Select Category First"}</option>
-                    {subCategories.map((sc) => (
-                      <option key={sc.id} value={sc.id}>{sc.name}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <div className="flex gap-1.5">
+                      <select
+                        value={activeSubId}
+                        disabled={!activeParentId}
+                        onChange={(e) => {
+                          const newSubId = e.target.value;
+                          setCurrentForm(prev => ({ ...prev, category_id: newSubId || activeParentId }));
+                        }}
+                        className="flex-1 h-10 px-3 text-sm rounded-lg border bg-background disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <option value="">{activeParentId ? "Select Sub-Category (Optional)" : "Select Category First"}</option>
+                        {subCategories.map((sc) => (
+                          <option key={sc.id} value={sc.id}>{sc.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={!activeParentId}
+                        onClick={() => { setSubCatPopoverOpen(v => !v); setBrandPopoverOpen(false); setCatPopoverOpen(false); }}
+                        title="Create new sub-category"
+                        className="w-10 h-10 shrink-0 rounded-lg border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="size-4" />
+                      </button>
+                    </div>
+                    {subCatPopoverOpen && activeParentId && (
+                      <InlineCreatePopover
+                        label="Sub-Category"
+                        onClose={() => setSubCatPopoverOpen(false)}
+                        onSave={async (name) => {
+                          const created = await inventoryApi.createCategory({ name, parent_id: activeParentId });
+                          setCategories(prev => [...prev, created]);
+                          setCurrentForm(prev => ({ ...prev, category_id: created.id }));
+                          toast.success(`Sub-Category "${name}" created!`);
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">UoM</label>
@@ -1313,11 +1697,76 @@ export function Products() {
                   ))}
                 </select>
               </div>
-              {(currentForm as any).hsn_code && (
-                <p className="text-[11px] text-emerald-600 font-medium">
-                  Auto-assigned GST Tax Rate: {(currentForm as any).tax_percent}%
-                </p>
-              )}
+            </div>
+
+            {/* GST Tax Mode Selector & Live Calculation Preview */}
+            <div className="col-span-2 bg-slate-50 border border-slate-200 p-3.5 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-800">
+                  GST Tax Pricing Mode *
+                </label>
+                <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-slate-300">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: true }))}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                      (currentForm as any).is_tax_inclusive !== false
+                        ? "bg-teal-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    GST Inclusive (Price Includes Tax)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: false }))}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                      (currentForm as any).is_tax_inclusive === false
+                        ? "bg-amber-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    GST Exclusive (Tax Added Extra)
+                  </button>
+                </div>
+              </div>
+
+              {(() => {
+                const price = Number((currentForm as any).selling_price) || 0;
+                const taxRate = Number((currentForm as any).tax_percent) || 0;
+                const isIncl = (currentForm as any).is_tax_inclusive !== false;
+
+                let basePrice = 0;
+                let taxAmount = 0;
+                let finalCustomerPrice = 0;
+
+                if (isIncl) {
+                  basePrice = taxRate > 0 ? price / (1 + taxRate / 100) : price;
+                  taxAmount = price - basePrice;
+                  finalCustomerPrice = price;
+                } else {
+                  basePrice = price;
+                  taxAmount = (price * taxRate) / 100;
+                  finalCustomerPrice = price + taxAmount;
+                }
+
+                return (
+                  <div className="grid grid-cols-3 gap-2 p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700">
+                    <div>
+                      <span className="text-slate-500 font-normal block text-[10px]">Net Base Price (Excl. Tax)</span>
+                      <span className="font-bold text-slate-900">₹{basePrice.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-normal block text-[10px]">GST Tax Amount ({taxRate}%)</span>
+                      <span className="font-bold text-teal-700">₹{taxAmount.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-normal block text-[10px]">Final Customer Price</span>
+                      <span className="font-extrabold text-slate-900 text-sm">₹{finalCustomerPrice.toFixed(2)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           <div className="flex justify-end gap-3 pt-4 border-t">
 
@@ -1521,6 +1970,13 @@ export function Products() {
           </Button>
           <Button variant="outline" onClick={handleExport} disabled={fuzzyLocalResults.length === 0}>
             <Download className="size-4 mr-2" /> Export
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setIsBarcodeDrawerOpen(true)}
+            className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+          >
+            <Printer className="size-4" /> Print Barcodes
           </Button>
           <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Create Product</Button>
         </div>
@@ -1785,6 +2241,16 @@ export function Products() {
               <img src={previewImage} alt="Preview" className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl border border-white/10" />
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Barcode Print Drawer ───────────────────────────────────── */}
+      <AnimatePresence>
+        {isBarcodeDrawerOpen && (
+          <BarcodePrintDrawer
+            products={products}
+            onClose={() => setIsBarcodeDrawerOpen(false)}
+          />
         )}
       </AnimatePresence>
     </div>
