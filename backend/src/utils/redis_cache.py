@@ -69,19 +69,32 @@ def cache_response(expire: int = 60, prefix: str = "cache"):
                 return await func(*args, **kwargs)
 
             try:
-                # Build unique cache key
-                key_parts = [prefix, func.__name__]
-                for k, v in sorted(kwargs.items()):
-                    if k in ["current_user", "db"]:
-                        continue
-                    key_parts.append(f"{k}:{v}")
+                # Exclude internal non-serializable objects from raw kwargs iteration
+                EXCLUDED_KWARGS = {"current_user", "ctx", "db", "request", "response"}
                 
+                key_parts = [prefix, func.__name__]
+                
+                # Add tenant scope FIRST to guarantee strict multi-tenant isolation
                 user_ctx = kwargs.get("current_user") or kwargs.get("ctx")
                 if user_ctx:
-                    if hasattr(user_ctx, "organization_id") and user_ctx.organization_id:
-                        key_parts.append(f"org:{user_ctx.organization_id}")
-                    if hasattr(user_ctx, "tenant_id") and user_ctx.tenant_id:
-                        key_parts.append(f"tenant:{user_ctx.tenant_id}")
+                    tenant_id = getattr(user_ctx, "tenant_id", None)
+                    if not tenant_id and hasattr(user_ctx, "user"):
+                        tenant_id = getattr(user_ctx.user, "tenant_id", None)
+                    if tenant_id:
+                        key_parts.append(f"tenant:{tenant_id}")
+                        
+                    user_id = getattr(user_ctx, "user_id", None)
+                    if not user_id and hasattr(user_ctx, "user"):
+                        user_id = getattr(user_ctx.user, "id", None)
+                    if user_id:
+                        key_parts.append(f"user:{user_id}")
+
+                for k, v in sorted(kwargs.items()):
+                    if k in EXCLUDED_KWARGS or str(k).startswith("_"):
+                        continue
+                    # Only include primitive parameter types in cache keys
+                    if isinstance(v, (str, int, float, bool, type(None), uuid.UUID)):
+                        key_parts.append(f"{k}:{v}")
                 
                 cache_key = ":".join(key_parts)
                 
