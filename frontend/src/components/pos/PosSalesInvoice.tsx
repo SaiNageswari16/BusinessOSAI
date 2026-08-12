@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus,
   Settings,
@@ -26,7 +26,8 @@ import {
   Wallet,
   MessageSquare,
   StickyNote,
-  Tag
+  Tag,
+  AlertTriangle
 } from "lucide-react";
 import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -63,6 +64,8 @@ export function PosSalesInvoice() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState("");
+  // Fixed-position dropdown anchor for product search (avoids overflow-x-auto clipping)
+  const [dropdownAnchor, setDropdownAnchor] = useState<{ itemId: string; top: number; left: number; width: number } | null>(null);
 
   // Invoice Fields
   const [invoiceNumber, setInvoiceNumber] = useState(`INV-${Date.now().toString().slice(-5)}`);
@@ -79,25 +82,25 @@ export function PosSalesInvoice() {
   const [paymentMode, setPaymentMode] = useState("Cash");
 
   // Dynamic Custom Additional Charges State
-  const [customCharges, setCustomCharges] = useState<{ id: string; name: string; amount: number | "" }[]>([
-    { id: "1", name: "Freight / Transport", amount: 0 },
-    { id: "2", name: "Packing Charge", amount: 0 }
+  const [customCharges, setCustomCharges] = useState<{ id: string; name: string; amount: number | ""; tax_rate: number }[]>([
+    { id: "1", name: "Freight / Transport", amount: 0, tax_rate: 0 },
+    { id: "2", name: "Packing Charge", amount: 0, tax_rate: 0 }
   ]);
 
   const handleAddChargeRow = () => {
     setCustomCharges((prev) => [
       ...prev,
-      { id: Date.now().toString(), name: "Custom Charge", amount: "" }
+      { id: Date.now().toString(), name: "Custom Charge", amount: "", tax_rate: 0 }
     ]);
   };
 
-  const handleUpdateCharge = (id: string, field: "name" | "amount", value: any) => {
+  const handleUpdateCharge = (id: string, field: "name" | "amount" | "tax_rate", value: any) => {
     setCustomCharges((prev) =>
       prev.map((c) => {
         if (c.id === id) {
           return {
             ...c,
-            [field]: field === "amount" ? (value === "" ? "" : Math.max(0, Number(value))) : value
+            [field]: field === "amount" ? (value === "" ? "" : Math.max(0, Number(value))) : field === "tax_rate" ? Number(value) : value
           };
         }
         return c;
@@ -322,6 +325,9 @@ export function PosSalesInvoice() {
   const [invoiceDiscountType, setInvoiceDiscountType] = useState<"percent" | "amount">("percent");
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState<number>(0);
 
+  // GST Type: intra-state (CGST + SGST) or inter-state (IGST)
+  const [gstType, setGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
+
   // Calculated totals with GST Inclusive vs Exclusive Tax Modes
   let subtotal = 0;
   let itemDiscountTotal = 0;
@@ -382,7 +388,16 @@ export function PosSalesInvoice() {
 
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
   const previousDueAmount = (includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
-  const totalAdditionalCharges = customCharges.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  // Additional charges: base amount + GST on each charge
+  const totalAdditionalCharges = customCharges.reduce((sum, c) => {
+    const amt = Number(c.amount || 0);
+    const gstOnCharge = amt * (Number(c.tax_rate || 0) / 100);
+    return sum + amt + gstOnCharge;
+  }, 0);
+  const chargesGstTotal = customCharges.reduce((sum, c) => {
+    const amt = Number(c.amount || 0);
+    return sum + amt * (Number(c.tax_rate || 0) / 100);
+  }, 0);
   const baseRawTotal = Math.max(0, grossTotal - afterTaxDiscount) + totalAdditionalCharges;
   const rawTotal = baseRawTotal + previousDueAmount;
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
@@ -1012,6 +1027,76 @@ export function PosSalesInvoice() {
             </div>
           </div>
 
+          {/* ===== Fixed-position autocomplete portal dropdown ===== */}
+          {dropdownAnchor && (() => {
+            const openItem = items.find(it => it.id === dropdownAnchor.itemId);
+            if (!openItem || !openItem.is_search_open) return null;
+            const matchP = products.filter(
+              (p) =>
+                !openItem.search_query ||
+                p.name.toLowerCase().includes((openItem.search_query || "").toLowerCase()) ||
+                (p.barcode && p.barcode.toLowerCase().includes((openItem.search_query || "").toLowerCase())) ||
+                (p.sku && p.sku.toLowerCase().includes((openItem.search_query || "").toLowerCase()))
+            );
+            return (
+              <div
+                style={{
+                  position: "fixed",
+                  top: dropdownAnchor.top,
+                  left: dropdownAnchor.left,
+                  width: Math.max(dropdownAnchor.width, 340),
+                  zIndex: 9999,
+                }}
+                className="bg-white border border-slate-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-slate-100"
+              >
+                {matchP.slice(0, 12).map((prod) => (
+                  <div
+                    key={prod.id}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const basePrice = prod.selling_price || prod.price || prod.mrp || 0;
+                      const wholesalePrice = prod.wholesale_price || (basePrice * 0.9);
+                      const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
+                      setItems((prev) =>
+                        prev.map((it) =>
+                          it.id === dropdownAnchor.itemId
+                            ? {
+                                ...it,
+                                product_id: prod.id,
+                                product_name: prod.name,
+                                search_query: prod.name,
+                                unit_price: targetPrice,
+                                mrp: prod.mrp || 0,
+                                hsn_code: prod.hsn_code || "",
+                                tax_rate: prod.tax_percent || 18,
+                                is_tax_inclusive: prod.is_tax_inclusive !== false,
+                                is_search_open: false,
+                              }
+                            : it
+                        )
+                      );
+                      setDropdownAnchor(null);
+                    }}
+                    className="p-2.5 hover:bg-blue-50 cursor-pointer text-xs flex items-center justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 truncate">{prod.name}</div>
+                      <div className="text-[10px] text-slate-500">
+                        SKU: {prod.sku || "N/A"} | Stock: {prod.stock ?? prod.initial_stock ?? 0} | {prod.is_tax_inclusive !== false ? "✅ Incl. GST" : "🔶 Excl. GST"}
+                      </div>
+                    </div>
+                    <div className="text-right font-extrabold text-blue-700 ml-3 shrink-0">
+                      ₹{Number(pricingMode === "Wholesale" ? (prod.wholesale_price || prod.selling_price || 0) : (prod.selling_price || prod.mrp || 0)).toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+                {matchP.length === 0 && (
+                  <div className="p-3 text-xs text-slate-400 text-center">No products found</div>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider font-bold">
@@ -1062,18 +1147,26 @@ export function PosSalesInvoice() {
                         (p.sku && p.sku.toLowerCase().includes((item.search_query || "").toLowerCase()))
                     );
 
-                    return (
-                      <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-3 py-3 text-center text-slate-400 font-bold">{idx + 1}</td>
+                    // MRP warning: compare INCLUSIVE selling price to MRP (Indian MRP is always tax-inclusive)
+                    const sellingPriceIncl = isIncl ? price : price * (1 + taxRate / 100);
+                    const priceExclTax = isIncl && taxRate > 0 ? price / (1 + taxRate / 100) : price;
+                    const mrpVal = Number(item.mrp) || 0;
+                    const isMrpExceeded = mrpVal > 0 && sellingPriceIncl > mrpVal;
 
-                        {/* Product Search & Autocomplete Cell */}
-                        <td className="px-3 py-3 relative">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-2.5 py-1 focus-within:ring-2 focus-within:ring-blue-500 shadow-xs">
-                              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    return (
+                      <>
+                      <tr key={item.id} className={`transition-colors ${isMrpExceeded ? "bg-red-50/40" : "hover:bg-slate-50/80"}`}>
+                        <td className="px-3 py-2 text-center text-slate-400 font-bold text-xs align-middle">{idx + 1}</td>
+
+                        {/* Product Search & Autocomplete Cell — single compact row */}
+                        <td className="px-2 py-2 align-middle" style={{ minWidth: 220 }}>
+                          <div>
+                            {/* Single-row search: icon + input + GST badge + note btn */}
+                            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 focus-within:ring-2 focus-within:ring-blue-400 focus-within:border-blue-400 shadow-sm transition-all">
+                              <Search className="w-3 h-3 text-slate-400 shrink-0" />
                               <input
                                 type="text"
-                                placeholder="Search product by name / SKU..."
+                                placeholder="Search product..."
                                 value={item.search_query !== undefined ? item.search_query : item.product_name}
                                 onChange={(e) => {
                                   const val = e.target.value;
@@ -1085,116 +1178,77 @@ export function PosSalesInvoice() {
                                     )
                                   );
                                 }}
-                                onFocus={() =>
-                                  setItems(items.map((it) => (it.id === item.id ? { ...it, is_search_open: true } : it)))
-                                }
-                                className="w-full bg-transparent text-xs font-bold text-slate-800 outline-none"
+                                onFocus={(e) => {
+                                  const rect = e.currentTarget.closest('td')!.getBoundingClientRect();
+                                  setDropdownAnchor({
+                                    itemId: item.id,
+                                    top: rect.bottom + window.scrollY,
+                                    left: rect.left + window.scrollX,
+                                    width: rect.width,
+                                  });
+                                  setItems(items.map((it) => (it.id === item.id ? { ...it, is_search_open: true } : it)));
+                                }}
+                                onBlur={() => {
+                                  // Delay so onMouseDown on dropdown items fires first
+                                  setTimeout(() => {
+                                    setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, is_search_open: false } : it));
+                                    setDropdownAnchor(null);
+                                  }, 150);
+                                }}
+                                className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
                               />
-
-                              {/* GST Identification Tag (Inclusive vs Exclusive) */}
+                              {/* GST badge */}
                               <button
                                 type="button"
                                 onClick={() => updateItem(item.id, "is_tax_inclusive", !isIncl)}
-                                title="Click to toggle GST Inclusive vs Exclusive mode"
-                                className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 transition-all ${
+                                title="Toggle GST Inclusive / Exclusive"
+                                className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider transition-all ${
                                   isIncl
-                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200"
-                                    : "bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200"
+                                    ? "bg-emerald-100 text-emerald-700 border border-emerald-300"
+                                    : "bg-amber-100 text-amber-700 border border-amber-300"
                                 }`}
                               >
-                                {isIncl ? "Incl. GST" : "Excl. GST"}
+                                {isIncl ? "INCL" : "EXCL"}
                               </button>
-
-                              {/* Custom Note Icon Button */}
+                              {/* Note icon */}
                               <button
                                 type="button"
                                 onClick={() => updateItem(item.id, "is_note_open", !item.is_note_open)}
-                                title="Add custom item note / instructions"
-                                className={`p-1 rounded-lg transition-all ${
-                                  item.custom_note
-                                    ? "bg-blue-100 text-blue-700 font-bold"
-                                    : "text-slate-400 hover:text-blue-600 hover:bg-slate-100"
+                                title="Add item note"
+                                className={`shrink-0 p-0.5 rounded transition-all ${
+                                  item.custom_note ? "text-blue-600" : "text-slate-300 hover:text-blue-500"
                                 }`}
                               >
-                                <MessageSquare className="w-3.5 h-3.5" />
+                                <MessageSquare className="w-3 h-3" />
                               </button>
                             </div>
 
-                            {/* Custom Note Popover / Text Box */}
+                            {/* Custom Note Box */}
                             {item.is_note_open && (
-                              <div className="p-2 bg-blue-50/90 border border-blue-200 rounded-xl space-y-1 shadow-md">
+                              <div className="mt-1 p-2 bg-blue-50 border border-blue-200 rounded-lg space-y-1 shadow">
                                 <div className="flex items-center justify-between text-[10px] font-bold text-blue-800">
-                                  <span className="flex items-center gap-1">
-                                    <StickyNote className="w-3 h-3 text-blue-600" /> Item Custom Instruction Note
-                                  </span>
-                                  <button
-                                    onClick={() => updateItem(item.id, "is_note_open", false)}
-                                    className="text-blue-600 hover:text-blue-900"
-                                  >
+                                  <span className="flex items-center gap-1"><StickyNote className="w-3 h-3" /> Note</span>
+                                  <button onClick={() => updateItem(item.id, "is_note_open", false)} className="text-blue-500">
                                     <X className="w-3 h-3" />
                                   </button>
                                 </div>
                                 <input
                                   type="text"
-                                  placeholder="e.g. Serial #98123, Less spicy, Gift wrap request..."
+                                  placeholder="e.g. Serial #, Gift wrap..."
                                   value={item.custom_note || ""}
                                   onChange={(e) => updateItem(item.id, "custom_note", e.target.value)}
-                                  className="w-full bg-white border border-blue-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 outline-none"
+                                  className="w-full bg-white border border-blue-200 rounded px-2 py-1 text-xs text-slate-800 outline-none"
                                 />
                               </div>
                             )}
 
-                            {/* Active Custom Note Badge */}
+                            {/* Active Note Badge */}
                             {!item.is_note_open && item.custom_note && (
                               <div
                                 onClick={() => updateItem(item.id, "is_note_open", true)}
-                                className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg cursor-pointer flex items-center gap-1 w-fit"
+                                className="mt-0.5 text-[9px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded cursor-pointer flex items-center gap-1 w-fit"
                               >
-                                <StickyNote className="w-3 h-3 text-blue-500" /> Note: {item.custom_note}
-                              </div>
-                            )}
-
-                            {/* Autocomplete Dropdown List */}
-                            {item.is_search_open && (
-                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-100">
-                                {matchingProducts.slice(0, 10).map((prod) => (
-                                  <div
-                                    key={prod.id}
-                                    onClick={() => {
-                                      const basePrice = prod.selling_price || prod.price || prod.mrp || 0;
-                                      const wholesalePrice = prod.wholesale_price || (basePrice * 0.9);
-                                      const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
-
-                                      setItems((prev) =>
-                                        prev.map((it) =>
-                                          it.id === item.id
-                                            ? {
-                                                ...it,
-                                                product_id: prod.id,
-                                                product_name: prod.name,
-                                                search_query: prod.name,
-                                                unit_price: targetPrice,
-                                                mrp: prod.mrp || 0,
-                                                hsn_code: prod.hsn_code || "",
-                                                tax_rate: prod.tax_percent || 18,
-                                                is_tax_inclusive: prod.is_tax_inclusive !== false,
-                                                is_search_open: false,
-                                              }
-                                            : it
-                                        )
-                                      );
-                                    }}
-                                    className="p-2.5 hover:bg-blue-50 cursor-pointer text-xs flex items-center justify-between"
-                                  >
-                                    <div>
-                                      <div className="font-bold text-slate-900">{prod.name}</div>
-                                      <div className="text-[10px] text-slate-500">SKU: {prod.sku || "N/A"} | Stock: {prod.stock ?? prod.initial_stock ?? 0}</div>
-                                    </div>
-                                    <div className="text-right font-extrabold text-blue-700">
-                                      ₹{Number(pricingMode === "Wholesale" ? (prod.wholesale_price || prod.selling_price || 0) : (prod.selling_price || prod.mrp || 0)).toFixed(2)}
-                                    </div>
-                                  </div>
-                                ))}
+                                <StickyNote className="w-2.5 h-2.5" /> {item.custom_note}
                               </div>
                             )}
                           </div>
@@ -1226,14 +1280,22 @@ export function PosSalesInvoice() {
                             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] outline-none"
                           />
                         </td>
-                        <td className="px-3 py-3 text-right">
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.mrp || 0}
-                            onChange={(e) => updateItem(item.id, "mrp", Number(e.target.value))}
-                            className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-right outline-none"
-                          />
+                        {/* MRP Cell — red border + warning icon if exceeded */}
+                        <td className="px-3 py-2 text-right align-middle">
+                          <div className={`relative flex items-center justify-end gap-0.5 rounded-lg border ${isMrpExceeded ? "border-red-400 bg-red-50" : "border-slate-200 bg-slate-50"}`}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.mrp || 0}
+                              onChange={(e) => updateItem(item.id, "mrp", Number(e.target.value))}
+                              className="w-14 bg-transparent px-2 py-1 text-right outline-none text-xs font-semibold"
+                            />
+                            {isMrpExceeded && (
+                              <span title={`Price ₹${priceExclTax.toFixed(2)} > MRP ₹${mrpVal.toFixed(2)}`}>
+                                <AlertTriangle className="w-3 h-3 text-red-500 mr-1 shrink-0" />
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-3 text-right">
                           <input
@@ -1297,6 +1359,21 @@ export function PosSalesInvoice() {
                           </button>
                         </td>
                       </tr>
+                      {/* MRP exceeded warning row */}
+                      {isMrpExceeded && (
+                        <tr key={`${item.id}-mrp-warn`} className="bg-red-100 border-l-4 border-red-500">
+                          <td colSpan={12} className="px-4 py-1.5">
+                            <div className="flex items-center gap-2 text-[11px] font-bold text-red-800">
+                              <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 animate-pulse" />
+                              <span>
+                                ⚠️ MRP Exceeded! Selling price ₹{sellingPriceIncl.toFixed(2)} (incl. tax) &gt; MRP ₹{mrpVal.toFixed(2)}.
+                                Please reduce the price or obtain approval before saving.
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </>
                     );
                   })
                 ) : (
@@ -1455,19 +1532,19 @@ export function PosSalesInvoice() {
                 </div>
 
                 {customCharges.length === 0 ? (
-                  <p className="text-[10px] text-slate-400 italic">No additional charges added. Click "+ Add Charge Field" to add fees.</p>
+                  <p className="text-[10px] text-slate-400 italic">No additional charges added.</p>
                 ) : (
                   <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
                     {customCharges.map((charge) => (
                       <div key={charge.id} className="flex items-center gap-1.5">
                         <input
                           type="text"
-                          placeholder="Charge Name (e.g. Freight, Packing, Handling)"
+                          placeholder="Charge Name"
                           value={charge.name}
                           onChange={(e) => handleUpdateCharge(charge.id, "name", e.target.value)}
                           className="flex-1 bg-white border border-slate-200 rounded-md px-2 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400"
                         />
-                        <div className="relative w-24">
+                        <div className="relative w-20 shrink-0">
                           <span className="absolute left-2 top-1 text-[10px] text-slate-400 font-bold">₹</span>
                           <input
                             type="number"
@@ -1478,11 +1555,30 @@ export function PosSalesInvoice() {
                             className="w-full bg-white border border-slate-200 rounded-md pl-5 pr-2 py-1 text-xs font-bold text-slate-800 outline-none focus:border-blue-400 text-right"
                           />
                         </div>
+                        {/* GST % selector for this charge */}
+                        <select
+                          value={charge.tax_rate}
+                          onChange={(e) => handleUpdateCharge(charge.id, "tax_rate", e.target.value)}
+                          title="GST on this charge"
+                          className="shrink-0 w-20 bg-white border border-slate-200 rounded-md px-1 py-1 text-[10px] font-bold text-slate-700 outline-none focus:border-blue-400"
+                        >
+                          <option value={0}>0% GST</option>
+                          <option value={5}>5% GST</option>
+                          <option value={12}>12% GST</option>
+                          <option value={18}>18% GST</option>
+                          <option value={28}>28% GST</option>
+                        </select>
+                        {/* Show computed GST amount inline */}
+                        {Number(charge.tax_rate) > 0 && Number(charge.amount) > 0 && (
+                          <span className="shrink-0 text-[10px] font-bold text-indigo-600 whitespace-nowrap">
+                            +₹{(Number(charge.amount) * Number(charge.tax_rate) / 100).toFixed(2)}
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleDeleteCharge(charge.id)}
                           title="Delete charge row"
-                          className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
+                          className="shrink-0 p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
                         >
                           <Trash2 className="size-3.5" />
                         </button>
@@ -1497,10 +1593,74 @@ export function PosSalesInvoice() {
                 <span className="font-semibold text-slate-900">₹{taxableValue.toFixed(2)}</span>
               </div>
 
-              <div className="flex justify-between text-xs text-slate-600">
-                <span>GST Tax Amount:</span>
-                <span className="font-semibold text-slate-900">+₹{totalTax.toFixed(2)}</span>
-              </div>
+              {/* GST Breakdown Panel */}
+              {totalTax > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2">
+                  {/* GST Type Toggle */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700">GST Breakdown</span>
+                    <div className="flex items-center bg-white rounded-lg p-0.5 border border-slate-200 text-[10px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setGstType("cgst_sgst")}
+                        className={`px-2 py-0.5 rounded-md transition-all ${
+                          gstType === "cgst_sgst" ? "bg-blue-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"
+                        }`}
+                      >
+                        Intra-State
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGstType("igst")}
+                        className={`px-2 py-0.5 rounded-md transition-all ${
+                          gstType === "igst" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"
+                        }`}
+                      >
+                        Inter-State
+                      </button>
+                    </div>
+                  </div>
+
+                  {gstType === "cgst_sgst" ? (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px] text-slate-600">
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-blue-400 inline-block"></span>
+                          CGST ({(items.reduce((s, it) => s + (Number(it.tax_rate) || 0), 0) / Math.max(items.length, 1) / 2).toFixed(1)}%):
+                        </span>
+                        <span className="font-bold text-blue-700">₹{(totalTax / 2).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] text-slate-600">
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+                          SGST ({(items.reduce((s, it) => s + (Number(it.tax_rate) || 0), 0) / Math.max(items.length, 1) / 2).toFixed(1)}%):
+                        </span>
+                        <span className="font-bold text-emerald-700">₹{(totalTax / 2).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-[11px] text-slate-600">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-indigo-400 inline-block"></span>
+                        IGST ({(items.reduce((s, it) => s + (Number(it.tax_rate) || 0), 0) / Math.max(items.length, 1)).toFixed(1)}%):
+                      </span>
+                      <span className="font-bold text-indigo-700">₹{totalTax.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-[11px] font-bold text-slate-700 border-t border-slate-200 pt-1">
+                    <span>Total GST:</span>
+                    <span className="text-slate-900">+₹{totalTax.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
+              {totalTax === 0 && (
+                <div className="flex justify-between text-xs text-slate-600">
+                  <span>GST Tax Amount:</span>
+                  <span className="font-semibold text-slate-900">+₹0.00</span>
+                </div>
+              )}
 
               {afterTaxDiscount > 0 && (
                 <div className="flex justify-between text-xs text-purple-600 font-bold">

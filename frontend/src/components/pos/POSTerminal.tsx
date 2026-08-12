@@ -574,18 +574,19 @@ function PosTerminalInner() {
   const [cartDiscountValue, setCartDiscountValue] = useState<number>(0);
 
   // Dynamic Custom Additional Charges State (Freight, Packing, Transport, etc.)
-  const [posCustomCharges, setPosCustomCharges] = useState<{ id: string; name: string; amount: number }[]>([]);
+  const [posCustomCharges, setPosCustomCharges] = useState<{ id: string; name: string; amount: number; tax_rate: number }[]>([]);
+  const [posGstType, setPosGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
 
   const handleAddPosChargeRow = () => {
     setPosCustomCharges(prev => [
       ...prev,
-      { id: `chg_${Date.now()}_${Math.floor(Math.random() * 1000)}`, name: "Freight / Delivery Fee", amount: 0 }
+      { id: `chg_${Date.now()}_${Math.floor(Math.random() * 1000)}`, name: "Freight / Delivery Fee", amount: 0, tax_rate: 0 }
     ]);
   };
 
-  const handleUpdatePosCharge = (id: string, field: "name" | "amount", value: any) => {
+  const handleUpdatePosCharge = (id: string, field: "name" | "amount" | "tax_rate", value: any) => {
     setPosCustomCharges(prev =>
-      prev.map(c => (c.id === id ? { ...c, [field]: field === "amount" ? Math.max(0, Number(value)) : value } : c))
+      prev.map(c => (c.id === id ? { ...c, [field]: field === "amount" ? Math.max(0, Number(value)) : field === "tax_rate" ? Number(value) : value } : c))
     );
   };
 
@@ -594,7 +595,18 @@ function PosTerminalInner() {
   };
 
   const posAdditionalChargesTotal = useMemo(() => {
-    return posCustomCharges.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+    return posCustomCharges.reduce((sum, c) => {
+      const amt = Number(c.amount) || 0;
+      const gstAmt = amt * ((Number(c.tax_rate) || 0) / 100);
+      return sum + amt + gstAmt;
+    }, 0);
+  }, [posCustomCharges]);
+
+  const posChargesGstTotal = useMemo(() => {
+    return posCustomCharges.reduce((sum, c) => {
+      const amt = Number(c.amount) || 0;
+      return sum + amt * ((Number(c.tax_rate) || 0) / 100);
+    }, 0);
   }, [posCustomCharges]);
 
   // Cart Math with Dynamic Before-Tax & After-Tax Discount
@@ -1784,47 +1796,59 @@ function PosTerminalInner() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {cart.map((item, idx) => (
-                    <div
-                      key={`${item.id}-${idx}`}
-                      onClick={() => { setDiscountModalItem(item); setDiscountInput(item.discount.toString()); }}
-                      className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-sm flex items-start gap-3 relative group cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all duration-300"
-                    >
-                      <img src={item.image || "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"} onError={(e) => { e.currentTarget.src = "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"; }} alt={item.name} className="w-12 h-12 rounded-xl border border-slate-100 object-contain p-1 shrink-0 bg-slate-50" />
-                      <div className="flex-1 min-w-0">
-                        <h5 className="text-[13px] font-bold text-slate-900 leading-tight truncate pr-6">{item.name}</h5>
-                        <div className="text-[10px] font-bold text-slate-400 mt-0.5 tracking-wider uppercase">{item.sku}</div>
+                  {cart.map((item, idx) => {
+                    const { unitPrice, isWholesale } = getItemEffectivePrice(item);
+                    const itemTaxPercent = Number(item.tax_percent ?? item.tax ?? 18);
+                    const isIncl = item.is_tax_inclusive !== false;
+                    const sellingPriceIncl = isIncl ? unitPrice : unitPrice * (1 + itemTaxPercent / 100);
+                    const mrpVal = Number(item.mrp) || 0;
+                    const isMrpExceeded = mrpVal > 0 && sellingPriceIncl > mrpVal;
 
-                        <div className="flex items-center justify-between mt-3">
-                          <div className="flex items-center gap-1 bg-slate-100 rounded-lg border border-slate-200/60 p-0.5">
-                            <button onClick={(e) => { e.stopPropagation(); updateQty(item.id, -1); }} className="w-6 h-6 flex items-center justify-center rounded-md bg-white text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"><Minus className="w-3.5 h-3.5" /></button>
-                            <span className="w-8 text-center text-xs font-bold text-slate-900">{item.qty}</span>
-                            <button onClick={(e) => { e.stopPropagation(); updateQty(item.id, 1); }} className="w-6 h-6 flex items-center justify-center rounded-md bg-white text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"><Plus className="w-3.5 h-3.5" /></button>
-                          </div>
-                          <div className="text-right">
-                            {(() => {
-                              const { unitPrice, isWholesale } = getItemEffectivePrice(item);
-                              return (
-                                <>
-                                  <span className="font-black text-sm text-slate-900 block leading-none">{formatCurrency(unitPrice * item.qty)}</span>
-                                  {isWholesale && (
-                                    <span className="text-[9px] text-emerald-600 font-bold block leading-none mt-1">B2B Wholesale Rate</span>
-                                  )}
-                                  {item.discount > 0 && <span className="text-[10px] text-rose-500 font-bold block leading-none mt-1">Saved {formatCurrency(item.discount * item.qty)}</span>}
-                                </>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
-                        className="absolute top-2 right-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors p-1.5 rounded-lg opacity-0 group-hover:opacity-100"
+                    return (
+                      <div
+                        key={`${item.id}-${idx}`}
+                        onClick={() => { setDiscountModalItem(item); setDiscountInput(item.discount.toString()); }}
+                        className={`bg-white border rounded-2xl p-3 shadow-sm flex flex-col gap-2 relative group cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all duration-300 ${isMrpExceeded ? "border-red-300 bg-red-50/30" : "border-slate-200/80"}`}
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex items-start gap-3">
+                          <img src={item.image || "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"} onError={(e) => { e.currentTarget.src = "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"; }} alt={item.name} className="w-12 h-12 rounded-xl border border-slate-100 object-contain p-1 shrink-0 bg-slate-50" />
+                          <div className="flex-1 min-w-0">
+                            <h5 className="text-[13px] font-bold text-slate-900 leading-tight truncate pr-6">{item.name}</h5>
+                            <div className="text-[10px] font-bold text-slate-400 mt-0.5 tracking-wider uppercase">{item.sku}</div>
+
+                            <div className="flex items-center justify-between mt-3">
+                              <div className="flex items-center gap-1 bg-slate-100 rounded-lg border border-slate-200/60 p-0.5">
+                                <button onClick={(e) => { e.stopPropagation(); updateQty(item.id, -1); }} className="w-6 h-6 flex items-center justify-center rounded-md bg-white text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"><Minus className="w-3.5 h-3.5" /></button>
+                                <span className="w-8 text-center text-xs font-bold text-slate-900">{item.qty}</span>
+                                <button onClick={(e) => { e.stopPropagation(); updateQty(item.id, 1); }} className="w-6 h-6 flex items-center justify-center rounded-md bg-white text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"><Plus className="w-3.5 h-3.5" /></button>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-black text-sm text-slate-900 block leading-none">{formatCurrency(unitPrice * item.qty)}</span>
+                                {isWholesale && (
+                                  <span className="text-[9px] text-emerald-600 font-bold block leading-none mt-1">B2B Wholesale Rate</span>
+                                )}
+                                {item.discount > 0 && <span className="text-[10px] text-rose-500 font-bold block leading-none mt-1">Saved {formatCurrency(item.discount * item.qty)}</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
+                            className="absolute top-2 right-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors p-1.5 rounded-lg opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* MRP Warning Alert Banner */}
+                        {isMrpExceeded && (
+                          <div className="flex items-center gap-1.5 bg-red-100 text-red-800 border border-red-300 rounded-lg px-2 py-1 text-[10px] font-bold">
+                            <span className="animate-pulse">⚠️</span>
+                            <span>MRP Alert: Price ₹{sellingPriceIncl.toFixed(2)} &gt; MRP ₹{mrpVal.toFixed(2)}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1910,7 +1934,7 @@ function PosTerminalInner() {
                           value={ch.name}
                           onChange={e => handleUpdatePosCharge(ch.id, "name", e.target.value)}
                           placeholder="Charge name (e.g. Transport)"
-                          className="w-full text-xs font-semibold text-slate-800 outline-none px-1.5"
+                          className="flex-1 min-w-0 text-xs font-semibold text-slate-800 outline-none px-1.5"
                         />
                         <div className="flex items-center bg-slate-50 border border-slate-200 rounded-md px-1 shrink-0">
                           <span className="text-[10px] text-slate-400 font-bold">₹</span>
@@ -1923,6 +1947,24 @@ function PosTerminalInner() {
                             className="w-14 text-right text-xs font-bold text-slate-900 outline-none py-0.5"
                           />
                         </div>
+                        {/* GST % Selector for charge */}
+                        <select
+                          value={ch.tax_rate || 0}
+                          onChange={e => handleUpdatePosCharge(ch.id, "tax_rate", e.target.value)}
+                          title="GST on charge"
+                          className="shrink-0 bg-slate-50 border border-slate-200 rounded-md px-1 py-0.5 text-[10px] font-bold text-slate-700 outline-none"
+                        >
+                          <option value={0}>0% GST</option>
+                          <option value={5}>5% GST</option>
+                          <option value={12}>12% GST</option>
+                          <option value={18}>18% GST</option>
+                          <option value={28}>28% GST</option>
+                        </select>
+                        {Number(ch.tax_rate) > 0 && Number(ch.amount) > 0 && (
+                          <span className="shrink-0 text-[10px] font-bold text-emerald-600 whitespace-nowrap">
+                            +₹{(Number(ch.amount) * Number(ch.tax_rate) / 100).toFixed(2)}
+                          </span>
+                        )}
                         <button
                           onClick={() => handleDeletePosCharge(ch.id)}
                           className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors shrink-0"
@@ -1961,9 +2003,45 @@ function PosTerminalInner() {
                   <span className="font-black text-slate-700">{formatCurrency(taxableAmount)}</span>
                 </div>
 
-                <div className="flex justify-between text-[12px]">
-                  <span className="text-slate-500 font-bold">GST Tax</span>
-                  <span className="font-black text-slate-700">+{formatCurrency(tax)}</span>
+                {/* GST Breakdown (CGST+SGST vs IGST toggle) */}
+                <div className="pt-1.5 border-t border-slate-200/60 space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500 font-bold flex items-center gap-1">
+                      Total Tax / GST
+                    </span>
+                    <div className="flex items-center bg-slate-100 rounded-md p-0.5 text-[9px] font-bold">
+                      <button
+                        onClick={() => setPosGstType("cgst_sgst")}
+                        className={`px-1.5 py-0.5 rounded transition-all ${posGstType === "cgst_sgst" ? "bg-white text-indigo-700 shadow-2xs font-extrabold" : "text-slate-500"}`}
+                      >
+                        CGST+SGST
+                      </button>
+                      <button
+                        onClick={() => setPosGstType("igst")}
+                        className={`px-1.5 py-0.5 rounded transition-all ${posGstType === "igst" ? "bg-white text-indigo-700 shadow-2xs font-extrabold" : "text-slate-500"}`}
+                      >
+                        IGST
+                      </button>
+                    </div>
+                  </div>
+
+                  {posGstType === "cgst_sgst" ? (
+                    <>
+                      <div className="flex justify-between text-[11px] text-slate-600 pl-2">
+                        <span>• CGST</span>
+                        <span className="font-semibold">+{formatCurrency((tax + posChargesGstTotal) / 2)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] text-slate-600 pl-2">
+                        <span>• SGST</span>
+                        <span className="font-semibold">+{formatCurrency((tax + posChargesGstTotal) / 2)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-[11px] text-slate-600 pl-2">
+                      <span>• IGST</span>
+                      <span className="font-semibold">+{formatCurrency(tax + posChargesGstTotal)}</span>
+                    </div>
+                  )}
                 </div>
 
                 {posAdditionalChargesTotal > 0 && (

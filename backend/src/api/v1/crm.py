@@ -2079,13 +2079,13 @@ async def get_facebook_campaigns(
         clean_account_id = f"act_{clean_account_id}"
         
     try:
-        # Step 1: Get campaigns list (status, objective, dates)
+        # Step 1: Get campaigns list with nested ad creative details
         campaigns_url = f"https://graph.facebook.com/v25.0/{clean_account_id}/campaigns"
         campaigns_res = req_lib.get(campaigns_url, params={
             "access_token": token,
-            "fields": "id,name,status,objective,start_time,stop_time",
+            "fields": "id,name,status,objective,start_time,stop_time,adsets{name,status,ads{id,name,status,creative{id,name,image_url,body,title,object_story_spec}}}",
             "limit": 100
-        }, timeout=15)
+        }, timeout=20)
         campaigns_data = campaigns_res.json()
         if "error" in campaigns_data:
             raise HTTPException(status_code=400, detail=campaigns_data["error"].get("message", "Failed to retrieve campaigns from Meta."))
@@ -2110,11 +2110,46 @@ async def get_facebook_campaigns(
                 if cid:
                     insights_map[cid] = row
 
-        # Step 3: Merge campaigns with their insights
+        # Step 3: Merge campaigns with insights and extract ad creative info
         result = []
         for c in campaigns:
             cid = c.get("id", "")
             ins = insights_map.get(cid, {})
+
+            # Extract first ad creative from nested adsets → ads → creative
+            ad_image_url = None
+            ad_headline = None
+            ad_body = None
+            ad_name = None
+            ad_id = None
+            adsets = c.get("adsets", {}).get("data", [])
+            for adset in adsets:
+                ads = adset.get("ads", {}).get("data", [])
+                for ad in ads:
+                    creative = ad.get("creative", {})
+                    if not ad_image_url:
+                        ad_image_url = creative.get("image_url")
+                    if not ad_headline:
+                        ad_headline = creative.get("title")
+                        if not ad_headline:
+                            # Try nested object_story_spec
+                            oss = creative.get("object_story_spec", {})
+                            link_data = oss.get("link_data", {})
+                            ad_headline = link_data.get("name") or link_data.get("message")
+                    if not ad_body:
+                        ad_body = creative.get("body")
+                        if not ad_body:
+                            oss = creative.get("object_story_spec", {})
+                            ad_body = oss.get("link_data", {}).get("message")
+                    if not ad_name:
+                        ad_name = ad.get("name") or creative.get("name")
+                    if not ad_id:
+                        ad_id = ad.get("id")
+                    if ad_image_url and ad_headline:
+                        break
+                if ad_image_url and ad_headline:
+                    break
+
             result.append({
                 "id": cid,
                 "name": c.get("name"),
@@ -2128,6 +2163,13 @@ async def get_facebook_campaigns(
                 "ctr": ins.get("ctr", "0"),
                 "reach": ins.get("reach", "0"),
                 "frequency": ins.get("frequency", "0"),
+                # Ad creative preview fields
+                "ad_id": ad_id,
+                "ad_name": ad_name,
+                "ad_image_url": ad_image_url,
+                "ad_headline": ad_headline,
+                "ad_body": ad_body,
+                "meta_campaign_id": cid,
             })
         return result
     except HTTPException:
@@ -2366,9 +2408,16 @@ async def create_paid_ad_campaign(
             header, encoded = payload.image_url.split(",", 1)
             image_bytes = base64.b64decode(encoded)
         else:
-            img_res = req_lib.get(payload.image_url, timeout=15)
-            img_res.raise_for_status()
-            image_bytes = img_res.content
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            try:
+                img_res = req_lib.get(payload.image_url, headers=headers, timeout=25)
+                img_res.raise_for_status()
+                image_bytes = img_res.content
+            except Exception as download_err:
+                logger.warning(f"Initial image fetch failed ({download_err}), retrying image download...")
+                img_res = req_lib.get(payload.image_url, headers=headers, timeout=30)
+                img_res.raise_for_status()
+                image_bytes = img_res.content
 
         # Step 2: Call full ad creation pipeline
         res = client.create_full_ad_pipeline(

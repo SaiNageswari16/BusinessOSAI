@@ -39,6 +39,10 @@ class MetaAdsClient:
         self.page_id = page_id
         self.api_version = api_version
         self.graph_base = f"https://graph.facebook.com/{api_version}"
+        self.session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(max_retries=3)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
 
     # ── low-level HTTP ────────────────────────────────────────────────────────
 
@@ -46,14 +50,19 @@ class MetaAdsClient:
         url = f"{self.graph_base}/{path.lstrip('/')}"
         p = dict(params or {})
         p["access_token"] = self.access_token
-        resp = requests.post(url, json=payload, params=p, timeout=30)
-        data = resp.json()
+        try:
+            resp = self.session.post(url, json=payload, params=p, timeout=45)
+            data = resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Retrying Meta POST [{path}] due to socket reset: {e}")
+            resp = self.session.post(url, json=payload, params=p, timeout=45)
+            data = resp.json()
+
         if "error" in data:
             err = data["error"]
-            raise RuntimeError(
-                f"Graph API POST [{path}] error [{err.get('code', 0)}]: "
-                f"{err.get('message', 'unknown')}"
-            )
+            user_msg = err.get("error_user_msg") or err.get("error_user_title") or err.get("message")
+            logger.error(f"Graph API POST [{path}] full error response: {err}")
+            raise RuntimeError(f"Meta API Error [{err.get('code')}]: {user_msg}")
         resp.raise_for_status()
         return data
 
@@ -61,8 +70,14 @@ class MetaAdsClient:
         url = f"{self.graph_base}/{path.lstrip('/')}"
         p = dict(params)
         p["access_token"] = self.access_token
-        resp = requests.get(url, params=p, timeout=30)
-        data = resp.json()
+        try:
+            resp = self.session.get(url, params=p, timeout=45)
+            data = resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Retrying Meta GET [{path}] due to socket reset: {e}")
+            resp = self.session.get(url, params=p, timeout=45)
+            data = resp.json()
+
         if "error" in data:
             err = data["error"]
             raise RuntimeError(
@@ -80,12 +95,22 @@ class MetaAdsClient:
         Returns the image_hash string (e.g. "a1b2c3d4...").
         """
         url = f"{self.graph_base}/{self.ad_account_id}/adimages"
-        resp = requests.post(
-            url,
-            files={"source": (f"{name}.jpg", image_bytes, "image/jpeg")},
-            data={"access_token": self.access_token},
-            timeout=30,
-        )
+        try:
+            resp = self.session.post(
+                url,
+                files={"source": (f"{name}.jpg", image_bytes, "image/jpeg")},
+                data={"access_token": self.access_token},
+                timeout=45,
+            )
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Retrying Meta Image Upload due to socket reset: {e}")
+            resp = self.session.post(
+                url,
+                files={"source": (f"{name}.jpg", image_bytes, "image/jpeg")},
+                data={"access_token": self.access_token},
+                timeout=45,
+            )
+
         data = resp.json()
         if "error" in data:
             raise RuntimeError(
@@ -191,8 +216,10 @@ class MetaAdsClient:
         payload = {
             "name": name,
             "objective": meta_objective,
-            "status": "PAUSED",
-            "special_ad_categories": special_ad_categories if (special_ad_categories and len(special_ad_categories) > 0) else ["NONE"],
+            "status": "ACTIVE",
+            "buying_type": "AUCTION",
+            "is_adset_budget_sharing_enabled": False,
+            "special_ad_categories": special_ad_categories if (isinstance(special_ad_categories, list) and len(special_ad_categories) > 0) else ["NONE"],
         }
 
         data = self._post(f"/{self.ad_account_id}/campaigns", payload)
@@ -229,7 +256,8 @@ class MetaAdsClient:
             "daily_budget": daily_budget_cents,
             "optimization_goal": optimization_goal,
             "billing_event": billing_event,
-            "status": "PAUSED",
+            "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+            "status": "ACTIVE",
         }
         if optimization_goal == "LEAD_GENERATION":
             payload["promoted_object"] = {"page_id": self.page_id}
@@ -273,7 +301,7 @@ class MetaAdsClient:
             "name": name,
             "adset_id": adset_id,
             "creative": {"creative_id": creative_id},
-            "status": "PAUSED",
+            "status": "ACTIVE",
         }
         data = self._post(f"/{self.ad_account_id}/ads", payload)
         ad_id = data.get("id")
