@@ -239,6 +239,87 @@ const PERMISSION_LABELS: Record<string, string> = {
   "view:tax": "View Tax Codes, Returns & Payments",
   "manage:tax": "Manage Tax Codes & Returns",
   "file:tax": "File Tax Returns",
+  "view:accounts_receivable": "View Accounts Receivable (AR)",
+  "manage:accounts_receivable": "Manage AR & Customer Receipts",
+  "view:accounts_payable": "View Accounts Payable (AP)",
+  "manage:accounts_payable": "Manage AP & Vendor Payments",
+
+  // Granular Inventory & Warehouse
+  "view:product_categories": "View Product Categories",
+  "manage:product_categories": "Manage Categories (Add/Edit)",
+  "view:brands": "View Brands List",
+  "manage:brands": "Manage Brands (Add/Edit)",
+  "view:stock_adjustments": "View Stock Adjustments",
+  "manage:stock_adjustments": "Perform Stock Quantity Adjustments",
+  "view:stock_transfers": "View Stock Transfers",
+  "manage:stock_transfers": "Execute Inter-Warehouse Transfers",
+  "view:barcodes": "View Barcode Management",
+  "manage:barcodes": "Manage Barcodes & Print Labels",
+
+  // Granular Operations & Procurement
+  "view:purchase_orders": "View Purchase Orders",
+  "manage:purchase_orders": "Create/Edit Purchase Orders",
+  "approve:purchase_orders": "Approve Purchase Orders",
+  "view:grn": "View Goods Received Notes (GRN)",
+  "manage:grn": "Log Goods Receipt (GRN)",
+  "view:suppliers": "View Vendors / Suppliers",
+  "manage:suppliers": "Manage Vendor Master Data",
+  "view:rfq": "View RFQs & Vendor Quotes",
+  "manage:rfq": "Create RFQs & Compare Quotes",
+  "view:dispatch": "View Dispatch & Logistics",
+  "manage:dispatch": "Manage Shipping & Dispatch",
+
+  // Granular POS Terminal
+  "manage:pos_terminal": "Operate POS Terminal Billing",
+  "discount:pos_billing": "Apply Custom POS Discounts",
+  "void:pos_receipt": "Void Completed POS Bills",
+  "view:pos_register": "View Cash Counter Float & Shifts",
+  "manage:pos_register": "Open/Close Cash Drawer Shifts",
+  "view:pos_history": "View POS Invoice History",
+  "refund:pos_history": "Process POS Returns & Refunds",
+
+  // Granular Sales & CRM
+  "convert:crm_leads": "Convert CRM Leads to Deals",
+  "view:crm_quotations": "View Sales Quotes & Proposals",
+  "manage:crm_quotations": "Create/Edit Sales Quotes",
+  "approve:crm_quotations": "Approve Sales Quotes",
+  "view:crm_sales_orders": "View Customer Sales Orders",
+  "manage:crm_sales_orders": "Create/Edit Sales Orders",
+  "view:crm_support": "View Support Tickets",
+  "manage:crm_support": "Resolve Support Cases",
+  "view:crm_campaigns": "View Marketing Ad Posters",
+  "manage:crm_campaigns": "Publish AI Social Media Ads",
+
+  // Marketplace
+  "view:marketplace": "Access Marketplace Workspace",
+  "manage:marketplace": "Manage Marketplace Connections",
+  "view:marketplace_vendors": "View Marketplace Vendor Accounts",
+  "manage:marketplace_vendors": "Onboard Marketplace Vendors",
+  "view:marketplace_catalog": "View Synced Product Catalog",
+  "manage:marketplace_catalog": "Publish Catalog to Marketplace",
+  "view:marketplace_orders": "View Marketplace Orders",
+  "manage:marketplace_orders": "Fulfill Marketplace Orders",
+
+  // IoT (Internet of Things)
+  "view:iot": "Access IoT Module Dashboard",
+  "manage:iot": "Manage IoT System Gateways",
+  "view:iot_devices": "View Connected Devices & Sensors",
+  "manage:iot_devices": "Pair & Calibrate Hardware Devices",
+  "view:iot_telemetry": "View Real-Time Telemetry Logs",
+  "manage:iot_telemetry": "Set IoT Thresholds & Triggers",
+
+  // Analytics & Intelligence
+  "view:analytics": "Access Executive Analytics",
+  "manage:analytics": "Customize Analytics Widgets",
+  "manage:reports": "Design & Export Custom Reports",
+  "view:ai_insights": "Access AI Predictive Insights",
+  "manage:ai_insights": "Configure AI Demand Models",
+
+  // System Configuration
+  "view:system_config": "View System Configuration",
+  "manage:system_config": "Manage System Flags & Env",
+  "view:webhooks": "View Webhooks & Event Streams",
+  "manage:webhooks": "Manage Webhook Subscriptions",
 };
 
 const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
@@ -287,6 +368,59 @@ const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
       "view:backup", "manage:backup", 
       "view:system_health", 
       "view:activity_logs", "view:error_logs"
+    ] 
+  },
+  { 
+    label: "Inventory & Warehouse Management", 
+    keys: [
+      "view:inventory", "manage:inventory",
+      "view:product_categories", "manage:product_categories",
+      "view:brands", "manage:brands",
+      "view:stock_adjustments", "manage:stock_adjustments",
+      "view:stock_transfers", "manage:stock_transfers",
+      "view:barcodes", "manage:barcodes",
+      "view:warehouse", "manage:warehouse"
+    ] 
+  },
+  { 
+    label: "Operations & Procurement", 
+    keys: [
+      "view:procurement", "manage:procurement",
+      "view:purchase_orders", "manage:purchase_orders", "approve:purchase_orders",
+      "view:grn", "manage:grn",
+      "view:suppliers", "manage:suppliers",
+      "view:rfq", "manage:rfq",
+      "view:dispatch", "manage:dispatch"
+    ] 
+  },
+  { 
+    label: "POS (Point of Sale)", 
+    keys: [
+      "view:pos", "manage:pos_terminal",
+      "discount:pos_billing", "void:pos_receipt",
+      "view:pos_register", "manage:pos_register",
+      "view:pos_history", "refund:pos_history"
+    ] 
+  },
+  { 
+    label: "Sales & CRM", 
+    keys: [
+      "view:crm", "manage:crm",
+      "view:crm_leads", "manage:crm_leads", "convert:crm_leads",
+      "view:crm_customers", "manage:crm_customers",
+      "view:crm_quotations", "manage:crm_quotations", "approve:crm_quotations",
+      "view:crm_sales_orders", "manage:crm_sales_orders",
+      "view:crm_support", "manage:crm_support",
+      "view:crm_campaigns", "manage:crm_campaigns"
+    ] 
+  },
+  { 
+    label: "Marketplace Channel Management", 
+    keys: [
+      "view:marketplace", "manage:marketplace",
+      "view:marketplace_vendors", "manage:marketplace_vendors",
+      "view:marketplace_catalog", "manage:marketplace_catalog",
+      "view:marketplace_orders", "manage:marketplace_orders"
     ] 
   },
   { 
@@ -348,15 +482,6 @@ const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
     ] 
   },
   { 
-    label: "Operations & Sales Modules", 
-    keys: [
-      "view:inventory", "manage:inventory",
-      "view:warehouse", "manage:warehouse",
-      "view:procurement", "manage:procurement",
-      "view:pos", "view:crm", "manage:crm"
-    ] 
-  },
-  { 
     label: "Accounting - Chart of Accounts & Journal",
     keys: [
       "view:chart_of_accounts", "manage:chart_of_accounts",
@@ -365,10 +490,12 @@ const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
     ]
   },
   { 
-    label: "Accounting - Invoices & AR",
+    label: "Accounting - Invoices, AR & AP",
     keys: [
       "view:invoices", "manage:invoices",
-      "approve:invoices", "manage:invoice_payments"
+      "approve:invoices", "manage:invoice_payments",
+      "view:accounts_receivable", "manage:accounts_receivable",
+      "view:accounts_payable", "manage:accounts_payable"
     ]
   },
   { 
@@ -390,8 +517,28 @@ const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
     ]
   },
   { 
-    label: "Modules & Settings", 
-    keys: ["view:accounting", "view:reports", "view:settings"] 
+    label: "IoT (Internet of Things)",
+    keys: [
+      "view:iot", "manage:iot",
+      "view:iot_devices", "manage:iot_devices",
+      "view:iot_telemetry", "manage:iot_telemetry"
+    ]
+  },
+  { 
+    label: "Analytics & Intelligence",
+    keys: [
+      "view:analytics", "manage:analytics",
+      "view:reports", "manage:reports",
+      "view:ai_insights", "manage:ai_insights"
+    ]
+  },
+  { 
+    label: "System Configuration & Webhooks",
+    keys: [
+      "view:system_config", "manage:system_config",
+      "view:webhooks", "manage:webhooks",
+      "view:settings"
+    ]
   },
 ];
 

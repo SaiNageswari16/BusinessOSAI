@@ -236,6 +236,79 @@ DEFAULT_PERMISSIONS: list[tuple[str, str, str, str]] = [
     # Marketplace permissions
     ("view:marketplace", "View Marketplace", "marketplace", "Access marketplace module"),
     ("manage:marketplace", "Manage Marketplace", "marketplace", "Manage marketplace vendors and products"),
+    ("view:marketplace_vendors", "View Marketplace Vendors", "marketplace", "View connected marketplace vendor accounts"),
+    ("manage:marketplace_vendors", "Manage Marketplace Vendors", "marketplace", "Onboard and configure marketplace vendors"),
+    ("view:marketplace_catalog", "View Marketplace Catalog", "marketplace", "View synced marketplace product feeds"),
+    ("manage:marketplace_catalog", "Manage Marketplace Catalog", "marketplace", "Publish and sync products to marketplace"),
+    ("view:marketplace_orders", "View Marketplace Orders", "marketplace", "View orders from external channels"),
+    ("manage:marketplace_orders", "Manage Marketplace Orders", "marketplace", "Process and fulfill marketplace orders"),
+
+    # Granular Inventory & Warehouse permissions
+    ("view:product_categories", "View Product Categories", "inventory", "View category list"),
+    ("manage:product_categories", "Manage Product Categories", "inventory", "Create/edit categories"),
+    ("view:brands", "View Brands", "inventory", "View brand list"),
+    ("manage:brands", "Manage Brands", "inventory", "Create/edit brands"),
+    ("view:stock_adjustments", "View Stock Adjustments", "inventory", "View stock adjustment history"),
+    ("manage:stock_adjustments", "Manage Stock Adjustments", "inventory", "Perform stock quantity adjustments"),
+    ("view:stock_transfers", "View Stock Transfers", "inventory", "View inter-warehouse stock transfers"),
+    ("manage:stock_transfers", "Manage Stock Transfers", "inventory", "Create and execute stock transfers"),
+    ("view:barcodes", "View Barcode Management", "inventory", "View barcode templates and assignments"),
+    ("manage:barcodes", "Manage Barcode Configurations", "inventory", "Create barcode rules and print labels"),
+
+    # Granular Operations & Procurement permissions
+    ("view:purchase_orders", "View Purchase Orders", "procurement", "View purchase orders list"),
+    ("manage:purchase_orders", "Manage Purchase Orders", "procurement", "Create and edit purchase orders"),
+    ("approve:purchase_orders", "Approve Purchase Orders", "procurement", "Sign off and approve purchase orders"),
+    ("view:grn", "View Goods Received Notes (GRN)", "procurement", "View received shipment notes"),
+    ("manage:grn", "Manage Goods Received Notes (GRN)", "procurement", "Log goods receipt and verify quantities"),
+    ("view:suppliers", "View Suppliers / Vendors", "procurement", "View supplier list and details"),
+    ("manage:suppliers", "Manage Suppliers / Vendors", "procurement", "Create and maintain vendor master data"),
+    ("view:rfq", "View RFQ & Vendor Quotations", "procurement", "View request for quotes"),
+    ("manage:rfq", "Manage RFQ & Vendor Quotations", "procurement", "Create RFQs and analyze vendor quotes"),
+    ("view:dispatch", "View Dispatch & Logistics", "procurement", "View dispatch schedules and shipping notes"),
+    ("manage:dispatch", "Manage Dispatch & Logistics", "procurement", "Create dispatch orders and manage shipping"),
+
+    # Granular POS Terminal permissions
+    ("manage:pos_terminal", "Manage POS Terminal Billing", "pos", "Operate cash register and process sales"),
+    ("discount:pos_billing", "Apply Custom POS Discounts", "pos", "Override price or give manual cart discounts"),
+    ("void:pos_receipt", "Void POS Transactions", "pos", "Cancel or void completed bill receipts"),
+    ("view:pos_register", "View Cash Register Shifts", "pos", "View opening and closing cash counter float"),
+    ("manage:pos_register", "Manage Cash Register Shifts", "pos", "Open, reconcile and close cash drawer shifts"),
+    ("view:pos_history", "View POS Billing History", "pos", "Access past POS bills and receipts"),
+    ("refund:pos_history", "Process POS Refunds / Returns", "pos", "Issue refunds or store credit on past bills"),
+
+    # Granular Sales & CRM permissions
+    ("convert:crm_leads", "Convert CRM Leads", "crm", "Convert leads to customers and deals"),
+    ("view:crm_quotations", "View Quotations & Proposals", "crm", "View customer sales quotes"),
+    ("manage:crm_quotations", "Manage Quotations & Proposals", "crm", "Create and edit sales quotes"),
+    ("approve:crm_quotations", "Approve Sales Quotations", "crm", "Approve high-value sales quotes"),
+    ("view:crm_sales_orders", "View Sales Orders", "crm", "View confirmed customer sales orders"),
+    ("manage:crm_sales_orders", "Manage Sales Orders", "crm", "Create and manage customer sales orders"),
+    ("view:crm_support", "View Support Tickets", "crm", "View customer support cases and tickets"),
+    ("manage:crm_support", "Manage Support Tickets", "crm", "Assign, respond to and resolve support tickets"),
+    ("view:crm_campaigns", "View Marketing Campaigns", "crm", "View marketing ad posters and campaigns"),
+    ("manage:crm_campaigns", "Manage Marketing Campaigns", "crm", "Generate AI posters and publish social ads"),
+
+    # Granular IoT (Internet of Things) permissions
+    ("view:iot", "View IoT Module", "iot", "Access IoT dashboard and connected hardware"),
+    ("manage:iot", "Manage IoT Settings", "iot", "Configure IoT system settings and gateways"),
+    ("view:iot_devices", "View IoT Devices", "iot", "View connected sensors, POS scales, and scanners"),
+    ("manage:iot_devices", "Manage IoT Devices", "iot", "Pair, calibrate and manage IoT hardware devices"),
+    ("view:iot_telemetry", "View IoT Telemetry Logs", "iot", "Access real-time sensor streams and telemetry"),
+    ("manage:iot_telemetry", "Manage IoT Alerts & Triggers", "iot", "Set up alert thresholds and automation triggers"),
+
+    # Granular Analytics & Intelligence permissions
+    ("view:analytics", "View Analytics & Intelligence", "analytics", "Access executive business analytics"),
+    ("manage:analytics", "Manage Analytics Dashboards", "analytics", "Customize analytics widgets and KPI targets"),
+    ("manage:reports", "Manage & Create Reports", "analytics", "Design custom SQL reports and scheduled exports"),
+    ("view:ai_insights", "View AI Predictive Insights", "analytics", "Access AI demand forecasts and anomaly alerts"),
+    ("manage:ai_insights", "Manage AI Models & Forecasts", "analytics", "Configure AI training parameters and forecasts"),
+
+    # Granular System Configuration permissions
+    ("view:system_config", "View System Configuration", "system_config", "Access environment and global system settings"),
+    ("manage:system_config", "Manage System Configuration", "system_config", "Modify environment variables and system flags"),
+    ("view:webhooks", "View Webhooks & Event Streams", "system_config", "View active webhooks and payload logs"),
+    ("manage:webhooks", "Manage Webhooks & Event Streams", "system_config", "Create and test webhook endpoints"),
 ]
 
 
