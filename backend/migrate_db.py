@@ -165,5 +165,21 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to '{table_name}': {e}")
 
+    # Add specifications column to erp_products and erp_master_catalog
+    spec_cols = [
+        ("erp_products", "specifications", "JSONB DEFAULT '{}'::jsonb"),
+        ("erp_master_catalog", "specifications", "TEXT")
+    ]
+    for table_name, name, col_type in spec_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to '{table_name}' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in '{table_name}'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to '{table_name}': {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())
