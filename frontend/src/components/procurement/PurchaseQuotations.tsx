@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import React from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Plus, Network, Loader2, Award, Building, CheckCircle } from "lucide-react";
+import { Plus, Network, Loader2, Award, Building, CheckCircle, Eye, ChevronDown, ChevronUp, Printer, FileText } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { PurchaseQuotationForm } from "./PurchaseQuotationForm";
@@ -10,6 +11,7 @@ export function PurchaseQuotations() {
   const [quotations, setQuotations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateMode, setIsCreateMode] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -61,41 +63,77 @@ export function PurchaseQuotations() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {quotations.map((rfq) => (
-            <Card key={rfq.id} className="bg-card border p-6 relative overflow-hidden shadow-sm">
-              <div className="flex justify-between items-start mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 rounded-lg bg-primary/10 text-primary grid place-items-center">
-                    <Network className="size-5" />
+          {quotations.map((rfq) => {
+            const isExpanded = expandedId === rfq.id;
+            return (
+              <Card key={rfq.id} className={`bg-card border p-6 relative overflow-hidden shadow-sm hover:shadow-md transition ${isExpanded ? "ring-2 ring-primary" : ""}`}>
+                <div className="flex justify-between items-start mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="size-10 rounded-lg bg-primary/10 text-primary grid place-items-center">
+                      <Network className="size-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg">
+                        {rfq.items && rfq.items[0] ? rfq.items[0].product_name : "Quotation RFQ"}
+                      </h3>
+                      <div className="text-xs text-muted-foreground font-mono mt-0.5">{rfq.quotation_number}</div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-lg">
-                      {rfq.items && rfq.items[0] ? rfq.items[0].product_name : "Quotation RFQ"}
-                    </h3>
-                    <div className="text-xs text-muted-foreground font-mono mt-0.5">{rfq.quotation_number}</div>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      rfq.status === "Accepted" ? "bg-emerald-500/10 text-emerald-600" : "bg-blue-500/10 text-blue-600"
+                    }`}>
+                      {rfq.status}
+                    </span>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setExpandedId(prev => prev === rfq.id ? null : rfq.id)}
+                      className={`h-7 px-2 font-bold rounded-lg ${isExpanded ? "bg-primary text-white border-primary" : "hover:bg-primary/10"}`}
+                    >
+                      <Eye className="size-3.5 mr-1" /> View
+                    </Button>
                   </div>
                 </div>
-                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  rfq.status === "Accepted" ? "bg-emerald-500/10 text-emerald-600" : "bg-blue-500/10 text-blue-600"
-                }`}>
-                  {rfq.status}
-                </span>
-              </div>
 
-              <div className="bg-muted/40 p-4 rounded-xl border border-dashed flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Supplier Partner</div>
-                  <div className="font-bold">{rfq.supplier_name}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] uppercase font-bold text-primary mb-1">Quotation Value</div>
-                  <div className="font-mono font-bold text-lg text-primary">
-                    ₹{rfq.total_amount.toLocaleString("en-IN")}
+                <div className="bg-muted/40 p-4 rounded-xl border border-dashed flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Supplier Partner</div>
+                    <div className="font-bold">{rfq.supplier_name}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase font-bold text-primary mb-1">Quotation Value</div>
+                    <div className="font-mono font-bold text-lg text-primary">
+                      ₹{rfq.total_amount?.toLocaleString("en-IN")}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Card>
-          ))}
+
+                {isExpanded && (
+                  <div className="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-slate-50 p-4 rounded-xl">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Quotation Line Items</span>
+                      <Button size="sm" variant="outline" onClick={() => window.print()} className="h-7 text-xs font-bold rounded-md">
+                        <Printer className="size-3.5 mr-1" /> Print RFQ
+                      </Button>
+                    </div>
+                    {rfq.items && rfq.items.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {rfq.items.map((it: any, idx: number) => (
+                          <div key={idx} className="bg-white p-2.5 border rounded-lg flex justify-between text-xs">
+                            <span className="font-bold text-slate-800">{it.product_name}</span>
+                            <span className="font-mono font-black text-indigo-600">{it.quantity} Units @ ₹{it.unit_price}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-400">Standard RFQ Contract Bid</div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

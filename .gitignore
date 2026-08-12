@@ -24,7 +24,9 @@ backend/**/__pycache__/
 backend/**/*.pyc
 *.csv
 *.tsv
-
+frontend/.env
+frontend/.env.development
+frontend/.env.production
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars

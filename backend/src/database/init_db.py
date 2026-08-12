@@ -53,14 +53,47 @@ async def init_database() -> None:
         from sqlalchemy import text
         try:
             await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC(10, 2) DEFAULT 0;"))
+            await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT TRUE;"))
+            await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS specifications JSONB DEFAULT '{}'::jsonb;"))
+            await conn.execute(text("ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS specifications TEXT;"))
             await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_admin BOOLEAN DEFAULT FALSE;"))
             await conn.execute(text("UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com';"))
         except Exception as alter_err:
-
             logger.warning(f"Auto-column migration check: {alter_err}")
     logger.info("Database tables & schema columns ensured via SQLAlchemy.")
 
 
+
+
+async def seed_hsn_codes(db: AsyncSession) -> None:
+    try:
+        from src.models.inventory import HSNMaster
+        count = await db.scalar(select(func.count()).select_from(HSNMaster))
+        if count == 0:
+            json_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "hsn_codes_gst.json")
+            if os.path.exists(json_path):
+                import json
+                with open(json_path, "r", encoding="utf-8") as f:
+                    entries = json.load(f)
+                for item in entries:
+                    code = item["hsn_code"].strip()
+                    desc = item["description"].strip()
+                    rate = float(item["gst_rate"])
+                    hsn_obj = HSNMaster(
+                        id=uuid.uuid4(),
+                        hsn_code=code,
+                        description=desc,
+                        gst_rate=rate,
+                        cgst_rate=rate / 2.0,
+                        sgst_rate=rate / 2.0,
+                        igst_rate=rate,
+                        cess_rate=0.0
+                    )
+                    db.add(hsn_obj)
+                await db.flush()
+                logger.info(f"Seeded {len(entries)} HSN Master codes into database.")
+    except Exception as e:
+        logger.warning(f"Failed to auto-seed HSN codes: {e}")
 
 
 async def bootstrap_defaults(db: AsyncSession) -> None:
@@ -68,6 +101,7 @@ async def bootstrap_defaults(db: AsyncSession) -> None:
         return
 
     await seed_permissions(db)
+    await seed_hsn_codes(db)
 
     tenant_count = await db.scalar(select(func.count()).select_from(Tenant))
     if tenant_count == 0:
