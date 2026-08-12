@@ -6,6 +6,7 @@ import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Load
 
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
+import { useTenant } from "../../contexts/tenant-context";
 import { motion, AnimatePresence } from "framer-motion";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -722,6 +723,7 @@ function ImportPreviewModal({
 //  MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════
 export function Products() {
+  const { tenant } = useTenant();
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
     const cb = () => setCurrencyTick(t => t + 1);
@@ -938,7 +940,10 @@ export function Products() {
   };
 
   useEffect(() => { checkAiStatus(); }, []);
-  useEffect(() => { loadData(search); }, [currentPage, pageSize, sortBy, sortOrder]);
+  useEffect(() => {
+    setCurrentPage(1);
+    loadData(search);
+  }, [tenant?.id, currentPage, pageSize, sortBy, sortOrder]);
 
 
   // Close suggestions on outside click

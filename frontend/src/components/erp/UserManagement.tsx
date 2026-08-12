@@ -13,6 +13,7 @@ import {
   Save,
 } from "lucide-react";
 import { useAuth, canAssignSuperAdmin } from "@/contexts/auth-context";
+import { useTenant } from "@/contexts/tenant-context";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -349,6 +350,7 @@ function UserFormModal({
 
 export function UserManagement({ tab = "users" }: { tab?: string }) {
   const { accessToken, user: currentUser } = useAuth();
+  const { tenant } = useTenant();
   const canAssignSuperAdminRole = canAssignSuperAdmin(currentUser);
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -406,7 +408,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
   useEffect(() => {
     void loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+  }, [accessToken, tenant?.id]);
 
   const saveUser = async (payload: UserFormPayload) => {
     if (!accessToken) return;
