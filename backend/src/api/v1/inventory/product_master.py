@@ -1004,6 +1004,7 @@ async def upload_product_image(
     ext = os.path.splitext(file.filename)[1] or ".jpg"
     filename = f"prod_{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(images_dir, filename)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)

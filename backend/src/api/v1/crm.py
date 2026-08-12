@@ -1698,6 +1698,7 @@ async def generate_campaign_poster(
     os.makedirs(images_dir, exist_ok=True)
     filename = f"poster_{uuid.uuid4().hex}.jpg"
     filepath = os.path.join(images_dir, filename)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
     try:
         image_bytes, enhanced_prompt = call_ai_image(
