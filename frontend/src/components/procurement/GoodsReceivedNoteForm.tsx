@@ -43,9 +43,10 @@ interface GRNItem {
 interface GoodsReceivedNoteFormProps {
   onClose: () => void;
   onSaved?: () => void;
+  initialData?: any;
 }
 
-export function GoodsReceivedNoteForm({ onClose, onSaved }: GoodsReceivedNoteFormProps) {
+export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsReceivedNoteFormProps) {
   const [products, setProducts] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -58,51 +59,79 @@ export function GoodsReceivedNoteForm({ onClose, onSaved }: GoodsReceivedNoteFor
   const [receivedDate, setReceivedDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [receivingLocation, setReceivingLocation] = useState<string>("Main Warehouse (BR-100)");
   const [selectedInspectorId, setSelectedInspectorId] = useState<string>("");
-  const [vehicleNo, setVehicleNo] = useState<string>("KA-01-EQ-9812");
-  const [carrierNote, setCarrierNote] = useState<string>("Delivered via Express Freight Logistics.");
-  const [barcodeInput, setBarcodeInput] = useState<string>("");
+  const [chalanInvoiceNo, setChalanInvoiceNo] = useState<string>("");
+  const [carrierVehicleNo, setCarrierVehicleNo] = useState<string>("");
+  const [notes, setNotes] = useState<string>(
+    "1. Stock received in good condition except logged line rejections.\n2. QC inspection verified."
+  );
 
-  // Items
+  // Line items
   const [items, setItems] = useState<GRNItem[]>([
     {
       id: "1",
-      product_name: "Mirinda Soft Drink - 250ml",
-      batch_number: "BATCH-2026-A1",
-      expiry_date: "2026-12-31",
+      product_name: "",
+      batch_number: `BATCH-${Math.floor(1000 + Math.random() * 9000)}`,
       quantity_ordered: 100,
       quantity_received: 100,
       quantity_accepted: 100,
       quantity_rejected: 0,
-      defect_reason: "Passed quality check",
-      search_query: "Mirinda Soft Drink - 250ml",
+      defect_reason: "",
+      search_query: "",
       is_search_open: false,
     },
   ]);
+
+  const [barcodeInput, setBarcodeInput] = useState<string>("");
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const pos = await inventoryApi.getPurchaseOrders().catch(() => []);
-        setPurchaseOrders(pos || []);
-
         const prods = await inventoryApi.getProducts().catch(() => ({ items: [] }));
         setProducts(prods.items || []);
 
+        const pos = await inventoryApi.getPurchaseOrders().catch(() => []);
+        setPurchaseOrders(pos || []);
+
         const emps = await fetchSalesEmployees().catch(() => []);
         setEmployees(emps || []);
-        if (emps && emps.length > 0) setSelectedInspectorId(emps[0].id);
 
-        const randomSeq = Math.floor(1000 + Math.random() * 9000);
-        setGrnNumber(`GRN-2026-${randomSeq}`);
+        if (initialData) {
+          setGrnNumber(initialData.grn_number || initialData.id || `GRN-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+          if (initialData.po_number) setLinkedPoId(initialData.po_number);
+          if (initialData.notes) setNotes(initialData.notes);
+          if (initialData.items && initialData.items.length > 0) {
+            setItems(initialData.items.map((it: any, idx: number) => ({
+              id: it.id || String(idx + 1),
+              product_id: it.product_id,
+              product_name: it.product_name || it.name || "Inward Item",
+              batch_number: it.batch_number || `BATCH-${Math.floor(1000 + Math.random() * 9000)}`,
+              quantity_ordered: Number(it.quantity_ordered) || Number(it.quantity_received) || 100,
+              quantity_received: Number(it.quantity_received) || 100,
+              quantity_accepted: Number(it.quantity_accepted) || Number(it.quantity_received) || 100,
+              quantity_rejected: Number(it.quantity_rejected) || 0,
+              defect_reason: it.defect_reason || "",
+              search_query: it.product_name || "",
+              is_search_open: false
+            })));
+          }
+        } else {
+          if (emps && emps.length > 0) {
+            setSelectedInspectorId(emps[0].id);
+          }
+          const randomSeq = Math.floor(1000 + Math.random() * 9000);
+          setGrnNumber(`GRN-2026-${randomSeq}`);
+          setChalanInvoiceNo(`CHALAN-${randomSeq}`);
+          setCarrierVehicleNo(`KA-${Math.floor(10 + Math.random() * 89)}-HQ-${Math.floor(1000 + Math.random() * 8999)}`);
+        }
       } catch (err) {
-        console.error("Error initializing GRN form:", err);
+        console.error("Error initializing GRN form data:", err);
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, []);
+  }, [initialData]);
 
   const handleSelectPO = (poId: string) => {
     setLinkedPoId(poId);

@@ -243,11 +243,29 @@ export function GoodsIssue() {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              onClick={() => setExpandedId(prev => prev === gi.id ? null : gi.id)}
-                              className={`h-8 gap-1 font-bold rounded-lg ${isExpanded ? "bg-rose-600 text-white border-rose-600" : "hover:bg-rose-50"}`}
+                              onClick={() => {
+                                setForm({
+                                  issue_number: gi.issue_number,
+                                  recipient: gi.recipient || "",
+                                  reference_number: gi.reference_number || "",
+                                  warehouse: (gi as any).warehouse_id || "",
+                                  notes: (gi as any).notes || "",
+                                  issue_date: gi.created_at ? gi.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                });
+                                if (gi.items && gi.items.length > 0) {
+                                  setItems(gi.items.map((it: any) => ({
+                                    product_id: it.product_id,
+                                    product_name: it.product_name,
+                                    quantity_issued: Number(it.quantity_issued) || 1,
+                                    unit_price: Number(it.unit_price) || 0,
+                                    available_stock: 500
+                                  })));
+                                }
+                                setViewMode("create");
+                              }}
+                              className="h-8 gap-1.5 font-bold rounded-lg hover:bg-rose-50"
                             >
-                              <Eye className="size-4" />
-                              {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                              <Eye className="size-4" /> View / Edit Page
                             </Button>
                             <Button variant="ghost" size="icon" onClick={() => handleDelete(gi.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
                               <Trash2 className="size-4" />

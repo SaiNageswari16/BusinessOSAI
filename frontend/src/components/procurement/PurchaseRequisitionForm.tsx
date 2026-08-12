@@ -39,9 +39,10 @@ interface RequisitionItem {
 interface PurchaseRequisitionFormProps {
   onClose: () => void;
   onSaved?: () => void;
+  initialData?: any;
 }
 
-export function PurchaseRequisitionForm({ onClose, onSaved }: PurchaseRequisitionFormProps) {
+export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: PurchaseRequisitionFormProps) {
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -94,12 +95,44 @@ export function PurchaseRequisitionForm({ onClose, onSaved }: PurchaseRequisitio
 
         const emps = await fetchSalesEmployees().catch(() => []);
         setEmployees(emps || []);
-        if (emps && emps.length > 0) {
-          setSelectedEmployeeId(emps[0].id);
-        }
+        
+        if (initialData) {
+          setPrNumber(initialData.request_number || initialData.pr_number || `PR-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+          if (initialData.supplier_id) setPreferredSupplierId(initialData.supplier_id);
+          if (initialData.department) setDepartment(initialData.department);
+          if (initialData.priority) setPriority(initialData.priority);
+          if (initialData.notes) setPurposeJustification(initialData.notes);
+          if (initialData.items && initialData.items.length > 0) {
+            setItems(initialData.items.map((it: any, idx: number) => {
+              const pName = it.product_name || it.name || "";
+              const foundProd = (prods.items || []).find((p: any) => 
+                (it.product_id && p.id === it.product_id) || 
+                (pName && p.name?.toLowerCase().trim() === pName.toLowerCase().trim())
+              );
+              const estPrice = Number(it.estimated_unit_cost || it.unit_price || it.cost_price || it.mrp || it.selling_price || it.price) 
+                || (foundProd ? (Number(foundProd.cost_price) || Number(foundProd.selling_price) || Number(foundProd.mrp) || Number(foundProd.wholesale_price) || 0) : 0);
 
-        const randomSeq = Math.floor(1000 + Math.random() * 9000);
-        setPrNumber(`PR-2026-${randomSeq}`);
+              return {
+                id: it.id || String(idx + 1),
+                product_id: it.product_id || foundProd?.id,
+                product_name: pName || foundProd?.name || "Requested Item",
+                category: it.category || foundProd?.category_name || "General",
+                unit_of_measure: it.uom || it.unit_of_measure || foundProd?.uom_name || "Pcs",
+                quantity: Number(it.quantity || it.requested_qty) || 1,
+                estimated_unit_cost: estPrice,
+                notes: it.notes || "",
+                search_query: pName || foundProd?.name || "",
+                is_search_open: false
+              };
+            }));
+          }
+        } else {
+          if (emps && emps.length > 0) {
+            setSelectedEmployeeId(emps[0].id);
+          }
+          const randomSeq = Math.floor(1000 + Math.random() * 9000);
+          setPrNumber(`PR-2026-${randomSeq}`);
+        }
       } catch (err) {
         console.error("Error initializing PR form:", err);
       } finally {
@@ -107,7 +140,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved }: PurchaseRequisitio
       }
     };
     fetchData();
-  }, []);
+  }, [initialData]);
 
   const handleAddItem = () => {
     setItems([
@@ -131,6 +164,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved }: PurchaseRequisitio
   };
 
   const selectCatalogProduct = (itemId: string, product: any) => {
+    const price = Number(product.cost_price) || Number(product.selling_price) || Number(product.mrp) || Number(product.wholesale_price) || 0;
     setItems((prev) =>
       prev.map((it) => {
         if (it.id === itemId) {
@@ -138,8 +172,9 @@ export function PurchaseRequisitionForm({ onClose, onSaved }: PurchaseRequisitio
             ...it,
             product_id: product.id,
             product_name: product.name,
-            category: product.category || "General",
-            estimated_unit_cost: product.cost_price || product.purchase_price || product.selling_price || 0,
+            category: product.category || product.category_name || "General",
+            unit_of_measure: product.uom || product.uom_name || "Pcs",
+            estimated_unit_cost: price,
             search_query: product.name,
             is_search_open: false,
           };
@@ -147,7 +182,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved }: PurchaseRequisitio
         return it;
       })
     );
-    toast.success(`Selected catalog product: "${product.name}"`);
+    toast.success(`Selected catalog product: "${product.name}" (₹${price})`);
   };
 
   const updateItem = (id: string, field: keyof RequisitionItem, value: any) => {

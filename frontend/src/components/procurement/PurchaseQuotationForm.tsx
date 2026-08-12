@@ -53,9 +53,10 @@ interface VendorBid {
 interface PurchaseQuotationFormProps {
   onClose: () => void;
   onSaved?: () => void;
+  initialData?: any;
 }
 
-export function PurchaseQuotationForm({ onClose, onSaved }: PurchaseQuotationFormProps) {
+export function PurchaseQuotationForm({ onClose, onSaved, initialData }: PurchaseQuotationFormProps) {
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -104,40 +105,54 @@ export function PurchaseQuotationForm({ onClose, onSaved }: PurchaseQuotationFor
         const supps = await inventoryApi.getSuppliers().catch(() => []);
         setSuppliers(supps || []);
 
-        if (supps && supps.length > 0) {
-          const initialInvites: VendorBid[] = supps.slice(0, 2).map((s: any, idx: number) => ({
-            supplier_id: s.id,
-            supplier_name: s.name,
-            quoted_unit_price: 18.5 - idx * 0.5,
-            delivery_lead_days: 5 + idx * 2,
-            payment_terms: "Net 30 Days",
-            is_selected: idx === 0,
-          }));
-          setVendorBids(initialInvites);
+        if (initialData) {
+          setRfqNumber(initialData.quotation_number || initialData.id || `RFQ-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+          if (initialData.items && initialData.items.length > 0) {
+            setItems(initialData.items.map((it: any, idx: number) => ({
+              id: it.id || String(idx + 1),
+              product_id: it.product_id,
+              product_name: it.product_name || "Quoted Material",
+              quantity: Number(it.quantity) || 500,
+              unit_of_measure: it.uom || "Pcs",
+              target_specifications: it.target_specifications || "Standard Specs",
+              search_query: it.product_name || "",
+              is_search_open: false
+            })));
+          }
+        } else {
+          if (supps && supps.length > 0) {
+            const initialInvites: VendorBid[] = supps.slice(0, 2).map((s: any, idx: number) => ({
+              supplier_id: s.id,
+              supplier_name: s.name,
+              quoted_unit_price: idx === 0 ? 18.50 : 19.00,
+              delivery_lead_days: idx === 0 ? 3 : 5,
+              payment_terms: idx === 0 ? "Net 30 Days" : "Advance / COD",
+              is_selected: idx === 0,
+            }));
+            setVendorBids(initialInvites);
+          }
+
+          const prods = await inventoryApi.getProducts().catch(() => ({ items: [] }));
+          setProducts(prods.items || []);
+
+          const prs = await inventoryApi.getPurchaseRequests().catch(() => []);
+          setApprovedPRs(prs || []);
+
+          const emps = await fetchSalesEmployees().catch(() => []);
+          setEmployees(emps || []);
+          if (emps && emps.length > 0) setSelectedAgentId(emps[0].id);
+
+          const randomSeq = Math.floor(1000 + Math.random() * 9000);
+          setRfqNumber(`RFQ-2026-${randomSeq}`);
         }
-
-        const prs = await inventoryApi.getPurchaseRequests().catch(() => []);
-        setApprovedPRs(prs || []);
-
-        const prods = await inventoryApi.getProducts().catch(() => ({ items: [] }));
-        setProducts(prods.items || []);
-
-        const emps = await fetchSalesEmployees().catch(() => []);
-        setEmployees(emps || []);
-        if (emps && emps.length > 0) {
-          setSelectedAgentId(emps[0].id);
-        }
-
-        const randomSeq = Math.floor(1000 + Math.random() * 9000);
-        setRfqNumber(`RFQ-2026-${randomSeq}`);
       } catch (err) {
-        console.error("Error initializing RFQ form:", err);
+        console.error("Error initializing RFQ form data:", err);
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, []);
+  }, [initialData]);
 
   const handleSelectPR = (prId: string) => {
     setLinkedPrId(prId);

@@ -28,7 +28,12 @@ from src.schemas.inventory import (
 )
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+
+class _SettingsProxy:
+    def __getattr__(self, name):
+        return getattr(get_settings(), name)
+
+settings = _SettingsProxy()
 
 router = APIRouter(prefix="/inventory/master-catalog", tags=["Inventory - Master Data Catalog"])
 

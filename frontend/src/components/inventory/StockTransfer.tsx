@@ -248,11 +248,26 @@ export function StockTransfer() {
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      onClick={() => setExpandedId(prev => prev === tr.id ? null : tr.id)}
-                      className={`h-8 gap-1 font-bold rounded-lg ${isExpanded ? "bg-emerald-600 text-white border-emerald-600" : "hover:bg-emerald-50"}`}
+                      onClick={() => {
+                        setForm({
+                          movement_number: tr.movement_number,
+                          source_location: tr.source_location || "",
+                          destination_location: tr.destination_location || "",
+                          notes: tr.reference_note || "",
+                          transfer_date: tr.created_at ? tr.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                          status: tr.status || "In Transit",
+                        });
+                        setItems([{
+                          product_id: tr.product_id,
+                          product_name: tr.product_name,
+                          quantity: Number(tr.quantity) || 1,
+                          unit_price: 150
+                        }]);
+                        setViewMode("create");
+                      }}
+                      className="h-8 gap-1.5 font-bold rounded-lg hover:bg-emerald-50"
                     >
-                      <Eye className="size-4" />
-                      {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                      <Eye className="size-4" /> View / Edit Page
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => handleDelete(tr.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
                       <Trash2 className="size-4" />

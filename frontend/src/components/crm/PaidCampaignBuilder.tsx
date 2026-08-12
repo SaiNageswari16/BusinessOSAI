@@ -34,8 +34,7 @@ const OBJECTIVE_OPTIONS: { value: CampaignObjective; label: string; icon: string
   { value: "OUTCOME_SALES", label: "Sales", icon: "💰" },
   { value: "OUTCOME_TRAFFIC", label: "Traffic", icon: "🔗" },
   { value: "OUTCOME_ENGAGEMENT", label: "Engagement", icon: "❤️" },
-  { value: "OUTCOME_AWARENESS", label: "Awareness", icon: "👁" },
-  { value: "REACH", label: "Reach", icon: "🌐" },
+  { value: "OUTCOME_AWARENESS", label: "Brand Awareness & Reach", icon: "🌐" },
 ];
 
 const CTA_OPTIONS: { value: CtaType; label: string }[] = [

@@ -50,9 +50,10 @@ interface ProcurementDocumentFormProps {
   docType: ProcurementDocType;
   onClose: () => void;
   onSaved?: () => void;
+  initialData?: any;
 }
 
-export function ProcurementDocumentForm({ docType, onClose, onSaved }: ProcurementDocumentFormProps) {
+export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData }: ProcurementDocumentFormProps) {
   // Master data
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -101,9 +102,6 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved }: Procureme
       try {
         const supps = await inventoryApi.getSuppliers().catch(() => []);
         setSuppliers(supps || []);
-        if (supps && supps.length > 0) {
-          setSelectedSupplierId(supps[0].id);
-        }
 
         const prods = await inventoryApi.getProducts().catch(() => ({ items: [] }));
         setProducts(prods.items || []);
@@ -114,9 +112,43 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved }: Procureme
         const quotations = await inventoryApi.getPurchaseQuotations().catch(() => []);
         setRfqs(quotations || []);
 
-        const prefix = docType === "PR" ? "PR-2026-" : docType === "PO" ? "PO-2026-" : "PINV-2026-";
-        const randomSeq = Math.floor(1000 + Math.random() * 9000);
-        setDocNumber(`${prefix}${randomSeq}`);
+        if (initialData) {
+          setDocNumber(initialData.order_number || initialData.po_number || initialData.bill_number || initialData.id || "DOC-2026-0001");
+          if (initialData.supplier_id) setSelectedSupplierId(initialData.supplier_id);
+          if (initialData.notes) setNotes(initialData.notes);
+          if (initialData.items && initialData.items.length > 0) {
+            setItems(initialData.items.map((it: any, idx: number) => {
+              const pName = it.product_name || it.name || "";
+              const foundProd = (prods.items || []).find((p: any) => 
+                (it.product_id && p.id === it.product_id) || 
+                (pName && p.name?.toLowerCase().trim() === pName.toLowerCase().trim())
+              );
+              const price = Number(it.unit_price || it.estimated_unit_cost || it.cost_price || it.mrp || it.selling_price || it.price) 
+                || (foundProd ? (Number(foundProd.cost_price) || Number(foundProd.selling_price) || Number(foundProd.mrp) || Number(foundProd.wholesale_price) || 0) : 0);
+              const mrpVal = Number(it.mrp) || (foundProd ? Number(foundProd.mrp) : 0) || price;
+
+              return {
+                id: it.id || String(idx + 1),
+                product_id: it.product_id || foundProd?.id,
+                product_name: pName || foundProd?.name || "Purchased Product",
+                hsn_code: it.hsn_code || foundProd?.hsn_code || "2202",
+                mrp: mrpVal,
+                quantity: Number(it.quantity) || 1,
+                unit_price: price,
+                discount_value: Number(it.discount_value) || 0,
+                discount_type: "percent",
+                tax_rate: Number(it.tax_rate) || 18
+              };
+            }));
+          }
+        } else {
+          if (supps && supps.length > 0) {
+            setSelectedSupplierId(supps[0].id);
+          }
+          const prefix = docType === "PR" ? "PR-2026-" : docType === "PO" ? "PO-2026-" : "PINV-2026-";
+          const randomSeq = Math.floor(1000 + Math.random() * 9000);
+          setDocNumber(`${prefix}${randomSeq}`);
+        }
       } catch (err) {
         console.error("Error initializing procurement form data:", err);
       } finally {
@@ -124,7 +156,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved }: Procureme
       }
     };
     fetchData();
-  }, [docType]);
+  }, [docType, initialData]);
 
   const handleSelectPRLink = (prId: string) => {
     setLinkedPrId(prId);

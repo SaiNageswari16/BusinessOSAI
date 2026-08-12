@@ -250,11 +250,29 @@ export function StockAdjustment() {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              onClick={() => setExpandedId(prev => prev === adj.id ? null : adj.id)}
-                              className={`h-8 gap-1 font-bold rounded-lg ${isExpanded ? "bg-amber-600 text-white border-amber-600" : "hover:bg-amber-50"}`}
+                              onClick={() => {
+                                setForm({
+                                  adjustment_number: adj.adjustment_number,
+                                  warehouse: (adj as any).warehouse_id || "",
+                                  adjustment_type: adj.adjustment_type || "Write-Off",
+                                  reason: adj.reason || "",
+                                  adjustment_date: adj.created_at ? adj.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                });
+                                if (adj.items && adj.items.length > 0) {
+                                  setItems(adj.items.map((it: any) => ({
+                                    product_id: it.product_id,
+                                    product_name: it.product_name,
+                                    adjustment_type: adj.adjustment_type || "Write-Off",
+                                    quantity_changed: Number(it.quantity_changed) || 1,
+                                    unit_price: Number(it.unit_price) || 0,
+                                    reason: adj.reason || ""
+                                  })));
+                                }
+                                setViewMode("create");
+                              }}
+                              className="h-8 gap-1.5 font-bold rounded-lg hover:bg-amber-50"
                             >
-                              <Eye className="size-4" />
-                              {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                              <Eye className="size-4" /> View / Edit Page
                             </Button>
                             <Button variant="ghost" size="icon" onClick={() => handleDelete(adj.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
                               <Trash2 className="size-4" />

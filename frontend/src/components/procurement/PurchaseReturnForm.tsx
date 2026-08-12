@@ -40,38 +40,41 @@ interface ReturnItem {
 interface PurchaseReturnFormProps {
   onClose: () => void;
   onSaved?: () => void;
+  initialData?: any;
 }
 
-export function PurchaseReturnForm({ onClose, onSaved }: PurchaseReturnFormProps) {
+export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseReturnFormProps) {
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  // Form Metadata
+  // Return Metadata
   const [returnNumber, setReturnNumber] = useState<string>("");
+  const [debitNoteNumber, setDebitNoteNumber] = useState<string>("");
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
   const [linkedPoId, setLinkedPoId] = useState<string>("");
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [resolutionAction, setResolutionAction] = useState<string>("Debit Note Issued");
-  const [dispatchLocation, setDispatchLocation] = useState<string>("Main Warehouse (BR-100)");
-  const [courierAwbNo, setCourierAwbNo] = useState<string>("BLUEDART-8812901");
-  const [barcodeInput, setBarcodeInput] = useState<string>("");
+  const [returnReason, setReturnReason] = useState<string>("Defective / Damaged Stock Received");
+  const [notes, setNotes] = useState<string>(
+    "1. Stock items returned to vendor for replacement or credit adjustment.\n2. Automated debit note issued."
+  );
 
-  // Items
+  // Line items
   const [items, setItems] = useState<ReturnItem[]>([
     {
       id: "1",
-      product_name: "Mirinda Soft Drink - 250ml",
-      batch_number: "BATCH-2026-A1",
-      unit_cost: 18.5,
-      quantity_returned: 10,
-      reason: "Damaged in transit / Outer seal broken",
-      search_query: "Mirinda Soft Drink - 250ml",
+      product_name: "",
+      unit_cost: 0,
+      quantity_returned: 1,
+      reason: "Quality Defect",
+      search_query: "",
       is_search_open: false,
     },
   ]);
+
+  const [barcodeInput, setBarcodeInput] = useState<string>("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -79,24 +82,45 @@ export function PurchaseReturnForm({ onClose, onSaved }: PurchaseReturnFormProps
       try {
         const supps = await inventoryApi.getSuppliers().catch(() => []);
         setSuppliers(supps || []);
-        if (supps && supps.length > 0) setSelectedSupplierId(supps[0].id);
-
-        const pos = await inventoryApi.getPurchaseOrders().catch(() => []);
-        setPurchaseOrders(pos || []);
 
         const prods = await inventoryApi.getProducts().catch(() => ({ items: [] }));
         setProducts(prods.items || []);
 
-        const randomSeq = Math.floor(1000 + Math.random() * 9000);
-        setReturnNumber(`PR-RET-2026-${randomSeq}`);
+        const pos = await inventoryApi.getPurchaseOrders().catch(() => []);
+        setPurchaseOrders(pos || []);
+
+        if (initialData) {
+          setReturnNumber(initialData.return_number || initialData.id || `PRN-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+          setDebitNoteNumber(initialData.debit_note_number || `DN-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+          if (initialData.supplier_id) setSelectedSupplierId(initialData.supplier_id);
+          if (initialData.reason) setReturnReason(initialData.reason);
+          if (initialData.notes) setNotes(initialData.notes);
+          if (initialData.items && initialData.items.length > 0) {
+            setItems(initialData.items.map((it: any, idx: number) => ({
+              id: it.id || String(idx + 1),
+              product_id: it.product_id,
+              product_name: it.product_name || "Returned Material",
+              unit_cost: Number(it.unit_cost || it.unit_price) || 0,
+              quantity_returned: Number(it.quantity_returned || it.quantity) || 1,
+              reason: it.reason || "Quality Defect",
+              search_query: it.product_name || "",
+              is_search_open: false
+            })));
+          }
+        } else {
+          if (supps && supps.length > 0) setSelectedSupplierId(supps[0].id);
+          const randomSeq = Math.floor(1000 + Math.random() * 9000);
+          setReturnNumber(`PRN-2026-${randomSeq}`);
+          setDebitNoteNumber(`DN-2026-${randomSeq}`);
+        }
       } catch (err) {
-        console.error("Error initializing Return form:", err);
+        console.error("Error initializing Purchase Return form data:", err);
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, []);
+  }, [initialData]);
 
   const handleSelectPO = (poId: string) => {
     setLinkedPoId(poId);

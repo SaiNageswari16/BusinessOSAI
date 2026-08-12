@@ -177,13 +177,23 @@ class MetaAdsClient:
         Create a Campaign in PAUSED status (user must activate manually).
         Returns the campaign_id string.
         """
+        # Map legacy objective names (e.g. REACH) to Meta v25.0 ODAX objective enum
+        OBJECTIVE_MAP = {
+            "REACH": "OUTCOME_AWARENESS",
+            "BRAND_AWARENESS": "OUTCOME_AWARENESS",
+            "CONVERSIONS": "OUTCOME_SALES",
+            "LEAD_GENERATION": "OUTCOME_LEADS",
+            "LINK_CLICKS": "OUTCOME_TRAFFIC",
+            "POST_ENGAGEMENT": "OUTCOME_ENGAGEMENT",
+        }
+        meta_objective = OBJECTIVE_MAP.get(objective.upper(), objective)
+
         payload = {
             "name": name,
-            "objective": objective,
+            "objective": meta_objective,
             "status": "PAUSED",
+            "special_ad_categories": special_ad_categories if (special_ad_categories and len(special_ad_categories) > 0) else ["NONE"],
         }
-        if special_ad_categories:
-            payload["special_ad_categories"] = special_ad_categories
 
         data = self._post(f"/{self.ad_account_id}/campaigns", payload)
         campaign_id = data.get("id")
@@ -221,10 +231,25 @@ class MetaAdsClient:
             "billing_event": billing_event,
             "status": "PAUSED",
         }
+        if optimization_goal == "LEAD_GENERATION":
+            payload["promoted_object"] = {"page_id": self.page_id}
+        elif self.page_id:
+            payload["promoted_object"] = {"page_id": self.page_id}
+
+        clean_target = dict(targeting or {})
+        if "p_age_min" in clean_target:
+            clean_target["age_min"] = clean_target.pop("p_age_min")
+        if "p_age_max" in clean_target:
+            clean_target["age_max"] = clean_target.pop("p_age_max")
+        if "publisher_platforms" in clean_target:
+            clean_target.pop("publisher_platforms")
+        if not clean_target.get("geo_locations"):
+            clean_target["geo_locations"] = {"countries": ["IN"]}
+
+        payload["targeting"] = clean_target
+
         if lifetime_budget_cents:
             payload["lifetime_budget"] = lifetime_budget_cents
-        if targeting:
-            payload["targeting"] = targeting
         if start_time:
             payload["start_time"] = start_time
         if end_time:
@@ -256,6 +281,83 @@ class MetaAdsClient:
             raise RuntimeError(f"Ad creation returned no id: {data}")
         logger.info(f"Created ad id={ad_id} name={name}")
         return ad_id
+
+    # ── Pipeline Orchestration ────────────────────────────────────────────────
+
+    def create_full_ad_pipeline(
+        self,
+        image_bytes: bytes,
+        headline: str,
+        caption: str,
+        destination_url: str,
+        campaign_name: str,
+        objective: str = "OUTCOME_LEADS",
+        adset_name: str | None = None,
+        ad_name: str | None = None,
+        cta_type: str = "LEARN_MORE",
+        lead_form_id: str | None = None,
+        daily_budget_cents: int = 25000,
+        targeting: dict | None = None,
+        special_ad_categories: list[str] | None = None,
+    ) -> dict:
+        """
+        Full automated pipeline: Upload Image -> Create Campaign -> Create AdSet -> Create Creative -> Create Ad.
+        """
+        # Step 1: Upload Ad Image
+        image_hash = self.upload_ad_image(image_bytes, name=ad_name or "ad_image")
+
+        # Step 2: Create Campaign
+        campaign_id = self.create_campaign(
+            name=campaign_name,
+            objective=objective,
+            special_ad_categories=special_ad_categories,
+        )
+
+        # Step 3: Create Ad Set
+        opt_goal = "LEAD_GENERATION"
+        if objective == "OUTCOME_AWARENESS" or objective == "REACH":
+            opt_goal = "REACH"
+        elif objective == "OUTCOME_TRAFFIC" or objective == "LINK_CLICKS":
+            opt_goal = "LINK_CLICKS"
+        elif objective == "OUTCOME_ENGAGEMENT":
+            opt_goal = "POST_ENGAGEMENT"
+        elif objective == "OUTCOME_SALES":
+            opt_goal = "LINK_CLICKS"
+
+        adset_id = self.create_ad_set(
+            campaign_id=campaign_id,
+            name=adset_name or f"{campaign_name} - AdSet",
+            daily_budget_cents=daily_budget_cents,
+            targeting=targeting,
+            optimization_goal=opt_goal,
+        )
+
+        # Step 4: Create Ad Creative
+        creative_id = self.create_ad_creative(
+            image_hash=image_hash,
+            name=f"{campaign_name} - Creative",
+            page_id=self.page_id,
+            message=caption,
+            headline=headline,
+            link=destination_url,
+            lead_form_id=lead_form_id,
+            cta_type=cta_type,
+        )
+
+        # Step 5: Create Ad
+        ad_id = self.create_ad(
+            adset_id=adset_id,
+            creative_id=creative_id,
+            name=ad_name or f"{campaign_name} - Ad",
+        )
+
+        return {
+            "meta_campaign_id": campaign_id,
+            "meta_adset_id": adset_id,
+            "meta_creative_id": creative_id,
+            "meta_ad_id": ad_id,
+            "image_hash": image_hash,
+        }
 
     # ── Activate / Pause ──────────────────────────────────────────────────────
 

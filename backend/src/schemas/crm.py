@@ -418,3 +418,23 @@ class DiscountValidateResponse(BaseModel):
     discount_amount: float
     message: str | None = None
 
+
+class CreatePaidAdRequestSchema(BaseModel):
+    campaign_name: str
+    adset_name: str
+    ad_name: str
+    objective: str
+    special_ad_categories: list[str] | None = None
+    image_url: str
+    caption: str
+    headline: str
+    destination_url: str
+    lead_form_id: str | None = None
+    cta_type: str | None = "LEARN_MORE"
+    daily_budget_cents: int | None = 25000
+    lifetime_budget_cents: int | None = None
+    targeting: dict | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+
+

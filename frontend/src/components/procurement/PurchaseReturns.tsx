@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import React from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { ArrowRightLeft, ShieldAlert, Loader2, Building2, Plus, Eye, ChevronDown, ChevronUp, Printer, FileText } from "lucide-react";
+import { ArrowRightLeft, ShieldAlert, Loader2, Building2, Plus, Eye } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { PurchaseReturnForm } from "./PurchaseReturnForm";
@@ -12,7 +12,7 @@ export function PurchaseReturns() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateMode, setIsCreateMode] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -33,11 +33,19 @@ export function PurchaseReturns() {
     fetchData();
   }, []);
 
-  if (isCreateMode) {
+  if (isCreateMode || selectedDoc) {
     return (
       <PurchaseReturnForm
-        onClose={() => setIsCreateMode(false)}
-        onSaved={fetchData}
+        initialData={selectedDoc}
+        onClose={() => {
+          setIsCreateMode(false);
+          setSelectedDoc(null);
+        }}
+        onSaved={() => {
+          setIsCreateMode(false);
+          setSelectedDoc(null);
+          fetchData();
+        }}
       />
     );
   }
@@ -69,9 +77,8 @@ export function PurchaseReturns() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {returns.map((ret) => {
             const suppName = suppliers.find(s => s.id === ret.supplier_id)?.name || ret.supplier_name || "Target Vendor";
-            const isExpanded = expandedId === ret.id;
             return (
-              <Card key={ret.id} className={`bg-card border p-6 relative overflow-hidden shadow-sm hover:shadow-md transition ${isExpanded ? "ring-2 ring-rose-500" : ""}`}>
+              <Card key={ret.id} className="bg-card border p-6 relative overflow-hidden shadow-sm hover:shadow-md transition">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-3">
                     <div className="size-10 rounded-lg bg-rose-500/10 text-rose-600 grid place-items-center font-bold">
@@ -92,10 +99,10 @@ export function PurchaseReturns() {
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      onClick={() => setExpandedId(prev => prev === ret.id ? null : ret.id)}
-                      className={`h-7 px-2 font-bold rounded-lg ${isExpanded ? "bg-rose-600 text-white border-rose-600" : "hover:bg-rose-50"}`}
+                      onClick={() => setSelectedDoc(ret)}
+                      className="h-7 px-2 font-bold rounded-lg hover:bg-rose-50"
                     >
-                      <Eye className="size-3.5 mr-1" /> View
+                      <Eye className="size-3.5 mr-1" /> View / Edit Page
                     </Button>
                   </div>
                 </div>
@@ -115,29 +122,6 @@ export function PurchaseReturns() {
                     </div>
                   </div>
                 </div>
-
-                {isExpanded && (
-                  <div className="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-slate-50 p-4 rounded-xl">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Returned Product Items</span>
-                      <Button size="sm" variant="outline" onClick={() => window.print()} className="h-7 text-xs font-bold rounded-md">
-                        <Printer className="size-3.5 mr-1" /> Print Debit Note
-                      </Button>
-                    </div>
-                    {ret.items && ret.items.length > 0 ? (
-                      <div className="space-y-1.5">
-                        {ret.items.map((it: any, idx: number) => (
-                          <div key={idx} className="bg-white p-2.5 border rounded-lg flex justify-between text-xs">
-                            <span className="font-bold text-slate-800">{it.product_name || "Returned Material"}</span>
-                            <span className="font-mono font-black text-rose-600">{it.quantity_returned || it.quantity} Units</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-xs text-slate-500">Defective inventory return voucher</div>
-                    )}
-                  </div>
-                )}
               </Card>
             );
           })}

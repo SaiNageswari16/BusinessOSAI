@@ -486,11 +486,20 @@ export function SalesOrders() {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              onClick={() => setExpandedId(prev => prev === o.id ? null : o.id)}
-                              className={`h-8 gap-1 font-bold rounded-lg ${isExpanded ? "bg-primary text-white border-primary" : "hover:bg-primary/10"}`}
+                              onClick={() => {
+                                setNewOrder({
+                                  order_number: o.order_number,
+                                  customer_name: o.customer_name || "",
+                                  subtotal: o.subtotal || 0,
+                                  total: o.total || 0,
+                                  status: o.status || "Pending",
+                                  payment_status: o.payment_status || "Unpaid"
+                                });
+                                setIsAddModalOpen(true);
+                              }}
+                              className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10 text-primary border-primary/30"
                             >
-                              <Eye className="size-4" />
-                              {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                              <Eye className="size-4" /> View / Edit Page
                             </Button>
                           </td>
                         </tr>

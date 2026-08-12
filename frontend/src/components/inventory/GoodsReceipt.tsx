@@ -244,11 +244,29 @@ export function GoodsReceipt() {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              onClick={() => setExpandedId(prev => prev === grn.id ? null : grn.id)}
-                              className={`h-8 gap-1 font-bold rounded-lg ${isExpanded ? "bg-indigo-600 text-white border-indigo-600" : "hover:bg-indigo-50"}`}
+                              onClick={() => {
+                                setForm({
+                                  receipt_number: grn.receipt_number,
+                                  supplier: grn.supplier || "",
+                                  reference_number: grn.reference_number || "",
+                                  warehouse: (grn as any).warehouse_id || "",
+                                  notes: (grn as any).notes || "",
+                                  received_date: grn.created_at ? grn.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                });
+                                if (grn.items && grn.items.length > 0) {
+                                  setItems(grn.items.map((it: any) => ({
+                                    product_id: it.product_id,
+                                    product_name: it.product_name,
+                                    quantity_received: Number(it.quantity_received) || 1,
+                                    unit_price: Number(it.unit_price) || 0,
+                                    tax_percent: 18
+                                  })));
+                                }
+                                setViewMode("create");
+                              }}
+                              className="h-8 gap-1.5 font-bold rounded-lg hover:bg-indigo-50"
                             >
-                              <Eye className="size-4" />
-                              {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                              <Eye className="size-4" /> View / Edit Page
                             </Button>
                             <Button variant="ghost" size="icon" onClick={() => handleDelete(grn.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
                               <Trash2 className="size-4" />
