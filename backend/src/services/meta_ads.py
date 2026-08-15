@@ -244,13 +244,17 @@ class MetaAdsClient:
         end_time: str | None = None,
         optimization_goal: str = "LEAD_GENERATION",
         billing_event: str = "IMPRESSIONS",
+        lead_form_id: str | None = None,
     ) -> str:
         """
         Create an Ad Set tied to the given campaign.
         Returns the adset_id string.
         """
         if daily_budget_cents < 100:
-            raise ValueError(f"Daily budget must be at least 100 cents ($1), got {daily_budget_cents}.")
+            raise ValueError(
+                f"Daily budget must be at least 100 cents ($1), "
+                f"got {daily_budget_cents}."
+            )
 
         payload: dict = {
             "name": name,
@@ -261,37 +265,64 @@ class MetaAdsClient:
             "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
             "status": "ACTIVE",
         }
+
+        # Instant Form lead ads must use the ON_AD destination.
+        if lead_form_id:
+            payload["destination_type"] = "ON_AD"
+
         if optimization_goal == "LEAD_GENERATION":
-            payload["promoted_object"] = {"page_id": self.page_id}
+            payload["promoted_object"] = {
+                "page_id": self.page_id
+            }
         elif self.page_id:
-            payload["promoted_object"] = {"page_id": self.page_id}
+            payload["promoted_object"] = {
+                "page_id": self.page_id
+            }
 
         clean_target = dict(targeting or {})
+
         if "p_age_min" in clean_target:
             clean_target["age_min"] = clean_target.pop("p_age_min")
+
         if "p_age_max" in clean_target:
             clean_target["age_max"] = clean_target.pop("p_age_max")
+
         if "publisher_platforms" in clean_target:
             clean_target.pop("publisher_platforms")
+
         if not clean_target.get("geo_locations"):
-            clean_target["geo_locations"] = {"countries": ["IN"]}
+            clean_target["geo_locations"] = {
+                "countries": ["IN"]
+            }
 
         payload["targeting"] = clean_target
 
         if lifetime_budget_cents:
             payload["lifetime_budget"] = lifetime_budget_cents
+
         if start_time:
             payload["start_time"] = start_time
+
         if end_time:
             payload["end_time"] = end_time
 
-        data = self._post(f"/{self.ad_account_id}/adsets", payload)
-        adset_id = data.get("id")
-        if not adset_id:
-            raise RuntimeError(f"AdSet creation returned no id: {data}")
-        logger.info(f"Created adset id={adset_id} name={name}")
-        return adset_id
+        data = self._post(
+            f"/{self.ad_account_id}/adsets",
+            payload
+        )
 
+        adset_id = data.get("id")
+
+        if not adset_id:
+            raise RuntimeError(
+                f"AdSet creation returned no id: {data}"
+            )
+
+        logger.info(
+            f"Created adset id={adset_id} name={name}"
+        )
+
+        return adset_id
     # ── Ad ────────────────────────────────────────────────────────────────────
 
     def create_ad(self, adset_id: str, creative_id: str, name: str) -> str:
@@ -360,6 +391,7 @@ class MetaAdsClient:
             daily_budget_cents=daily_budget_cents,
             targeting=targeting,
             optimization_goal=opt_goal,
+            lead_form_id=lead_form_id,
         )
 
         # Step 4: Create Ad Creative
