@@ -147,50 +147,51 @@ class MetaAdsClient:
         Create an Ad Creative.
         Returns the creative_id string.
         """
+
+        # Meta requires a link for link_data creatives.
+        # For lead ads, the Instant Form is attached to the CTA value.
+        call_to_action = {
+            "type": cta_type,
+        }
+
+        if lead_form_id:
+            call_to_action["value"] = {
+                "lead_gen_form_id": lead_form_id,
+            }
+
         object_story_spec = {
             "page_id": page_id,
             "link_data": {
                 "image_hash": image_hash,
                 "message": message,
                 "link": link or f"https://www.facebook.com/{page_id}",
-                "call_to_action": {"type": cta_type},
+                "call_to_action": call_to_action,
             },
         }
 
-        if lead_form_id:
-            object_story_spec = {
-                "page_id": page_id,
-                "lead_gen_form_id": lead_form_id,
-                "link_data": {
-                    "image_hash": image_hash,
-                    "message": message,
-                    "link": link or f"https://www.facebook.com/{page_id}",
-                    "call_to_action": {"type": cta_type},
-                },
-            }
+        if headline:
+            object_story_spec["link_data"]["name"] = headline
 
         payload = {
             "name": name,
             "object_story_spec": object_story_spec,
         }
 
-        if headline:
-            # DPA-style headline in the link_data
-            try:
-                payload["object_story_spec"]["link_data"]["name"] = headline
-            except KeyError:
-                payload["object_story_spec"]["link_data"] = {
-                    **payload["object_story_spec"].get("link_data", {}),
-                    "name": headline,
-                }
+        data = self._post(
+            f"/{self.ad_account_id}/adcreatives",
+            payload,
+        )
 
-        data = self._post(f"/{self.ad_account_id}/adcreatives", payload)
         creative_id = data.get("id")
-        if not creative_id:
-            raise RuntimeError(f"Creative creation returned no id: {data}")
-        logger.info(f"Created ad creative id={creative_id}")
-        return creative_id
 
+        if not creative_id:
+            raise RuntimeError(
+                f"Creative creation returned no id: {data}"
+            )
+
+        logger.info(f"Created ad creative id={creative_id}")
+
+        return creative_id
     # ── Campaign ──────────────────────────────────────────────────────────────
 
     def create_campaign(
