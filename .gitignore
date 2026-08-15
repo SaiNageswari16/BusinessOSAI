@@ -41,5 +41,13 @@ frontend/.env.production
 *.njsproj
 *.sln
 *.sw?
+# Generated files
+backend/static/invoices/
+image.png
+
+# Local environment
+frontend/.env
+
+# Unwanted local data
 backend/src/images/
 backend/whatsapp_gateway/.wwebjs_auth/
