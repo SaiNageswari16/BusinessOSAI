@@ -24,11 +24,11 @@ import {
   DollarSign,
   History,
   Wallet,
-=======
+
   MessageSquare,
   StickyNote,
   Tag,
->>>>>>> 3460542dc6d266fcda714c554b0dfddd2e39a927
+
   AlertTriangle
 } from "lucide-react";
 import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees } from "../../lib/api-client";
@@ -649,7 +649,7 @@ export function PosSalesInvoice() {
         })),
       });
 
-      const apiInvoice = createResult.data || createResult;
+      const apiInvoice = (createResult as any)?.data || createResult;
       const backendInvoiceNumber = apiInvoice?.invoice_number || invoiceNumber;
       const backendId = apiInvoice?.id || `inv-${Date.now()}`;
 
@@ -939,7 +939,7 @@ export function PosSalesInvoice() {
                           </div>
                         </div>
 
-<<<<<<< HEAD
+
                         {customerSummary.total_pending_due > 0 ? (
                           <div className="flex gap-2">
                             <button

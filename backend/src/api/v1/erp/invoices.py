@@ -24,7 +24,7 @@ from src.schemas.erp_accounting import (
     InvoiceResponse,
     InvoiceUpdate,
 )
-from src.services.invoice_pdf import save_invoice_pdf
+from src.services.invoice_pdf import save_invoice_pdf, get_active_invoice_template
 from src.services.whatsapp_invoice_sender import send_invoice_whatsapp, send_payment_receipt_whatsapp
 from src.utils.pagination import PaginatedResponse, paginate
 
@@ -644,7 +644,8 @@ async def send_invoice_to_whatsapp(
 
     # Cache PDF to disk
     try:
-        save_invoice_pdf(invoice)
+        template = await get_active_invoice_template(db, ctx.tenant_id)
+        save_invoice_pdf(invoice, template)
     except Exception as exc:
         logger.warning("PDF caching failed (send continues): %s", exc)
 

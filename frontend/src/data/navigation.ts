@@ -273,8 +273,15 @@ export const nav: NavGroup[] = [
           { to: "/procurement?tab=credit_notes", label: "Credit Notes", icon: FileCheck },
           { to: "/procurement?tab=debit_notes", label: "Debit Notes", icon: FileCheck },
         ]
-      },
-      {
+      }
+    ]
+  },
+  {
+    group: "POS", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
+      { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { to: "/pos?tab=sales", label: "Sales", icon: Receipt },
+      { to: "/pos?tab=sales_history", label: "Invoices History", icon: History },
+      { to: "/pos?tab=payment_in", label: "PAYMENT IN", icon: Wallet },
       { 
         to: "/pos?tab=terminal", 
         label: "Terminal", 
@@ -288,7 +295,9 @@ export const nav: NavGroup[] = [
           { to: "/pos?tab=terminal&view=price_check", label: "Price Check", icon: Tag },
           { to: "/pos?tab=terminal&view=favorites", label: "Favorites", icon: Heart },
           { to: "/pos?tab=terminal&view=recent", label: "Recent Bills", icon: History },
-          { to: "/pos?tab=terminal&view=ai_suggest", label: "AI Suggestions", icon: Sparkles }
+          { to: "/pos?tab=terminal&view=ai_suggest", label: "AI Suggestions", icon: Sparkles },
+          { to: "/pos?tab=store_operations", label: "Store Operations", icon: Store },
+          { to: "/pos?tab=returns", label: "Return / Exchange", icon: ArrowRightLeft }
         ]
       }
     ]

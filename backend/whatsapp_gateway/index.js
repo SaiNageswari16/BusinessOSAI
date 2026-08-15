@@ -55,28 +55,6 @@ async function resolveJid(client, phone) {
         return `${clean}@lid`;
     }
 
-    // Check active chats for matching resolved phone number
-    let chats = [];
-    try {
-        chats = await client.getChats();
-    } catch (e) {
-        throw new Error(`getChats failed: ${e.message}`);
-    }
-    for (const chat of chats) {
-        let chatPhone = chat.id.user;
-        try {
-            if (chat.id._serialized.includes('@lid') || chat.id.user.length > 12) {
-                const contact = await client.getContactById(chat.id._serialized);
-                if (contact && contact.number) {
-                    chatPhone = contact.number;
-                }
-            }
-        } catch (err) {}
-        if (chatPhone === clean) {
-            return chat.id._serialized;
-        }
-    }
-
     try {
         const numId = await client.getNumberId(clean);
         if (numId && numId._serialized) {

@@ -1,0 +1,21 @@
+2026/08/15-16:39:10.636 4990 Reusing MANIFEST C:\Users\Admin\Desktop\NEW FOLDER\backend\whatsapp_gateway\.wwebjs_auth\session-919398622127\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/08/15-16:39:10.641 4990 Recovering log #1783
+2026/08/15-16:39:10.800 4990 Reusing old log C:\Users\Admin\Desktop\NEW FOLDER\backend\whatsapp_gateway\.wwebjs_auth\session-919398622127\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/001783.log 
+2026/08/15-16:39:14.260 265c Compacting 1@1 + 7@2 files
+2026/08/15-16:39:14.443 265c Generated table #1794@1: 29516 keys, 2190373 bytes
+2026/08/15-16:39:14.694 265c Generated table #1795@1: 33576 keys, 2251723 bytes
+2026/08/15-16:39:14.920 265c Generated table #1796@1: 29731 keys, 2265375 bytes
+2026/08/15-16:39:15.228 265c Generated table #1797@1: 30484 keys, 2256170 bytes
+2026/08/15-16:39:15.432 265c Generated table #1798@1: 30446 keys, 2255718 bytes
+2026/08/15-16:39:15.620 265c Generated table #1799@1: 24637 keys, 2239724 bytes
+2026/08/15-16:39:15.676 265c Generated table #1800@1: 7618 keys, 1394572 bytes
+2026/08/15-16:39:15.676 265c Compacted 1@1 + 7@2 files => 14853655 bytes
+2026/08/15-16:39:15.677 265c compacted to: files[ 0 1 43 0 0 0 0 ]
+2026/08/15-16:39:15.678 265c Delete type=2 #1670
+2026/08/15-16:39:15.679 265c Delete type=2 #1671
+2026/08/15-16:39:15.679 265c Delete type=2 #1672
+2026/08/15-16:39:15.679 265c Delete type=2 #1673
+2026/08/15-16:39:15.679 265c Delete type=2 #1674
+2026/08/15-16:39:15.679 265c Delete type=2 #1675
+2026/08/15-16:39:15.679 265c Delete type=2 #1683
+2026/08/15-16:39:15.680 265c Delete type=2 #1787

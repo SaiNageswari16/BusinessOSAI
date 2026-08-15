@@ -394,7 +394,7 @@ class DeliveryChallan(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     __tablename__ = "delivery_challans"
 
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("ar_invoices.id", ondelete="SET NULL"))
-    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"))
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="SET NULL"))
     challan_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     challan_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="draft") # draft, dispatched, delivered, returned
