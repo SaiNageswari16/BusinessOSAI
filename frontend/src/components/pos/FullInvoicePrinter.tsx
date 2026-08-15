@@ -62,7 +62,7 @@ export function FullInvoicePrinter({
     if (isOpen && autoPrint && invoice) {
       const timer = setTimeout(() => {
         handlePrint();
-      }, 300);
+      }, 800);
       return () => clearTimeout(timer);
     }
   }, [isOpen, autoPrint, invoice]);

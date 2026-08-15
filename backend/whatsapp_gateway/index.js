@@ -11,7 +11,8 @@ const PORT = process.env.PORT || 8005;
 const FASTAPI_WEBHOOK_URL = process.env.FASTAPI_WEBHOOK_URL || 'http://localhost:8000/api/v1/whatsapp-automation/webhook';
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const SESSIONS_FILE = path.join(__dirname, 'sessions.json');
 const AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
@@ -53,28 +54,29 @@ async function resolveJid(client, phone) {
     if (clean.length > 12) {
         return `${clean}@lid`;
     }
-    
+
     // Check active chats for matching resolved phone number
+    let chats = [];
     try {
-        const chats = await client.getChats();
-        for (const chat of chats) {
-            let chatPhone = chat.id.user;
-            try {
-                if (chat.id._serialized.includes('@lid') || chat.id.user.length > 12) {
-                    const contact = await client.getContactById(chat.id._serialized);
-                    if (contact && contact.number) {
-                        chatPhone = contact.number;
-                    }
-                }
-            } catch (err) {}
-            if (chatPhone === clean) {
-                return chat.id._serialized;
-            }
-        }
+        chats = await client.getChats();
     } catch (e) {
-        console.warn('resolveJid active chats lookup failed:', e.message);
+        throw new Error(`getChats failed: ${e.message}`);
     }
-    
+    for (const chat of chats) {
+        let chatPhone = chat.id.user;
+        try {
+            if (chat.id._serialized.includes('@lid') || chat.id.user.length > 12) {
+                const contact = await client.getContactById(chat.id._serialized);
+                if (contact && contact.number) {
+                    chatPhone = contact.number;
+                }
+            }
+        } catch (err) {}
+        if (chatPhone === clean) {
+            return chat.id._serialized;
+        }
+    }
+
     try {
         const numId = await client.getNumberId(clean);
         if (numId && numId._serialized) {
@@ -252,7 +254,7 @@ app.post('/sessions/:id/start', (req, res) => {
 app.get('/sessions/:id/contacts', async (req, res) => {
     const id = cleanDigits(req.params.id);
     const sessionObj = clients[id];
-    if (!sessionObj || sessionObj.status !== 'CONNECTED') {
+    if (!isClientAlive(sessionObj)) {
         return res.status(400).json({ success: false, error: 'Session is not connected' });
     }
 
@@ -280,6 +282,10 @@ app.get('/sessions/:id/contacts', async (req, res) => {
         }
         res.json({ success: true, contacts: list });
     } catch (e) {
+        const msg = e.message || '';
+        if (msg.includes('Protocol') || msg.includes('Promise was collected') || msg.includes('disconnected')) {
+            return respondDisconnected(res, id, 'contacts-protocol-error');
+        }
         console.error('Failed to fetch contacts:', e);
         res.status(500).json({ success: false, error: e.message });
     }
@@ -350,19 +356,39 @@ app.post('/sessions/:id/logout', async (req, res) => {
     res.json({ success: true, message: 'Session logged out and cleared.' });
 });
 
+// Helper: check whether the client session is still usable (CDP not dead)
+function isClientAlive(sessionObj) {
+    if (!sessionObj || sessionObj.status !== 'CONNECTED') return false;
+    if (!sessionObj.client) return false;
+    return true;
+}
+
+// Helper: respond with "disconnected" and stop retrying for this session
+function respondDisconnected(res, sessionId, reason) {
+    console.warn(`[${reason}] Marking session ${sessionId} as unreachable.`);
+    if (clients[sessionId]) clients[sessionId].status = 'DISCONNECTED';
+    res.status(400).json({ success: false, error: 'Session disconnected — please reconnect.', reason });
+}
+
 // 6. Get chat messages from a contact (fetches last 50)
 app.get('/sessions/:id/chats/:phone/messages', async (req, res) => {
     const id = cleanDigits(req.params.id);
     const phone = req.params.phone;
     const sessionObj = clients[id];
-    if (!sessionObj || sessionObj.status !== 'CONNECTED') {
+    if (!isClientAlive(sessionObj)) {
         return res.status(400).json({ success: false, error: 'Session is not connected' });
     }
 
     try {
         const jid = await resolveJid(sessionObj.client, phone);
         const chat = await sessionObj.client.getChatById(jid);
-        const messages = await chat.fetchMessages({ limit: 50 });
+        let messages = [];
+        try {
+            messages = await chat.fetchMessages({ limit: 50 });
+        } catch (fetchErr) {
+            console.warn(`FetchMessages failed for ${phone}:`, fetchErr.message);
+            messages = [];
+        }
         const list = messages.map(m => ({
             id: m.id.id,
             body: m.body,
@@ -372,6 +398,10 @@ app.get('/sessions/:id/chats/:phone/messages', async (req, res) => {
         }));
         res.json({ success: true, messages: list });
     } catch (e) {
+        const msg = e.message || '';
+        if (msg.includes('Protocol') || msg.includes('Promise was collected') || msg.includes('disconnected')) {
+            return respondDisconnected(res, id, 'protocol-error');
+        }
         console.error('Failed to load chat messages:', e);
         res.status(500).json({ success: false, error: e.message });
     }
@@ -381,7 +411,7 @@ app.get('/sessions/:id/chats/:phone/messages', async (req, res) => {
 app.get('/sessions/:id/chats', async (req, res) => {
     const id = cleanDigits(req.params.id);
     const sessionObj = clients[id];
-    if (!sessionObj || sessionObj.status !== 'CONNECTED') {
+    if (!isClientAlive(sessionObj)) {
         return res.status(400).json({ success: false, error: 'Session is not connected' });
     }
 
@@ -398,7 +428,7 @@ app.get('/sessions/:id/chats', async (req, res) => {
                     lastMessageTime = messages[0].timestamp || lastMessageTime;
                 }
             } catch (err) {
-                // Ignore message fetch errors
+                // Ignore per-chat message fetch errors (page may have been GC'd)
             }
 
             let phone = chat.id.user;
@@ -410,7 +440,7 @@ app.get('/sessions/:id/chats', async (req, res) => {
                     }
                 }
             } catch (err) {
-                // Ignore contact resolution errors
+                // Ignore per-chat contact resolution errors
             }
 
             list.push({
@@ -423,10 +453,16 @@ app.get('/sessions/:id/chats', async (req, res) => {
                 isGroup: chat.isGroup
             });
         }
-        
+
         list.sort((a, b) => b.timestamp - a.timestamp);
         res.json({ success: true, chats: list });
     } catch (e) {
+        const msg = e.message || '';
+        if (msg.includes('Protocol') || msg.includes('Promise was collected') || msg.includes('disconnected')) {
+            console.warn(`Protocol error in /chats for ${id}: ${msg} — marking disconnected.`);
+            clients[id].status = 'DISCONNECTED';
+            return res.status(400).json({ success: false, error: 'Session disconnected — please reconnect.', reason: msg });
+        }
         console.error('Failed to fetch chats:', e);
         res.json({ success: false, chats: [], error: e.message });
     }
@@ -439,7 +475,7 @@ app.post('/sessions/:id/chats/:phone/send', async (req, res) => {
     const { message } = req.body;
 
     const sessionObj = clients[id];
-    if (!sessionObj || sessionObj.status !== 'CONNECTED') {
+    if (!isClientAlive(sessionObj)) {
         return res.status(400).json({ success: false, error: 'Session is not connected' });
     }
 
@@ -452,7 +488,54 @@ app.post('/sessions/:id/chats/:phone/send', async (req, res) => {
             timestamp: sentMsg && sentMsg.timestamp ? sentMsg.timestamp : Math.floor(Date.now() / 1000)
         });
     } catch (e) {
+        const msg = e.message || '';
+        if (msg.includes('Protocol') || msg.includes('Promise was collected') || msg.includes('disconnected')) {
+            return respondDisconnected(res, id, 'send-protocol-error');
+        }
         console.error('Failed to send message:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 9. Send media (image/PDF) to a contact
+app.post('/sessions/:id/chats/:phone/send-media', async (req, res) => {
+    const id = cleanDigits(req.params.id);
+    const phone = req.params.phone;
+    const { mimeType, data, fileName, caption } = req.body;
+
+    const sessionObj = clients[id];
+    if (!isClientAlive(sessionObj)) {
+        return res.status(400).json({ success: false, error: 'Session is not connected' });
+    }
+
+    if (!mimeType || !data) {
+        return res.status(400).json({ success: false, error: 'mimeType and data (base64) are required' });
+    }
+
+    try {
+        const jid = await resolveJid(sessionObj.client, phone);
+        const { MessageMedia } = require('whatsapp-web.js');
+
+        // Build MessageMedia — for PDFs include fileName as the third arg
+        const media = new MessageMedia(mimeType, data, fileName || undefined);
+
+        const sendOptions = {};
+        if (caption && caption.trim()) {
+            sendOptions.caption = caption.trim();
+        }
+
+        const sentMsg = await sessionObj.client.sendMessage(jid, media, sendOptions);
+        res.json({
+            success: true,
+            message_id: sentMsg && sentMsg.id ? sentMsg.id.id : `media-${Date.now()}`,
+            timestamp: sentMsg && sentMsg.timestamp ? sentMsg.timestamp : Math.floor(Date.now() / 1000)
+        });
+    } catch (e) {
+        const msg = e.message || '';
+        if (msg.includes('Protocol') || msg.includes('Promise was collected') || msg.includes('disconnected')) {
+            return respondDisconnected(res, id, 'send-media-protocol-error');
+        }
+        console.error('Failed to send media:', e);
         res.status(500).json({ success: false, error: e.message });
     }
 });

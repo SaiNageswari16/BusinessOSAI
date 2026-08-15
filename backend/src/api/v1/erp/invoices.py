@@ -1,9 +1,11 @@
 """Accounts Receivable — Invoices, Payments, Returns."""
+import logging
 import uuid
 from datetime import date, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -11,7 +13,8 @@ from sqlalchemy.orm import selectinload
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models.erp import Invoice, InvoiceLine, InvoicePayment, InvoiceReturn
+from src.models import Customer
+from src.models.erp import Invoice, InvoiceLine, InvoicePayment
 from src.schemas.erp_accounting import (
     InvoiceCreate,
     InvoiceLineCreate,
@@ -21,7 +24,11 @@ from src.schemas.erp_accounting import (
     InvoiceResponse,
     InvoiceUpdate,
 )
+from src.services.invoice_pdf import save_invoice_pdf
+from src.services.whatsapp_invoice_sender import send_invoice_whatsapp, send_payment_receipt_whatsapp
 from src.utils.pagination import PaginatedResponse, paginate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/invoices", tags=["Invoices & AR"])
 
@@ -173,6 +180,10 @@ async def get_invoice(
     return invoice
 
 
+# ---------------------------------------------------------------------------
+# Invoice CRUD
+# ---------------------------------------------------------------------------
+
 @router.post(
     "",
     response_model=InvoiceResponse,
@@ -183,18 +194,20 @@ async def create_invoice(
     request: Request,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ):
     totals = _compute_invoice_totals(payload.lines)
 
     from src.utils.number_series import generate_number
-
     invoice_number = await generate_number(db, ctx.tenant_id, "invoice", payload.company_id)
 
     inv_kwargs = payload.model_dump(exclude={"lines", "payment_status", "payment_method"})
 
     initial_status = "draft"
-    if payload.payment_status and payload.payment_status.upper() == "PAID":
-        initial_status = "paid"
+    if payload.payment_status:
+        if payload.payment_status.upper() == "PAID":
+            initial_status = "paid"
+        # "unpaid" or any other value stays as draft
     elif payload.payment_method and payload.payment_method.lower() != "credit":
         initial_status = "paid"
 
@@ -270,6 +283,17 @@ async def create_invoice(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
+
+    # Auto-send invoice PDF via WhatsApp when the invoice is paid
+    phone = await _resolve_invoice_phone(db, invoice)
+    if initial_status == "paid" and phone:
+        background_tasks.add_task(
+            _bg_send_invoice_whatsapp,
+            invoice.id,
+            ctx.tenant_id,
+            phone,
+        )
+
     invoice = await db.scalar(
         select(Invoice)
         .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
@@ -338,6 +362,7 @@ async def update_invoice(
 @router.post("/{invoice_id}/approve")
 async def approve_invoice(
     invoice_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     request: Request,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("approve:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -366,6 +391,17 @@ async def approve_invoice(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
+
+    # Auto-send invoice via WhatsApp when approved (draft -> sent)
+    phone = await _resolve_invoice_phone(db, invoice)
+    if phone:
+        background_tasks.add_task(
+            _bg_send_invoice_whatsapp,
+            invoice.id,
+            ctx.tenant_id,
+            phone,
+        )
+
     return {"status": "approved", "invoice_number": invoice.invoice_number}
 
 
@@ -373,6 +409,7 @@ async def approve_invoice(
 async def add_payment(
     invoice_id: uuid.UUID,
     payload: InvoicePaymentCreate,
+    background_tasks: BackgroundTasks,
     request: Request,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoice_payments"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -415,6 +452,18 @@ async def add_payment(
     )
     await db.commit()
     await db.refresh(payment)
+
+    # --- Payment receipt via WhatsApp ------------------------------------
+    phone = await _resolve_invoice_phone(db, invoice)
+    if phone:
+        background_tasks.add_task(
+            _bg_send_payment_receipt_whatsapp,
+            invoice.id,
+            ctx.tenant_id,
+            payload.amount,
+            payload.payment_method,
+        )
+
     return payment
 
 
@@ -455,3 +504,191 @@ async def void_invoice(
         .where(Invoice.id == invoice.id)
     )
     return invoice
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp Invoice Delivery (manual trigger endpoint)
+# ---------------------------------------------------------------------------
+
+class _WhatsappSendResponse(BaseModel):
+    success: bool
+    message_id: str | None = None
+    error: str | None = None
+    session_id: str | None = None
+
+
+@router.post(
+    "/{invoice_id}/send-to-whatsapp",
+    response_model=_WhatsappSendResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def send_invoice_to_whatsapp(
+    invoice_id: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Send the invoice PDF to the customer's WhatsApp number.
+
+    Generates the PDF on the fly, then dispatches it through the tenant's
+    active WhatsApp gateway session.  Runs in the background so the API
+    responds immediately — check ``success`` to confirm delivery.
+
+    Returns ``{success, message_id, error, session_id}``.
+    ``invoice_id`` may be a UUID or an invoice number string.
+    """
+    invoice: Invoice | None = None
+    # Try UUID lookup first
+    try:
+        uuid_val = uuid.UUID(invoice_id)
+        invoice = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+            .where(Invoice.id == uuid_val, Invoice.tenant_id == ctx.tenant_id)
+        )
+    except (ValueError, TypeError):
+        pass
+    # Fallback: look up by invoice_number
+    if invoice is None:
+        invoice = await db.scalar(
+            select(Invoice)
+            .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+            .where(Invoice.invoice_number == invoice_id, Invoice.tenant_id == ctx.tenant_id)
+        )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    phone = invoice.customer_phone
+    logger.info(
+        "WhatsApp send attempt: invoice_id=%s customer_id=%s invoice_phone=%r",
+        invoice.id, invoice.customer_id, phone,
+    )
+    if not phone:
+        # Fallback: pull phone from the linked Customer record
+        if invoice.customer_id:
+            crm_phone = await db.scalar(
+                select(Customer.phone).where(Customer.id == invoice.customer_id)
+            )
+            logger.info(
+                "CRM phone fallback: invoice_id=%s customer_id=%s crm_phone=%r",
+                invoice.id, invoice.customer_id, crm_phone,
+            )
+            phone = crm_phone or ""
+        if not phone:
+            logger.warning(
+                "WhatsApp send aborted — no phone for invoice_id=%s customer_id=%s",
+                invoice.id, invoice.customer_id,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="Customer has no phone number on record. Add one and retry.",
+            )
+
+    # Cache PDF to disk
+    try:
+        save_invoice_pdf(invoice)
+    except Exception as exc:
+        logger.warning("PDF caching failed (send continues): %s", exc)
+
+    # Fire-and-forget: the background task opens its own DB session
+    background_tasks.add_task(
+        _bg_send_invoice_whatsapp,
+        invoice.id,
+        ctx.tenant_id,
+        phone,
+    )
+
+    return _WhatsappSendResponse(success=True, session_id=None)
+
+
+# ---------------------------------------------------------------------------
+# Background task helpers (module-level so FastAPI BackgroundTasks can call them)
+# ---------------------------------------------------------------------------
+
+async def _resolve_invoice_phone(db: AsyncSession, invoice: Invoice) -> str | None:
+    """Return the customer phone for an invoice, falling back to the CRM table."""
+    phone = invoice.customer_phone
+    logger.info(
+        "_resolve_invoice_phone: invoice_id=%s customer_id=%s invoice_phone=%r",
+        invoice.id, invoice.customer_id, phone,
+    )
+    if not phone:
+        # 1) Try by customer_id FK
+        if invoice.customer_id:
+            crm_phone = await db.scalar(
+                select(Customer.phone).where(Customer.id == invoice.customer_id)
+            )
+            logger.info(
+                "_resolve_invoice_phone by_id: invoice_id=%s customer_id=%s crm_phone=%r",
+                invoice.id, invoice.customer_id, crm_phone,
+            )
+            if crm_phone:
+                return crm_phone
+
+        # 2) Fallback: search CRM by customer_name
+        if invoice.customer_name:
+            crm_phone = await db.scalar(
+                select(Customer.phone).where(Customer.name == invoice.customer_name)
+            )
+            logger.info(
+                "_resolve_invoice_phone by_name: invoice_id=%s customer_name=%r crm_phone=%r",
+                invoice.id, invoice.customer_name, crm_phone,
+            )
+            if crm_phone:
+                return crm_phone
+    return phone or None
+
+
+async def _bg_send_invoice_whatsapp(
+    invoice_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    recipient_phone: str,
+) -> None:
+    """Background task: generate PDF and send invoice via WhatsApp."""
+    from src.database.session import AsyncSessionLocal
+    from sqlalchemy.orm import selectinload
+
+    async with AsyncSessionLocal() as db:
+        try:
+            inv = await db.scalar(
+                select(Invoice)
+                .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+                .where(Invoice.id == invoice_id, Invoice.tenant_id == tenant_id)
+            )
+            if not inv:
+                return
+            # Prefer the already-resolved recipient_phone; fall back to CRM lookup
+            phone = recipient_phone or await _resolve_invoice_phone(db, inv)
+            if not phone:
+                return
+            await send_invoice_whatsapp(db, inv, recipient_phone=phone)
+        except Exception as exc:
+            logger.warning("WhatsApp invoice send failed for %s: %s", invoice_id, exc)
+
+
+async def _bg_send_payment_receipt_whatsapp(
+    invoice_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    amount: float,
+    payment_method: str,
+) -> None:
+    """Background task: send a payment receipt text message via WhatsApp."""
+    from src.database.session import AsyncSessionLocal
+    from sqlalchemy.orm import selectinload
+
+    async with AsyncSessionLocal() as db:
+        try:
+            inv = await db.scalar(
+                select(Invoice)
+                .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+                .where(Invoice.id == invoice_id, Invoice.tenant_id == tenant_id)
+            )
+            if not inv:
+                return
+            phone = await _resolve_invoice_phone(db, inv)
+            if not phone:
+                return
+            await send_payment_receipt_whatsapp(db, inv, amount, payment_method)
+        except Exception as exc:
+            logger.warning("WhatsApp payment receipt failed for %s: %s", invoice_id, exc)

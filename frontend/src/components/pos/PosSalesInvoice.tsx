@@ -605,9 +605,13 @@ export function PosSalesInvoice() {
         ? "UNPAID"
         : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "PAID" : "PARTIAL");
 
-      await invoicesApi.createInvoice({
+      const createResult = await invoicesApi.createInvoice({
         customer_id: customer.id,
         customer_name: customer.name,
+        customer_phone: customer.phone || "",
+        customer_email: customer.email || "",
+        customer_gstin: customer.gst_number || "",
+        billing_address: customer.address || "",
         invoice_date: invoiceDate,
         due_date: dueDate,
         payment_method: paymentMode,
@@ -628,6 +632,10 @@ export function PosSalesInvoice() {
         })),
       });
 
+      const apiInvoice = createResult.data || createResult;
+      const backendInvoiceNumber = apiInvoice?.invoice_number || invoiceNumber;
+      const backendId = apiInvoice?.id || `inv-${Date.now()}`;
+
       const earnedPts = Math.floor(grandTotal / 100);
       const selectedEmp = salesEmployees.find(e => e.full_name === salesExecutive);
       if (selectedEmp && earnedPts > 0) {
@@ -640,8 +648,8 @@ export function PosSalesInvoice() {
 
       // Persist to pos_saved_invoices in localStorage for instant Invoices History tab sync
       const newInvoiceRecord = {
-        id: `inv-${Date.now()}`,
-        invoice_number: invoiceNumber,
+        id: backendId,
+        invoice_number: backendInvoiceNumber,
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || "",
         customer_gstin: customer?.gst_number || "",
@@ -667,13 +675,12 @@ export function PosSalesInvoice() {
         }))
       };
 
-      try {
-        const stored = localStorage.getItem("pos_saved_invoices");
-        const list = stored ? JSON.parse(stored) : [];
-        localStorage.setItem("pos_saved_invoices", JSON.stringify([newInvoiceRecord, ...list]));
-      } catch (e) {
-        console.error(e);
-      }
+      // Remove any stale record that shares the same frontend-generated invoiceNumber
+      // so we don't end up with duplicates after the backend overwrites it
+      const stored = localStorage.getItem("pos_saved_invoices");
+      const list = stored ? JSON.parse(stored) : [];
+      const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber);
+      localStorage.setItem("pos_saved_invoices", JSON.stringify([newInvoiceRecord, ...cleaned]));
 
       toast.success(`Sales Invoice ${invoiceNumber} saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
 

@@ -3947,6 +3947,7 @@ export const invoicesApi = {
   getCustomerSummary: (customerId: string) => request<any>("GET", `/invoices/customer-summary/${customerId}`),
   createInvoice: (data: any) => request<Invoice>("POST", "/invoices", data),
   sendInvoice: (id: string) => request<{ message: string }>("POST", `/invoices/${id}/send`),
+  sendInvoiceToWhatsApp: (id: string) => request<{ success: boolean; message_id?: string; error?: string }>("POST", `/invoices/${id}/send-to-whatsapp`),
   recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string }) =>
     request<{ message: string }>("POST", `/invoices/${id}/payments`, data),
 };
@@ -4135,5 +4136,7 @@ export const whatsappAutomationApi = {
   syncContacts: (sessionId: string, contacts: any[]) => request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/sync`, { contacts }),
   getChatMessages: (sessionId: string, phone: string) => request<any>("GET", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/messages`),
   sendMessage: (sessionId: string, phone: string, message: string) => request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/send`, { message }),
+  sendMedia: (sessionId: string, phone: string, media: { mimeType: string; data: string; fileName?: string; caption?: string }) =>
+    request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/send-media`, media),
   getActiveChats: (sessionId: string) => request<any>("GET", `/whatsapp-automation/sessions/${sessionId}/chats`),
 };

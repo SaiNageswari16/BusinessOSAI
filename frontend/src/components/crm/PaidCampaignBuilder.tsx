@@ -7,6 +7,7 @@ import {
   Users, TrendingUp, Calendar
 } from "lucide-react";
 import { paidAdsApi } from "@/lib/api-client";
+import type { CreatePaidAdRequest } from "@/lib/api-client";
 import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -360,7 +361,7 @@ export default function PaidCampaignBuilder({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const payload: Record<string, any> = {
+      const payload: CreatePaidAdRequest = {
         campaign_name: campaignName.trim(),
         adset_name: adsetName.trim() || `${campaignName} – Ad Set`,
         ad_name: adName.trim() || `${campaignName} – Ad ${Date.now() % 1000}`,

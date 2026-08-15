@@ -17,7 +17,8 @@ import {
   CreditCard,
   Building,
   Sparkles,
-  X
+  X,
+  MessageCircle
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { posApi, invoicesApi } from "@/lib/api-client";
@@ -122,20 +123,39 @@ export function PosInvoicesHistory() {
         }));
       }
 
-      // Merge local and remote invoice records by invoice_number
+      // Merge local and remote invoice records.
+      // 1) Remote records (backend UUIDs + real data) take priority.
+      // 2) Local-only records fill in only if no backend version exists.
       const mergedMap = new Map<string, LocalInvoiceRecord>();
-      [...localRecords, ...remoteRecords].forEach((inv) => {
+      remoteRecords.forEach((inv) => {
+        if (inv && inv.invoice_number) {
+          mergedMap.set(inv.invoice_number, inv);
+        }
+      });
+      localRecords.forEach((inv) => {
         if (inv && inv.invoice_number && !mergedMap.has(inv.invoice_number)) {
           mergedMap.set(inv.invoice_number, inv);
         }
       });
 
-      const mergedList = Array.from(mergedMap.values()).sort(
+      // Also de-dup localStorage records that share the same frontend-generated
+      // number (prevents stale inv-${Date.now()} rows from lingering after the
+      // backend created a fresh record with a different number).
+      const seenNumbers = new Set<string>();
+      const dedupedList: LocalInvoiceRecord[] = [];
+      const sorted = Array.from(mergedMap.values()).sort(
         (a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime()
       );
+      for (const inv of sorted) {
+        const key = `${inv.invoice_date}_${inv.customer_name}_${inv.grand_total}`;
+        if (!seenNumbers.has(key)) {
+          seenNumbers.add(key);
+          dedupedList.push(inv);
+        }
+      }
 
-      if (mergedList.length > 0) {
-        setInvoices(mergedList);
+      if (dedupedList.length > 0) {
+        setInvoices(dedupedList);
       } else {
         // Fallback demo records if completely empty
         const demoRecords: LocalInvoiceRecord[] = [
@@ -237,6 +257,21 @@ export function PosInvoicesHistory() {
     setIsFullInvoiceOpen(true);
     updateInvoicePrintStatus(inv.invoice_number, "A4 PDF Generated");
     toast.success(`A4 PDF Invoice generated for ${inv.invoice_number}`);
+  };
+
+  // Send invoice PDF to customer's WhatsApp
+  const handleSendWhatsApp = async (inv: LocalInvoiceRecord) => {
+    toast.loading(`Sending ${inv.invoice_number}...`, { id: `wa-${inv.id}` });
+    try {
+      const result = await invoicesApi.sendInvoiceToWhatsApp(inv.id);
+      if (result.error) {
+        toast.error(`WhatsApp send failed: ${result.error}`, { id: `wa-${inv.id}` });
+      } else {
+        toast.success(`Invoice ${inv.invoice_number} sent via WhatsApp!`, { id: `wa-${inv.id}` });
+      }
+    } catch (err: any) {
+      toast.error(`WhatsApp send failed: ${err.message || "Unknown error"}`, { id: `wa-${inv.id}` });
+    }
   };
 
   // Open Thermal Receipt Printer Window
@@ -572,6 +607,16 @@ export function PosInvoicesHistory() {
                           className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-200"
                         >
                           <Eye className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Send via WhatsApp */}
+                        <button
+                          title="Send Invoice via WhatsApp"
+                          onClick={() => handleSendWhatsApp(inv)}
+                          className="p-1.5 text-slate-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors border border-slate-200 flex items-center gap-1 text-[10px] font-bold"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5 text-green-600" />
+                          <span className="hidden lg:inline">WhatsApp</span>
                         </button>
 
                         {/* Thermal Print */}

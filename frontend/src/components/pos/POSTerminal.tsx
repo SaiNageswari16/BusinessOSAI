@@ -763,6 +763,8 @@ function PosTerminalInner() {
         discount_amount: totalDiscount,
         total_amount: total,
         session_id: currentSession.id,
+        customer_id: selectedCustomer && selectedCustomer.id !== 'walk-in' ? selectedCustomer.id : null,
+        status: "completed",
         items: resolvedCart.map(item => {
           const { unitPrice } = getItemEffectivePrice(item);
           return {
@@ -815,11 +817,17 @@ function PosTerminalInner() {
       setCashTendered("");
 
       toast.success(`Checkout Successful! Receipt: ${response.receipt_number}`);
-      
-      // Instantly trigger 80mm thermal receipt printing for accurate products
+
+      // Wait for React to render the portal before triggering print
       setTimeout(() => {
+        // Force a reflow to ensure portal is in the DOM
+        const portal = document.getElementById('printable-receipt-portal');
+        if (!portal) {
+          console.warn('[Print] Portal not found in DOM');
+          return;
+        }
         triggerThermalPrint();
-      }, 150);
+      }, 500);
     } catch (err: any) {
       console.error("Checkout Failed:", err);
       alert("Checkout failed: " + (err.detail || err.message || "Unknown error"));
