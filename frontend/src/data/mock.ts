@@ -20,18 +20,18 @@ const spark = (base: number, vol: number, len = 12) =>
   }));
 
 export const kpis = [
-  { label: "Today's Revenue", value: "$184,210", change: 14.2, hint: "vs yesterday", spark: spark(160, 30), tone: "blue" as const },
+  { label: "Today's Revenue", value: 184210, change: 14.2, hint: "vs yesterday", spark: spark(160, 30), tone: "blue" as const, isCurrency: true },
   { label: "Today's Sales", value: "1,284", change: 8.2, hint: "orders", spark: spark(120, 25), tone: "purple" as const },
   { label: "Orders Pending", value: "342", change: -3.4, hint: "to fulfill", spark: spark(80, 15), tone: "amber" as const },
   { label: "Active Customers", value: "12,847", change: 5.6, hint: "trailing 30d", spark: spark(140, 20), tone: "cyan" as const },
   { label: "Employees Present", value: "338 / 348", change: 0.8, hint: "97.1% attendance", spark: spark(95, 4), tone: "green" as const },
-  { label: "Inventory Value", value: "$2.13M", change: -2.1, hint: "8 SKUs low", spark: spark(110, 18), tone: "purple" as const },
+  { label: "Inventory Value", value: 2130000, change: -2.1, hint: "8 SKUs low", spark: spark(110, 18), tone: "purple" as const, isCurrency: true },
   { label: "Pending Deliveries", value: "187", change: 12.0, hint: "in transit", spark: spark(70, 20), tone: "blue" as const },
-  { label: "Pending Payments", value: "$284K", change: -6.4, hint: "AR overdue", spark: spark(90, 22), tone: "amber" as const },
+  { label: "Pending Payments", value: 284000, change: -6.4, hint: "AR overdue", spark: spark(90, 22), tone: "amber" as const, isCurrency: true },
   { label: "Marketplace Orders", value: "412", change: 21.8, hint: "today", spark: spark(60, 30), tone: "cyan" as const },
-  { label: "Net Profit (MTD)", value: "$1.21M", change: 18.4, hint: "above plan", spark: spark(180, 30), tone: "green" as const },
-  { label: "Expenses (MTD)", value: "$842K", change: 4.1, hint: "vs budget", spark: spark(120, 18), tone: "purple" as const },
-  { label: "Cash Balance", value: "$8.94M", change: 3.2, hint: "operating", spark: spark(200, 24), tone: "blue" as const },
+  { label: "Net Profit (MTD)", value: 1210000, change: 18.4, hint: "above plan", spark: spark(180, 30), tone: "green" as const, isCurrency: true },
+  { label: "Expenses (MTD)", value: 842000, change: 4.1, hint: "vs budget", spark: spark(120, 18), tone: "purple" as const, isCurrency: true },
+  { label: "Cash Balance", value: 8940000, change: 3.2, hint: "operating", spark: spark(200, 24), tone: "blue" as const, isCurrency: true },
 ];
 
 export const healthBreakdown = [

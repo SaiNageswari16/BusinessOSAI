@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { posApi } from "../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRbac } from "@/contexts/rbac-context";
 import { Unauthorized } from "@/components/unauthorized";
 import { PosDashboard } from "../components/pos/PosDashboard";
 import { PosTerminal } from "../components/pos/POSTerminal";
 import { PosSalesInvoice } from "../components/pos/PosSalesInvoice";
+import { PosPaymentIn } from "../components/pos/PosPaymentIn";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
 import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
 import { formatCurrency } from "../lib/utils";
@@ -524,9 +527,9 @@ function PosPayments() {
 function PosStoreOperations() {
   const view = useView();
 
-  const { data: summaryData } = useQuery({
+  const { data: summaryData } = useQuery<any>({
     queryKey: ["pos-daily-summary"],
-    queryFn: posApi.getDailySummary,
+    queryFn: () => posApi.getDailySummary(),
     refetchInterval: 60000,
   });
 
@@ -1155,9 +1158,7 @@ const componentMap: Record<string, React.ElementType> = {
   terminal: PosTerminal,
   sales: PosSalesInvoice,
   customers: PosCustomersPlaceholder,
-  payments: PosPayments,
-  store_operations: PosStoreOperations,
-  returns: PosReturns,
+  payment_in: PosPaymentIn,
   devices: PosDevices,
   reports: PosReports,
   ai_assistant: PosAiAssistant,

@@ -4,10 +4,11 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://12
 
 export interface DashboardKPI {
   label: string;
-  value: string;
+  value: string | number;
   change: number;
   hint: string;
   tone: "blue" | "purple" | "amber" | "cyan" | "green";
+  isCurrency?: boolean;
 }
 
 export interface DashboardData {

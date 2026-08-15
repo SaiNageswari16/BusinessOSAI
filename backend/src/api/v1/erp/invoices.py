@@ -12,6 +12,7 @@ from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models.erp import Invoice, InvoiceLine, InvoicePayment, InvoiceReturn
+from src.models import CustomerWallet, CustomerWalletTransaction
 from src.schemas.erp_accounting import (
     InvoiceCreate,
     InvoiceLineCreate,
@@ -388,6 +389,32 @@ async def add_payment(
         raise HTTPException(status_code=400, detail="Payment exceeds balance due")
 
     payment = InvoicePayment(invoice_id=invoice_id, **payload.model_dump())
+    
+    if payload.payment_method and payload.payment_method.lower() == "wallet":
+        if not invoice.customer_id:
+            raise HTTPException(status_code=400, detail="Invoice has no associated customer")
+            
+        wallet = await db.scalar(
+            select(CustomerWallet).where(
+                CustomerWallet.customer_id == invoice.customer_id,
+                CustomerWallet.tenant_id == ctx.tenant_id
+            ).with_for_update()
+        )
+        if not wallet or wallet.balance < payload.amount:
+            raise HTTPException(status_code=400, detail="Insufficient wallet balance")
+            
+        wallet.balance -= payload.amount
+        wallet_tx = CustomerWalletTransaction(
+            wallet_id=wallet.id,
+            tenant_id=ctx.tenant_id,
+            transaction_type="DEBIT",
+            amount=payload.amount,
+            reference_type="INVOICE_PAYMENT",
+            reference_id=str(invoice.id),
+            notes=f"Payment for invoice {invoice.invoice_number}"
+        )
+        db.add(wallet_tx)
+        
     db.add(payment)
 
     invoice.amount_paid = round(invoice.amount_paid + payload.amount, 2)
@@ -455,3 +482,34 @@ async def void_invoice(
         .where(Invoice.id == invoice.id)
     )
     return invoice
+
+@router.get("/payments/all")
+async def list_all_payments(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    query = (
+        select(InvoicePayment, Invoice.customer_name, Invoice.customer_id, Invoice.invoice_number)
+        .join(Invoice, InvoicePayment.invoice_id == Invoice.id)
+        .where(Invoice.tenant_id == ctx.tenant_id)
+        .order_by(InvoicePayment.created_at.desc())
+    )
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    
+    result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
+    items = []
+    for payment, c_name, c_id, inv_num in result.all():
+        items.append({
+            "id": str(payment.id),
+            "invoice_id": str(payment.invoice_id),
+            "payment_date": payment.payment_date.isoformat(),
+            "payment_method": payment.payment_method,
+            "amount": float(payment.amount),
+            "party_name": c_name or "Unknown Party",
+            "party_id": str(c_id) if c_id else "CUST-000",
+            "invoice_number": inv_num,
+            "created_at": payment.created_at.isoformat() if payment.created_at else None
+        })
+    return paginate(items, total or 0, page, page_size)

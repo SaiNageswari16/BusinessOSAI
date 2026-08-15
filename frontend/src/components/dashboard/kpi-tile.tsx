@@ -4,6 +4,7 @@ import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { useCurrency } from "@/hooks/use-currency";
 
 type Tone = "blue" | "purple" | "cyan" | "green" | "amber";
 
@@ -17,16 +18,36 @@ const TONES: Record<Tone, { icon: string; chart: string }> = {
 
 interface KpiTileProps {
   label: string;
-  value: string;
+  value: string | number;
   change: number;
   hint?: string;
   icon?: ReactNode;
   spark?: { i: number; v: number }[];
   tone?: Tone;
   delay?: number;
+  isCurrency?: boolean;
 }
 
-export function KpiTile({ label, value, change, hint, icon, spark, tone = "blue", delay = 0 }: KpiTileProps) {
+export function KpiTile({ label, value, change, hint, icon, spark, tone = "blue", delay = 0, isCurrency = false }: KpiTileProps) {
+  const { formatCurrency, currency, exchangeRates } = useCurrency();
+  
+  let displayValue = value;
+  if (isCurrency && typeof value === 'number') {
+    const rate = exchangeRates[currency.code] || 1;
+    const amount = value * rate;
+    
+    // Custom formatting for large numbers to keep it compact (e.g. 2.13M instead of 2,130,000)
+    if (amount >= 1_000_000) {
+      displayValue = `${currency.symbol}${(amount / 1_000_000).toFixed(2)}M`;
+    } else if (amount >= 100_000 && amount % 1000 === 0) {
+      displayValue = `${currency.symbol}${(amount / 1_000).toFixed(0)}K`;
+    } else {
+      displayValue = formatCurrency(value);
+    }
+  } else if (typeof value === 'number') {
+    displayValue = new Intl.NumberFormat().format(value);
+  }
+
   const up = change >= 0;
   const t = TONES[tone];
   const id = `g-${label.replace(/\W/g, "")}`;
@@ -41,7 +62,7 @@ export function KpiTile({ label, value, change, hint, icon, spark, tone = "blue"
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider truncate">{label}</div>
-            <div className="mt-1.5 text-2xl font-bold tracking-tight tabular-nums">{value}</div>
+            <div className="mt-1.5 text-2xl font-bold tracking-tight tabular-nums">{displayValue}</div>
             <div className="mt-1 flex items-center gap-1.5 text-[11px]">
               <span className={cn("inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-semibold",
                 up ? "text-emerald-600 bg-emerald-500/10" : "text-rose-600 bg-rose-500/10")}>

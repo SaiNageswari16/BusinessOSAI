@@ -5,7 +5,7 @@ import {
   Info, Camera, Sparkles, Printer, Database, Boxes, LayoutGrid, List as ListIcon, Combine, ArrowRightLeft, ArrowLeft,
   Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus
 } from "lucide-react";
-import { posApi, inventoryApi, crmApi, invoicesApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
+import { posApi, inventoryApi, crmApi, invoicesApi, crmWalletApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { posStore, posSession, posCustomers, paymentMethods, posCategories } from "../../lib/pos-fallback";
 import { motion, AnimatePresence } from "framer-motion";
@@ -237,6 +237,7 @@ function PosTerminalInner() {
   // Cash Payment States
   const [cashModalOpen, setCashModalOpen] = useState(false);
   const [cashTendered, setCashTendered] = useState("");
+  const [creditChangeToWallet, setCreditChangeToWallet] = useState(false);
   const [completedCheckoutBill, setCompletedCheckoutBill] = useState<any | null>(null);
 
   // Held Bills Modal States
@@ -660,7 +661,19 @@ function PosTerminalInner() {
       await executeCheckout([{ payment_method: 'credit', amount: total }]);
       return;
     }
-    await executeCheckout([{ payment_method: paymentMethod.toLowerCase(), amount: total }]);
+    if (paymentMethod === 'Wallet') {
+      if (!selectedCustomer || selectedCustomer.id === "WALK-IN") {
+        alert("Please select a registered customer to use Wallet.");
+        return;
+      }
+      if ((selectedCustomer.wallet || 0) < total) {
+        alert(`Insufficient Wallet Balance (${formatCurrency(selectedCustomer.wallet || 0)} available).`);
+        return;
+      }
+      executeCheckout([{ payment_method: "wallet", amount: total }]);
+    } else {
+      await executeCheckout([{ payment_method: paymentMethod.toLowerCase(), amount: total }]);
+    }
   };
 
   const resolveCartProvisionalItems = async (currentCart: any[]) => {
@@ -814,13 +827,30 @@ function PosTerminalInner() {
     }
   };
 
-  const handleCashConfirm = () => {
+  const handleCashConfirm = async () => {
     const tendered = parseFloat(cashTendered) || 0;
     if (tendered < total) {
       alert("Cash tendered cannot be less than the total amount!");
       return;
     }
-    executeCheckout([{ payment_method: "cash", amount: total }]);
+    const changeDue = tendered - total;
+    
+    try {
+      await executeCheckout([{ payment_method: "cash", amount: total }]);
+      
+      // Credit to wallet if checked and applicable
+      if (creditChangeToWallet && changeDue > 0 && selectedCustomer && selectedCustomer.id !== "WALK-IN") {
+        await crmWalletApi.credit(
+          selectedCustomer.id,
+          changeDue,
+          "POS Cash Change Added to Wallet",
+          `POS-${new Date().getTime()}` // Fake reference if receipt isn't returned synchronously before this
+        );
+        toast.success(`Change of ${formatCurrency(changeDue)} securely credited to Customer Wallet.`);
+      }
+    } catch (err: any) {
+      // Errors already handled in executeCheckout
+    }
   };
 
   const handleSplitConfirm = () => {
@@ -1683,7 +1713,7 @@ function PosTerminalInner() {
                             <h4 className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" /> AI Product Insights</h4>
                             <div className="space-y-2 text-sm">
                               <div className="flex justify-between"><span className="text-amber-700/70">Demand Forecast:</span> <span className="font-bold text-amber-700">{selectedProduct.demandScore || 85}/100</span></div>
-                              <div className="flex justify-between"><span className="text-amber-700/70">AI Recommendation:</span> <span className="font-bold text-amber-700">{selectedProduct.aiScore || 90}/100</span></div>
+                              <div className="flex justify-between"><span className="text-amber-700/70">AI Recommendation:</span> <span className="font-bold text-amber-900">{selectedProduct.aiScore || 90}/100</span></div>
                               <div className="flex justify-between"><span className="text-amber-700/70">Trend Status:</span> <span className="font-semibold text-emerald-600">{selectedProduct.isFastMoving ? 'Fast Moving 🔥' : 'Stable'}</span></div>
                               <div className="flex justify-between"><span className="text-amber-700/70">Supplier:</span> <span className="font-semibold text-amber-900">{selectedProduct.supplier || "Direct"}</span></div>
                             </div>
@@ -1726,7 +1756,7 @@ function PosTerminalInner() {
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-900 leading-tight">{selectedCustomer.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">{selectedCustomer.customer_type || selectedCustomer.tier || 'Retail'}</span>
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">{(selectedCustomer as any).customer_type || selectedCustomer.tier || 'Retail'}</span>
                       <span className="text-[10px] text-slate-500 font-medium">{selectedCustomer.points} Pts • ₹{selectedCustomer.wallet} Wallet</span>
                     </div>
                   </div>
@@ -2018,6 +2048,13 @@ function PosTerminalInner() {
                     <Combine className={`w-5 h-5 ${paymentMethod === 'Split' ? 'text-orange-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">Split</span>
                   </button>
+                  <button
+                    onClick={() => setPaymentMethod('Wallet')}
+                    className={`flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Wallet' ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sky-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
+                  >
+                    <Wallet className={`w-5 h-5 ${paymentMethod === 'Wallet' ? 'text-sky-600' : 'text-slate-400'}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Wallet</span>
+                  </button>
                 </div>
 
                 {/* Complete Payment Button */}
@@ -2172,11 +2209,26 @@ function PosTerminalInner() {
                 </div>
               </div>
 
-              <div className="mb-6 p-4 bg-slate-900 rounded-xl flex justify-between items-center shadow-inner">
-                <span className="text-sm font-bold text-slate-400">Change Due</span>
-                <span className={`text-3xl font-black ${Number(cashTendered) >= total ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {Number(cashTendered) >= total ? formatCurrency(Number(cashTendered) - total) : '---'}
-                </span>
+              <div className="mb-6 p-4 bg-slate-900 rounded-xl flex flex-col justify-center shadow-inner">
+                <div className="flex justify-between items-center w-full">
+                  <span className="text-sm font-bold text-slate-400">Change Due</span>
+                  <span className={`text-3xl font-black ${Number(cashTendered) >= total ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {Number(cashTendered) >= total ? formatCurrency(Number(cashTendered) - total) : '---'}
+                  </span>
+                </div>
+                {Number(cashTendered) > total && selectedCustomer && selectedCustomer.id !== "WALK-IN" && (
+                  <label className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-700/50 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={creditChangeToWallet} 
+                      onChange={(e) => setCreditChangeToWallet(e.target.checked)} 
+                      className="w-4 h-4 rounded text-indigo-500 focus:ring-indigo-500 bg-slate-800 border-slate-600" 
+                    />
+                    <span className="text-sm font-semibold text-slate-300">
+                      Add change ({formatCurrency(Number(cashTendered) - total)}) to Customer Wallet
+                    </span>
+                  </label>
+                )}
               </div>
 
               <button

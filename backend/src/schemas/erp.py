@@ -2309,3 +2309,49 @@ class ExitExperienceLetterResponse(ORMModel):
 
 
 
+
+
+# -------------------------------------------------------------------
+#  DELIVERY CHALLAN
+# -------------------------------------------------------------------
+
+class DeliveryChallanItemCreate(BaseModel):
+    product_id: uuid.UUID | None = None
+    product_name: str
+    quantity: float
+    uom: str | None = None
+
+class DeliveryChallanCreate(BaseModel):
+    invoice_id: uuid.UUID | None = None
+    customer_id: uuid.UUID | None = None
+    challan_date: date
+    transporter_name: str | None = None
+    vehicle_number: str | None = None
+    waybill_number: str | None = None
+    notes: str | None = None
+    items: list[DeliveryChallanItemCreate]
+
+class DeliveryChallanItemResponse(ORMModel):
+    id: uuid.UUID
+    challan_id: uuid.UUID
+    product_id: uuid.UUID | None
+    product_name: str
+    quantity: float
+    uom: str | None
+
+class DeliveryChallanResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    invoice_id: uuid.UUID | None
+    customer_id: uuid.UUID | None
+    challan_number: str
+    challan_date: date
+    status: str
+    transporter_name: str | None
+    vehicle_number: str | None
+    waybill_number: str | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+    items: list[DeliveryChallanItemResponse] = []
+

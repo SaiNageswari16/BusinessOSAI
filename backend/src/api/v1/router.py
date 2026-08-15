@@ -164,3 +164,8 @@ api_router.include_router(tax_router)
 api_router.include_router(budgets_router)
 api_router.include_router(expense_claims_router)
 api_router.include_router(financial_reports_router)
+
+
+# Delivery Challan Module
+from src.api.v1.erp.delivery_challan import router as delivery_challan_router
+api_router.include_router(delivery_challan_router, prefix="/erp")

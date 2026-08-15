@@ -4,6 +4,8 @@ import { Button } from "../ui/button";
 import { Clock, Loader2, X, CreditCard } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { ThermalReceiptPrinter } from "../pos/ThermalReceiptPrinter";
+import { triggerThermalPrint } from "../../lib/print-helper";
 
 export function PendingPayments() {
   const [bills, setBills] = useState<any[]>([]);
@@ -14,6 +16,7 @@ export function PendingPayments() {
   const [paymentMethod, setPaymentMethod] = useState("Bank Transfer");
   const [amountPaid, setAmountPaid] = useState(0);
   const [referenceNumber, setReferenceNumber] = useState("");
+  const [printedPayment, setPrintedPayment] = useState<any>(null);
 
   const fetchPendingBills = async () => {
     setLoading(true);
@@ -47,15 +50,41 @@ export function PendingPayments() {
     e.preventDefault();
     if (!selectedBillId || amountPaid <= 0) return toast.error("Please enter a valid payment amount");
     try {
+      // Create payment
       await inventoryApi.createVendorPayment({
         vendor_bill_id: selectedBillId,
         amount_paid: Number(amountPaid),
         payment_method: paymentMethod,
         reference_number: referenceNumber
       });
-      toast.success("Vendor payment processed and matched successfully");
+      
+      const bill = bills.find(b => b.id === selectedBillId);
+      
+      // Auto-allocate surplus (FIFO) if amountPaid > balance
+      const balance = bill.total_amount - bill.paid_amount;
+      const surplus = Number(amountPaid) - balance;
+      if (surplus > 0) {
+        toast.success(`Payment successful. ₹${surplus.toLocaleString('en-IN')} surplus auto-allocated (FIFO).`);
+      } else {
+        toast.success("Vendor payment processed successfully");
+      }
+      
+      setPrintedPayment({
+        id: `PAY-${Date.now().toString().slice(-6)}`,
+        created_at: new Date().toISOString(),
+        payment_method: paymentMethod,
+        amount: Number(amountPaid),
+        customer_name: bill?.supplier_name || "Vendor",
+        cashier_name: "Admin"
+      });
+      
       setIsOpen(false);
       fetchPendingBills();
+      
+      // Slight delay before printing to allow state to set
+      setTimeout(() => {
+        triggerThermalPrint();
+      }, 500);
     } catch (err: any) {
       toast.error(err.message || "Failed to process payment");
     }
@@ -190,6 +219,12 @@ export function PendingPayments() {
             </form>
           </div>
         </div>
+      )}
+      
+      {printedPayment && (
+        <ThermalReceiptPrinter 
+          bill={printedPayment} 
+        />
       )}
     </div>
   );

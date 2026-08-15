@@ -12,6 +12,17 @@ export interface CurrencyConfig {
   symbol: string;     // e.g. "$", "₹", "€", "د.إ"
 }
 
+export const EXCHANGE_RATES: Record<string, number> = {
+  USD: 1,
+  INR: 83,
+  EUR: 0.92,
+  GBP: 0.79,
+  AED: 3.67,
+  SAR: 3.75,
+  CAD: 1.36,
+  AUD: 1.52
+};
+
 export const AVAILABLE_CURRENCIES: CurrencyConfig[] = [
   { code: "INR", locale: "en-IN", symbol: "₹" },
   { code: "USD", locale: "en-US", symbol: "$" },
@@ -44,7 +55,8 @@ export function setActiveCurrency(code: string) {
 
 export function formatCurrency(val?: number | null): string {
   const currency = getActiveCurrency();
-  const amount = val ?? 0;
+  const rate = EXCHANGE_RATES[currency.code] || 1;
+  const amount = (val ?? 0) * rate;
   return new Intl.NumberFormat(currency.locale, {
     style: "currency",
     currency: currency.code,

@@ -3924,6 +3924,8 @@ export const invoicesApi = {
   sendInvoice: (id: string) => request<{ message: string }>("POST", `/invoices/${id}/send`),
   recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string }) =>
     request<{ message: string }>("POST", `/invoices/${id}/payments`, data),
+  listPayments: (params?: { page?: number; page_size?: number }) =>
+    request<PaginatedResponse<any>>("GET", "/invoices/payments/all", undefined, params),
 };
 
 export const fixedAssetsApi = {
@@ -4112,3 +4114,18 @@ export const whatsappAutomationApi = {
   sendMessage: (sessionId: string, phone: string, message: string) => request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/send`, { message }),
   getActiveChats: (sessionId: string) => request<any>("GET", `/whatsapp-automation/sessions/${sessionId}/chats`),
 };
+
+export const procurementApi = {
+  getVendors: (page = 1, pageSize = 200) => request<any>("GET", "/erp/procurement/vendors", undefined, { page, page_size: pageSize }),
+  getVendorSummary: (vendorId: string) => request<any>("GET", `/erp/procurement/vendors/${vendorId}/summary`),
+  listVendorPayments: () => request<any>("GET", "/erp/procurement/payments"),
+  recordVendorPayment: (vendorId: string, data: any) => request<any>("POST", `/erp/procurement/vendors/${vendorId}/payments`, data),
+};
+
+export const deliveryChallanApi = {
+  getChallans: (page = 1, pageSize = 50, filters?: any) => request<any>("GET", "/erp/delivery-challans", undefined, { page, page_size: pageSize, ...filters }),
+  getChallan: (id: string) => request<any>("GET", `/erp/delivery-challans/${id}`),
+  createChallan: (data: any) => request<any>("POST", "/erp/delivery-challans", data),
+  dispatchChallan: (id: string) => request<any>("POST", `/erp/delivery-challans/${id}/dispatch`),
+};
+

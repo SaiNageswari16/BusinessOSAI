@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
-from src.models import POSTransaction, POSTransactionItem, POSPayment, Product
+from src.models import POSTransaction, POSTransactionItem, POSPayment, Product, Customer, CustomerWallet, CustomerWalletTransaction
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
 from src.utils.notifications import add_system_notification
 
@@ -100,6 +100,56 @@ async def checkout(
             reference_number=payment.reference_number
         )
         db.add(tx_payment)
+
+        # Handle Wallet Deduction if this is a wallet payment (and not just parking/on hold)
+        if payment.payment_method == "wallet" and payload.status != "on_hold":
+            if not payload.customer_id:
+                raise HTTPException(status_code=400, detail="A valid customer must be selected to use Wallet payment.")
+            
+            customer = await db.scalar(
+                select(Customer).where(Customer.id == payload.customer_id, Customer.tenant_id == ctx.user.tenant_id)
+            )
+            if not customer:
+                raise HTTPException(status_code=404, detail="Customer not found for Wallet payment.")
+
+            wallet = await db.scalar(
+                select(CustomerWallet).where(
+                    CustomerWallet.tenant_id == ctx.user.tenant_id,
+                    CustomerWallet.customer_id == payload.customer_id,
+                ).with_for_update()
+            )
+            if not wallet:
+                raise HTTPException(status_code=400, detail="Customer does not have a wallet.")
+
+            if float(wallet.balance) < payment.amount:
+                raise HTTPException(status_code=400, detail=f"Insufficient wallet balance. Available: ${wallet.balance:.2f}")
+
+            # Deduct from Wallet
+            balance_before = float(wallet.balance)
+            balance_after = balance_before - payment.amount
+            
+            wallet.balance = balance_after
+            wallet.lifetime_debited += payment.amount
+            wallet.debit_count += 1
+            
+            # Keep customer denormalized fields in sync
+            customer.wallet_balance = wallet.balance
+            customer.wallet_lifetime_debited = wallet.lifetime_debited
+            
+            wallet_tx = CustomerWalletTransaction(
+                tenant_id=ctx.user.tenant_id,
+                customer_id=payload.customer_id,
+                wallet_id=wallet.id,
+                transaction_type="payment",
+                amount=payment.amount,
+                balance_before=balance_before,
+                balance_after=balance_after,
+                reference_type="pos_checkout",
+                reference_id=str(transaction.id),
+                description=f"POS Checkout Receipt {transaction.receipt_number}",
+                initiated_by=ctx.user.id,
+            )
+            db.add(wallet_tx)
 
 
 

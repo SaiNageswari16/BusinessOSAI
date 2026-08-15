@@ -16,6 +16,7 @@ import { ProductImages } from "../components/inventory/ProductImages";
 import { StockOverview } from "../components/inventory/StockOverview";
 import { GoodsReceipt } from "../components/inventory/GoodsReceipt";
 import { GoodsIssue } from "../components/inventory/GoodsIssue";
+import { DeliveryChallans } from "../components/inventory/DeliveryChallans";
 import { StockMovement } from "../components/inventory/StockMovement";
 import { StockAdjustment } from "../components/inventory/StockAdjustment";
 import { StockTransfer } from "../components/inventory/StockTransfer";
@@ -78,6 +79,7 @@ const componentMap: Record<string, React.ElementType> = {
   stock_overview: StockOverview,
   goods_receipt: GoodsReceipt,
   goods_issue: GoodsIssue,
+  delivery_challans: DeliveryChallans,
   stock_movement: StockMovement,
   stock_adjustment: StockAdjustment,
   stock_transfer: StockTransfer,
@@ -147,3 +149,6 @@ function InventoryModule() {
     </div>
   );
 }
+
+// Refresh IDE Cache
+

@@ -90,10 +90,11 @@ async def get_dashboard_kpis(db: AsyncSession = Depends(get_db)):
         "kpis": [
             {
                 "label": "Today's Revenue",
-                "value": f"${todays_revenue:,.2f}",
+                "value": todays_revenue,
                 "change": 0.0,
                 "hint": "vs yesterday",
-                "tone": "blue"
+                "tone": "blue",
+                "isCurrency": True
             },
             {
                 "label": "Today's Sales",
@@ -125,10 +126,11 @@ async def get_dashboard_kpis(db: AsyncSession = Depends(get_db)):
             },
             {
                 "label": "Inventory Value",
-                "value": f"${inventory_value:,.2f}",
+                "value": inventory_value,
                 "change": 0.0,
                 "hint": "Total holding",
-                "tone": "purple"
+                "tone": "purple",
+                "isCurrency": True
             },
             {
                 "label": "Pending Deliveries",
@@ -139,10 +141,11 @@ async def get_dashboard_kpis(db: AsyncSession = Depends(get_db)):
             },
             {
                 "label": "Pending Payments",
-                "value": f"${pending_payments:,.2f}",
+                "value": pending_payments,
                 "change": 0.0,
                 "hint": "AR overdue",
-                "tone": "amber"
+                "tone": "amber",
+                "isCurrency": True
             }
         ]
     }

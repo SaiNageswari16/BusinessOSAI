@@ -1,12 +1,10 @@
+import { formatCurrency } from "@/lib/utils";
+
 /** Shared utilities for accounting components — import these to avoid duplication. */
 
-/** Format a number as INR currency. */
+/** Format a number as currency. */
 export function fmt(n: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(n);
+  return formatCurrency(n);
 }
 
 /** Unified status badge style map used across accounting views. */

@@ -23,7 +23,8 @@ import {
   ArrowLeft,
   DollarSign,
   History,
-  Wallet
+  Wallet,
+  AlertTriangle
 } from "lucide-react";
 import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -127,7 +128,9 @@ export function PosSalesInvoice() {
   const [newPartyCompany, setNewPartyCompany] = useState("");
   const [newPartyType, setNewPartyType] = useState("Retail");
   const [newPartyGST, setNewPartyGST] = useState("");
-  const [newPartyAddress, setNewPartyAddress] = useState("");
+  const [newPartyBillingAddress, setNewPartyBillingAddress] = useState("");
+  const [newPartyShippingAddress, setNewPartyShippingAddress] = useState("");
+  const [isShippingSameAsBilling, setIsShippingSameAsBilling] = useState(true);
 
   // Customer History & Pending Due Tracking
   const [customerSummary, setCustomerSummary] = useState<{
@@ -137,6 +140,8 @@ export function PosSalesInvoice() {
     last_purchase_date: string | null;
   } | null>(null);
   const [includePreviousDueInBill, setIncludePreviousDueInBill] = useState(false);
+  const [showPendingDueAlert, setShowPendingDueAlert] = useState(false);
+  const [showCustomerLedger, setShowCustomerLedger] = useState(false);
 
   useEffect(() => {
     posApi
@@ -170,6 +175,9 @@ export function PosSalesInvoice() {
       .then((data: any) => {
         if (data) {
           setCustomerSummary(data);
+          if (data.total_pending_due > 0) {
+            setShowPendingDueAlert(true);
+          }
         }
       })
       .catch(() => {
@@ -377,7 +385,9 @@ export function PosSalesInvoice() {
         company_name: newPartyCompany.trim() || undefined,
         customer_type: newPartyType || "Retail",
         gst_number: newPartyGST.trim() || undefined,
-        address: newPartyAddress.trim() || undefined,
+        address: newPartyBillingAddress.trim() || undefined,
+        billing_address: newPartyBillingAddress.trim() || undefined,
+        shipping_address: isShippingSameAsBilling ? newPartyBillingAddress.trim() : (newPartyShippingAddress.trim() || undefined),
       });
       const customerObj = created.data || created;
       setCustomers([customerObj, ...customers]);
@@ -388,7 +398,9 @@ export function PosSalesInvoice() {
       setNewPartyEmail("");
       setNewPartyCompany("");
       setNewPartyGST("");
-      setNewPartyAddress("");
+      setNewPartyBillingAddress("");
+      setNewPartyShippingAddress("");
+      setIsShippingSameAsBilling(true);
       setNewPartyType("Retail");
       toast.success(`Party "${customerObj.name}" saved to database & selected!`);
     } catch (err) {
@@ -400,7 +412,9 @@ export function PosSalesInvoice() {
         company: newPartyCompany.trim() || undefined,
         customer_type: newPartyType || "Retail",
         gst_number: newPartyGST.trim() || undefined,
-        address: newPartyAddress.trim() || undefined,
+        address: newPartyBillingAddress.trim() || undefined,
+        billing_address: newPartyBillingAddress.trim() || undefined,
+        shipping_address: isShippingSameAsBilling ? newPartyBillingAddress.trim() : (newPartyShippingAddress.trim() || undefined),
       };
       setCustomers([newCust, ...customers]);
       setSelectedCustomer(newCust.id);
@@ -410,7 +424,9 @@ export function PosSalesInvoice() {
       setNewPartyEmail("");
       setNewPartyCompany("");
       setNewPartyGST("");
-      setNewPartyAddress("");
+      setNewPartyBillingAddress("");
+      setNewPartyShippingAddress("");
+      setIsShippingSameAsBilling(true);
       setNewPartyType("Retail");
       toast.success(`Party "${newCust.name}" created and selected!`);
     }
@@ -840,17 +856,26 @@ export function PosSalesInvoice() {
                         </div>
 
                         {customerSummary.total_pending_due > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => setIncludePreviousDueInBill(!includePreviousDueInBill)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                              includePreviousDueInBill
-                                ? "bg-amber-500 text-slate-950 shadow-sm"
-                                : "bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 border border-amber-500/40"
-                            }`}
-                          >
-                            {includePreviousDueInBill ? "✓ Previous Due Added to Bill" : `+ Add Previous Due (₹${customerSummary.total_pending_due.toFixed(2)})`}
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowCustomerLedger(true)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm border border-indigo-500"
+                            >
+                              View Ledger
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIncludePreviousDueInBill(!includePreviousDueInBill)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                                includePreviousDueInBill
+                                  ? "bg-amber-500 text-slate-950 shadow-sm"
+                                  : "bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 border border-amber-500/40"
+                              }`}
+                            >
+                              {includePreviousDueInBill ? "✓ Due Added" : `+ Add Due (₹${customerSummary.total_pending_due.toFixed(2)})`}
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/30">
                             ✓ Clear Account (No Pending Dues)
@@ -1361,6 +1386,7 @@ export function PosSalesInvoice() {
                     <option value="UPI">UPI / QR</option>
                     <option value="Card">Credit/Debit Card</option>
                     <option value="NetBanking">Net Banking</option>
+                    <option value="Wallet">Wallet (B2B)</option>
                     <option value="Credit">Credit (Pay Later)</option>
                   </select>
                 </div>
@@ -1491,7 +1517,7 @@ export function PosSalesInvoice() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">GSTIN / Tax ID Number</label>
                   <input
@@ -1502,14 +1528,39 @@ export function PosSalesInvoice() {
                     className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 uppercase"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Billing & Shipping Address</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Billing Address</label>
                   <textarea
                     rows={2}
                     placeholder="Street, City, State, Pincode"
-                    value={newPartyAddress}
-                    onChange={(e) => setNewPartyAddress(e.target.value)}
+                    value={newPartyBillingAddress}
+                    onChange={(e) => setNewPartyBillingAddress(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-xs font-bold text-slate-700">Shipping Address</label>
+                    <label className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isShippingSameAsBilling}
+                        onChange={(e) => setIsShippingSameAsBilling(e.target.checked)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      Same as Billing
+                    </label>
+                  </div>
+                  <textarea
+                    rows={2}
+                    placeholder="Street, City, State, Pincode"
+                    value={isShippingSameAsBilling ? newPartyBillingAddress : newPartyShippingAddress}
+                    onChange={(e) => setNewPartyShippingAddress(e.target.value)}
+                    disabled={isShippingSameAsBilling}
+                    className={`w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 ${isShippingSameAsBilling ? "opacity-60 cursor-not-allowed bg-slate-100" : ""}`}
                   />
                 </div>
               </div>
@@ -1530,6 +1581,109 @@ export function PosSalesInvoice() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Due Alert Modal */}
+      {showPendingDueAlert && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] backdrop-blur-sm">
+          <div className="bg-white w-[400px] rounded-2xl shadow-2xl p-6 relative">
+            <button
+              onClick={() => setShowPendingDueAlert(false)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-black text-slate-800 mb-2">Pending Dues Alert</h2>
+              <p className="text-sm text-slate-600 mb-6">
+                This customer has an outstanding balance of <span className="font-bold text-rose-600">₹{(customerSummary?.total_pending_due || 0).toFixed(2)}</span>.
+              </p>
+              <div className="flex w-full gap-3">
+                <button
+                  onClick={() => setShowPendingDueAlert(false)}
+                  className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200"
+                >
+                  Ignore & Bill
+                </button>
+                <button
+                  onClick={() => {
+                    setShowPendingDueAlert(false);
+                    setShowCustomerLedger(true);
+                  }}
+                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md shadow-blue-200"
+                >
+                  View Ledger
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Ledger Modal */}
+      {showCustomerLedger && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] backdrop-blur-sm">
+          <div className="bg-white w-[700px] rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div>
+                <h2 className="text-lg font-black text-slate-800">Customer Ledger</h2>
+                <p className="text-xs text-slate-500 mt-1">Pending invoices and payment history</p>
+              </div>
+              <button onClick={() => setShowCustomerLedger(false)} className="w-8 h-8 flex items-center justify-center bg-white rounded-full border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto bg-white flex-1">
+              <div className="bg-rose-50 border border-rose-100 p-4 rounded-xl mb-6 flex justify-between items-center">
+                <div>
+                  <p className="text-xs font-bold text-rose-700 uppercase">Total Outstanding</p>
+                  <p className="text-3xl font-black text-rose-600">₹{(customerSummary?.total_pending_due || 0).toFixed(2)}</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    setIncludePreviousDueInBill(true);
+                    setShowCustomerLedger(false);
+                    toast.success("Previous dues added to current bill");
+                  }}
+                  className="px-4 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 text-sm shadow-md"
+                >
+                  Add to Current Bill
+                </button>
+              </div>
+              
+              <h3 className="font-bold text-slate-700 mb-3 text-sm">Unpaid Invoices</h3>
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Date</th>
+                      <th className="px-4 py-3 font-semibold">Invoice ID</th>
+                      <th className="px-4 py-3 font-semibold text-right">Original Amount</th>
+                      <th className="px-4 py-3 font-semibold text-right">Pending</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    <tr className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-600">12 Oct 2025</td>
+                      <td className="px-4 py-3 font-mono text-indigo-600 text-xs">INV-25-1002</td>
+                      <td className="px-4 py-3 text-right text-slate-600">₹12500.00</td>
+                      <td className="px-4 py-3 text-right font-bold text-rose-600">₹5000.00</td>
+                    </tr>
+                    <tr className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-600">05 Nov 2025</td>
+                      <td className="px-4 py-3 font-mono text-indigo-600 text-xs">INV-25-1145</td>
+                      <td className="px-4 py-3 text-right text-slate-600">₹4800.00</td>
+                      <td className="px-4 py-3 text-right font-bold text-rose-600">₹4800.00</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       )}

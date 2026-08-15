@@ -3,11 +3,32 @@ import { Card } from "../ui/card";
 import { History, Loader2 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { ThermalReceiptPrinter } from "../pos/ThermalReceiptPrinter";
+import { triggerThermalPrint } from "../../lib/print-helper";
+import { Printer } from "lucide-react";
+import { Button } from "../ui/button";
 
 export function PaymentHistory() {
   const [payments, setPayments] = useState<any[]>([]);
   const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [printedPayment, setPrintedPayment] = useState<any>(null);
+
+  const handlePrint = (txn: any, bill: any) => {
+    setPrintedPayment({
+      id: txn.id,
+      created_at: txn.payment_date || new Date().toISOString(),
+      payment_method: txn.payment_method,
+      amount: txn.amount_paid,
+      customer_name: bill?.supplier_name || "Vendor",
+      cashier_name: "Admin"
+    });
+    
+    // Slight delay to allow state to set
+    setTimeout(() => {
+      triggerThermalPrint();
+    }, 100);
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -33,7 +54,7 @@ export function PaymentHistory() {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <History className="text-primary size-6" /> Payment History
+            <History className="text-primary size-6" /> Payments Out
           </h2>
           <p className="text-sm text-slate-400">Comprehensive timeline of all vendor settlements.</p>
         </div>
@@ -50,6 +71,7 @@ export function PaymentHistory() {
                 <th className="py-4 px-6 text-right">Amount Paid</th>
                 <th className="py-4 px-6">Payment Mode</th>
                 <th className="py-4 px-6 text-right">Transaction Ref</th>
+                <th className="py-4 px-6 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -62,7 +84,7 @@ export function PaymentHistory() {
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-muted-foreground font-semibold">
+                  <td colSpan={7} className="py-16 text-center text-muted-foreground font-semibold">
                     No vendor payments recorded yet.
                   </td>
                 </tr>
@@ -81,6 +103,17 @@ export function PaymentHistory() {
                       </td>
                       <td className="py-4 px-6 font-semibold">{txn.payment_method}</td>
                       <td className="py-4 px-6 font-mono text-xs text-muted-foreground text-right">{txn.reference_number || "—"}</td>
+                      <td className="py-4 px-6 text-center">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                          onClick={() => handlePrint(txn, bill)}
+                          title="Print Receipt"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </Button>
+                      </td>
                     </tr>
                   );
                 })
@@ -89,6 +122,12 @@ export function PaymentHistory() {
           </table>
         </div>
       </Card>
+
+      {printedPayment && (
+        <ThermalReceiptPrinter 
+          bill={printedPayment} 
+        />
+      )}
     </div>
   );
 }

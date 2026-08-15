@@ -150,6 +150,7 @@ export const nav: NavGroup[] = [
           { to: "/inventory?tab=stock_overview", label: "Stock Overview", icon: BarChart3 },
           { to: "/inventory?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList },
           { to: "/inventory?tab=goods_issue", label: "Goods Issue", icon: Truck },
+          { to: "/inventory?tab=delivery_challans", label: "Delivery Challans", icon: FileCheck },
           { to: "/inventory?tab=stock_movement", label: "Stock Movement", icon: ArrowRightLeft },
           { to: "/inventory?tab=stock_adjustment", label: "Stock Adjustment", icon: Sliders },
           { to: "/inventory?tab=stock_transfer", label: "Stock Transfer", icon: Truck },
@@ -254,7 +255,7 @@ export const nav: NavGroup[] = [
         subItems: [
           { to: "/procurement?tab=vendor_bills", label: "Bills", icon: CreditCard },
           { to: "/procurement?tab=pending_payments", label: "Pending Payments", icon: Timer },
-          { to: "/procurement?tab=payment_history", label: "Payment History", icon: History },
+          { to: "/procurement?tab=payment_history", label: "Payments Out", icon: History },
           { to: "/procurement?tab=credit_notes", label: "Credit Notes", icon: FileCheck },
           { to: "/procurement?tab=debit_notes", label: "Debit Notes", icon: FileCheck },
         ]
@@ -279,6 +280,7 @@ export const nav: NavGroup[] = [
     group: "POS", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
       { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/pos?tab=sales", label: "Sales", icon: Receipt },
+      { to: "/pos?tab=payment_in", label: "PAYMENT IN", icon: Wallet },
       { 
         to: "/pos?tab=terminal", 
         label: "Terminal", 
@@ -292,35 +294,7 @@ export const nav: NavGroup[] = [
           { to: "/pos?tab=terminal&view=price_check", label: "Price Check", icon: Tag },
           { to: "/pos?tab=terminal&view=favorites", label: "Favorites", icon: Heart },
           { to: "/pos?tab=terminal&view=recent", label: "Recent Bills", icon: History },
-          { to: "/pos?tab=terminal&view=ai_suggest", label: "AI Suggestions", icon: Sparkles },
-          { to: "/pos?tab=store_operations", label: "Store Operations", icon: Store },
-          { to: "/pos?tab=returns", label: "Return / Exchange", icon: ArrowRightLeft }
-        ]
-      },
-      {
-        to: "/pos?tab=store_operations",
-        label: "Store Operations",
-        icon: Store,
-        subItems: [
-          { to: "/pos?tab=store_operations&view=shift", label: "Shift Management", icon: Clock },
-          { to: "/pos?tab=store_operations&view=drawer", label: "Cash Drawer", icon: Store },
-          { to: "/pos?tab=store_operations&view=terminal", label: "Terminal Settings", icon: Settings },
-          { to: "/pos?tab=store_operations&view=printer", label: "Receipt Printer", icon: FileCheck },
-          { to: "/pos?tab=store_operations&view=scanner", label: "Barcode Scanner", icon: ScanBarcode },
-          { to: "/pos?tab=store_operations&view=label", label: "Label Printer", icon: Tags },
-          { to: "/pos?tab=store_operations&view=display", label: "Customer Display", icon: Monitor },
-          { to: "/pos?tab=store_operations&view=scale", label: "Weight Scale", icon: Scale },
-        ]
-      },
-      {
-        to: "/pos?tab=returns",
-        label: "Returns & Exchange",
-        icon: ArrowRightLeft,
-        subItems: [
-          { to: "/pos?tab=returns&view=returns", label: "Returns", icon: ArrowRightLeft },
-          { to: "/pos?tab=returns&view=exchange", label: "Exchange", icon: RefreshCw },
-          { to: "/pos?tab=returns&view=refund", label: "Refund", icon: CreditCard },
-          { to: "/pos?tab=returns&view=damaged", label: "Damaged Products", icon: AlertTriangle },
+          { to: "/pos?tab=terminal&view=ai_suggest", label: "AI Suggestions", icon: Sparkles }
         ]
       }
     ]

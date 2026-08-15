@@ -387,6 +387,38 @@ class InvoiceReturnLine(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  DELIVERY CHALLAN
+# ═══════════════════════════════════════════════════════════════════
+
+class DeliveryChallan(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "delivery_challans"
+
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("ar_invoices.id", ondelete="SET NULL"))
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"))
+    challan_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    challan_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="draft") # draft, dispatched, delivered, returned
+    
+    transporter_name: Mapped[str | None] = mapped_column(String(150))
+    vehicle_number: Mapped[str | None] = mapped_column(String(50))
+    waybill_number: Mapped[str | None] = mapped_column(String(100))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    items: Mapped[list["DeliveryChallanItem"]] = relationship(back_populates="challan", cascade="all, delete-orphan")
+
+
+class DeliveryChallanItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "delivery_challan_items"
+
+    challan_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("delivery_challans.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[float] = mapped_column(Numeric(12, 3), default=0)
+    uom: Mapped[str | None] = mapped_column(String(50))
+
+    challan: Mapped["DeliveryChallan"] = relationship(back_populates="items")
+
+# ═══════════════════════════════════════════════════════════════════
 #  BANK MANAGEMENT
 # ═══════════════════════════════════════════════════════════════════
 

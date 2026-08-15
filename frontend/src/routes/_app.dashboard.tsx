@@ -22,6 +22,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { useI18n } from "@/contexts/i18n-context";
 import { useQuery } from "@tanstack/react-query";
 import { workspaceApi } from "@/lib/workspace-api";
+import { useCurrency } from "@/hooks/use-currency";
 import { KpiTile } from "@/components/dashboard/kpi-tile";
 import { AiInsightsPanel } from "@/components/dashboard/ai-insights-panel";
 import { Section } from "@/components/dashboard/section";
@@ -102,16 +103,21 @@ const qaTranslationMap: Record<string, string> = {
   "Run Payroll": "qa.run_payroll",
 };
 
-const fmt = (n: number) =>
-  n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` :
-  n >= 1_000     ? `$${(n / 1_000).toFixed(0)}K`     : `$${n}`;
-
 function Dashboard() {
   const { user } = useAuth();
   const { tenant: company } = useTenant();
   const { language, t } = useI18n();
+  const { currency, exchangeRates, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [salesRange, setSalesRange] = useState("month");
+
+  const rate = exchangeRates[currency.code] || 1;
+  const fmt = (n: number) => {
+    const amount = n * rate;
+    if (amount >= 1_000_000) return `${currency.symbol}${(amount / 1_000_000).toFixed(2)}M`;
+    if (amount >= 1_000) return `${currency.symbol}${(amount / 1_000).toFixed(0)}K`;
+    return formatCurrency(amount);
+  };
 
   const { data: dashboardData, isLoading: kpisLoading } = useQuery({
     queryKey: ["dashboard-kpis"],
@@ -272,8 +278,8 @@ function Dashboard() {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis dataKey="month" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}k`} />
-            <Tooltip contentStyle={tooltipStyle} />
+            <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={fmt} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatCurrency(value)} />
             <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
             <Area type="monotone" name="Revenue"  dataKey="revenue"  stroke="var(--brand-blue)"   strokeWidth={2.5} fill="url(#rev)" />
             <Area type="monotone" name="Expenses" dataKey="expenses" stroke="var(--brand-purple)" strokeWidth={2.5} fill="url(#exp)" />
@@ -345,8 +351,8 @@ function Dashboard() {
             <BarChart data={displayBranchPerformance} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="branch" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--muted)", opacity: 0.3 }} />
+              <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={fmt} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--muted)", opacity: 0.3 }} formatter={(value: number) => formatCurrency(value)} />
               <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
               <Bar name="Revenue" dataKey="revenue" fill="var(--brand-blue)"   radius={[6, 6, 0, 0]} />
               <Bar name="Profit"  dataKey="profit"  fill="var(--brand-purple)" radius={[6, 6, 0, 0]} />
