@@ -41,3 +41,5 @@ frontend/.env.production
 *.njsproj
 *.sln
 *.sw?
+backend/src/images/
+backend/whatsapp_gateway/.wwebjs_auth/

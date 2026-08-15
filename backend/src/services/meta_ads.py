@@ -164,6 +164,7 @@ class MetaAdsClient:
                 "link_data": {
                     "image_hash": image_hash,
                     "message": message,
+                    "link": link or f"https://www.facebook.com/{page_id}",
                     "call_to_action": {"type": cta_type},
                 },
             }
