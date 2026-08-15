@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus, X, RefreshCw, Send, Trash2, Eye,
+  Plus, X, RefreshCw, Send, Trash2, Eye, ExternalLink,
   Loader2, Megaphone, DollarSign, MousePointerClick,
   Layers, Users, TrendingUp
 } from "lucide-react";
@@ -216,9 +216,31 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
                 {campaigns.map((camp) => (
                   <tr key={camp.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
                     <td className="p-3">
-                      <div className="space-y-0.5">
-                        <p className="text-xs font-bold text-foreground">{camp.name}</p>
-                        <p className="text-[10px] font-mono text-muted-foreground">{camp.meta_campaign_id}</p>
+                      <div className="flex items-center gap-3">
+                        {/* Ad thumbnail */}
+                        <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border border-border bg-muted flex items-center justify-center">
+                          {camp.ad_image_url ? (
+                            <img
+                              src={camp.ad_image_url}
+                              alt={camp.ad_headline || camp.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            <Megaphone className="size-5 text-muted-foreground/50" />
+                          )}
+                        </div>
+                        <div className="space-y-0.5 min-w-0">
+                          <p className="text-xs font-bold text-foreground truncate max-w-[160px]">
+                            {camp.ad_headline || camp.name}
+                          </p>
+                          {camp.ad_body && (
+                            <p className="text-[10px] text-muted-foreground truncate max-w-[160px]">
+                              {camp.ad_body}
+                            </p>
+                          )}
+                          <p className="text-[10px] font-mono text-muted-foreground/60">{camp.id}</p>
+                        </div>
                       </div>
                     </td>
                     <td className="p-3">
@@ -247,24 +269,40 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => handleViewInsights(camp.id)}
-                          className="p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer"
-                          title="View Insights"
+                          className="p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer text-muted-foreground hover:text-foreground"
+                          title="View Insights & Details"
                         >
-                          <Eye className="size-3.5 text-muted-foreground" />
+                          <Eye className="size-3.5" />
                         </button>
+                        {tokenInfo?.ad_account_id && (
+                          <a
+                            href={`https://www.facebook.com/adsmanager/manage/campaigns?act=${tokenInfo.ad_account_id.replace("act_", "")}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg hover:bg-blue-500/10 text-blue-500 transition-colors cursor-pointer"
+                            title="View Live Ad in Meta Ads Manager"
+                          >
+                            <ExternalLink className="size-3.5" />
+                          </a>
+                        )}
                         {camp.status !== "DELETED" && (
                           <>
                             <button
-                              onClick={() => handleActivate(camp.id, camp.status === "ACTIVE" ? "PAUSED" : "ACTIVE")}
-                              disabled={activating === camp.id}
-                              className="p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
-                              title={camp.status === "ACTIVE" ? "Pause" : "Resume"}
+                              onClick={() => handleActivate(camp.id || camp.meta_campaign_id, camp.status === "ACTIVE" ? "PAUSED" : "ACTIVE")}
+                              disabled={activating === (camp.id || camp.meta_campaign_id)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 ${
+                                camp.status === "ACTIVE"
+                                  ? "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+                                  : "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
+                              }`}
+                              title={camp.status === "ACTIVE" ? "Click to Pause" : "Click to Activate"}
                             >
-                              {activating === camp.id ? (
-                                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                              {activating === (camp.id || camp.meta_campaign_id) ? (
+                                <Loader2 className="size-3 animate-spin" />
                               ) : (
-                                <Send className="size-3.5 text-muted-foreground" />
+                                <Send className="size-3" />
                               )}
+                              {camp.status === "ACTIVE" ? "Pause" : "Activate"}
                             </button>
                             <button
                               onClick={() => handleArchive(camp.id)}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Download, Search, ArrowRight, Clock, AlertTriangle, RefreshCw, Loader2, X, Save, AlertCircle, CheckCircle } from "lucide-react";
+import { Plus, Download, Search, ArrowRight, Clock, AlertTriangle, RefreshCw, Loader2, X, Save, AlertCircle, CheckCircle, MessageCircle } from "lucide-react";
 import { invoicesApi, Invoice } from "@/lib/api-client";
 import { toast } from "sonner";
 import { fmt, statusStyle } from "@/components/accounting/utils";
@@ -28,6 +28,8 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     invoice_type: "tax_invoice",
     currency_code: "INR",
+    payment_method: "cash",
+    payment_status: "paid",
   });
   const [lines, setLines] = useState([
     { product_name: "", quantity: 1, unit_price: 0, tax_rate: 18 }
@@ -74,6 +76,11 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="billing@acme.com" />
             </div>
             <div>
+              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">WhatsApp Phone (for invoice delivery) *</label>
+              <input type="tel" value={form.customer_phone} onChange={e => setForm(p => ({ ...p, customer_phone: e.target.value.replace(/\D/g, "") }))} required
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="919876543210 (with country code)" />
+            </div>
+            <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Invoice Date *</label>
               <input type="date" value={form.invoice_date} onChange={e => setForm(p => ({ ...p, invoice_date: e.target.value }))} required
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
@@ -84,6 +91,30 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
           </div>
+
+          {/* Payment Settings */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Payment Method</label>
+              <select value={form.payment_method} onChange={e => setForm(p => ({ ...p, payment_method: e.target.value }))}
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20">
+                <option value="credit">Credit</option>
+                <option value="cash">Cash</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="upi">UPI</option>
+                <option value="card">Card</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Payment Status</label>
+              <select value={form.payment_status} onChange={e => setForm(p => ({ ...p, payment_status: e.target.value }))}
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20">
+                <option value="paid">Paid</option>
+                <option value="unpaid">Unpaid (Draft)</option>
+              </select>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-bold text-foreground">Invoice Items</h3>
@@ -197,6 +228,20 @@ export function Receivables({ tab = "invoices" }: Props) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState<Record<string, boolean>>({});
+
+  const handleSendToWhatsApp = async (id: string) => {
+    setSendingWhatsApp(p => ({ ...p, [id]: true }));
+    try {
+      const res = await invoicesApi.sendInvoiceToWhatsApp(id);
+      if (res.success) {
+        toast.success("Invoice PDF sent via WhatsApp!");
+      } else {
+        toast.error(res.error || "Failed to send via WhatsApp");
+      }
+    } catch { toast.error("Failed to send via WhatsApp"); }
+    finally { setSendingWhatsApp(p => ({ ...p, [id]: false })); }
+  };
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   const loadInvoices = useCallback(async () => {

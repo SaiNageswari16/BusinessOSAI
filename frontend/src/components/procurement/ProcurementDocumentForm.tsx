@@ -1,0 +1,1144 @@
+import React, { useState, useEffect } from "react";
+import {
+  ArrowLeft,
+  ScanBarcode,
+  Plus,
+  Trash2,
+  FileText,
+  Save,
+  Building,
+  User,
+  Calendar,
+  CreditCard,
+  Package,
+  Receipt,
+  Truck,
+  CheckCircle,
+  Clock,
+  Sparkles,
+  Info
+} from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
+import { inventoryApi, posApi } from "@/lib/api-client";
+import { toast } from "sonner";
+
+export type ProcurementDocType = "PR" | "PO" | "PINV";
+
+interface ProcurementItem {
+  id: string;
+  product_id?: string;
+  product_name: string;
+  hsn_code?: string;
+  batch_number?: string;
+  expiry_date?: string;
+  mfg_date?: string;
+  mrp: number;
+  quantity: number;
+  unit_price: number;
+  discount_value: number;
+  discount_type: "percent" | "amount";
+  tax_rate: number;
+}
+
+interface AdditionalCharge {
+  id: string;
+  name: string;
+  amount: number;
+}
+
+interface ProcurementDocumentFormProps {
+  docType: ProcurementDocType;
+  onClose: () => void;
+  onSaved?: () => void;
+  initialData?: any;
+}
+
+export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData }: ProcurementDocumentFormProps) {
+  // Master data
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  // Form State
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+  const [docNumber, setDocNumber] = useState<string>("");
+  const [originalRefNo, setOriginalRefNo] = useState<string>("");
+  const [docDate, setDocDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState<string>(
+    new Date(Date.now() + 86400000 * 30).toISOString().slice(0, 10)
+  );
+  const [paymentTerms, setPaymentTerms] = useState<string>("30");
+  const [barcodeInput, setBarcodeInput] = useState<string>("");
+  const [notes, setNotes] = useState<string>(
+    docType === "PR"
+      ? "1. Material required for quarterly inventory stock replenishment.\n2. Inspection required upon delivery."
+      : "1. Goods once supplied will be inspected against PO specifications.\n2. All disputes subject to local jurisdiction."
+  );
+
+  // Line items
+  const [items, setItems] = useState<ProcurementItem[]>([]);
+
+  // Additional Charges & Rounding
+  const [customCharges, setCustomCharges] = useState<AdditionalCharge[]>([]);
+  const [autoRoundOff, setAutoRoundOff] = useState<boolean>(true);
+  const [amountPaid, setAmountPaid] = useState<number | "">(0);
+
+  // Add Party Modal
+  const [isAddVendorOpen, setIsAddVendorOpen] = useState<boolean>(false);
+  const [newVendorName, setNewVendorName] = useState<string>("");
+  const [newVendorPhone, setNewVendorPhone] = useState<string>("");
+  const [newVendorGST, setNewVendorGST] = useState<string>("");
+
+  // Linked Sourcing Sync
+  const [approvedPRs, setApprovedPRs] = useState<any[]>([]);
+  const [rfqs, setRfqs] = useState<any[]>([]);
+  const [linkedPrId, setLinkedPrId] = useState<string>("");
+  const [linkedRfqId, setLinkedRfqId] = useState<string>("");
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const supps = await inventoryApi.getSuppliers().catch(() => []);
+        setSuppliers(supps || []);
+
+        const prods = await inventoryApi.getProducts().catch(() => ({ items: [] }));
+        setProducts(prods.items || []);
+
+        const prs = await inventoryApi.getPurchaseRequests().catch(() => []);
+        setApprovedPRs(prs || []);
+
+        const quotations = await inventoryApi.getPurchaseQuotations().catch(() => []);
+        setRfqs(quotations || []);
+
+        if (initialData) {
+          setDocNumber(initialData.order_number || initialData.po_number || initialData.bill_number || initialData.id || "DOC-2026-0001");
+          if (initialData.supplier_id) setSelectedSupplierId(initialData.supplier_id);
+          if (initialData.notes) setNotes(initialData.notes);
+          if (initialData.items && initialData.items.length > 0) {
+            setItems(initialData.items.map((it: any, idx: number) => {
+              const pName = it.product_name || it.name || "";
+              const foundProd = (prods.items || []).find((p: any) => 
+                (it.product_id && p.id === it.product_id) || 
+                (pName && p.name?.toLowerCase().trim() === pName.toLowerCase().trim())
+              );
+              const price = Number(it.unit_price || it.estimated_unit_cost || it.cost_price || it.mrp || it.selling_price || it.price) 
+                || (foundProd ? (Number(foundProd.cost_price) || Number(foundProd.selling_price) || Number(foundProd.mrp) || Number(foundProd.wholesale_price) || 0) : 0);
+              const mrpVal = Number(it.mrp) || (foundProd ? Number(foundProd.mrp) : 0) || price;
+
+              return {
+                id: it.id || String(idx + 1),
+                product_id: it.product_id || foundProd?.id,
+                product_name: pName || foundProd?.name || "Purchased Product",
+                hsn_code: it.hsn_code || foundProd?.hsn_code || "2202",
+                mrp: mrpVal,
+                quantity: Number(it.quantity) || 1,
+                unit_price: price,
+                discount_value: Number(it.discount_value) || 0,
+                discount_type: "percent",
+                tax_rate: Number(it.tax_rate) || 18
+              };
+            }));
+          }
+        } else {
+          if (supps && supps.length > 0) {
+            setSelectedSupplierId(supps[0].id);
+          }
+          const prefix = docType === "PR" ? "PR-2026-" : docType === "PO" ? "PO-2026-" : "PINV-2026-";
+          const randomSeq = Math.floor(1000 + Math.random() * 9000);
+          setDocNumber(`${prefix}${randomSeq}`);
+        }
+      } catch (err) {
+        console.error("Error initializing procurement form data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [docType, initialData]);
+
+  const handleSelectPRLink = (prId: string) => {
+    setLinkedPrId(prId);
+    setLinkedRfqId("");
+    const pr = approvedPRs.find((p) => p.id === prId);
+    if (pr && pr.items && pr.items.length > 0) {
+      if (pr.supplier_id) setSelectedSupplierId(pr.supplier_id);
+      setItems(
+        pr.items.map((it: any) => {
+          const prod = products.find((p) => p.id === it.product_id);
+          return {
+            id: Math.random().toString(36).substring(2, 9),
+            product_id: it.product_id,
+            product_name: it.product_name || prod?.name || "Material Item",
+            hsn_code: prod?.hsn_code || "2202",
+            mrp: prod?.mrp || prod?.selling_price || 0,
+            quantity: Number(it.quantity) || 1,
+            unit_price: Number(it.estimated_price) || prod?.cost_price || prod?.selling_price || 0,
+            discount_value: 0,
+            discount_type: "percent",
+            tax_rate: prod?.gst || 18,
+          };
+        })
+      );
+      toast.success(`Synced ${pr.items.length} line items from Approved ${pr.request_number}!`);
+    }
+  };
+
+  const handleSelectRFQLink = (rfqId: string) => {
+    setLinkedRfqId(rfqId);
+    setLinkedPrId("");
+    const rfq = rfqs.find((q) => q.id === rfqId);
+    if (rfq) {
+      if (rfq.supplier_id) setSelectedSupplierId(rfq.supplier_id);
+      if (rfq.items && rfq.items.length > 0) {
+        setItems(
+          rfq.items.map((it: any) => {
+            const prod = products.find((p) => p.id === it.product_id);
+            return {
+              id: Math.random().toString(36).substring(2, 9),
+              product_id: it.product_id,
+              product_name: it.product_name || prod?.name || "Material Item",
+              hsn_code: prod?.hsn_code || "2202",
+              mrp: prod?.mrp || prod?.selling_price || 0,
+              quantity: Number(it.quantity) || 1,
+              unit_price: Number(it.unit_price) || prod?.cost_price || 0,
+              discount_value: 0,
+              discount_type: "percent",
+              tax_rate: prod?.gst || 18,
+            };
+          })
+        );
+        toast.success(`Synced ${rfq.items.length} line items from Awarded RFQ ${rfq.quotation_number}!`);
+      }
+    }
+  };
+
+  // Selected supplier details
+  const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId);
+
+  // Line item handlers
+  const handleAddItem = () => {
+    setItems([
+      ...items,
+      {
+        id: Math.random().toString(36).substring(2, 9),
+        product_name: "",
+        hsn_code: "",
+        batch_number: "",
+        expiry_date: "",
+        mfg_date: "",
+        mrp: 0,
+        quantity: 1,
+        unit_price: 0,
+        discount_value: 0,
+        discount_type: "percent",
+        tax_rate: 18,
+      },
+    ]);
+  };
+
+  const removeItem = (id: string) => {
+    setItems(items.filter((it) => it.id !== id));
+  };
+
+  const updateItem = (id: string, field: keyof ProcurementItem, value: any) => {
+    setItems(
+      items.map((it) => {
+        if (it.id === id) {
+          const updated = { ...it, [field]: value };
+          if (field === "product_id" && value) {
+            const product = products.find((p) => p.id === value);
+            if (product) {
+              updated.product_name = product.name;
+              updated.hsn_code = product.hsn_code || "2202";
+              updated.mrp = product.mrp || product.selling_price || 0;
+              updated.unit_price = product.cost_price || product.selling_price || 0;
+              updated.tax_rate = product.tax_percent || 18;
+            }
+          }
+          return updated;
+        }
+        return it;
+      })
+    );
+  };
+
+  // Barcode Submit Handler
+  const handleBarcodeSubmit = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && barcodeInput.trim() !== "") {
+      const code = barcodeInput.trim();
+      const product = products.find((p) => p.barcode === code || p.sku === code);
+      if (product) {
+        setItems((prev) => [
+          ...prev,
+          {
+            id: Math.random().toString(36).substring(2, 9),
+            product_id: product.id,
+            product_name: product.name,
+            hsn_code: product.hsn_code || "2202",
+            batch_number: `B-${Date.now().toString().slice(-4)}`,
+            mrp: product.mrp || product.selling_price || 0,
+            quantity: 1,
+            unit_price: product.cost_price || product.selling_price || 0,
+            discount_value: 0,
+            discount_type: "percent",
+            tax_rate: product.tax_percent || 18,
+          },
+        ]);
+        toast.success(`Added ${product.name} to list`);
+        setBarcodeInput("");
+        return;
+      }
+
+      // External Barcode Lookup
+      try {
+        toast.info(`Searching barcode ${code}...`);
+        const res = await posApi.lookupBarcode(code);
+        if (res && res.success && res.product) {
+          const p = res.product;
+          setItems((prev) => [
+            ...prev,
+            {
+              id: Math.random().toString(36).substring(2, 9),
+              product_id: p.id,
+              product_name: p.name,
+              hsn_code: "2202",
+              mrp: p.mrp || p.selling_price || 0,
+              quantity: 1,
+              unit_price: p.selling_price || p.mrp || 0,
+              discount_value: 0,
+              discount_type: "percent",
+              tax_rate: p.gst || 18,
+            },
+          ]);
+          toast.success(`Found & Added: ${p.name}`);
+          setBarcodeInput("");
+        } else {
+          toast.error("Barcode not found in catalog");
+        }
+      } catch (err: any) {
+        toast.error("Barcode search error");
+      }
+    }
+  };
+
+  // Additional Charges
+  const handleAddCharge = () => {
+    setCustomCharges([
+      ...customCharges,
+      { id: Math.random().toString(36).substring(2, 9), name: "Freight / Transport Charges", amount: 0 },
+    ]);
+  };
+
+  const handleUpdateCharge = (id: string, field: "name" | "amount", value: any) => {
+    setCustomCharges(
+      customCharges.map((c) => (c.id === id ? { ...c, [field]: field === "amount" ? Number(value) || 0 : value } : c))
+    );
+  };
+
+  const handleDeleteCharge = (id: string) => {
+    setCustomCharges(customCharges.filter((c) => c.id !== id));
+  };
+
+  // Financial Calculations
+  let subtotal = 0;
+  let totalTax = 0;
+
+  items.forEach((it) => {
+    const lineGross = it.quantity * it.unit_price;
+    const dAmt =
+      it.discount_type === "percent"
+        ? lineGross * (it.discount_value / 100)
+        : Math.min(it.discount_value, lineGross);
+    const lineTaxable = Math.max(0, lineGross - dAmt);
+    const lineTax = lineTaxable * (it.tax_rate / 100);
+
+    subtotal += lineGross;
+    totalTax += lineTax;
+  });
+
+  const additionalChargesTotal = customCharges.reduce((acc, c) => acc + c.amount, 0);
+  const rawTotal = subtotal + totalTax + additionalChargesTotal;
+  const roundedTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
+  const roundOffAmount = roundedTotal - rawTotal;
+  const paidVal = typeof amountPaid === "number" ? amountPaid : 0;
+  const balanceDue = Math.max(0, roundedTotal - paidVal);
+
+  // Submit Handler
+  const handleSaveDocument = async () => {
+    if (items.length === 0) return toast.error("Please add at least one item to the document.");
+    if (docType !== "PR" && !selectedSupplierId) return toast.error("Please select a vendor/supplier party.");
+
+    setIsSaving(true);
+    try {
+      if (docType === "PR") {
+        const requesterId = "00000000-0000-0000-0000-000000000000";
+        await inventoryApi.createPurchaseRequest({
+          request_number: docNumber,
+          requester_id: requesterId,
+          items: items.map((it) => ({
+            product_id: it.product_id || products[0]?.id,
+            quantity: Number(it.quantity),
+            estimated_price: Number(it.unit_price),
+          })),
+        });
+        toast.success(`Purchase Requisition ${docNumber} created successfully!`);
+      } else if (docType === "PO") {
+        await inventoryApi.createPurchaseOrder({
+          po_number: docNumber,
+          supplier_id: selectedSupplierId,
+          items: items.map((it) => ({
+            product_id: it.product_id || products[0]?.id,
+            quantity: Number(it.quantity),
+            unit_price: Number(it.unit_price),
+            tax_percent: Number(it.tax_rate),
+          })),
+        });
+        toast.success(`Purchase Order ${docNumber} issued successfully!`);
+      } else {
+        await inventoryApi.createVendorBill({
+          bill_number: docNumber,
+          purchase_order_id: products[0]?.id || "",
+          total_amount: roundedTotal,
+          due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+        });
+        toast.success(`Purchase Invoice ${docNumber} recorded successfully!`);
+      }
+
+      if (onSaved) onSaved();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save procurement document");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Quick Add Vendor GST Verification Handler
+  const [isVerifyingVendorGst, setIsVerifyingVendorGst] = useState(false);
+
+  const handleVerifyVendorGst = async () => {
+    const cleanGst = (newVendorGST || "").trim().toUpperCase();
+    if (!cleanGst || cleanGst.length !== 15) {
+      return toast.error("Please enter a valid 15-character GSTIN Number.");
+    }
+    setIsVerifyingVendorGst(true);
+    try {
+      const res = await inventoryApi.verifyGstin(cleanGst);
+      if (res && res.valid) {
+        if (res.trade_name || res.legal_name) setNewVendorName(res.trade_name || res.legal_name);
+        if (res.gstin) setNewVendorGST(res.gstin);
+        toast.success(`GST Portal Verified! Auto-filled vendor name: "${res.trade_name || res.legal_name}"`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to fetch details from GST portal");
+    } finally {
+      setIsVerifyingVendorGst(false);
+    }
+  };
+
+  // Add Vendor Party Handler
+  const handleAddVendorSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVendorName.trim()) return toast.error("Vendor name is required");
+    const newSupp = {
+      id: `supp-${Date.now()}`,
+      name: newVendorName.trim(),
+      phone: newVendorPhone.trim() || "+91 98765 43210",
+      tax_number: newVendorGST.trim() || "37AAAAA0000A1Z5",
+      address: "Industrial Area, Phase II",
+    };
+    setSuppliers([newSupp, ...suppliers]);
+    setSelectedSupplierId(newSupp.id);
+    setIsAddVendorOpen(false);
+    setNewVendorName("");
+    setNewVendorPhone("");
+    setNewVendorGST("");
+    toast.success(`Vendor Party "${newSupp.name}" created and selected!`);
+  };
+
+  return (
+    <div className="bg-slate-50/50 min-h-screen p-4 md:p-6 text-slate-800 space-y-6 max-w-[1600px] mx-auto pb-24">
+      {/* Top Header / Bar */}
+      <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onClose}
+            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all font-bold text-xs flex items-center gap-1"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back to List
+          </button>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
+                  docType === "PR"
+                    ? "bg-purple-100 text-purple-800 border border-purple-200"
+                    : docType === "PO"
+                    ? "bg-blue-100 text-blue-800 border border-blue-200"
+                    : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                }`}
+              >
+                {docType === "PR"
+                  ? "Purchase Requisition"
+                  : docType === "PO"
+                  ? "Purchase Order (PO)"
+                  : "Purchase Invoice / Bill"}
+              </span>
+              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
+                {docType === "PR"
+                  ? "Create Purchase Requisition"
+                  : docType === "PO"
+                  ? "Create Purchase Order (PO)"
+                  : "Create Purchase Invoice"}
+              </h1>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1">
+              <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              {docType === "PR"
+                ? "Internal departmental stock request. Unit prices are optional estimates until RFQ vendor quotes are awarded."
+                : docType === "PO"
+                ? "Official binding purchase contract sent to supplier with agreed unit prices and terms."
+                : "Record vendor purchase invoices, tax credits, and accounts payable."}
+            </p>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            disabled={isSaving}
+            onClick={onClose}
+            className="px-4 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={isSaving}
+            onClick={handleSaveDocument}
+            className="px-5 py-2.5 text-xs font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-1.5 uppercase tracking-wider disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            {isSaving
+              ? "Saving..."
+              : docType === "PR"
+              ? "Submit PR Request"
+              : docType === "PO"
+              ? "Issue Purchase Order"
+              : "Save Purchase Invoice"}
+          </button>
+        </div>
+      </div>
+
+      {/* Linked Sourcing Sync Card for PO and Purchase Invoices */}
+      {(docType === "PO" || docType === "PINV") && (
+        <div className="bg-blue-50/70 rounded-2xl border border-blue-200 shadow-sm p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 text-white rounded-xl shadow-sm">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-black text-blue-900 uppercase tracking-wider">
+                Sync & Pre-Fill from Previous Procurement Steps
+              </div>
+              <div className="text-[11px] text-blue-700 font-medium">
+                Import supplier & item specifications directly from Approved PRs or Awarded RFQ bids.
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-blue-800 block mb-0.5">
+                Linked Approved PR
+              </label>
+              <select
+                value={linkedPrId}
+                onChange={(e) => handleSelectPRLink(e.target.value)}
+                className="w-full md:w-64 h-9 bg-white border border-blue-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+              >
+                <option value="">-- Select Approved PR --</option>
+                {approvedPRs.map((pr) => (
+                  <option key={pr.id} value={pr.id}>
+                    {pr.request_number || pr.id.slice(0, 8)} (Est. ₹{pr.total_amount || 0})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-blue-800 block mb-0.5">
+                Linked Awarded RFQ
+              </label>
+              <select
+                value={linkedRfqId}
+                onChange={(e) => handleSelectRFQLink(e.target.value)}
+                className="w-full md:w-64 h-9 bg-white border border-blue-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+              >
+                <option value="">-- Select Awarded RFQ --</option>
+                {rfqs.map((rfq) => (
+                  <option key={rfq.id} value={rfq.id}>
+                    {rfq.quotation_number} ({rfq.supplier_name || "Vendor Quote"})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top 2-Column Section: Bill From / Vendor Party + Document Metadata */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Bill From / Vendor Party Card (2 Cols on lg) */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <Building className="w-4 h-4 text-blue-600" />
+              {docType === "PR" ? "Target Supplier / Vendor (Optional)" : "Bill From / Vendor Party"}
+            </h2>
+
+            <button
+              type="button"
+              onClick={() => setIsAddVendorOpen(true)}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1 rounded-xl transition-all flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add New Vendor
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+                Select Vendor / Supplier
+              </label>
+              <select
+                value={selectedSupplierId}
+                onChange={(e) => setSelectedSupplierId(e.target.value)}
+                className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">-- Select Vendor / Supplier Party --</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} {s.tax_number ? `(${s.tax_number})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedSupplier ? (
+              <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 space-y-1 text-xs">
+                <div className="font-extrabold text-slate-900">{selectedSupplier.name}</div>
+                <div className="text-slate-600 text-[11px]">Phone: {selectedSupplier.phone || "N/A"}</div>
+                {selectedSupplier.tax_number && (
+                  <div className="font-mono text-blue-700 font-bold text-[11px]">
+                    GSTIN: {selectedSupplier.tax_number}
+                  </div>
+                )}
+                {selectedSupplier.address && (
+                  <div className="text-slate-500 text-[10px] truncate">{selectedSupplier.address}</div>
+                )}
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-400 flex items-center justify-center italic">
+                Select an existing vendor or click "+ Add New Vendor"
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Document Metadata Card (1 Col on lg) */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-emerald-600" /> Document Metadata
+          </h2>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+                {docType === "PR" ? "PR No" : docType === "PO" ? "PO No" : "Invoice No"}
+              </label>
+              <input
+                type="text"
+                value={docNumber}
+                onChange={(e) => setDocNumber(e.target.value)}
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-mono font-bold text-slate-900 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1">Document Date</label>
+              <input
+                type="date"
+                value={docDate}
+                onChange={(e) => setDocDate(e.target.value)}
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold text-slate-800 outline-none"
+              />
+            </div>
+          </div>
+
+          {docType === "PINV" && (
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+                Original Vendor Bill / Ref No
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. VEND-9821"
+                value={originalRefNo}
+                onChange={(e) => setOriginalRefNo(e.target.value)}
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs outline-none"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Terms</label>
+              <select
+                value={paymentTerms}
+                onChange={(e) => {
+                  setPaymentTerms(e.target.value);
+                  const days = Number(e.target.value) || 0;
+                  const d = new Date(docDate);
+                  d.setDate(d.getDate() + days);
+                  setDueDate(d.toISOString().substring(0, 10));
+                }}
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold text-slate-800 outline-none"
+              >
+                <option value="0">Immediate / COD</option>
+                <option value="15">Net 15 Days</option>
+                <option value="30">Net 30 Days</option>
+                <option value="60">Net 60 Days</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1">Target / Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold text-slate-800 outline-none"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Line Items Table Component (MyBillBook / POS Style) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+            <Package className="w-4 h-4 text-emerald-600" /> Line Items & Required Materials ({items.length})
+          </h2>
+
+          {/* Barcode Search Box */}
+          <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-sm w-full md:w-80 focus-within:ring-2 focus-within:ring-blue-500">
+            <ScanBarcode className="w-4 h-4 text-slate-400 shrink-0" />
+            <input
+              type="text"
+              value={barcodeInput}
+              onChange={(e) => setBarcodeInput(e.target.value)}
+              onKeyDown={handleBarcodeSubmit}
+              placeholder="Scan barcode or type SKU..."
+              className="bg-transparent border-none text-xs text-slate-800 outline-none w-full"
+            />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider font-bold">
+              <tr>
+                <th className="px-3 py-3 w-10 text-center">#</th>
+                <th className="px-3 py-3 min-w-[220px]">Items / Services</th>
+                <th className="px-3 py-3 w-24">HSN/SAC</th>
+                <th className="px-3 py-3 w-24">Batch No</th>
+                <th className="px-3 py-3 w-28">Exp Date</th>
+                <th className="px-3 py-3 w-20 text-right">MRP (₹)</th>
+                <th className="px-3 py-3 w-20 text-right">Qty</th>
+                <th className="px-3 py-3 w-24 text-right">
+                  {docType === "PR" ? "Est. Price (₹)" : "Price/Item (₹)"}
+                </th>
+                <th className="px-3 py-3 w-24 text-right">Discount</th>
+                <th className="px-3 py-3 w-24 text-right">GST Tax %</th>
+                <th className="px-3 py-3 w-28 text-right font-bold">Amount (₹)</th>
+                <th className="px-3 py-3 w-12 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {items.length > 0 ? (
+                items.map((item, idx) => {
+                  const lineGross = item.quantity * item.unit_price;
+                  const dAmt =
+                    item.discount_type === "percent"
+                      ? lineGross * (item.discount_value / 100)
+                      : Math.min(item.discount_value, lineGross);
+                  const lineTaxable = Math.max(0, lineGross - dAmt);
+                  const lineTax = lineTaxable * (item.tax_rate / 100);
+                  const lineAmount = lineTaxable + lineTax;
+
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-3 py-2 text-center font-bold text-slate-400">{idx + 1}</td>
+
+                      {/* Product Selector with Autocomplete Search */}
+                      <td className="px-3 py-2 relative">
+                        <select
+                          value={item.product_id || ""}
+                          onChange={(e) => updateItem(item.id, "product_id", e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="">-- Catalog Product / Search Below --</option>
+                          {products.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.sku || p.barcode || "Item"})
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="Search or type item name..."
+                          value={item.product_name}
+                          onChange={(e) => {
+                            updateItem(item.id, "product_name", e.target.value);
+                            const matching = products.find(
+                              (p) => p.name.toLowerCase() === e.target.value.toLowerCase()
+                            );
+                            if (matching) {
+                              updateItem(item.id, "product_id", matching.id);
+                            }
+                          }}
+                          className="w-full mt-1 bg-transparent text-[11px] font-semibold text-slate-700 outline-none border-b border-dashed border-slate-300 focus:border-blue-500"
+                        />
+                      </td>
+
+                      {/* HSN */}
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          placeholder="2202"
+                          value={item.hsn_code || ""}
+                          onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs font-mono text-slate-700 outline-none"
+                        />
+                      </td>
+
+                      {/* Batch */}
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          placeholder="B-101"
+                          value={item.batch_number || ""}
+                          onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-slate-700 outline-none"
+                        />
+                      </td>
+
+                      {/* Expiry */}
+                      <td className="px-3 py-2">
+                        <input
+                          type="date"
+                          value={item.expiry_date || ""}
+                          onChange={(e) => updateItem(item.id, "expiry_date", e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-slate-700 outline-none"
+                        />
+                      </td>
+
+                      {/* MRP */}
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          value={item.mrp}
+                          onChange={(e) => updateItem(item.id, "mrp", Number(e.target.value) || 0)}
+                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700 outline-none"
+                        />
+                      </td>
+
+                      {/* Qty */}
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(item.id, "quantity", Number(e.target.value) || 1)}
+                          className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs text-right font-bold text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </td>
+
+                      {/* Unit Price */}
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          value={item.unit_price}
+                          onChange={(e) => updateItem(item.id, "unit_price", Number(e.target.value) || 0)}
+                          className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs text-right font-bold text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </td>
+
+                      {/* Discount */}
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={item.discount_value}
+                            onChange={(e) => updateItem(item.id, "discount_value", Number(e.target.value) || 0)}
+                            className="w-full bg-white border border-slate-200 rounded px-1 py-1 text-xs text-right text-slate-700 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateItem(item.id, "discount_type", item.discount_type === "percent" ? "amount" : "percent")
+                            }
+                            className="px-1 py-0.5 bg-slate-100 text-[9px] font-black rounded text-slate-600 hover:bg-slate-200"
+                          >
+                            {item.discount_type === "percent" ? "%" : "₹"}
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Tax Rate */}
+                      <td className="px-3 py-2 text-right">
+                        <select
+                          value={item.tax_rate}
+                          onChange={(e) => updateItem(item.id, "tax_rate", Number(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded px-1 py-1 text-xs text-right font-bold text-slate-700 outline-none"
+                        >
+                          <option value="0">0%</option>
+                          <option value="5">5%</option>
+                          <option value="12">12%</option>
+                          <option value="18">18%</option>
+                          <option value="28">28%</option>
+                        </select>
+                      </td>
+
+                      {/* Line Amount */}
+                      <td className="px-3 py-2 text-right font-black text-slate-900 text-xs">
+                        ₹{lineAmount.toFixed(2)}
+                      </td>
+
+                      {/* Action */}
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={12} className="py-12 text-center text-slate-400">
+                    <Package className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    No line items added yet. Click "+ Add Line Item" or scan a barcode above.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="p-3 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={handleAddItem}
+            className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-blue-600 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Line Item
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom Grid: Terms & Conditions + Financial Summary Card */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Terms & Conditions Box */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2 border-b border-slate-100 pb-2">
+            <FileText className="w-4 h-4 text-purple-600" /> Terms & Conditions / Departmental Notes
+          </h2>
+
+          <textarea
+            rows={5}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {/* Financial Summary Box */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-blue-600" /> Billing Financial Summary
+          </h2>
+
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between text-slate-600">
+              <span>Gross Subtotal Amount:</span>
+              <span className="font-bold text-slate-800">₹{subtotal.toFixed(2)}</span>
+            </div>
+
+            {/* Custom Additional Charges */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] font-bold text-slate-700">Additional Charges (Freight, Packing)</span>
+                <button
+                  type="button"
+                  onClick={handleAddCharge}
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md"
+                >
+                  + Add Charge Field
+                </button>
+              </div>
+
+              {customCharges.map((charge) => (
+                <div key={charge.id} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Charge Name (e.g. Freight)"
+                    value={charge.name}
+                    onChange={(e) => handleUpdateCharge(charge.id, "name", e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 outline-none"
+                  />
+                  <input
+                    type="number"
+                    value={charge.amount}
+                    onChange={(e) => handleUpdateCharge(charge.id, "amount", e.target.value)}
+                    className="w-24 bg-white border border-slate-200 rounded px-2 py-1 text-xs text-right font-bold text-slate-800 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCharge(charge.id)}
+                    className="p-1 text-slate-400 hover:text-rose-600"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-between text-slate-600">
+              <span>GST Tax Amount:</span>
+              <span className="font-bold text-slate-800">+₹{totalTax.toFixed(2)}</span>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={autoRoundOff}
+                  onChange={(e) => setAutoRoundOff(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600"
+                />
+                Auto Round-Off ({roundOffAmount >= 0 ? `+₹${roundOffAmount.toFixed(2)}` : `-₹${Math.abs(roundOffAmount).toFixed(2)}`})
+              </label>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-base font-extrabold text-slate-900">
+              <span>Grand Total Amount:</span>
+              <span className="text-2xl font-black text-blue-600">₹{roundedTotal.toFixed(2)}</span>
+            </div>
+
+            {docType === "PINV" && (
+              <div className="pt-3 border-t border-slate-200 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid (₹)</label>
+                  <input
+                    type="number"
+                    value={amountPaid}
+                    onChange={(e) => setAmountPaid(e.target.value ? Number(e.target.value) : "")}
+                    className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Balance Due (₹)</label>
+                  <div className="h-9 bg-rose-50 border border-rose-200 rounded-xl px-2.5 flex items-center font-black text-rose-700 text-xs">
+                    ₹{balanceDue.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Add Vendor Party Modal */}
+      {isAddVendorOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-[480px] w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Building className="w-5 h-5 text-blue-600" /> Create Vendor / Supplier Party
+            </h3>
+
+            <form onSubmit={handleAddVendorSubmit} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Supplier Company / Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Metro Wholesale Pvt Ltd"
+                  value={newVendorName}
+                  onChange={(e) => setNewVendorName(e.target.value)}
+                  className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
+                <input
+                  type="text"
+                  placeholder="+91 98765 43210"
+                  value={newVendorPhone}
+                  onChange={(e) => setNewVendorPhone(e.target.value)}
+                  className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">GSTIN Number</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    maxLength={15}
+                    placeholder="e.g. 27AAPCU0975E1ZS"
+                    value={newVendorGST}
+                    onChange={(e) => setNewVendorGST(e.target.value.toUpperCase())}
+                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 uppercase font-mono"
+                  />
+                  <button
+                    type="button"
+                    disabled={isVerifyingVendorGst}
+                    onClick={handleVerifyVendorGst}
+                    className="px-3 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shrink-0 shadow-sm disabled:opacity-50"
+                  >
+                    {isVerifyingVendorGst ? "Fetching..." : "Verify GST"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddVendorOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md"
+                >
+                  Create & Select Vendor
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

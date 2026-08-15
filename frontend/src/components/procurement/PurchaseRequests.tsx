@@ -1,32 +1,25 @@
 import { useState, useEffect } from "react";
+import React from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Plus, Package, Clock, ShieldCheck, Loader2, X } from "lucide-react";
+import { Plus, Package, Loader2, Eye, Printer, FileText } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+
+import { PurchaseRequisitionForm } from "./PurchaseRequisitionForm";
 
 export function PurchaseRequests() {
   const [requests, setRequests] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isOpen, setIsOpen] = useState(false);
-
-  const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [prNo, setPrNo] = useState("");
-  const [supplierId, setSupplierId] = useState("");
-  const [productId, setProductId] = useState("");
-  const [qty, setQty] = useState(1);
-  const [estimatedPrice, setEstimatedPrice] = useState(100);
+  const [isCreateMode, setIsCreateMode] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const supps = await inventoryApi.getSuppliers().catch(() => []);
-      setSuppliers(supps || []);
-
       const prs = await inventoryApi.getPurchaseRequests();
       setRequests(prs || []);
-
       const prodsRes = await inventoryApi.getProducts();
       setProducts(prodsRes.items || []);
     } catch (err: any) {
@@ -40,39 +33,22 @@ export function PurchaseRequests() {
     fetchData();
   }, []);
 
-  const handleOpenNew = () => {
-    const seq = String(requests.length + 1).padStart(4, '0');
-    setPrNo(`PR-2026-${seq}`);
-    setSupplierId(suppliers[0]?.id || "");
-    setProductId(products[0]?.id || "");
-    setQty(1);
-    setEstimatedPrice(100);
-    setIsOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!productId || !prNo.trim()) return toast.error("Please fill in all required fields");
-    try {
-      const requesterId = "00000000-0000-0000-0000-000000000000";
-      await inventoryApi.createPurchaseRequest({
-        request_number: prNo,
-        requester_id: requesterId,
-        items: [
-          {
-            product_id: productId,
-            quantity: Number(qty),
-            estimated_price: Number(estimatedPrice)
-          }
-        ]
-      });
-      toast.success("Purchase request submitted successfully");
-      setIsOpen(false);
-      fetchData();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to raise purchase request");
-    }
-  };
+  if (isCreateMode || selectedDoc) {
+    return (
+      <PurchaseRequisitionForm
+        initialData={selectedDoc}
+        onClose={() => {
+          setIsCreateMode(false);
+          setSelectedDoc(null);
+        }}
+        onSaved={() => {
+          setIsCreateMode(false);
+          setSelectedDoc(null);
+          fetchData();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6 text-foreground">
@@ -83,7 +59,7 @@ export function PurchaseRequests() {
           </h2>
           <p className="text-sm text-muted-foreground">Manage internal departmental requests for materials and services.</p>
         </div>
-        <Button onClick={handleOpenNew} className="gradient-brand text-white border-0 font-semibold rounded-lg shadow-sm">
+        <Button onClick={() => setIsCreateMode(true)} className="gradient-brand text-white border-0 font-semibold rounded-lg shadow-sm">
           <Plus className="size-4 mr-2" /> Raise PR
         </Button>
       </div>
@@ -99,162 +75,73 @@ export function PurchaseRequests() {
                 <th className="py-4 px-6 text-right">Total Amount</th>
                 <th className="py-4 px-6">Date Raised</th>
                 <th className="py-4 px-6">Status</th>
+                <th className="py-4 px-6 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-muted-foreground">
-                    <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-2" />
-                    Loading purchase requests...
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-primary" />
+                    Loading purchase requisitions...
                   </td>
                 </tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-muted-foreground font-semibold">
-                    No purchase requests raised yet. Click "Raise PR" to create one.
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                    No purchase requests found. Click "+ Raise PR" above to create a new requisition.
                   </td>
                 </tr>
               ) : (
-                requests.map((pr) => {
-                  const suppName = suppliers.find(s => s.id === pr.supplier_id)?.name || "Preferred Vendor";
-                  return (
-                    <tr key={pr.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="font-bold text-primary font-mono">{pr.request_number}</div>
-                      </td>
-                      <td className="py-4 px-6 font-semibold text-foreground">
-                        {suppName}
-                      </td>
-                      <td className="py-4 px-6">
-                        {pr.items && pr.items.length > 0 ? (
-                          <div className="space-y-1">
-                            {pr.items.map((it: any) => (
-                              <div key={it.id} className="text-foreground font-medium">
-                                • {it.product_name || "Unknown Product"} (x{it.quantity})
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">No items specified</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-right font-bold">
-                        ₹{pr.total_amount.toLocaleString("en-IN")}
-                      </td>
-                      <td className="py-4 px-6 font-mono text-xs text-muted-foreground">
-                        {pr.request_date ? new Date(pr.request_date).toLocaleDateString() : "—"}
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          pr.status === "Approved" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
-                        }`}>
-                          {pr.status === "Approved" ? <ShieldCheck className="size-3" /> : <Clock className="size-3" />}
-                          {pr.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
+                requests.map((req: any) => (
+                  <tr key={req.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="py-4 px-6 font-mono font-bold text-primary">{req.request_number || req.id.slice(0, 8)}</td>
+                    <td className="py-4 px-6 font-medium text-foreground">{req.supplier?.name || "General Supplier"}</td>
+                    <td className="py-4 px-6 text-muted-foreground">
+                      {req.items && req.items.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {req.items.map((it: any) => (
+                            <div key={it.id || it.product_id} className="text-xs font-semibold text-slate-800">
+                              • {it.product_name || "Material"} (x{it.quantity})
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span>1 material line item</span>
+                      )}
+                    </td>
+                    <td className="py-4 px-6 text-right font-extrabold text-foreground">
+                      ₹{Number(req.total_amount || 0).toLocaleString("en-IN")}
+                    </td>
+                    <td className="py-4 px-6 text-muted-foreground font-mono text-xs">
+                      {req.request_date || (req.created_at ? new Date(req.created_at).toLocaleDateString() : new Date().toLocaleDateString())}
+                    </td>
+                    <td className="py-4 px-6">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        req.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' :
+                        req.status === 'Pending' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' :
+                        'bg-blue-500/10 text-blue-600 border border-blue-500/20'
+                      }`}>
+                        {req.status || 'Draft'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-right">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setSelectedDoc(req)}
+                        className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10"
+                      >
+                        <Eye className="size-4" /> View / Edit Page
+                      </Button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
       </Card>
-
-      {/* Modal Dialog */}
-      {isOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border rounded-2xl w-full max-w-md p-6 shadow-xl space-y-4 text-foreground">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                <Package className="w-5 h-5 text-primary" />
-                Raise Purchase Request
-              </h3>
-              <button onClick={() => setIsOpen(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4 text-sm">
-              <div className="space-y-1.5">
-                <label className="font-semibold text-muted-foreground">PR Sequence Number *</label>
-                <input
-                  type="text"
-                  required
-                  value={prNo}
-                  onChange={(e) => setPrNo(e.target.value)}
-                  className="w-full p-2.5 bg-background border rounded-lg text-foreground text-sm font-mono focus:ring-1 focus:ring-primary focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-muted-foreground">Target Vendor / Supplier *</label>
-                <select
-                  required
-                  value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                  className="w-full p-2.5 bg-background border rounded-lg text-foreground text-sm cursor-pointer focus:ring-1 focus:ring-primary focus:outline-none"
-                >
-                  <option value="">Select Target Vendor / Supplier</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.code || 'Vendor'})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-muted-foreground">Select Product Material *</label>
-                <select
-                  required
-                  value={productId}
-                  onChange={(e) => setProductId(e.target.value)}
-                  className="w-full p-2.5 bg-background border rounded-lg text-foreground text-sm cursor-pointer focus:ring-1 focus:ring-primary focus:outline-none"
-                >
-                  <option value="">Choose Catalog Product</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name} (SKU: {p.sku})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-muted-foreground">Requested Quantity *</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={qty}
-                    onChange={(e) => setQty(Number(e.target.value))}
-                    className="w-full p-2.5 bg-background border rounded-lg text-foreground text-sm focus:ring-1 focus:ring-primary focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-muted-foreground">Est. Unit Price (₹)</label>
-                  <input
-                    type="number"
-                    required
-                    value={estimatedPrice}
-                    onChange={(e) => setEstimatedPrice(Number(e.target.value))}
-                    className="w-full p-2.5 bg-background border rounded-lg text-foreground text-sm focus:ring-1 focus:ring-primary focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" onClick={() => setIsOpen(false)} variant="outline" className="rounded-lg">
-                  Cancel
-                </Button>
-                <Button type="submit" className="gradient-brand text-white border-0 font-semibold rounded-lg">
-                  Submit Request
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

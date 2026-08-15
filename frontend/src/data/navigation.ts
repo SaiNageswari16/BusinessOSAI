@@ -219,17 +219,31 @@ export const nav: NavGroup[] = [
   {
     group: "Operations", theme: "teal", icon: Settings2, permission: "view:procurement", items: [
       {
+        to: "/procurement?tab=purchase_requests",
+        label: "Purchase Requisitions (PR)",
+        icon: Package,
+        permission: "view:procurement",
+        subItems: [
+          { to: "/procurement?tab=purchase_requests", label: "Raise PR (Requisition)", icon: Package },
+          { to: "/procurement?tab=purchase_approvals", label: "PR Approval (Manager)", icon: ShieldCheck },
+          { to: "/procurement?tab=purchase_quotations", label: "Request for Quotation (RFQ)", icon: Network },
+          { to: "/procurement?tab=purchase_orders", label: "Purchase Orders (PO)", icon: Truck },
+          { to: "/procurement?tab=goods_received_notes", label: "Goods Received Notes (GRN)", icon: Boxes },
+          { to: "/procurement?tab=vendor_bills", label: "Purchase Invoices & Bills", icon: CreditCard },
+          { to: "/procurement?tab=purchase_returns", label: "Purchase Returns", icon: ArrowRightLeft },
+        ]
+      },
+      {
         to: "/procurement?tab=suppliers",
         label: "Supplier Management",
         icon: Truck,
         permission: "view:procurement",
         subItems: [
-          { to: "/procurement?tab=suppliers", label: "Suppliers", icon: Store },
+          { to: "/procurement?tab=suppliers", label: "Suppliers & Vendors", icon: Store },
           { to: "/procurement?tab=supplier_categories", label: "Supplier Categories", icon: Layers },
           { to: "/procurement?tab=supplier_contacts", label: "Supplier Contacts", icon: Users },
           { to: "/procurement?tab=supplier_contracts", label: "Supplier Contracts", icon: Briefcase },
           { to: "/procurement?tab=supplier_performance", label: "Supplier Performance", icon: Activity },
-          { to: "/procurement?tab=supplier_ratings", label: "Supplier Ratings", icon: Target },
           { to: "/procurement?tab=blacklisted_suppliers", label: "Blacklisted Suppliers", icon: ShieldCheck },
         ]
       },
@@ -261,26 +275,6 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/procurement?tab=spend_analysis",
-        label: "Procurement Intelligence",
-        icon: BrainCircuit,
-        permission: "view:procurement",
-        subItems: [
-          { to: "/procurement?tab=spend_analysis", label: "Spend Analysis", icon: BarChart3 },
-          { to: "/procurement?tab=vendor_analytics", label: "Vendor Analytics", icon: LineChart },
-          { to: "/procurement?tab=ai_purchase_suggestions", label: "AI Purchase Suggestions", icon: Sparkles },
-          { to: "/procurement?tab=lead_time_analysis", label: "Lead Time Analysis", icon: Clock },
-          { to: "/procurement?tab=cost_analysis", label: "Cost Analysis", icon: Calculator },
-          { to: "/procurement?tab=procurement_forecast", label: "Procurement Forecast", icon: TrendingUp },
-        ]
-      },
-    ]
-  },
-  {
-    group: "POS", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
-      { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/pos?tab=sales", label: "Sales", icon: Receipt },
-      { to: "/pos?tab=payment_in", label: "PAYMENT IN", icon: Wallet },
       { 
         to: "/pos?tab=terminal", 
         label: "Terminal", 

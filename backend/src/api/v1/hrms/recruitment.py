@@ -42,7 +42,11 @@ from src.schemas.erp import (
 from src.utils.pagination import PaginatedResponse, paginate
 
 router = APIRouter(prefix="/hrms/recruitment", tags=["HRMS - Recruitment"])
-settings = get_settings()
+class _SettingsProxy:
+    def __getattr__(self, name):
+        return getattr(get_settings(), name)
+
+settings = _SettingsProxy()
 
 # ─── SMTP Live Email Dispatch Utility ───────────────────────────────────────────
 

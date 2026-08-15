@@ -14,7 +14,11 @@ from src.models.inventory import Product, Warehouse, StockMovement, MasterCatalo
 from src.models.procurement import Supplier, PurchaseOrder, VendorBill
 
 logger = logging.getLogger("reports_api")
-settings = get_settings()
+class _SettingsProxy:
+    def __getattr__(self, name):
+        return getattr(get_settings(), name)
+
+settings = _SettingsProxy()
 
 router = APIRouter(prefix="/analytics", tags=["Analytics & Intelligence"])
 

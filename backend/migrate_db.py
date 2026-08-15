@@ -149,20 +149,37 @@ async def migrate():
             except Exception as e:
                 logger.info(f"'job_openings.{col_name}' alter skipped or already widened: {e}")
 
-    # Add sales_points column to employees table
-    emp_cols = [
-        ("sales_points", "NUMERIC(12, 2) DEFAULT 0.0")
+    # Add is_tax_inclusive column to erp_products and erp_master_catalog
+    tax_mode_cols = [
+        ("erp_products", "is_tax_inclusive", "BOOLEAN DEFAULT TRUE"),
+        ("erp_master_catalog", "is_tax_inclusive", "BOOLEAN DEFAULT TRUE")
     ]
-    for name, col_type in emp_cols:
+    for table_name, name, col_type in tax_mode_cols:
         async with engine.begin() as conn:
             try:
-                await conn.execute(text(f"ALTER TABLE employees ADD COLUMN {name} {col_type}"))
-                logger.info(f"Successfully added '{name}' column to 'employees' table.")
+                await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to '{table_name}' table.")
             except Exception as e:
                 if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
-                    logger.info(f"'{name}' column already exists in 'employees'.")
+                    logger.info(f"'{name}' column already exists in '{table_name}'.")
                 else:
-                    logger.error(f"Error adding '{name}' column to 'employees': {e}")
+                    logger.error(f"Error adding '{name}' column to '{table_name}': {e}")
+
+    # Add specifications column to erp_products and erp_master_catalog
+    spec_cols = [
+        ("erp_products", "specifications", "JSONB DEFAULT '{}'::jsonb"),
+        ("erp_master_catalog", "specifications", "TEXT")
+    ]
+    for table_name, name, col_type in spec_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to '{table_name}' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in '{table_name}'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to '{table_name}': {e}")
 
 if __name__ == "__main__":
     asyncio.run(migrate())

@@ -15,7 +15,7 @@ from src.models import (
     CRMQuotation, CRMSalesOrder, CRMOpportunity, EmailCampaign, EmailTemplate, 
     Employee, Applicant, AdAsset
 )
-from src.schemas.crm import CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate
+from src.schemas.crm import CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate, CreatePaidAdRequestSchema
 from src.utils.pagination import PaginatedResponse, paginate
 from src.utils.notifications import add_system_notification
 import logging
@@ -201,6 +201,9 @@ class FacebookConnectDirectRequest(BaseModel):
 
 class SelectFacebookAdAccountRequest(BaseModel):
     ad_account_id: str
+
+class ActivateAdRequest(BaseModel):
+    status: str
 
 class FacebookCredentialsRequest(BaseModel):
     """Legacy model kept for backward-compat with the lead-import form."""
@@ -1698,6 +1701,7 @@ async def generate_campaign_poster(
     os.makedirs(images_dir, exist_ok=True)
     filename = f"poster_{uuid.uuid4().hex}.jpg"
     filepath = os.path.join(images_dir, filename)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
     try:
         image_bytes, enhanced_prompt = call_ai_image(
@@ -2075,13 +2079,13 @@ async def get_facebook_campaigns(
         clean_account_id = f"act_{clean_account_id}"
         
     try:
-        # Step 1: Get campaigns list (status, objective, dates)
+        # Step 1: Get campaigns list with nested ad creative details
         campaigns_url = f"https://graph.facebook.com/v25.0/{clean_account_id}/campaigns"
         campaigns_res = req_lib.get(campaigns_url, params={
             "access_token": token,
-            "fields": "id,name,status,objective,start_time,stop_time",
+            "fields": "id,name,status,objective,start_time,stop_time,adsets{name,status,ads{id,name,status,creative{id,name,image_url,body,title,object_story_spec}}}",
             "limit": 100
-        }, timeout=15)
+        }, timeout=20)
         campaigns_data = campaigns_res.json()
         if "error" in campaigns_data:
             raise HTTPException(status_code=400, detail=campaigns_data["error"].get("message", "Failed to retrieve campaigns from Meta."))
@@ -2106,11 +2110,46 @@ async def get_facebook_campaigns(
                 if cid:
                     insights_map[cid] = row
 
-        # Step 3: Merge campaigns with their insights
+        # Step 3: Merge campaigns with insights and extract ad creative info
         result = []
         for c in campaigns:
             cid = c.get("id", "")
             ins = insights_map.get(cid, {})
+
+            # Extract first ad creative from nested adsets → ads → creative
+            ad_image_url = None
+            ad_headline = None
+            ad_body = None
+            ad_name = None
+            ad_id = None
+            adsets = c.get("adsets", {}).get("data", [])
+            for adset in adsets:
+                ads = adset.get("ads", {}).get("data", [])
+                for ad in ads:
+                    creative = ad.get("creative", {})
+                    if not ad_image_url:
+                        ad_image_url = creative.get("image_url")
+                    if not ad_headline:
+                        ad_headline = creative.get("title")
+                        if not ad_headline:
+                            # Try nested object_story_spec
+                            oss = creative.get("object_story_spec", {})
+                            link_data = oss.get("link_data", {})
+                            ad_headline = link_data.get("name") or link_data.get("message")
+                    if not ad_body:
+                        ad_body = creative.get("body")
+                        if not ad_body:
+                            oss = creative.get("object_story_spec", {})
+                            ad_body = oss.get("link_data", {}).get("message")
+                    if not ad_name:
+                        ad_name = ad.get("name") or creative.get("name")
+                    if not ad_id:
+                        ad_id = ad.get("id")
+                    if ad_image_url and ad_headline:
+                        break
+                if ad_image_url and ad_headline:
+                    break
+
             result.append({
                 "id": cid,
                 "name": c.get("name"),
@@ -2124,6 +2163,13 @@ async def get_facebook_campaigns(
                 "ctr": ins.get("ctr", "0"),
                 "reach": ins.get("reach", "0"),
                 "frequency": ins.get("frequency", "0"),
+                # Ad creative preview fields
+                "ad_id": ad_id,
+                "ad_name": ad_name,
+                "ad_image_url": ad_image_url,
+                "ad_headline": ad_headline,
+                "ad_body": ad_body,
+                "meta_campaign_id": cid,
             })
         return result
     except HTTPException:
@@ -2284,6 +2330,194 @@ async def sync_facebook_leads(
     except Exception as e:
         logger.error(f"Error syncing Meta leads: {e}")
         raise HTTPException(status_code=502, detail=f"Meta leads sync error: {str(e)}")
+
+
+@router.post("/ads/lead-forms")
+async def list_paid_ad_lead_forms(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Retrieve Meta Page lead gen forms for ad builder dropdown."""
+    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+    settings_dict = tenant.settings or {}
+    fb_page_cfg = settings_dict.get("facebook_page", {})
+    fb_legacy_cfg = settings_dict.get("facebook", {})
+    
+    token = fb_page_cfg.get("page_access_token") or fb_page_cfg.get("user_access_token") or fb_legacy_cfg.get("fb_access_token") or fb_legacy_cfg.get("access_token")
+    page_id = fb_page_cfg.get("page_id") or fb_legacy_cfg.get("fb_page_or_form_id")
+    
+    if not token or not page_id:
+        return []
+
+    import requests as req_lib
+    try:
+        url = f"https://graph.facebook.com/v25.0/{page_id}/leadgen_forms"
+        res = req_lib.get(url, params={"access_token": token, "fields": "id,name,status,leads_count"}, timeout=15)
+        data = res.json()
+        if "error" in data:
+            logger.warning(f"Lead forms fetch error: {data['error'].get('message')}")
+            return []
+        forms = data.get("data", [])
+        return [{
+            "id": f["id"],
+            "name": f["name"],
+            "status": f.get("status", "ACTIVE"),
+            "leads_count": f.get("leads_count", 0)
+        } for f in forms]
+    except Exception as e:
+        logger.error(f"Failed to fetch Meta lead forms: {e}")
+        return []
+
+
+@router.post("/ads/campaigns")
+async def create_paid_ad_campaign(
+    payload: CreatePaidAdRequestSchema,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Create a full Meta Ad pipeline (Campaign -> AdSet -> AdCreative -> Ad) and publish to Meta Ads Manager."""
+    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+    settings_dict = tenant.settings or {}
+    fb_page_cfg = settings_dict.get("facebook_page", {})
+    fb_legacy_cfg = settings_dict.get("facebook", {})
+    
+    token = fb_page_cfg.get("user_access_token") or fb_page_cfg.get("page_access_token") or fb_legacy_cfg.get("fb_access_token") or fb_legacy_cfg.get("access_token")
+    ad_account_id = fb_page_cfg.get("ad_account_id") or fb_legacy_cfg.get("fb_ad_account_id")
+    page_id = fb_page_cfg.get("page_id") or fb_legacy_cfg.get("fb_page_or_form_id")
+
+    if not token:
+        raise HTTPException(status_code=400, detail="Facebook/Meta integration is not connected. Please connect your FB Page first.")
+    if not ad_account_id:
+        raise HTTPException(status_code=400, detail="No Meta Ad Account selected. Please select your Ad Account in CRM settings.")
+    if not page_id:
+        raise HTTPException(status_code=400, detail="No Facebook Page connected. Please select your FB Page first.")
+
+    from src.services.meta_ads import MetaAdsClient
+    client = MetaAdsClient(
+        access_token=token,
+        ad_account_id=ad_account_id,
+        page_id=page_id,
+    )
+
+    try:
+        # Step 1: Obtain Image Bytes
+        import requests as req_lib
+        image_bytes = b""
+        if payload.image_url.startswith("data:image/"):
+            import base64
+            header, encoded = payload.image_url.split(",", 1)
+            image_bytes = base64.b64decode(encoded)
+        else:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            try:
+                img_res = req_lib.get(payload.image_url, headers=headers, timeout=25)
+                img_res.raise_for_status()
+                image_bytes = img_res.content
+            except Exception as download_err:
+                logger.warning(f"Initial image fetch failed ({download_err}), retrying image download...")
+                img_res = req_lib.get(payload.image_url, headers=headers, timeout=30)
+                img_res.raise_for_status()
+                image_bytes = img_res.content
+
+        # Step 2: Call full ad creation pipeline
+        res = client.create_full_ad_pipeline(
+            image_bytes=image_bytes,
+            headline=payload.headline,
+            caption=payload.caption,
+            destination_url=payload.destination_url,
+            campaign_name=payload.campaign_name,
+            objective=payload.objective,
+            adset_name=payload.adset_name,
+            ad_name=payload.ad_name,
+            cta_type=payload.cta_type or "LEARN_MORE",
+            lead_form_id=payload.lead_form_id,
+            daily_budget_cents=payload.daily_budget_cents or 25000,
+            targeting=payload.targeting,
+            special_ad_categories=payload.special_ad_categories,
+        )
+
+        return {
+            "success": True,
+            "local_campaign_id": res["meta_campaign_id"],
+            "local_adset_id": res["meta_adset_id"],
+            "local_ad_id": res["meta_ad_id"],
+            "meta_campaign_id": res["meta_campaign_id"],
+            "meta_adset_id": res["meta_adset_id"],
+            "meta_ad_id": res["meta_ad_id"],
+            "meta_creative_id": res["meta_creative_id"],
+            "image_hash": res["image_hash"],
+            "message": f"Successfully created Meta Ad Campaign '{payload.campaign_name}' in Meta Ads Manager!",
+        }
+    except Exception as e:
+        logger.error(f"Error publishing Meta campaign: {e}")
+        raise HTTPException(status_code=400, detail=f"Meta Ad Creation Error: {str(e)}")
+
+
+@router.get("/ads/campaigns")
+async def list_paid_ad_campaigns(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    """Paginated list of active Meta Ad campaigns."""
+    campaigns = await get_facebook_campaigns(ctx, db)
+    total = len(campaigns)
+    start = (page - 1) * page_size
+    items = campaigns[start: start + page_size]
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": items,
+    }
+
+
+@router.post("/ads/{ad_id}/activate")
+async def activate_or_pause_ad(
+    ad_id: str,
+    payload: ActivateAdRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Toggle ad status between ACTIVE and PAUSED on Meta."""
+    tenant = await _get_tenant_or_404(db, ctx.tenant_id)
+    settings_dict = tenant.settings or {}
+    fb_page_cfg = settings_dict.get("facebook_page", {})
+    fb_legacy_cfg = settings_dict.get("facebook", {})
+    
+    token = fb_page_cfg.get("user_access_token") or fb_page_cfg.get("page_access_token") or fb_legacy_cfg.get("fb_access_token") or fb_legacy_cfg.get("access_token")
+    ad_account_id = fb_page_cfg.get("ad_account_id") or fb_legacy_cfg.get("fb_ad_account_id")
+    page_id = fb_page_cfg.get("page_id") or fb_legacy_cfg.get("fb_page_or_form_id")
+
+    if not token or not ad_account_id or not page_id:
+        raise HTTPException(status_code=400, detail="Meta integration is incomplete. Please check FB Page & Ad Account connection.")
+
+    from src.services.meta_ads import MetaAdsClient
+    client = MetaAdsClient(access_token=token, ad_account_id=ad_account_id, page_id=page_id)
+    res = client.update_ad_status(ad_id, payload.status)
+    return {"success": True, "meta_ad_id": ad_id, "status": payload.status}
+
+
+@router.get("/ads/campaigns/{campaign_id}/insights")
+async def get_campaign_insights_endpoint(
+    campaign_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get live insights for a campaign."""
+    campaigns = await get_facebook_campaigns(ctx, db)
+    match = next((c for c in campaigns if c.get("id") == campaign_id), None)
+    if match:
+        return {
+            "spend": match.get("spend", "0.00"),
+            "impressions": match.get("impressions", "0"),
+            "clicks": match.get("clicks", "0"),
+            "ctr": match.get("ctr", "0"),
+            "reach": match.get("reach", "0"),
+            "frequency": match.get("frequency", "0"),
+        }
+    return {"spend": "0.00", "impressions": "0", "clicks": "0", "ctr": "0", "reach": "0", "frequency": "0"}
 
 
 @router.get("/facebook/organic-posts")

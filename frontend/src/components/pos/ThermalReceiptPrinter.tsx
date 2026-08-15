@@ -179,7 +179,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
                   {f.showHSN && item.hsn_code && <span className="block text-[8px] text-slate-600">HSN: {item.hsn_code}</span>}
                 </td>
                 <td className="py-1 text-center font-bold align-top">{qty}</td>
-                <td className="py-1 text-right font-bold align-top">{lineAmt.toFixed(2)}</td>
+                <td className="py-1 text-right font-bold align-top">{Number(lineAmt || 0).toFixed(2)}</td>
               </tr>
             );
           })}
@@ -190,17 +190,17 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
       <div className="border-t border-dashed border-black pt-1.5 space-y-0.5 text-[11px]">
         <div className="flex justify-between">
           <span>Subtotal:</span>
-          <span>{rawSubtotal.toFixed(2)}</span>
+          <span>{Number(rawSubtotal || 0).toFixed(2)}</span>
         </div>
         {f.showTaxSplit && (
           <div className="flex justify-between text-[9px] text-slate-700">
             <span>CGST 2.5% + SGST 2.5%:</span>
-            <span>{rawTax.toFixed(2)}</span>
+            <span>{Number(rawTax || 0).toFixed(2)}</span>
           </div>
         )}
         <div className="flex justify-between font-bold text-sm border-t border-black pt-1 mt-1">
           <span>TOTAL AMOUNT:</span>
-          <span>₹{grandTotal.toFixed(2)}</span>
+          <span>₹{Number(grandTotal || 0).toFixed(2)}</span>
         </div>
       </div>
 

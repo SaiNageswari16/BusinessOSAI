@@ -77,11 +77,14 @@ class Settings(BaseSettings):
     anthropic_base_url: str = Field(default="https://api.anthropic.com", alias="ANTHROPIC_BASE_URL")
     ai_provider: str = Field(default="gemini", alias="AI_PROVIDER") # gemini | openai | claude
 
-    # Meta / Facebook App OAuth
+    # Meta / Facebook Direct Access Tokens & OAuth
     facebook_app_id: str | None = Field(default=None, alias="FACEBOOK_APP_ID")
     facebook_app_secret: str | None = Field(default=None, alias="FACEBOOK_APP_SECRET")
-    # Redirect URI registered in Meta Developer App -> Facebook Login settings
     facebook_redirect_uri: str = Field(default="http://localhost:8000/api/v1/crm/facebook/oauth-callback", alias="FACEBOOK_REDIRECT_URI")
+    facebook_access_token: str | None = Field(default=None, alias="FB_ACCESS_TOKEN")
+    facebook_page_id: str | None = Field(default=None, alias="FB_PAGE_ID")
+    facebook_ad_account_id: str | None = Field(default=None, alias="FB_AD_ACCOUNT_ID")
+
 
     # LiveKit / Telephony
     livekit_url: str | None = Field(default=None, alias="LIVEKIT_URL")
@@ -137,6 +140,6 @@ class Settings(BaseSettings):
         return self.app_env.lower() == "production"
 
 
-@lru_cache
 def get_settings() -> Settings:
+    load_dotenv(override=True)
     return Settings()

@@ -3405,6 +3405,31 @@ export interface IntelligenceSummary {
 }
 
 export const inventoryApi = {
+  verifyGstin: (gstin: string) =>
+    request<{
+      valid: boolean;
+      gstin: string;
+      legal_name: string;
+      trade_name: string;
+      pan: string;
+      state: string;
+      state_code: string;
+      taxpayer_type: string;
+      status: string;
+      city: string;
+      pincode: string;
+      address: string;
+      business_nature: string;
+      // Extended auto-fill fields
+      contact_person?: string;
+      email?: string;
+      phone?: string;
+      bank_name?: string;
+      account_number?: string;
+      ifsc_code?: string;
+      is_fallback?: boolean;
+    }>("POST", "/inventory/procurement/verify-gstin", { gstin }),
+
   getHsnCodes: (search?: string) =>
     request<Array<{ hsn_code: string; description: string; gst_rate: number }>>("GET", "/inventory/hsn-codes", undefined, search ? { search } : undefined),
 
@@ -3922,6 +3947,7 @@ export const invoicesApi = {
   getCustomerSummary: (customerId: string) => request<any>("GET", `/invoices/customer-summary/${customerId}`),
   createInvoice: (data: any) => request<Invoice>("POST", "/invoices", data),
   sendInvoice: (id: string) => request<{ message: string }>("POST", `/invoices/${id}/send`),
+  sendInvoiceToWhatsApp: (id: string) => request<{ success: boolean; message_id?: string; error?: string }>("POST", `/invoices/${id}/send-to-whatsapp`),
   recordPayment: (id: string, data: { amount: number; payment_date: string; payment_method?: string }) =>
     request<{ message: string }>("POST", `/invoices/${id}/payments`, data),
   listPayments: (params?: { page?: number; page_size?: number }) =>
@@ -4112,6 +4138,8 @@ export const whatsappAutomationApi = {
   syncContacts: (sessionId: string, contacts: any[]) => request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/sync`, { contacts }),
   getChatMessages: (sessionId: string, phone: string) => request<any>("GET", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/messages`),
   sendMessage: (sessionId: string, phone: string, message: string) => request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/send`, { message }),
+  sendMedia: (sessionId: string, phone: string, media: { mimeType: string; data: string; fileName?: string; caption?: string }) =>
+    request<any>("POST", `/whatsapp-automation/sessions/${sessionId}/chats/${phone}/send-media`, media),
   getActiveChats: (sessionId: string) => request<any>("GET", `/whatsapp-automation/sessions/${sessionId}/chats`),
 };
 

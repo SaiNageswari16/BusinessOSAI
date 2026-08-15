@@ -1,4 +1,5 @@
 from typing import Annotated
+import logging
 import uuid
 import string
 import random
@@ -10,14 +11,22 @@ from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
-from src.models import POSTransaction, POSTransactionItem, POSPayment, Product, Customer, CustomerWallet, CustomerWalletTransaction
+from src.models import POSTransaction, POSTransactionItem, POSPayment, Product, Customer
+from src.models.erp import Invoice, InvoiceLine
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
+from src.services.invoice_pdf import get_active_invoice_template, render_invoice_pdf_b64, save_invoice_pdf
+from src.services.whatsapp_invoice_sender import _get_gateway_session_id, _send_via_gateway
 from src.utils.notifications import add_system_notification
+from src.utils.number_series import generate_number
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transactions", tags=["POS - Transactions"])
 
+
 def generate_receipt_number():
     return "REC-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+
 
 @router.post("/checkout", response_model=POSTransactionResponse)
 async def checkout(
@@ -26,7 +35,7 @@ async def checkout(
     db: AsyncSession = Depends(get_db)
 ):
     """Process a POS checkout (cart)."""
-    # 2. Create Transaction
+    # 1. Create Transaction
     transaction = POSTransaction(
         cashier_id=ctx.user.id,
         tenant_id=ctx.user.tenant_id,
@@ -41,15 +50,15 @@ async def checkout(
         parent_transaction_id=payload.parent_transaction_id,
         delivery_status=payload.delivery_status,
         delivery_address=payload.delivery_address,
-        driver_name=payload.driver_name
+        driver_name=payload.driver_name,
     )
-    
+
     # Auto-set status to REFUNDED for refund receipts
     if payload.total_amount < 0:
         transaction.status = "refunded"
 
     db.add(transaction)
-    await db.flush() # Get transaction.id
+    await db.flush()  # Get transaction.id
 
     # Update parent transaction status if this is a refund
     if payload.parent_transaction_id:
@@ -62,7 +71,7 @@ async def checkout(
         if parent_tx:
             parent_tx.status = "refunded"
 
-    # 3. Create Items
+    # 2. Create Items + deduct stock
     for item in payload.items:
         tx_item = POSTransactionItem(
             transaction_id=transaction.id,
@@ -71,12 +80,11 @@ async def checkout(
             quantity=item.quantity,
             unit_price=item.unit_price,
             discount=item.discount,
-            subtotal=(item.unit_price - item.discount) * item.quantity
+            subtotal=(item.unit_price - item.discount) * item.quantity,
         )
         db.add(tx_item)
-        
-        # Deduct stock (Enterprise-level with row locking)
-        # Skip stock deduction if transaction is just being parked (ON_HOLD)
+
+        # Deduct stock (skip for ON_HOLD)
         if payload.status != "on_hold":
             prod_stmt = select(Product).where(
                 Product.id == item.product_id,
@@ -85,88 +93,171 @@ async def checkout(
             prod_res = await db.execute(prod_stmt)
             product = prod_res.scalar_one_or_none()
             if product:
-                # Allow stock to go negative to flag discrepancies for reconciliation
                 if product.initial_stock is None:
                     product.initial_stock = 0
                 product.initial_stock -= item.quantity
 
-    # 4. Create Payments
+    # 3. Create Payments
     for payment in payload.payments:
         tx_payment = POSPayment(
             transaction_id=transaction.id,
             tenant_id=ctx.user.tenant_id,
             payment_method=payment.payment_method,
             amount=payment.amount,
-            reference_number=payment.reference_number
+            reference_number=payment.reference_number,
         )
         db.add(tx_payment)
 
-        # Handle Wallet Deduction if this is a wallet payment (and not just parking/on hold)
-        if payment.payment_method == "wallet" and payload.status != "on_hold":
-            if not payload.customer_id:
-                raise HTTPException(status_code=400, detail="A valid customer must be selected to use Wallet payment.")
-            
-            customer = await db.scalar(
-                select(Customer).where(Customer.id == payload.customer_id, Customer.tenant_id == ctx.user.tenant_id)
-            )
-            if not customer:
-                raise HTTPException(status_code=404, detail="Customer not found for Wallet payment.")
-
-            wallet = await db.scalar(
-                select(CustomerWallet).where(
-                    CustomerWallet.tenant_id == ctx.user.tenant_id,
-                    CustomerWallet.customer_id == payload.customer_id,
-                ).with_for_update()
-            )
-            if not wallet:
-                raise HTTPException(status_code=400, detail="Customer does not have a wallet.")
-
-            if float(wallet.balance) < payment.amount:
-                raise HTTPException(status_code=400, detail=f"Insufficient wallet balance. Available: ${wallet.balance:.2f}")
-
-            # Deduct from Wallet
-            balance_before = float(wallet.balance)
-            balance_after = balance_before - payment.amount
-            
-            wallet.balance = balance_after
-            wallet.lifetime_debited += payment.amount
-            wallet.debit_count += 1
-            
-            # Keep customer denormalized fields in sync
-            customer.wallet_balance = wallet.balance
-            customer.wallet_lifetime_debited = wallet.lifetime_debited
-            
-            wallet_tx = CustomerWalletTransaction(
-                tenant_id=ctx.user.tenant_id,
-                customer_id=payload.customer_id,
-                wallet_id=wallet.id,
-                transaction_type="payment",
-                amount=payment.amount,
-                balance_before=balance_before,
-                balance_after=balance_after,
-                reference_type="pos_checkout",
-                reference_id=str(transaction.id),
-                description=f"POS Checkout Receipt {transaction.receipt_number}",
-                initiated_by=ctx.user.id,
-            )
-            db.add(wallet_tx)
-
-
-
-    # Trigger live notification before committing POS checkout
+    # 4. Live notification
     msg_title = "POS Refund Processed" if transaction.status == "refunded" else "New POS Order Checked Out"
     msg_body = f"Receipt {transaction.receipt_number} processed. Cashier: {ctx.user.full_name} | Total: ${transaction.total_amount:,.2f}"
     await add_system_notification(db, ctx.user.tenant_id, msg_title, msg_body, "pos")
 
     await db.commit()
-    
-    # Reload with relationships
+
+    # 5. Create Invoice from POS transaction + auto-send via WhatsApp
+    if transaction.status == "completed":
+        _create_invoice_and_send_whatsapp(db, ctx, transaction, payload)
+
+
+    # 6. Reload and return
     stmt_reload = select(POSTransaction).options(
         selectinload(POSTransaction.items),
-        selectinload(POSTransaction.payments)
+        selectinload(POSTransaction.payments),
     ).where(POSTransaction.id == transaction.id)
     reload_res = await db.execute(stmt_reload)
     return reload_res.scalar_one()
+
+
+# ─── Helpers ────────────────────────────────────────────────────────────
+
+async def _create_invoice_and_send_whatsapp(
+    db: AsyncSession,
+    ctx: CurrentUserContext,
+    transaction: POSTransaction,
+    payload: POSCheckoutPayload,
+) -> None:
+    """Create an Invoice record from the POS transaction and send it via WhatsApp."""
+    try:
+        # Generate invoice number
+        inv_number = await generate_number(db, ctx.user.tenant_id, "invoice", None)
+
+        # Resolve customer details
+        cust_name = "Walk-in Guest"
+        cust_phone = None
+        cust_email = None
+        cust_gstin = None
+        cust_address = None
+        if payload.customer_id:
+            cust_row = await db.scalar(
+                select(Customer).where(
+                    Customer.id == payload.customer_id,
+                    Customer.tenant_id == ctx.user.tenant_id,
+                )
+            )
+            if cust_row:
+                cust_name = cust_row.name
+                cust_phone = cust_row.phone
+                cust_email = cust_row.email
+                cust_gstin = cust_row.gst_number
+                cust_address = cust_row.address
+
+        # Determine payment method from POS payments
+        pay_method = payload.payments[0].payment_method if payload.payments else "cash"
+
+        # Build invoice (fields match Invoice ORM exactly)
+        invoice = Invoice(
+            tenant_id=ctx.user.tenant_id,
+            company_id=None,
+            invoice_number=inv_number,
+            invoice_type="tax_invoice",
+            status="paid",
+            customer_id=payload.customer_id,
+            customer_name=cust_name,
+            customer_phone=cust_phone,
+            customer_email=cust_email,
+            customer_gstin=cust_gstin,
+            billing_address=cust_address,
+            invoice_date=__import__("datetime").date.today(),
+            due_date=__import__("datetime").date.today(),
+            currency_code="INR",
+            subtotal=payload.subtotal,
+            discount_amount=payload.discount_amount,
+            cgst_amount=0,
+            sgst_amount=0,
+            igst_amount=0,
+            total_amount=payload.total_amount,
+            amount_paid=payload.total_amount,
+            balance_due=0.0,
+            payment_status="paid",
+            payment_method=pay_method,
+        )
+        db.add(invoice)
+        await db.flush()
+
+        # Load product names
+        product_ids = [it.product_id for it in transaction.items]
+        prod_map: dict = {}
+        if product_ids:
+            prod_rows = (await db.execute(
+                select(Product.id, Product.name).where(
+                    Product.id.in_(product_ids),
+                    Product.tenant_id == ctx.user.tenant_id,
+                )
+            )).all()
+            prod_map = {r[0]: r[1] for r in prod_rows}
+
+        # Create invoice lines (fields match InvoiceLine ORM)
+        for item in transaction.items:
+            line_total = (item.unit_price - (item.discount or 0)) * item.quantity
+            il = InvoiceLine(
+                tenant_id=ctx.user.tenant_id,
+                invoice_id=invoice.id,
+                product_id=item.product_id,
+                product_name=prod_map.get(item.product_id, "Product"),
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+                discount_amount=item.discount or 0,
+                tax_rate=0,
+                cgst_amount=0,
+                sgst_amount=0,
+                igst_amount=0,
+                line_total=line_total,
+            )
+            db.add(il)
+
+        await db.commit()
+
+        # Auto-send via WhatsApp if customer has a phone number
+        if cust_phone:
+            try:
+                template = await get_active_invoice_template(db, ctx.user.tenant_id)
+                pdf_b64 = render_invoice_pdf_b64(invoice, template)
+                save_invoice_pdf(invoice, template)
+
+                session_id = _get_gateway_session_id()
+                if session_id:
+                    phone = cust_phone.strip()
+                    _send_via_gateway(
+                        session_id=session_id,
+                        recipient_phone=phone,
+                        pdf_b64=pdf_b64,
+                        invoice_number=inv_number,
+                        customer_name=cust_name,
+                    )
+                    logger.info(
+                        "POS Invoice %s auto-sent via WhatsApp to %s",
+                        inv_number, phone,
+                    )
+            except Exception as exc:
+                logger.warning("POS WhatsApp auto-send failed for %s: %s", inv_number, exc)
+
+    except Exception as exc:
+        logger.warning("POS Invoice creation failed: %s", exc)
+        # Don't fail the POS checkout — invoice creation is secondary
+
+
+# ─── History ────────────────────────────────────────────────────────────
 
 @router.get("/history", response_model=list[POSTransactionResponse])
 async def get_transaction_history(
@@ -178,16 +269,14 @@ async def get_transaction_history(
 ):
     """Get recent POS transactions."""
     from sqlalchemy import or_
-    import uuid
 
     query_filters = [POSTransaction.tenant_id == ctx.user.tenant_id]
     if status_filter:
         query_filters.append(POSTransaction.status == status_filter)
-    
+
     if search:
         search_filter = POSTransaction.receipt_number.ilike(f"%{search}%")
         try:
-            # If search is a valid UUID, also search by ID
             search_uuid = uuid.UUID(search)
             search_filter = or_(search_filter, POSTransaction.id == search_uuid)
         except ValueError:
@@ -196,30 +285,33 @@ async def get_transaction_history(
 
     stmt = select(POSTransaction).options(
         selectinload(POSTransaction.items),
-        selectinload(POSTransaction.payments)
+        selectinload(POSTransaction.payments),
     ).where(*query_filters).order_by(desc(POSTransaction.created_at)).limit(limit)
-    
+
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
 @router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_transaction(
     transaction_id: uuid.UUID,
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a POS transaction (used for clearing parked/held bills when resumed)."""
+    """Delete a POS transaction (used for clearing parked/held bills)."""
     stmt = select(POSTransaction).where(
         POSTransaction.id == transaction_id,
-        POSTransaction.tenant_id == ctx.user.tenant_id
+        POSTransaction.tenant_id == ctx.user.tenant_id,
     )
     result = await db.execute(stmt)
     transaction = result.scalar_one_or_none()
-    
+
     if not transaction:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
-        
+
     await db.delete(transaction)
     await db.commit()
+
 
 @router.get("/reports/daily-summary")
 async def get_daily_summary(
@@ -227,105 +319,81 @@ async def get_daily_summary(
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get aggregated daily sales summary for TODAY only, directly from DB."""
+    """Get aggregated daily sales summary for TODAY only."""
     from datetime import datetime, timezone, timedelta
 
-    # Today's date window in UTC (supports servers in any timezone)
     now_utc = datetime.now(timezone.utc)
     today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end   = today_start + timedelta(days=1)
+    today_end = today_start + timedelta(days=1)
 
-    # Base condition: current tenant + today's records only
     date_cond = (
         POSTransaction.created_at >= today_start,
-        POSTransaction.created_at <  today_end,
-        POSTransaction.tenant_id  == ctx.user.tenant_id,
+        POSTransaction.created_at < today_end,
+        POSTransaction.tenant_id == ctx.user.tenant_id,
     )
     if session_id:
         date_cond = (*date_cond, POSTransaction.session_id == session_id)
 
-    # Completed sales only (exclude refunds from revenue total)
     completed_cond = (*date_cond, POSTransaction.status == "completed")
-
-    # Refunded transactions only (for Returns & Refunds KPI)
     refunded_cond = (*date_cond, POSTransaction.status == "refunded")
 
-    # 1. Total revenue + transaction count (completed only)
     summary_stmt = select(
         func.count(POSTransaction.id).label("transactions_count"),
-        func.coalesce(func.sum(POSTransaction.total_amount), 0).label("total_revenue")
+        func.coalesce(func.sum(POSTransaction.total_amount), 0).label("total_revenue"),
     ).where(*completed_cond)
-
     summary_res = await db.execute(summary_stmt)
     summary_row = summary_res.first()
-
     transactions_count = int(summary_row.transactions_count or 0)
-    total_revenue      = float(summary_row.total_revenue or 0)
+    total_revenue = float(summary_row.total_revenue or 0)
 
-    # 2. Returns & Refunds total (absolute value of refunded transactions)
     returns_stmt = select(
-        func.coalesce(func.sum(func.abs(POSTransaction.total_amount)), 0).label("total_returns")
+        func.coalesce(func.sum(func.abs(POSTransaction.total_amount)), 0).label("total_returns"),
     ).where(*refunded_cond)
-
-    returns_res  = await db.execute(returns_stmt)
+    returns_res = await db.execute(returns_stmt)
     total_returns = float((returns_res.scalar()) or 0)
 
-    # 3. Payment method breakdown (completed sales)
     payments_stmt = select(
         POSPayment.payment_method,
-        func.coalesce(func.sum(POSPayment.amount), 0).label("total_amount")
+        func.coalesce(func.sum(POSPayment.amount), 0).label("total_amount"),
     ).join(POSTransaction).where(*completed_cond).group_by(POSPayment.payment_method)
-
     payments_res = await db.execute(payments_stmt)
-
     breakdown = {"cash": 0.0, "card": 0.0, "upi": 0.0}
     for row in payments_res:
         method = (row.payment_method or "").lower()
         if method in breakdown:
             breakdown[method] = float(row.total_amount or 0)
 
-    # 4. Split payment count
     split_stmt = select(func.count()).select_from(
         select(POSPayment.transaction_id)
         .join(POSTransaction)
         .where(*completed_cond)
         .group_by(POSPayment.transaction_id)
         .having(func.count(POSPayment.id) > 1)
-        .subquery()
+        .subquery(),
     )
-    split_res  = await db.execute(split_stmt)
-    split_count = int(split_res.scalar() or 0)
+    split_count = int((await db.execute(split_stmt)).scalar() or 0)
 
-    # 5. Hourly Sales Trend
     hourly_stmt = select(
         func.extract('hour', POSTransaction.created_at).label("hour"),
         func.coalesce(func.sum(POSTransaction.total_amount), 0).label("revenue"),
-        func.count(POSTransaction.id).label("orders")
+        func.count(POSTransaction.id).label("orders"),
     ).where(*completed_cond).group_by(func.extract('hour', POSTransaction.created_at)).order_by(func.extract('hour', POSTransaction.created_at))
-
     hourly_res = await db.execute(hourly_stmt)
-    hourly_sales = []
-    
-    # Initialize 24 hours to 0 to provide a continuous graph
     hourly_dict = {f"{h:02d}:00": {"hour": f"{h:02d}:00", "revenue": 0.0, "orders": 0} for h in range(24)}
-    
     for row in hourly_res:
         h_idx = int(row.hour)
         time_label = f"{h_idx:02d}:00"
         if time_label in hourly_dict:
             hourly_dict[time_label]["revenue"] = float(row.revenue or 0)
             hourly_dict[time_label]["orders"] = int(row.orders or 0)
-            
-    # Return from min hour to max hour based on current time (up to current hour + 1 for aesthetics, or all 24)
-    # Let's return from 06:00 to 22:00 for a typical retail day, or filter based on data
     retail_hours = [hourly_dict[f"{h:02d}:00"] for h in range(6, 23)]
 
     return {
         "transactions_count": transactions_count,
-        "total_revenue":      total_revenue,
-        "total_returns":      total_returns,
-        "breakdown":          breakdown,
-        "split_count":        split_count,
-        "hourly_sales":       retail_hours,
-        "date":               today_start.strftime("%Y-%m-%d"),
+        "total_revenue": total_revenue,
+        "total_returns": total_returns,
+        "breakdown": breakdown,
+        "split_count": split_count,
+        "hourly_sales": retail_hours,
+        "date": today_start.strftime("%Y-%m-%d"),
     }

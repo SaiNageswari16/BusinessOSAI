@@ -28,7 +28,12 @@ from src.schemas.inventory import (
 )
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+
+class _SettingsProxy:
+    def __getattr__(self, name):
+        return getattr(get_settings(), name)
+
+settings = _SettingsProxy()
 
 router = APIRouter(prefix="/inventory/master-catalog", tags=["Inventory - Master Data Catalog"])
 
@@ -130,8 +135,9 @@ def _deprecated_download_and_cache_product_image(image_url: str, barcode: str = 
         elif ".gif" in image_url.lower():
             ext = ".gif"
             
-        filename = f"{barcode}{ext}" if barcode else f"{uuid.uuid4()}{ext}"
+        filename = _sanitize_image_filename(barcode, ext)
         local_path = os.path.join(images_dir, filename)
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
         
         # Download the image bytes
         headers = {
@@ -1026,6 +1032,24 @@ def _is_barcode_query(query: str) -> bool:
     return query.strip().isdigit() and len(query.strip()) in (8, 12, 13, 14)
 
 
+def _sanitize_image_filename(raw_identifier: Optional[str], extension: str) -> str:
+    """Sanitizes raw barcode/title/SKU strings into safe, flat image filenames.
+    Prevents path traversal, sub-directory creation bugs, and invalid OS characters.
+    """
+    if not raw_identifier:
+        return f"{uuid.uuid4().hex}{extension}"
+    
+    clean_name = re.sub(r"[^a-zA-Z0-9]+", "_", str(raw_identifier).strip()).strip("_")
+    
+    if not clean_name:
+        return f"{uuid.uuid4().hex}{extension}"
+    
+    if len(clean_name) > 64:
+        clean_name = clean_name[:64]
+        
+    return f"{clean_name}{extension}"
+
+
 def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Optional[str]:
     """Validate, download, verify and cache only a real product image.
 
@@ -1068,11 +1092,12 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
                 if extension == ".jpg" and image.mode != "RGB":
                     image = image.convert("RGB")
                 
-                filename = f"{barcode.strip() if barcode else uuid.uuid4()}{extension}"
+                filename = _sanitize_image_filename(barcode, extension)
                 base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) # backend
                 images_dir = os.path.join(base_dir, "images")
                 os.makedirs(images_dir, exist_ok=True)
                 local_path = os.path.join(images_dir, filename)
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
                 # Write directly to local_path — avoids Windows file locking / PermissionError
                 if image_format in {"JPEG", "PNG", "WEBP", "GIF"}:

@@ -9,6 +9,7 @@ import { PosDashboard } from "../components/pos/PosDashboard";
 import { PosTerminal } from "../components/pos/POSTerminal";
 import { PosSalesInvoice } from "../components/pos/PosSalesInvoice";
 import { PosPaymentIn } from "../components/pos/PosPaymentIn";
+import { PosInvoicesHistory } from "../components/pos/PosInvoicesHistory";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
 import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
 import { formatCurrency } from "../lib/utils";
@@ -1157,6 +1158,7 @@ const componentMap: Record<string, React.ElementType> = {
   dashboard: PosDashboard,
   terminal: PosTerminal,
   sales: PosSalesInvoice,
+  sales_history: PosInvoicesHistory,
   customers: PosCustomersPlaceholder,
   payment_in: PosPaymentIn,
   devices: PosDevices,

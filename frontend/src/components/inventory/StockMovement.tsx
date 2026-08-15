@@ -1,10 +1,12 @@
+import React from "react";
 import { useState, useEffect } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Plus, History, Trash2, Loader2, ArrowRightLeft, X } from "lucide-react";
+import { 
+  Search, Plus, History, Trash2, Loader2, ArrowRightLeft, FileDown, 
+  CheckCircle2, ArrowRight, Activity, TrendingUp, Layers, Eye, ChevronDown, ChevronUp, Printer, FileText
+} from "lucide-react";
 import { inventoryApi, Warehouse, StockMovement as StockMovementType } from "../../lib/api-client";
-import { ProductPicker } from "./ProductPicker";
-import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
 export function StockMovement() {
@@ -12,18 +14,7 @@ export function StockMovement() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const [form, setForm] = useState({
-    movement_number: "",
-    product_id: "",
-    source_location: "",
-    destination_location: "",
-    quantity: 0,
-    notes: "",
-    status: "Completed",
-  });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchAll = async () => {
     try {
@@ -44,39 +35,8 @@ export function StockMovement() {
 
   useEffect(() => { fetchAll(); }, []);
 
-  const openCreate = () => {
-    setForm({ movement_number: "", product_id: "", source_location: "", destination_location: "", quantity: 0, notes: "", status: "Completed" });
-    setIsModalOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.movement_number || !form.product_id || !form.source_location || !form.destination_location) {
-      toast.error("Fill all required fields"); return;
-    }
-    setIsSubmitting(true);
-    try {
-      await inventoryApi.createStockMovement({
-        movement_number: form.movement_number,
-        product_id: form.product_id,
-        source_location: form.source_location,
-        destination_location: form.destination_location,
-        quantity: form.quantity,
-        notes: form.notes || undefined,
-        status: form.status,
-      });
-      toast.success("Stock Movement recorded");
-      setIsModalOpen(false);
-      fetchAll();
-    } catch (error: any) {
-      toast.error("Failed: " + (error.detail || error.message));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this movement?")) return;
+    if (!confirm("Delete this movement record?")) return;
     try {
       await inventoryApi.deleteStockMovement(id);
       toast.success("Deleted");
@@ -92,148 +52,181 @@ export function StockMovement() {
     m.destination_location.toLowerCase().includes(search.toLowerCase())
   );
 
+  const totalTransfersCount = movements.length;
+  const totalUnitsMoved = movements.reduce((sum, m) => sum + (m.quantity || 0), 0);
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border shadow-sm">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Stock Movement</h2>
-          <p className="text-sm text-muted-foreground">Comprehensive timeline of all inventory transactions.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            <History className="size-6 text-indigo-600" /> Stock Movement Audit & Activity Ledger
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Complete real-time timeline stream of all warehouse stock transfers, movements, and inventory logs.
+          </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline"><History className="size-4 mr-2" /> Export Ledger</Button>
-          <Button onClick={openCreate} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> New Movement</Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button variant="outline" className="rounded-xl"><FileDown className="size-4 mr-2" /> Export Audit Ledger</Button>
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
-          placeholder="Search by movement # or location..." />
-      </div>
-
-      <Card className="p-0 overflow-hidden relative min-h-[300px]">
-        {loading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 backdrop-blur-sm">
-            <Loader2 className="size-8 animate-spin text-primary" />
+      {/* KPI Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="p-5 rounded-2xl border-slate-200 shadow-sm bg-white flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Movement Events</div>
+            <div className="text-2xl font-black text-slate-900 mt-1">{totalTransfersCount} Events</div>
           </div>
-        )}
-        <div className="overflow-x-auto">
+          <div className="size-12 rounded-xl bg-indigo-50 text-indigo-600 grid place-items-center">
+            <Activity className="size-6" />
+          </div>
+        </Card>
+
+        <Card className="p-5 rounded-2xl border-slate-200 shadow-sm bg-white flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Volume Moved</div>
+            <div className="text-2xl font-black text-emerald-600 mt-1">{totalUnitsMoved} Units</div>
+          </div>
+          <div className="size-12 rounded-xl bg-emerald-50 text-emerald-600 grid place-items-center">
+            <TrendingUp className="size-6" />
+          </div>
+        </Card>
+
+        <Card className="p-5 rounded-2xl border-slate-200 shadow-sm bg-white flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Tracked Warehouses</div>
+            <div className="text-2xl font-black text-slate-900 mt-1">{warehouses.length || 1} Depots</div>
+          </div>
+          <div className="size-12 rounded-xl bg-blue-50 text-blue-600 grid place-items-center">
+            <Layers className="size-6" />
+          </div>
+        </Card>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)}
+          className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+          placeholder="Search by Movement #, Source, or Destination..." />
+      </div>
+
+      {/* Audit Table */}
+      <Card className="overflow-hidden border-slate-200 shadow-md rounded-2xl">
+        <div className="overflow-x-auto min-h-[350px] relative">
+          {loading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm">
+              <Loader2 className="size-8 animate-spin text-indigo-600" />
+            </div>
+          )}
           <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
-                <th className="px-6 py-4">Movement #</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Quantity</th>
-                <th className="px-6 py-4">From / To</th>
+                <th className="px-6 py-4">Movement Voucher #</th>
+                <th className="px-6 py-4">Transaction Type</th>
+                <th className="px-6 py-4">Movement Volume</th>
+                <th className="px-6 py-4">From (Source) &rarr; To (Destination)</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-slate-100 bg-white">
               {filtered.length === 0 && !loading && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No Stock Movements found.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-16 text-center text-slate-400">No Stock Movements logged. Stock movements automatically record whenever transfers occur.</td></tr>
               )}
-              {filtered.map((m) => (
-                <tr key={m.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-6 py-4 font-mono text-xs font-bold">{m.movement_number}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 bg-blue-500/10 w-fit px-2 py-1 rounded text-blue-600 font-semibold text-xs">
-                      <ArrowRightLeft className="size-3" /> Transfer
-                    </div>
-                  </td>
-                  <td className="px-6 py-4"><span className="font-mono font-bold text-base text-emerald-500">{m.quantity}</span></td>
-                  <td className="px-6 py-4 text-muted-foreground font-mono text-xs">
-                    {m.source_location} &rarr; {m.destination_location}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      m.status === "Completed" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
-                    }`}>{m.status}</span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(m.id)} className="h-8 w-8 text-rose-500">
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((m) => {
+                const isExpanded = expandedId === m.id;
+                return (
+                  <React.Fragment key={m.id}>
+                    <tr className={`hover:bg-indigo-50/30 transition-colors ${isExpanded ? "bg-indigo-50/50" : ""}`}>
+                      <td className="px-6 py-4 font-mono font-bold text-indigo-900">{m.movement_number}</td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-md text-xs font-bold">
+                          <ArrowRightLeft className="size-3.5" /> Transfer Movement
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-mono font-black text-emerald-600 text-base">
+                        +{m.quantity} Units
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-slate-700">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="bg-slate-100 px-2 py-1 rounded text-slate-800 font-bold">{m.source_location}</span>
+                          <ArrowRight className="size-3 text-slate-400" />
+                          <span className="bg-slate-100 px-2 py-1 rounded text-slate-800 font-bold">{m.destination_location}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                          m.status === "Completed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
+                        }`}>
+                          <CheckCircle2 className="size-3.5" /> {m.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right space-x-1">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => setExpandedId(prev => prev === m.id ? null : m.id)}
+                          className={`h-8 gap-1 font-bold rounded-lg ${isExpanded ? "bg-indigo-600 text-white border-indigo-600" : "hover:bg-indigo-50"}`}
+                        >
+                          <Eye className="size-4" />
+                          {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(m.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </td>
+                    </tr>
+
+                    {isExpanded && (
+                      <tr className="bg-slate-50/80">
+                        <td colSpan={6} className="p-6 border-b border-indigo-100">
+                          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                            <div className="flex flex-wrap justify-between items-center gap-3 border-b pb-3">
+                              <div>
+                                <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Movement Audit Log Breakdown</div>
+                                <div className="text-lg font-black text-slate-900 mt-0.5">{m.movement_number}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-500 font-mono">Product ID: {m.product_id}</span>
+                                <Button size="sm" variant="outline" onClick={() => window.print()} className="h-8 text-xs font-bold rounded-lg">
+                                  <Printer className="size-3.5 mr-1" /> Print Movement Audit Log
+                                </Button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <FileText className="size-3.5 text-indigo-500" /> Movement Audit Detail
+                              </h4>
+                              <div className="border border-slate-200 rounded-xl overflow-hidden p-4 bg-slate-50 space-y-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-500 font-medium">Source Depot:</span>
+                                  <span className="font-bold text-slate-800">{m.source_location}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-500 font-medium">Destination Depot:</span>
+                                  <span className="font-bold text-slate-800">{m.destination_location}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-500 font-medium">Transferred Volume:</span>
+                                  <span className="font-black text-emerald-600 font-mono">{m.quantity} Units</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </Card>
-
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
-            <motion.div initial={{ opacity: 0, y: 20, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.96 }}
-              className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-white flex items-center justify-between p-6 border-b border-slate-100 z-10">
-                <h3 className="text-xl font-bold text-slate-900">New Stock Movement</h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full"><X className="w-5 h-5" /></button>
-              </div>
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Movement # *</label>
-                    <input required type="text" value={form.movement_number} onChange={(e) => setForm({ ...form, movement_number: e.target.value })}
-                      className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="MOV-001" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Quantity *</label>
-                    <input required type="number" min={0} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: parseInt(e.target.value) || 0 })}
-                      className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Product *</label>
-                  <ProductPicker value={form.product_id} onChange={(id) => setForm({ ...form, product_id: id })} placeholder="Select product..." />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Source Warehouse *</label>
-                    <select required value={form.source_location} onChange={(e) => setForm({ ...form, source_location: e.target.value })}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                      <option value="">Select source</option>
-                      {warehouses.map((w) => <option key={w.id} value={w.name}>{w.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Destination Warehouse *</label>
-                    <select required value={form.destination_location} onChange={(e) => setForm({ ...form, destination_location: e.target.value })}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                      <option value="">Select destination</option>
-                      {warehouses.map((w) => <option key={w.id} value={w.name}>{w.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Notes</label>
-                  <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2}
-                    className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Status</label>
-                  <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                    <option value="In Transit">In Transit</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
-                </div>
-                <div className="flex justify-end gap-3 pt-4 border-t">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-                  <button type="submit" disabled={isSubmitting} className="px-8 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg">
-                    {isSubmitting ? "Saving..." : "Create"}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

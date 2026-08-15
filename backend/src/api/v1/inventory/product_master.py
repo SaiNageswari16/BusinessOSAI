@@ -34,7 +34,7 @@ def _parse_status(value: str) -> EntityStatus:
 import json
 import os
 
-HSN_DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "src", "data", "hsn_codes_gst.json")
+HSN_DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "hsn_codes_gst.json")
 
 from sqlalchemy import or_
 from src.models.inventory import HSNMaster
@@ -43,7 +43,7 @@ from src.models.inventory import HSNMaster
 async def list_hsn_codes(
     db: Annotated[AsyncSession, Depends(get_db)],
     search: str | None = None,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(1000, ge=1, le=2000),
 ):
     """Retrieve official Indian GST HSN codes and corresponding GST tax rates from SQL Database."""
     try:
@@ -1004,6 +1004,7 @@ async def upload_product_image(
     ext = os.path.splitext(file.filename)[1] or ".jpg"
     filename = f"prod_{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(images_dir, filename)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)

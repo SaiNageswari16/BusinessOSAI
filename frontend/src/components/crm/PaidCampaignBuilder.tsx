@@ -7,6 +7,7 @@ import {
   Users, TrendingUp, Calendar
 } from "lucide-react";
 import { paidAdsApi } from "@/lib/api-client";
+import type { CreatePaidAdRequest } from "@/lib/api-client";
 import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,8 +35,7 @@ const OBJECTIVE_OPTIONS: { value: CampaignObjective; label: string; icon: string
   { value: "OUTCOME_SALES", label: "Sales", icon: "💰" },
   { value: "OUTCOME_TRAFFIC", label: "Traffic", icon: "🔗" },
   { value: "OUTCOME_ENGAGEMENT", label: "Engagement", icon: "❤️" },
-  { value: "OUTCOME_AWARENESS", label: "Awareness", icon: "👁" },
-  { value: "REACH", label: "Reach", icon: "🌐" },
+  { value: "OUTCOME_AWARENESS", label: "Brand Awareness & Reach", icon: "🌐" },
 ];
 
 const CTA_OPTIONS: { value: CtaType; label: string }[] = [
@@ -361,7 +361,7 @@ export default function PaidCampaignBuilder({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const payload: Record<string, any> = {
+      const payload: CreatePaidAdRequest = {
         campaign_name: campaignName.trim(),
         adset_name: adsetName.trim() || `${campaignName} – Ad Set`,
         ad_name: adName.trim() || `${campaignName} – Ad ${Date.now() % 1000}`,

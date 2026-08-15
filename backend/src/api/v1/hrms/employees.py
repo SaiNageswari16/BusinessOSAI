@@ -2,6 +2,7 @@
 HRMS — Employee Management Endpoints (Single & Bulk Import, Profiles, Documents)
 """
 import uuid
+from decimal import Decimal
 from datetime import date
 from typing import Annotated
 
@@ -398,7 +399,7 @@ async def add_employee_sales_points(
     )
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    emp.sales_points = (emp.sales_points or 0.0) + points
+    emp.sales_points = (emp.sales_points or Decimal("0")) + Decimal(str(points))
     await db.commit()
     await db.refresh(emp)
     return emp

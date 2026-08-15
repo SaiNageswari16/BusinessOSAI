@@ -62,7 +62,7 @@ export function FullInvoicePrinter({
     if (isOpen && autoPrint && invoice) {
       const timer = setTimeout(() => {
         handlePrint();
-      }, 300);
+      }, 800);
       return () => clearTimeout(timer);
     }
   }, [isOpen, autoPrint, invoice]);
@@ -433,13 +433,13 @@ export function FullInvoicePrinter({
                 <div className="md:col-span-5 bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2.5 text-xs text-slate-700">
                   <div className="flex justify-between font-semibold">
                     <span>Taxable Subtotal:</span>
-                    <span className="text-slate-900">₹{subtotal.toFixed(2)}</span>
+                    <span className="text-slate-900">₹{Number(subtotal || 0).toFixed(2)}</span>
                   </div>
 
                   {totalDiscount > 0 && (
                     <div className="flex justify-between text-emerald-600 font-semibold">
                       <span>Total Savings / Discount:</span>
-                      <span>-₹{totalDiscount.toFixed(2)}</span>
+                      <span>-₹{Number(totalDiscount || 0).toFixed(2)}</span>
                     </div>
                   )}
 
@@ -447,11 +447,11 @@ export function FullInvoicePrinter({
                     <>
                       <div className="flex justify-between text-slate-500">
                         <span>CGST (2.5%):</span>
-                        <span>₹{cgstAmount.toFixed(2)}</span>
+                        <span>₹{Number(cgstAmount || 0).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>SGST (2.5%):</span>
-                        <span>₹{sgstAmount.toFixed(2)}</span>
+                        <span>₹{Number(sgstAmount || 0).toFixed(2)}</span>
                       </div>
                     </>
                   )}
@@ -460,7 +460,7 @@ export function FullInvoicePrinter({
                   {(invoice.additional_charges || []).filter(c => Number(c.amount) > 0).map((charge, idx) => (
                     <div key={idx} className="flex justify-between text-slate-600">
                       <span>{charge.name}:</span>
-                      <span>+₹{Number(charge.amount).toFixed(2)}</span>
+                      <span>+₹{Number(charge.amount || 0).toFixed(2)}</span>
                     </div>
                   ))}
 
@@ -468,7 +468,7 @@ export function FullInvoicePrinter({
                   {invoice.round_off !== undefined && invoice.round_off !== 0 && (
                     <div className="flex justify-between text-slate-500 italic">
                       <span>Round Off:</span>
-                      <span>{invoice.round_off >= 0 ? '+' : ''}₹{invoice.round_off.toFixed(2)}</span>
+                      <span>{Number(invoice.round_off || 0) >= 0 ? '+' : ''}₹{Number(invoice.round_off || 0).toFixed(2)}</span>
                     </div>
                   )}
 
@@ -478,7 +478,7 @@ export function FullInvoicePrinter({
                   >
                     <span>GRAND TOTAL:</span>
                     <span className="text-base" style={{ color: primaryColor }}>
-                      ₹{grandTotal.toFixed(2)}
+                      ₹{Number(grandTotal || 0).toFixed(2)}
                     </span>
                   </div>
 

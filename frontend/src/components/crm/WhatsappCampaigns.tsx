@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Phone, User, Plus, X, Send, Check, CheckCheck,
   RefreshCw, LogOut, Search, Sparkles, Smartphone, QrCode, Users,
-  MessageCircle, ExternalLink, Loader2, Info, UserPlus
+  MessageCircle, ExternalLink, Loader2, Info, UserPlus,
+  Paperclip, FileText, Trash2, Image as ImageIcon
 } from "lucide-react";
 import { toast } from "sonner";
 import { whatsappAutomationApi, crmApi, type CrmLead } from "@/lib/api-client";
@@ -13,6 +14,11 @@ interface ChatMessage {
   body: string;
   fromMe: boolean;
   timestamp: number;
+  media?: {
+    mimeType: string;
+    preview: string;
+    fileName: string;
+  };
 }
 
 interface WhatsAppSession {
@@ -56,6 +62,14 @@ export function WhatsappCampaigns() {
   const [selectedSyncNums, setSelectedSyncNums] = useState<Record<string, boolean>>({});
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
+
+  // Media sending states
+  const [selectedMedia, setSelectedMedia] = useState<{ file: File; preview: string; mimeType: string; fileName: string } | null>(null);
+  const [sendingMedia, setSendingMedia] = useState(false);
+  const [mediaCaption, setMediaCaption] = useState("");
+
+  // Ref for hidden file input
+  const mediaInputRef = useRef<HTMLInputElement>(null);
 
   // Refs for scroll
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -261,6 +275,87 @@ export function WhatsappCampaigns() {
     }
   };
 
+  // ── Media handling (images + PDFs) ────────────────────────────────
+
+  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = ["image/", "application/pdf"];
+    if (!allowed.some(prefix => file.type.startsWith(prefix))) {
+      toast.error("Only images and PDF files are allowed");
+      return;
+    }
+
+    if (file.size > 16 * 1024 * 1024) {
+      toast.error("File size must be under 16 MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSelectedMedia({
+        file,
+        preview: reader.result as string,
+        mimeType: file.type,
+        fileName: file.name,
+      });
+      setMediaCaption("");
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input so the same file can be re-selected
+    e.target.value = "";
+  };
+
+  const clearSelectedMedia = () => {
+    setSelectedMedia(null);
+    setMediaCaption("");
+  };
+
+  const handleSendMedia = async () => {
+    if (!activeSessionId || !selectedLead || !selectedMedia) return;
+
+    setSendingMedia(true);
+    try {
+      // Strip the dataURL prefix — gateway expects raw base64
+      const base64Data = selectedMedia.preview.includes(",")
+        ? selectedMedia.preview.split(",")[1]
+        : selectedMedia.preview;
+
+      const res = await whatsappAutomationApi.sendMedia(activeSessionId, selectedLead.phone || "", {
+        mimeType: selectedMedia.mimeType,
+        data: base64Data,
+        fileName: selectedMedia.fileName,
+        caption: mediaCaption.trim() || undefined,
+      });
+
+      if (res.success) {
+        // Append sent media message locally
+        const now = Math.floor(Date.now() / 1000);
+        setChatMessages(prev => [...prev, {
+          id: res.message_id || `temp-media-${now}`,
+          body: mediaCaption.trim() || selectedMedia.fileName,
+          fromMe: true,
+          timestamp: res.timestamp || now,
+          media: {
+            mimeType: selectedMedia.mimeType,
+            preview: selectedMedia.preview,
+            fileName: selectedMedia.fileName,
+          },
+        }]);
+        toast.success("Media sent successfully!");
+        clearSelectedMedia();
+      } else {
+        toast.error("Failed to send media.");
+      }
+    } catch (e: any) {
+      toast.error("Failed to send media: " + (e.detail || e.message));
+    } finally {
+      setSendingMedia(false);
+    }
+  };
+
   const handleDirectMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanNum = directMessageNumber.replace(/\D/g, "");
@@ -275,16 +370,23 @@ export function WhatsappCampaigns() {
       if (!matchedLead) {
         const tempLead: CrmLead = {
           id: `temp-lead-${cleanNum}`,
+          tenant_id: "",
           name: directMessageName.trim() || `WhatsApp Guest (+${cleanNum})`,
           phone: cleanNum,
-          source: "WhatsApp",
+          company_name: null,
+          email: null,
           status: "New",
-          tenant_id: "",
-          company_name: "",
-          email: "",
+          source: "WhatsApp",
+          owner_user_id: null,
           estimated_value: 0,
+          last_contact_at: null,
+          next_follow_up_at: null,
+          notes: null,
+          lost_reason: null,
+          ai_score: null,
+          ai_sentiment: null,
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         };
         
         setLeads(prev => [tempLead, ...prev]);
@@ -610,15 +712,22 @@ export function WhatsappCampaigns() {
                     <div
                       key={chat.id || chat.phone}
                       onClick={() => setSelectedLead({
-                        id: chat.id,
+                        id: chat.id || `temp-${chat.phone}`,
+                        tenant_id: "",
                         name: chat.name,
                         phone: chat.phone,
-                        source: "WhatsApp",
+                        company_name: null,
+                        email: null,
                         status: chat.status || "Contacted",
-                        tenant_id: "",
-                        company_name: "",
-                        email: "",
+                        source: "WhatsApp",
+                        owner_user_id: null,
                         estimated_value: 0,
+                        last_contact_at: null,
+                        next_follow_up_at: null,
+                        notes: null,
+                        lost_reason: null,
+                        ai_score: null,
+                        ai_sentiment: null,
                         created_at: "",
                         updated_at: ""
                       })}
@@ -808,7 +917,39 @@ export function WhatsappCampaigns() {
                             : "bg-white text-slate-800 rounded-tl-none"
                         }`}
                       >
-                        <p className="whitespace-pre-wrap leading-relaxed pr-8">{msg.body}</p>
+                        {/* Media rendering (image or PDF) */}
+                        {msg.media && (
+                          <div className="mb-1.5">
+                            {msg.media.mimeType.startsWith("image/") ? (
+                              <img
+                                src={msg.media.preview}
+                                alt={msg.media.fileName}
+                                className="max-w-[250px] max-h-[200px] rounded-lg object-cover cursor-pointer"
+                                onClick={() => window.open(msg.media!.preview, "_blank")}
+                              />
+                            ) : (
+                              <a
+                                href={msg.media.preview}
+                                download={msg.media.fileName}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 bg-white/80 rounded-lg px-3 py-2 border border-slate-200 hover:bg-white transition-colors"
+                              >
+                                <FileText className="size-8 text-red-500 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-700 truncate">{msg.media.fileName}</p>
+                                  <p className="text-[10px] text-slate-400">PDF Document</p>
+                                </div>
+                              </a>
+                            )}
+                          </div>
+                        )}
+                        {msg.body && (
+                          <p className="whitespace-pre-wrap leading-relaxed pr-8">{msg.body}</p>
+                        )}
+                        {!msg.body && !msg.media && (
+                          <p className="text-slate-400 italic">&lt;Media&gt;</p>
+                        )}
                         <div className="absolute right-2 bottom-1.5 flex items-center gap-1">
                           <span className="text-[8px] text-slate-400 font-medium">
                             {formatTime(msg.timestamp)}
@@ -830,8 +971,71 @@ export function WhatsappCampaigns() {
                 <div ref={chatEndRef} />
               </div>
 
+              {/* ── Selected media preview strip ───────────────────── */}
+              {selectedMedia && (
+                <div className="px-3 py-2 bg-[#e8f5e9] border-b border-[#00a884]/20 flex items-center gap-3 relative z-10 shrink-0">
+                  <div className="size-10 rounded-lg overflow-hidden bg-white border border-slate-200 shrink-0">
+                    {selectedMedia.mimeType.startsWith("image/") ? (
+                      <img src={selectedMedia.preview} alt="" className="size-full object-cover" />
+                    ) : (
+                      <div className="size-full flex items-center justify-center">
+                        <FileText className="size-5 text-red-500" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-slate-700 truncate">{selectedMedia.fileName}</p>
+                    <p className="text-[10px] text-slate-400">{(selectedMedia.file.size / 1024).toFixed(0)} KB</p>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Caption (optional)..."
+                    value={mediaCaption}
+                    onChange={(e) => setMediaCaption(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                  />
+                  <button
+                    type="button"
+                    onClick={clearSelectedMedia}
+                    className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors cursor-pointer shrink-0"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSendMedia}
+                    disabled={sendingMedia || !activeSessionId || activeSession?.status !== 'CONNECTED'}
+                    className="px-3 py-1.5 bg-[#00a884] hover:bg-[#008f72] text-white rounded-lg text-[11px] font-bold transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+                  >
+                    {sendingMedia ? (
+                      <span className="flex items-center gap-1"><Loader2 className="size-3 animate-spin" /> Sending...</span>
+                    ) : "Send"}
+                  </button>
+                </div>
+              )}
+
               {/* Message input panel */}
-              <form onSubmit={handleSendMessage} className="p-3 bg-[#F0F2F5] border-t border-slate-200 flex items-center gap-3 relative z-10 shrink-0">
+              <form onSubmit={handleSendMessage} className="p-3 bg-[#F0F2F5] border-t border-slate-200 flex items-center gap-2 relative z-10 shrink-0">
+                <input
+                  ref={mediaInputRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={handleMediaSelect}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => mediaInputRef.current?.click()}
+                  disabled={!activeSessionId || activeSession?.status !== 'CONNECTED'}
+                  className="p-2 hover:bg-slate-200 text-slate-500 rounded-xl transition-colors cursor-pointer disabled:opacity-40 shrink-0"
+                  title="Attach image or PDF"
+                >
+                  {selectedMedia ? (
+                    <ImageIcon className="size-4 text-[#00a884]" />
+                  ) : (
+                    <Paperclip className="size-4" />
+                  )}
+                </button>
                 <input
                   type="text"
                   placeholder="Type a message..."

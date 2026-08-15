@@ -66,10 +66,29 @@ export function triggerThermalPrint(customPaperWidth?: string) {
     }
   `;
 
-  setTimeout(() => {
-    window.print();
-    setTimeout(() => {
-      document.body.classList.remove('printing-receipt');
-    }, 1000);
-  }, 150);
+  // Use requestAnimationFrame to ensure React has rendered the portal before print
+  // Then add another rAF tick to allow styles to apply, then print.
+  const portal = document.getElementById('printable-receipt-portal');
+  if (!portal) {
+    console.warn('[Print] Receipt portal not found in DOM');
+    document.body.classList.remove('printing-receipt');
+    return;
+  }
+
+  // Force two animation frames + a small delay to guarantee layout flush
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        try {
+          window.print();
+        } catch (e) {
+          console.error('[Print] window.print() failed:', e);
+        } finally {
+          setTimeout(() => {
+            document.body.classList.remove('printing-receipt');
+          }, 1500);
+        }
+      }, 100);
+    });
+  });
 }

@@ -45,6 +45,15 @@ class SendMessagePayload(BaseModel):
     message: str
 
 
+class SendMediaPayload(BaseModel):
+    mimeType: str = Field(..., alias="mimeType")
+    data: str = Field(..., description="Base64-encoded media data")
+    fileName: str | None = Field(None, alias="fileName")
+    caption: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
 class SyncContactItem(BaseModel):
     number: str
     name: str | None = None
@@ -474,6 +483,100 @@ async def send_message(
         "success": True,
         "message_id": gateway_res.get("message_id"),
         "timestamp": gateway_res.get("timestamp")
+    }
+
+
+# Send Media Endpoint (Image/PDF) - Proxy to Gateway + log to Database
+@router.post("/sessions/{session_id}/chats/{phone}/send-media")
+async def send_media(
+    session_id: str,
+    phone: str,
+    payload: SendMediaPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: AsyncSession = Depends(get_db)
+):
+    clean_phone = _clean_digits(phone)
+    clean_id = _clean_digits(session_id)
+
+    # Validate payload
+    if not payload.data or not payload.mimeType:
+        raise HTTPException(status_code=400, detail="mimeType and data are required")
+
+    # Allowed mime types (images + PDF)
+    allowed_prefixes = ("image/", "application/pdf")
+    if not payload.mimeType.startswith(tuple(allowed_prefixes)):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported mime type '{payload.mimeType}'. Only images and PDFs are allowed.",
+        )
+
+    # 1. Ensure Lead exists in Database
+    stmt = select(Lead).where(
+        Lead.tenant_id == ctx.tenant_id,
+        Lead.phone == clean_phone
+    )
+    res = await db.execute(stmt)
+    lead = res.scalars().first()
+
+    if not lead:
+        lead = Lead(
+            tenant_id=ctx.tenant_id,
+            name=f"WhatsApp Contact ({clean_phone})",
+            phone=clean_phone,
+            source="WhatsApp",
+            status="Contacted",
+            owner_user_id=ctx.user.id,
+            estimated_value=0.0
+        )
+        db.add(lead)
+        await db.commit()
+        await db.refresh(lead)
+
+    # 2. Proxy to NodeJS gateway (send raw mimeType + data + fileName + caption)
+    try:
+        proxy_body = {
+            "mimeType": payload.mimeType,
+            "data": payload.data,
+            "fileName": payload.fileName,
+            "caption": payload.caption,
+        }
+        async with _gateway_client() as client:
+            resp = await client.post(
+                f"{GATEWAY_URL}/sessions/{clean_id}/chats/{clean_phone}/send-media",
+                json=proxy_body,
+                timeout=30.0,
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            gateway_res = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"WhatsApp gateway failed to send media to {clean_phone}: {e}")
+        raise HTTPException(status_code=502, detail=f"WhatsApp gateway error: {e}")
+
+    # 3. Log as LeadActivity (whatsapp_sent) - store caption or filename as summary
+    summary_text = payload.caption or payload.fileName or "[Media]"
+    activity = LeadActivity(
+        tenant_id=ctx.tenant_id,
+        lead_id=lead.id,
+        activity_type="whatsapp_sent",
+        summary=f"[{payload.mimeType}] {summary_text}"[:500],
+        occurred_at=datetime.utcnow(),
+        created_by_user_id=ctx.user.id
+    )
+    db.add(activity)
+
+    # Update Lead's last contact timestamp
+    lead.last_contact_at = datetime.utcnow()
+    lead.status = "Contacted"
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message_id": gateway_res.get("message_id"),
+        "timestamp": gateway_res.get("timestamp"),
     }
 
 

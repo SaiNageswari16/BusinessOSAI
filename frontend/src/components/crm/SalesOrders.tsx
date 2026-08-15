@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, Filter, ShoppingCart, Download, Printer, Box, CreditCard, Clock, CheckCircle2, RefreshCw, Truck, Store, Building, Tag, UserCheck, ShieldCheck, DollarSign, Award, X, Sparkles } from "lucide-react";
+import { Plus, Search, Filter, ShoppingCart, Download, Printer, Box, CreditCard, Clock, CheckCircle2, RefreshCw, Truck, Store, Building, Tag, UserCheck, ShieldCheck, DollarSign, Award, X, Sparkles, Eye, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { crmSalesOrdersApi, type CrmSalesOrder, inventoryApi, posApi, employeesApi, fetchSalesEmployees } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import {
@@ -23,6 +23,7 @@ interface AdditionalChargeItem {
 
 export function SalesOrders() {
   const { tenant } = useTenant();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [orders, setOrders] = useState<CrmSalesOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -443,42 +444,127 @@ export function SalesOrders() {
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4">Payment</th>
                   <th className="px-6 py-4 text-right">Amount</th>
+                  <th className="px-6 py-4 text-right">Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
                 {filteredOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-muted-foreground font-medium">
+                    <td colSpan={6} className="py-8 text-center text-muted-foreground font-medium">
                       No sales orders found. Click "Create Sales Order" to record a new sale.
                     </td>
                   </tr>
                 ) : (
-                  filteredOrders.map((o) => (
-                    <tr key={o.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-6 py-4 font-mono font-bold text-primary flex items-center gap-2">
-                        <Box className="size-4 text-primary" /> {o.order_number}
-                      </td>
-                      <td className="px-6 py-4 font-medium">{o.customer_name || "Walk-in Customer"}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          o.status === 'Delivered' ? 'bg-emerald-500/10 text-emerald-600' :
-                          o.status === 'Shipped' ? 'bg-indigo-500/10 text-indigo-600' :
-                          'bg-amber-500/10 text-amber-600'
-                        }`}>
-                          {o.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          o.payment_status === 'Paid' ? 'bg-emerald-500/10 text-emerald-600' :
-                          'bg-rose-500/10 text-rose-600'
-                        }`}>
-                          {o.payment_status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right font-bold font-mono">₹{Number(o.total || 0).toFixed(2)}</td>
-                    </tr>
-                  ))
+                  filteredOrders.map((o) => {
+                    const isExpanded = expandedId === o.id;
+                    return (
+                      <React.Fragment key={o.id}>
+                        <tr className={`hover:bg-muted/30 transition-colors ${isExpanded ? "bg-primary/5" : ""}`}>
+                          <td className="px-6 py-4 font-mono font-bold text-primary flex items-center gap-2">
+                            <Box className="size-4 text-primary" /> {o.order_number}
+                          </td>
+                          <td className="px-6 py-4 font-medium">{o.customer_name || "Walk-in Customer"}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                              o.status === 'Delivered' ? 'bg-emerald-500/10 text-emerald-600' :
+                              o.status === 'Shipped' ? 'bg-indigo-500/10 text-indigo-600' :
+                              'bg-amber-500/10 text-amber-600'
+                            }`}>
+                              {o.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                              o.payment_status === 'Paid' ? 'bg-emerald-500/10 text-emerald-600' :
+                              'bg-rose-500/10 text-rose-600'
+                            }`}>
+                              {o.payment_status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right font-bold font-mono">₹{Number(o.total || 0).toFixed(2)}</td>
+                          <td className="px-6 py-4 text-right">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => {
+                                setNewOrder({
+                                  order_number: o.order_number,
+                                  customer_name: o.customer_name || "",
+                                  subtotal: o.subtotal || 0,
+                                  total: o.total || 0,
+                                  status: o.status || "Pending",
+                                  payment_status: o.payment_status || "Unpaid"
+                                });
+                                setIsAddModalOpen(true);
+                              }}
+                              className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10 text-primary border-primary/30"
+                            >
+                              <Eye className="size-4" /> View / Edit Page
+                            </Button>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr className="bg-slate-50/80">
+                            <td colSpan={6} className="p-6 border-b border-indigo-100">
+                              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                                <div className="flex flex-wrap justify-between items-center gap-3 border-b pb-3">
+                                  <div>
+                                    <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Sales Order Invoice Details</div>
+                                    <div className="text-lg font-black text-slate-900 mt-0.5">{o.order_number}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-500 font-mono">Customer: {o.customer_name || "Walk-in"}</span>
+                                    <Button size="sm" variant="outline" onClick={() => window.print()} className="h-8 text-xs font-bold rounded-lg">
+                                      <Printer className="size-3.5 mr-1" /> Print Sales Invoice
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                    <FileText className="size-3.5 text-indigo-500" /> Ordered Items & Pricing Breakdown
+                                  </h4>
+                                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                    <table className="w-full text-sm text-left">
+                                      <thead className="bg-slate-100 text-slate-600 text-xs uppercase font-bold">
+                                        <tr>
+                                          <th className="px-4 py-2.5">#</th>
+                                          <th className="px-4 py-2.5">Product Name</th>
+                                          <th className="px-4 py-2.5 text-center">Ordered Qty</th>
+                                          <th className="px-4 py-2.5 text-right">Unit Price (₹)</th>
+                                          <th className="px-4 py-2.5 text-right">Subtotal (₹)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 bg-white">
+                                        {o.items && o.items.length > 0 ? (
+                                          o.items.map((it: any, i: number) => {
+                                            const qty = Number(it.quantity) || 1;
+                                            const price = Number(it.price || it.unit_price) || 0;
+                                            return (
+                                              <tr key={i} className="hover:bg-slate-50">
+                                                <td className="px-4 py-2 text-xs font-mono font-bold text-slate-400">{i + 1}</td>
+                                                <td className="px-4 py-2 font-semibold text-slate-800">{it.product_name || it.name || "Sales Product"}</td>
+                                                <td className="px-4 py-2 text-center font-bold text-indigo-900">{qty} Units</td>
+                                                <td className="px-4 py-2 text-right text-slate-600">₹{price.toFixed(2)}</td>
+                                                <td className="px-4 py-2 text-right font-black text-slate-900">₹{(qty * price).toFixed(2)}</td>
+                                              </tr>
+                                            );
+                                          })
+                                        ) : (
+                                          <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">No line items detailed for this sales order.</td></tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>
