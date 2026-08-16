@@ -17,6 +17,8 @@ async def run_migrations():
         "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS qc_status VARCHAR(50) DEFAULT 'Passed';",
         "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS barcode VARCHAR(100);",
         "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC(10, 2) DEFAULT 0;",
+        "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS b2b_price NUMERIC(10, 2) DEFAULT 0;",
+        "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS min_wholesale_qty INTEGER DEFAULT 1;",
         "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT TRUE;",
         "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS specifications JSONB DEFAULT '{}'::jsonb;",
         "ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS specifications TEXT;",
