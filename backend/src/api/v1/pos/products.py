@@ -128,10 +128,11 @@ async def list_products(
             id=p.id, tenant_id=p.tenant_id, name=p.name, brand=p.brand.name if p.brand else None,
             sku=p.sku, barcode=p.barcode, description=p.short_description, image_url=p.image_url,
             category_id=p.category_id, category_name=p.category.name if p.category else None,
-            purchase_price=p.purchase_price, mrp=p.mrp, selling_price=p.selling_price or p.mrp or 0.0,
+            purchase_price=float(p.purchase_price or 0.0), mrp=float(p.mrp or 0.0),
+            selling_price=float(p.selling_price or p.mrp or 0.0),
             wholesale_price=float(p.wholesale_price or 0.0), min_wholesale_qty=int(p.min_wholesale_qty or 1),
-            tax_percent=p.tax_percent, discount=p.discount_limit, stock=p.initial_stock,
-            reorder_level=p.reorder_level, is_active=(p.status == EntityStatus.ACTIVE),
+            tax_percent=float(p.tax_percent or 0.0), discount=float(p.discount_limit or 0.0), stock=int(p.initial_stock or 0),
+            reorder_level=int(p.reorder_level or 0), is_active=(p.status == EntityStatus.ACTIVE),
             created_at=p.created_at, updated_at=p.updated_at
         )
         out.append(d)
@@ -203,9 +204,11 @@ async def create_product(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
         sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
         category_id=product.category_id, category_name=product.category.name if product.category else None,
-        purchase_price=product.purchase_price, mrp=product.mrp, selling_price=product.selling_price or product.mrp or 0.0,
-        tax_percent=product.tax_percent, discount=product.discount_limit, stock=product.initial_stock,
-        reorder_level=product.reorder_level, is_active=(product.status == "active"),
+        purchase_price=float(product.purchase_price or 0.0), mrp=float(product.mrp or 0.0),
+        selling_price=float(product.selling_price or product.mrp or 0.0),
+        wholesale_price=float(product.wholesale_price or 0.0), min_wholesale_qty=int(product.min_wholesale_qty or 1),
+        tax_percent=float(product.tax_percent or 0.0), discount=float(product.discount_limit or 0.0), stock=int(product.initial_stock or 0),
+        reorder_level=int(product.reorder_level or 0), is_active=(product.status == "active" or product.status == EntityStatus.ACTIVE),
         created_at=product.created_at, updated_at=product.updated_at
     )
     return res
@@ -217,44 +220,42 @@ async def bulk_create_products(
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db),
 ):
-    if not payload.products:
-        return POSProductBulkResponse(created_count=0, skipped_count=0, errors=[])
-
-    # Fetch existing SKUs and Barcodes to avoid duplicates
-    tenant_id = ctx.user.tenant_id
-    existing_result = await db.execute(
-        select(Product.sku, Product.barcode)
-        .where(Product.tenant_id == tenant_id)
-    )
-    existing_records = existing_result.all()
-    existing_skus = {r.sku for r in existing_records if r.sku}
-    existing_barcodes = {r.barcode for r in existing_records if r.barcode}
-
-    new_products = []
     skipped = 0
     errors = []
+    new_products = []
 
-    for idx, p in enumerate(payload.products):
-        # Convert empty strings to None for unique fields
-        if not p.sku or p.sku.strip() == "":
-            p.sku = None
-        if not p.barcode or p.barcode.strip() == "":
-            p.barcode = None
+    for item in payload.products:
+        data = item.model_dump()
+        barcode = (data.get("barcode") or "").strip()
+        name = (data.get("name") or "").strip()
 
-        if p.sku and p.sku in existing_skus:
+        # Check duplicate
+        exists = None
+        if barcode:
+            res = await db.execute(
+                select(Product.id).where(Product.tenant_id == ctx.user.tenant_id, Product.barcode == barcode)
+            )
+            exists = res.scalar_one_or_none()
+
+        if not exists and name:
+            res = await db.execute(
+                select(Product.id).where(Product.tenant_id == ctx.user.tenant_id, func.lower(Product.name) == name.lower())
+            )
+            exists = res.scalar_one_or_none()
+
+        if exists:
             skipped += 1
-            errors.append(f"Row {idx + 1}: SKU '{p.sku}' already exists.")
             continue
-        if p.barcode and p.barcode in existing_barcodes:
-            skipped += 1
-            errors.append(f"Row {idx + 1}: Barcode '{p.barcode}' already exists.")
-            continue
-        
-        # Add to sets to prevent duplicates within the same batch
-        if p.sku: existing_skus.add(p.sku)
-        if p.barcode: existing_barcodes.add(p.barcode)
-            
-        new_products.append(Product(tenant_id=tenant_id, **p.model_dump()))
+
+        if "is_active" in data:
+            data["status"] = "active" if data.pop("is_active") else "inactive"
+        if "description" in data:
+            data["short_description"] = data.pop("description")
+        if "discount" in data:
+            data["discount_limit"] = data.pop("discount")
+
+        prod = Product(tenant_id=ctx.user.tenant_id, **data)
+        new_products.append(prod)
 
     if new_products:
         db.add_all(new_products)
@@ -289,9 +290,11 @@ async def get_product(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
         sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
         category_id=product.category_id, category_name=product.category.name if product.category else None,
-        purchase_price=product.purchase_price, mrp=product.mrp, selling_price=product.selling_price or product.mrp or 0.0,
-        tax_percent=product.tax_percent, discount=product.discount_limit, stock=product.initial_stock,
-        reorder_level=product.reorder_level, is_active=(product.status == "active"),
+        purchase_price=float(product.purchase_price or 0.0), mrp=float(product.mrp or 0.0),
+        selling_price=float(product.selling_price or product.mrp or 0.0),
+        wholesale_price=float(product.wholesale_price or 0.0), min_wholesale_qty=int(product.min_wholesale_qty or 1),
+        tax_percent=float(product.tax_percent or 0.0), discount=float(product.discount_limit or 0.0), stock=int(product.initial_stock or 0),
+        reorder_level=int(product.reorder_level or 0), is_active=(product.status == "active" or product.status == EntityStatus.ACTIVE),
         created_at=product.created_at, updated_at=product.updated_at
     )
     return res
