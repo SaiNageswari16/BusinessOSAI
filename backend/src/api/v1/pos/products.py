@@ -2,7 +2,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -107,7 +107,7 @@ async def list_products(
         .where(Product.tenant_id == ctx.user.tenant_id)
     )
     if active_only:
-        stmt = stmt.where(Product.status == EntityStatus.ACTIVE)
+        stmt = stmt.where(or_(Product.status == EntityStatus.ACTIVE, Product.status == 'active', Product.status == None))
     if category_id:
         stmt = stmt.where(Product.category_id == category_id)
     if search:

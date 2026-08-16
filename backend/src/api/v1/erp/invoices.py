@@ -13,7 +13,8 @@ from sqlalchemy.orm import selectinload
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import Customer, CustomerWallet, CustomerWalletTransaction
+from src.models import Customer, CustomerWallet, CustomerWalletTransaction, Product
+from src.models.inventory import InventoryBatch
 from src.models.erp import Invoice, InvoiceLine, InvoicePayment, InvoiceReturn
 from src.schemas.erp_accounting import (
     InvoiceCreate,
@@ -254,6 +255,40 @@ async def create_invoice(
         })
         line = InvoiceLine(invoice_id=invoice.id, line_number=idx + 1, **line_dict)
         db.add(line)
+
+        # Real-time stock & batch deduction across inventory
+        item_id = line_dict.get("item_id")
+        if item_id:
+            try:
+                prod_res = await db.execute(
+                    select(Product).where(Product.id == item_id, Product.tenant_id == ctx.tenant_id).with_for_update()
+                )
+                prod = prod_res.scalar_one_or_none()
+                if prod:
+                    if prod.initial_stock is None:
+                        prod.initial_stock = 0
+                    prod.initial_stock = max(0, prod.initial_stock - int(qty))
+
+                # Real-time Batch stock deduction
+                batch_no = line_dict.get("batch_number")
+                if batch_no:
+                    b_stmt = select(InventoryBatch).where(
+                        InventoryBatch.batch_number == batch_no,
+                        InventoryBatch.tenant_id == ctx.tenant_id
+                    ).with_for_update()
+                else:
+                    b_stmt = select(InventoryBatch).where(
+                        InventoryBatch.product_id == item_id,
+                        InventoryBatch.tenant_id == ctx.tenant_id,
+                        InventoryBatch.remaining_quantity > 0
+                    ).order_by(InventoryBatch.expiry_date.asc().nullslast()).with_for_update()
+                
+                b_res = await db.execute(b_stmt)
+                b_match = b_res.scalars().first()
+                if b_match:
+                    b_match.remaining_quantity = max(0, b_match.remaining_quantity - int(qty))
+            except Exception as st_err:
+                logger.warning(f"Invoice stock deduction note: {st_err}")
 
     # If customer had past unpaid invoices and today's invoice is paid, clear past dues
     if payload.customer_id and (str(invoice.status).lower() == "paid" or getattr(payload, "payment_status", "").upper() == "PAID"):

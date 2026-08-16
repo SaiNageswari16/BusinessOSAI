@@ -116,26 +116,38 @@ export function PurchaseRequests() {
                       {currency.symbol}{Number(req.total_amount || 0).toLocaleString("en-IN")}
                     </td>
                     <td className="py-4 px-6 text-muted-foreground font-mono text-xs">
-                      {req.request_date || (req.created_at ? new Date(req.created_at).toLocaleDateString() : new Date().toLocaleDateString())}
+                      {req.request_date || req.created_at
+                        ? new Date(req.request_date || req.created_at).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : new Date().toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
                     </td>
                     <td className="py-4 px-6">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                         req.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' :
-                        req.status === 'Pending' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' :
+                        req.status === 'Pending' || req.status === 'Pending Approval' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' :
                         'bg-blue-500/10 text-blue-600 border border-blue-500/20'
                       }`}>
                         {req.status || 'Draft'}
                       </span>
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => setSelectedDoc(req)}
-                        className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10"
-                      >
-                        <Eye className="size-4" /> View / Edit Page
-                      </Button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => setSelectedDoc(req)}
+                          className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10"
+                        >
+                          <Eye className="size-4" /> View / Edit Page
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))

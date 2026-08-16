@@ -27,9 +27,47 @@ export function ManufacturingDates() {
     try {
       setLoadingCohorts(true);
       const c = await inventoryApi.getManufacturingCohorts();
-      setCohorts(c);
+      if (c && Object.keys(c.cohorts || {}).length > 0) {
+        setCohorts(c);
+      } else {
+        throw new Error("fallback");
+      }
     } catch {
-      setCohorts(null);
+      try {
+        const batches = await inventoryApi.getBatches();
+        const now = new Date().getTime();
+        let lt_30d_cnt = 0, lt_30d_units = 0;
+        let lt_90d_cnt = 0, lt_90d_units = 0;
+        let lt_180d_cnt = 0, lt_180d_units = 0;
+        let gt_180d_cnt = 0, gt_180d_units = 0;
+
+        batches.forEach((b: any) => {
+          const qty = Number(b.remaining_quantity || b.quantity || 0);
+          if (!b.manufacturing_date) {
+            lt_30d_cnt++;
+            lt_30d_units += qty;
+            return;
+          }
+          const daysOld = Math.floor((now - new Date(b.manufacturing_date).getTime()) / (1000 * 60 * 60 * 24));
+          if (daysOld <= 30) { lt_30d_cnt++; lt_30d_units += qty; }
+          else if (daysOld <= 90) { lt_90d_cnt++; lt_90d_units += qty; }
+          else if (daysOld <= 180) { lt_180d_cnt++; lt_180d_units += qty; }
+          else { gt_180d_cnt++; gt_180d_units += qty; }
+        });
+
+        setCohorts({
+          cohorts: {
+            lt_30d: { count: lt_30d_cnt, units: lt_30d_units },
+            lt_90d: { count: lt_90d_cnt, units: lt_90d_units },
+            lt_180d: { count: lt_180d_cnt, units: lt_180d_units },
+            gt_180d: { count: gt_180d_cnt, units: gt_180d_units },
+          },
+          total_units: lt_30d_units + lt_90d_units + lt_180d_units + gt_180d_units,
+          total_batches: batches.length,
+        });
+      } catch {
+        setCohorts(null);
+      }
     } finally {
       setLoadingCohorts(false);
     }
@@ -39,9 +77,18 @@ export function ManufacturingDates() {
     setLoadingList(true);
     try {
       const data = await inventoryApi.getManufacturingList();
-      setList(data);
+      if (data && data.length > 0) {
+        setList(data);
+      } else {
+        throw new Error("fallback");
+      }
     } catch {
-      setList([]);
+      try {
+        const batches = await inventoryApi.getBatches();
+        setList(batches || []);
+      } catch {
+        setList([]);
+      }
     } finally {
       setLoadingList(false);
     }

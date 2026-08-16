@@ -80,14 +80,8 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
         if (res.pan) setPan(res.pan);
         if (res.gstin) setGstin(res.gstin);
 
-        // Preserve typed company name if using fallback parser
-        if (!res.is_fallback) {
-          if (res.trade_name) setName(res.trade_name);
-          if (res.legal_name) setCompanyName(res.legal_name);
-        } else {
-          if (!name || name.startsWith("Vendor Party")) setName(res.trade_name);
-          if (!companyName || companyName.startsWith("ENTERPRISE")) setCompanyName(res.legal_name);
-        }
+        if (res.trade_name) setName(res.trade_name);
+        if (res.legal_name) setCompanyName(res.legal_name);
 
         if (res.contact_person) setContactName(res.contact_person);
         if (res.email) setEmail(res.email);

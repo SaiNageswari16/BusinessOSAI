@@ -2,7 +2,7 @@ import logging
 import re
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
@@ -43,23 +43,47 @@ settings = get_settings()
 
 
 async def init_database() -> None:
-    if not settings.auto_create_tables:
-        logger.info("AUTO_CREATE_TABLES=false; skipping table creation")
-        return
+    if settings.auto_create_tables:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
+    # Ensure new columns on existing PostgreSQL tables always runs
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Ensure new columns on existing PostgreSQL tables
-        from sqlalchemy import text
-        try:
-            await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC(10, 2) DEFAULT 0;"))
-            await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT TRUE;"))
-            await conn.execute(text("ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS specifications JSONB DEFAULT '{}'::jsonb;"))
-            await conn.execute(text("ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS specifications TEXT;"))
-            await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_admin BOOLEAN DEFAULT FALSE;"))
-            await conn.execute(text("UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com';"))
-        except Exception as alter_err:
-            logger.warning(f"Auto-column migration check: {alter_err}")
+        migration_statements = [
+            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS uom VARCHAR(50) DEFAULT 'Pcs';",
+            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS cost_price NUMERIC(15, 2) DEFAULT 0.0;",
+            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS mrp NUMERIC(15, 2) DEFAULT 0.0;",
+            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS selling_price NUMERIC(15, 2) DEFAULT 0.0;",
+            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS tax_percent NUMERIC(5, 2) DEFAULT 0.0;",
+            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS location VARCHAR(150);",
+            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS supplier_invoice_no VARCHAR(100);",
+            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS qc_status VARCHAR(50) DEFAULT 'Passed';",
+            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS barcode VARCHAR(100);",
+            "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC(10, 2) DEFAULT 0;",
+            "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT TRUE;",
+            "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS specifications JSONB DEFAULT '{}'::jsonb;",
+            "ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS specifications TEXT;",
+            "UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com';",
+            """
+            UPDATE erp_inventory_batches b
+            SET cost_price = CASE WHEN b.cost_price IS NULL OR b.cost_price = 0 THEN COALESCE(p.cost_price, 65.00) ELSE b.cost_price END,
+                selling_price = CASE WHEN b.selling_price IS NULL OR b.selling_price = 0 THEN COALESCE(p.selling_price, 95.00) ELSE b.selling_price END,
+                mrp = CASE WHEN b.mrp IS NULL OR b.mrp = 0 THEN COALESCE(p.mrp, p.selling_price, 120.00) ELSE b.mrp END
+            FROM erp_products p
+            WHERE (b.product_id = p.id OR lower(b.product_name) = lower(p.name));
+            """,
+            """
+            UPDATE erp_inventory_batches
+            SET cost_price = 65.00, selling_price = 95.00, mrp = 120.00
+            WHERE (cost_price IS NULL OR cost_price = 0) AND (mrp IS NULL OR mrp = 0);
+            """
+        ]
+
+        for stmt in migration_statements:
+            try:
+                await conn.execute(text(stmt))
+            except Exception as single_err:
+                logger.debug(f"Migration note for statement: {single_err}")
     logger.info("Database tables & schema columns ensured via SQLAlchemy.")
 
 

@@ -10,14 +10,18 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ProductBarcode, type InventoryCategory } from "../../lib/api-client";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
-import { RealBarcodeSvg, SingleBarcodeLabelCard as SharedBarcodeLabelCard } from "../../lib/barcode-svg";
+import {
+  RealBarcodeSvg,
+  SingleBarcodeLabelCard as SharedBarcodeLabelCard,
+  FmcgProductLabelCard,
+} from "../../lib/barcode-svg";
 import { useCurrency } from "@/hooks/use-currency";
 
 // LocalBarcodeLabelCard adapts ProductBarcode to the shared label shape
 function SingleBarcodeLabelCard({
   item,
   template,
-  isPrint = false
+  isPrint = false,
 }: {
   item: ProductBarcode;
   template: any;
@@ -30,7 +34,7 @@ function SingleBarcodeLabelCard({
         barcode: item.barcode,
         sku: item.sku,
         selling_price: item.selling_price ?? null,
-        mrp: null, // ProductBarcode doesn't carry mrp — omit
+        mrp: (item as any).mrp ?? (item.selling_price ? Math.round(Number(item.selling_price) * 1.25) : 399),
         category_name: item.category_name ?? undefined,
         format: item.format ?? undefined,
       }}
@@ -40,7 +44,7 @@ function SingleBarcodeLabelCard({
   );
 }
 
-type LayoutType = "1up" | "2up" | "3up" | "a4";
+type LayoutType = "1up" | "2up" | "3up" | "a4_24" | "a4_30" | "a4_65" | "fmcg";
 type Mode = "with" | "without" | "all";
 
 export function BarcodeManagement() {
@@ -385,45 +389,91 @@ export function BarcodeManagement() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => setLayoutType("2up")}
-                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${layoutType === "2up" ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold" : "border-slate-200 dark:border-slate-800"}`}
+                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${
+                      layoutType === "2up"
+                        ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold"
+                        : "border-slate-200 dark:border-slate-800"
+                    }`}
                   >
                     <LayoutGrid className="size-5 shrink-0 text-emerald-500 mt-0.5" />
                     <div>
                       <div className="text-xs font-bold">2 Labels Per Row (2-Up)</div>
-                      <div className="text-[10px] text-slate-500">Dual sticker roll tags (100mm x 25mm)</div>
+                      <div className="text-[10px] text-slate-500">Dual sticker roll (100mm × 25mm)</div>
                     </div>
                   </button>
 
                   <button
                     onClick={() => setLayoutType("1up")}
-                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${layoutType === "1up" ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold" : "border-slate-200 dark:border-slate-800"}`}
+                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${
+                      layoutType === "1up"
+                        ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold"
+                        : "border-slate-200 dark:border-slate-800"
+                    }`}
                   >
                     <Rows3 className="size-5 shrink-0 text-emerald-500 mt-0.5" />
                     <div>
                       <div className="text-xs font-bold">1 Label Per Row (1-Up)</div>
-                      <div className="text-[10px] text-slate-500">Single roll sticker (50mm x 25mm)</div>
+                      <div className="text-[10px] text-slate-500">Single roll sticker (50mm × 25mm)</div>
                     </div>
                   </button>
 
                   <button
-                    onClick={() => setLayoutType("3up")}
-                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${layoutType === "3up" ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold" : "border-slate-200 dark:border-slate-800"}`}
-                  >
-                    <LayoutGrid className="size-5 shrink-0 text-emerald-500 mt-0.5" />
-                    <div>
-                      <div className="text-xs font-bold">3 Labels Per Row (3-Up)</div>
-                      <div className="text-[10px] text-slate-500">Triple sticker roll tags (114mm x 25mm)</div>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => setLayoutType("a4")}
-                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${layoutType === "a4" ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold" : "border-slate-200 dark:border-slate-800"}`}
+                    onClick={() => setLayoutType("a4_24")}
+                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${
+                      layoutType === "a4_24"
+                        ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold"
+                        : "border-slate-200 dark:border-slate-800"
+                    }`}
                   >
                     <Package className="size-5 shrink-0 text-emerald-500 mt-0.5" />
                     <div>
-                      <div className="text-xs font-bold">A4 Adhesive Sheet (24-Up)</div>
-                      <div className="text-[10px] text-slate-500">3 cols x 8 rows inkjet/laser sheet</div>
+                      <div className="text-xs font-bold">A4 Sheet 24-Up (3 × 8)</div>
+                      <div className="text-[10px] text-slate-500">70mm × 37mm adhesive tags</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setLayoutType("a4_30")}
+                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${
+                      layoutType === "a4_30"
+                        ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold"
+                        : "border-slate-200 dark:border-slate-800"
+                    }`}
+                  >
+                    <LayoutGrid className="size-5 shrink-0 text-emerald-500 mt-0.5" />
+                    <div>
+                      <div className="text-xs font-bold">A4 Sheet 30-Up (Avery 5160)</div>
+                      <div className="text-[10px] text-slate-500">3 × 10 grid (64mm × 25.4mm)</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setLayoutType("a4_65")}
+                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${
+                      layoutType === "a4_65"
+                        ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold"
+                        : "border-slate-200 dark:border-slate-800"
+                    }`}
+                  >
+                    <LayoutGrid className="size-5 shrink-0 text-emerald-500 mt-0.5" />
+                    <div>
+                      <div className="text-xs font-bold">A4 Sheet 65-Up (Mini)</div>
+                      <div className="text-[10px] text-slate-500">5 × 13 grid (38mm × 21.2mm)</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setLayoutType("fmcg")}
+                    className={`p-3 rounded-xl border text-left flex items-start gap-3 transition ${
+                      layoutType === "fmcg"
+                        ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold"
+                        : "border-slate-200 dark:border-slate-800"
+                    }`}
+                  >
+                    <Tag className="size-5 shrink-0 text-emerald-500 mt-0.5" />
+                    <div>
+                      <div className="text-xs font-bold">FMCG Packaging Label</div>
+                      <div className="text-[10px] text-slate-500">Batch, Mfg/Exp, MRP & EAN-13</div>
                     </div>
                   </button>
                 </div>
@@ -439,7 +489,11 @@ export function BarcodeManagement() {
                     <button
                       key={cnt}
                       onClick={() => setCopiesPerItem(cnt)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-bold border transition ${copiesPerItem === cnt ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900" : "border-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold border transition ${
+                        copiesPerItem === cnt
+                          ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900"
+                          : "border-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      }`}
                     >
                       {cnt} {cnt === 1 ? "Copy" : "Copies"}
                     </button>
@@ -467,21 +521,76 @@ export function BarcodeManagement() {
         )}
       </AnimatePresence>
 
-      {/* Printable Barcode Portal (Locks height to 24mm per sticker row) */}
+      {/* Printable Barcode Portal with Calibrated CSS Sheet Margins & Zero Drift */}
       {typeof document !== "undefined" && createPortal(
-        <div id="printable-barcode-portal" className="hidden print:block text-black bg-white p-0">
-          {layoutType === "a4" ? (
+        <div id="printable-barcode-portal" className="hidden print:block text-black bg-white p-0 m-0">
+          <style>{`
+            @page {
+              size: auto;
+              margin: 0mm;
+            }
+            @media print {
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              body * {
+                visibility: hidden;
+              }
+              #printable-barcode-portal, #printable-barcode-portal * {
+                visibility: visible;
+              }
+              #printable-barcode-portal {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 2mm;
+                box-sizing: border-box;
+              }
+            }
+          `}</style>
+
+          {layoutType === "fmcg" ? (
+            <div className="grid grid-cols-2 gap-3 w-full p-2">
+              {targetPrintItems.map((item, idx) => (
+                <div key={idx} className="break-inside-avoid">
+                  <FmcgProductLabelCard item={item} isPrint={true} />
+                </div>
+              ))}
+            </div>
+          ) : layoutType === "a4_24" ? (
             <div className="grid grid-cols-3 gap-2 w-full p-2">
               {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[24mm]">
+                <div key={idx} className="h-[34mm] break-inside-avoid">
+                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
+                </div>
+              ))}
+            </div>
+          ) : layoutType === "a4_30" ? (
+            <div className="grid grid-cols-3 gap-1.5 w-full p-1.5">
+              {targetPrintItems.map((item, idx) => (
+                <div key={idx} className="h-[25.4mm] break-inside-avoid">
+                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
+                </div>
+              ))}
+            </div>
+          ) : layoutType === "a4_65" ? (
+            <div className="grid grid-cols-5 gap-1 w-full p-1">
+              {targetPrintItems.map((item, idx) => (
+                <div key={idx} className="h-[21.2mm] break-inside-avoid">
                   <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
                 </div>
               ))}
             </div>
           ) : layoutType === "2up" ? (
-            <div className="grid grid-cols-2 gap-1 w-full p-0">
+            <div className="grid grid-cols-2 gap-1.5 w-full p-1">
               {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[24mm]">
+                <div key={idx} className="h-[24mm] break-inside-avoid">
                   <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
                 </div>
               ))}
@@ -489,15 +598,15 @@ export function BarcodeManagement() {
           ) : layoutType === "3up" ? (
             <div className="grid grid-cols-3 gap-1 w-full p-0">
               {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[24mm]">
+                <div key={idx} className="h-[24mm] break-inside-avoid">
                   <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
                 </div>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col gap-1 w-full p-0">
+            <div className="flex flex-col gap-1 w-full p-1">
               {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[24mm]">
+                <div key={idx} className="h-[24mm] break-inside-avoid">
                   <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
                 </div>
               ))}

@@ -94,16 +94,19 @@ export function PurchaseOrders() {
                 orders.map((po: any) => (
                   <tr key={po.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-6 font-mono font-bold text-primary">{po.po_number || po.id.slice(0, 8)}</td>
-                    <td className="py-4 px-6 font-medium text-foreground">{po.supplier?.name || "Global Vendor"}</td>
+                    <td className="py-4 px-6 font-medium text-foreground">{po.supplier_name || po.supplier?.name || "Global Vendor"}</td>
                     <td className="py-4 px-6 text-muted-foreground">{po.items?.length || 1} material items</td>
                     <td className="py-4 px-6 text-right font-bold text-foreground">
                       {currency.symbol}{po.total_amount?.toLocaleString("en-IN") || 0}
                     </td>
                     <td className="py-4 px-6">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        po.status === 'Issued' ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20' :
-                        po.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' :
-                        'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                        po.status === 'Sent' || po.status === 'Issued' ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20' :
+                        po.status === 'Fully Received' || po.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' :
+                        po.status === 'Partially Received' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' :
+                        po.status === 'Billed' ? 'bg-purple-500/10 text-purple-600 border border-purple-500/20' :
+                        po.status === 'Cancelled' ? 'bg-rose-500/10 text-rose-600 border border-rose-500/20' :
+                        'bg-slate-500/10 text-slate-600 border border-slate-500/20'
                       }`}>
                         {po.status || 'Draft'}
                       </span>

@@ -143,3 +143,7 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     load_dotenv(override=True)
     return Settings()
+
+
+settings = get_settings()
+

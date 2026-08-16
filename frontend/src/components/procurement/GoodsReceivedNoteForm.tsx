@@ -19,7 +19,10 @@ import {
   Truck,
   ShieldCheck,
   Search,
-  Send
+  Send,
+  Upload,
+  ScanLine,
+  Loader2,
 } from "lucide-react";
 import { inventoryApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -47,7 +50,8 @@ interface GoodsReceivedNoteFormProps {
 }
 
 export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsReceivedNoteFormProps) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const isEditing = !!initialData?.id;
   const [products, setProducts] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -61,10 +65,16 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
   const [receivingLocation, setReceivingLocation] = useState<string>("Main Warehouse (BR-100)");
   const [selectedInspectorId, setSelectedInspectorId] = useState<string>("");
   const [chalanInvoiceNo, setChalanInvoiceNo] = useState<string>("");
-  const [carrierVehicleNo, setCarrierVehicleNo] = useState<string>("");
+  const [vehicleNo, setVehicleNo] = useState<string>("");
+  const [carrierNote, setCarrierNote] = useState<string>("");
   const [notes, setNotes] = useState<string>(
-    "1. Stock received in good condition except logged line rejections.\n2. QC inspection verified."
+    initialData?.notes || "1. Stock received in good condition except logged line rejections.\n2. QC inspection verified."
   );
+
+  // OCR upload state
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [ocrFile, setOcrFile] = useState<File | null>(null);
+  const [ocrResult, setOcrResult] = useState<any>(null);
 
   // Line items
   const [items, setItems] = useState<GRNItem[]>([
@@ -123,7 +133,7 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
           const randomSeq = Math.floor(1000 + Math.random() * 9000);
           setGrnNumber(`GRN-2026-${randomSeq}`);
           setChalanInvoiceNo(`CHALAN-${randomSeq}`);
-          setCarrierVehicleNo(`KA-${Math.floor(10 + Math.random() * 89)}-HQ-${Math.floor(1000 + Math.random() * 8999)}`);
+          setVehicleNo(`KA-${Math.floor(10 + Math.random() * 89)}-HQ-${Math.floor(1000 + Math.random() * 8999)}`);
         }
       } catch (err) {
         console.error("Error initializing GRN form data:", err);
@@ -253,26 +263,74 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
     setIsSaving(true);
     try {
       const inspectorId = selectedInspectorId || "00000000-0000-0000-0000-000000000000";
-      await inventoryApi.createGoodsReceivedNote({
-        grn_number: grnNumber,
-        purchase_order_id: linkedPoId || undefined,
-        received_by: inspectorId,
-        items: items.map((it) => ({
-          product_id: it.product_id || products[0]?.id,
-          quantity_ordered: Number(it.quantity_ordered),
-          quantity_received: Number(it.quantity_received),
-          quantity_accepted: Number(it.quantity_accepted),
-          quantity_rejected: Number(it.quantity_rejected),
-        })),
-      });
+      if (isEditing) {
+        await inventoryApi.updateGoodsReceivedNote(initialData.id, {
+          received_date: receivedDate ? new Date(receivedDate).toISOString() : undefined,
+          status: "Verified",
+        });
+        toast.success(`GRN ${grnNumber} updated successfully.`);
+      } else {
+        await inventoryApi.createGoodsReceivedNote({
+          grn_number: grnNumber,
+          purchase_order_id: linkedPoId || undefined,
+          received_by: inspectorId,
+          items: items.map((it) => ({
+            product_id: it.product_id || products[0]?.id,
+            quantity_ordered: Number(it.quantity_ordered),
+            quantity_received: Number(it.quantity_received),
+            quantity_accepted: Number(it.quantity_accepted),
+            quantity_rejected: Number(it.quantity_rejected),
+          })),
+        });
+        toast.success(`GRN ${grnNumber} logged! ${totalAccepted} units added to stock.`);
+      }
 
-      toast.success(`GRN ${grnNumber} logged! ${totalAccepted} units added to stock.`);
       if (onSaved) onSaved();
       onClose();
     } catch (err: any) {
-      toast.error(err.message || "Failed to log Goods Received Note");
+      toast.error(err.message || "Failed to save Goods Received Note");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteGRN = async () => {
+    if (!isEditing) return;
+    if (!confirm(`Delete GRN ${grnNumber}? This cannot be undone.`)) return;
+    setIsSaving(true);
+    try {
+      await inventoryApi.deleteGoodsReceivedNote(initialData.id);
+      toast.success(`GRN ${grnNumber} deleted.`);
+      if (onSaved) onSaved();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete GRN");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || isEditing) return;
+    setOcrFile(file);
+    setIsExtracting(true);
+    try {
+      const data = await inventoryApi.extractGRNDocumentOCR(file);
+      setOcrResult(data);
+      if (data.extracted) {
+        if (data.grn_number) setGrnNumber(data.grn_number);
+        if (data.received_date) setReceivedDate(data.received_date);
+        if (data.notes) setNotes(data.notes);
+        toast.success("Document extracted — review fields and submit.");
+      } else {
+        toast.error("Could not extract data from document. Please fill manually.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "OCR extraction failed");
+    } finally {
+      setIsExtracting(false);
+      e.target.value = "";
     }
   };
 

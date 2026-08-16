@@ -28,15 +28,61 @@ import {
   MessageSquare,
   StickyNote,
   Tag,
-
+  Boxes,
+  CheckSquare,
+  Square,
+  ShoppingBag,
+  Layers,
+  Minus,
+  RefreshCw,
   AlertTriangle
 } from "lucide-react";
-import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees } from "../../lib/api-client";
+import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
+
+export const INDIAN_STATES = [
+  { code: "01", name: "Jammu and Kashmir" },
+  { code: "02", name: "Himachal Pradesh" },
+  { code: "03", name: "Punjab" },
+  { code: "04", name: "Chandigarh" },
+  { code: "05", name: "Uttarakhand" },
+  { code: "06", name: "Haryana" },
+  { code: "07", name: "Delhi" },
+  { code: "08", name: "Rajasthan" },
+  { code: "09", name: "Uttar Pradesh" },
+  { code: "10", name: "Bihar" },
+  { code: "11", name: "Sikkim" },
+  { code: "12", name: "Arunachal Pradesh" },
+  { code: "13", name: "Nagaland" },
+  { code: "14", name: "Manipur" },
+  { code: "15", name: "Mizoram" },
+  { code: "16", name: "Tripura" },
+  { code: "17", name: "Meghalaya" },
+  { code: "18", name: "Assam" },
+  { code: "19", name: "West Bengal" },
+  { code: "20", name: "Jharkhand" },
+  { code: "21", name: "Odisha" },
+  { code: "22", name: "Chhattisgarh" },
+  { code: "23", name: "Madhya Pradesh" },
+  { code: "24", name: "Gujarat" },
+  { code: "26", name: "Dadra and Nagar Haveli and Daman and Diu" },
+  { code: "27", name: "Maharashtra" },
+  { code: "29", name: "Karnataka" },
+  { code: "30", name: "Goa" },
+  { code: "31", name: "Lakshadweep" },
+  { code: "32", name: "Kerala" },
+  { code: "33", name: "Tamil Nadu" },
+  { code: "34", name: "Puducherry" },
+  { code: "35", name: "Andaman and Nicobar Islands" },
+  { code: "36", name: "Telangana" },
+  { code: "37", name: "Andhra Pradesh" },
+  { code: "38", name: "Ladakh" },
+  { code: "97", name: "Other Territory" },
+];
 
 interface InvoiceItem {
   id: string;
@@ -76,6 +122,8 @@ export function PosSalesInvoice() {
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0]);
   const [dueDate, setDueDate] = useState(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
   const [paymentTerms, setPaymentTerms] = useState("30");
+  const [customPaymentTermsText, setCustomPaymentTermsText] = useState("");
+  const [customPaymentDays, setCustomPaymentDays] = useState<number | "">(30);
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState(
     "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only."
@@ -117,7 +165,7 @@ export function PosSalesInvoice() {
   };
 
   // Pricing Mode, Location & Sales Executive State
-  const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale">("Retail");
+  const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale" | "B2B">("Retail");
   const [selectedLocation, setSelectedLocation] = useState<string>("Store Main Branch");
   const [salesExecutive, setSalesExecutive] = useState<string>("");
   const [salesEmployees, setSalesEmployees] = useState<any[]>([]);
@@ -130,6 +178,7 @@ export function PosSalesInvoice() {
   const [newProdCategory, setNewProdCategory] = useState("General");
   const [newProdPrice, setNewProdPrice] = useState<number | "">("");
   const [newProdWholesalePrice, setNewProdWholesalePrice] = useState<number | "">("");
+  const [newProdB2bPrice, setNewProdB2bPrice] = useState<number | "">("");
   const [newProdMrp, setNewProdMrp] = useState<number | "">("");
   const [newProdTax, setNewProdTax] = useState<number>(18);
   const [newProdStock, setNewProdStock] = useState<number>(100);
@@ -142,9 +191,19 @@ export function PosSalesInvoice() {
   const [newPartyCompany, setNewPartyCompany] = useState("");
   const [newPartyType, setNewPartyType] = useState("Retail");
   const [newPartyGST, setNewPartyGST] = useState("");
-  const [newPartyBillingAddress, setNewPartyBillingAddress] = useState("");
-  const [newPartyShippingAddress, setNewPartyShippingAddress] = useState("");
+  
+  // Detailed Structured Address
+  const [newPartyStreet, setNewPartyStreet] = useState("");
+  const [newPartyCity, setNewPartyCity] = useState("");
+  const [newPartyState, setNewPartyState] = useState("Andhra Pradesh");
+  const [newPartyPincode, setNewPartyPincode] = useState("");
+
+  const [newPartyShipStreet, setNewPartyShipStreet] = useState("");
+  const [newPartyShipCity, setNewPartyShipCity] = useState("");
+  const [newPartyShipState, setNewPartyShipState] = useState("Andhra Pradesh");
+  const [newPartyShipPincode, setNewPartyShipPincode] = useState("");
   const [isShippingSameAsBilling, setIsShippingSameAsBilling] = useState(true);
+  const [isVerifyingGstin, setIsVerifyingGstin] = useState(false);
 
   // Customer History & Pending Due Tracking
   const [customerSummary, setCustomerSummary] = useState<{
@@ -156,15 +215,137 @@ export function PosSalesInvoice() {
   const [includePreviousDueInBill, setIncludePreviousDueInBill] = useState(false);
   const [showPendingDueAlert, setShowPendingDueAlert] = useState(false);
   const [showCustomerLedger, setShowCustomerLedger] = useState(false);
+  const [batches, setBatches] = useState<any[]>([]);
+  const [aiFetchingHsnId, setAiFetchingHsnId] = useState<string | null>(null);
+
+  const handleVerifyGstin = async () => {
+    const cleanGst = newPartyGST.trim().toUpperCase();
+    if (!cleanGst || cleanGst.length < 15) {
+      toast.error("Please enter a valid 15-character GSTIN");
+      return;
+    }
+    setIsVerifyingGstin(true);
+    try {
+      const res = await procurementApi.lookupGstin(cleanGst);
+      if (res && res.valid) {
+        if (res.trade_name) setNewPartyName(res.trade_name);
+        else if (res.legal_name) setNewPartyName(res.legal_name);
+        if (res.legal_name) setNewPartyCompany(res.legal_name);
+        setNewPartyType("B2B");
+        
+        if (res.state) {
+          setNewPartyState(res.state);
+          if (isShippingSameAsBilling) setNewPartyShipState(res.state);
+        }
+        if (res.pincode) {
+          setNewPartyPincode(res.pincode);
+          if (isShippingSameAsBilling) setNewPartyShipPincode(res.pincode);
+        }
+        if (res.address?.city) {
+          setNewPartyCity(res.address.city);
+          if (isShippingSameAsBilling) setNewPartyShipCity(res.address.city);
+        }
+        if (res.address?.street) {
+          setNewPartyStreet(res.address.street);
+          if (isShippingSameAsBilling) setNewPartyShipStreet(res.address.street);
+        }
+        toast.success(`GSTIN Verified: ${res.legal_name} (${res.state || 'Active'})`);
+      } else {
+        toast.error("GSTIN lookup returned invalid or inactive status");
+      }
+    } catch (e: any) {
+      toast.error(e?.detail || e?.message || "GSTIN lookup failed");
+    } finally {
+      setIsVerifyingGstin(false);
+    }
+  };
+
+  const handleSwitchPricingTier = (newMode: "Retail" | "Wholesale" | "B2B") => {
+    setPricingMode(newMode);
+    setItems((prev) =>
+      prev.map((item) => {
+        if (!item.product_id) return item;
+        const prod = products.find((p) => p.id === item.product_id);
+        if (!prod) return item;
+        const basePrice = Number(prod.selling_price || prod.price || prod.mrp || item.unit_price || 0);
+        const wholesalePrice = Number(prod.wholesale_price || (basePrice * 0.85));
+        const b2bPrice = Number(prod.b2b_price || (basePrice * 0.70));
+        const newPrice = newMode === "B2B" ? b2bPrice : newMode === "Wholesale" ? wholesalePrice : basePrice;
+        return {
+          ...item,
+          unit_price: newPrice > 0 ? Number(newPrice.toFixed(2)) : item.unit_price,
+        };
+      })
+    );
+    toast.success(`Active Pricing Tier switched to ${newMode} Tier`);
+  };
+
+  const handleAIFetchHsn = async (itemId: string, productName: string) => {
+    if (!productName.trim()) {
+      toast.error("Please enter a product name first");
+      return;
+    }
+    try {
+      setAiFetchingHsnId(itemId);
+      const res: any = await inventoryApi.suggestHsn({ name: productName });
+      setItems((prev) =>
+        prev.map((item) => {
+          if (item.id === itemId) {
+            const currentPrice = Number(item.unit_price) || 0;
+            const currentMrp = Number(item.mrp) || 0;
+
+            const retailPrice = Number(res.estimated_selling_price) || (Number(res.estimated_mrp) ? Number((res.estimated_mrp * 0.85).toFixed(2)) : 150.0);
+            const wholesalePrice = Number(res.estimated_wholesale_price) || Number((retailPrice * 0.85).toFixed(2));
+            const b2bPrice = Number(res.estimated_b2b_price) || Number((retailPrice * 0.70).toFixed(2));
+
+            const targetAiPrice =
+              pricingMode === "B2B" ? b2bPrice : pricingMode === "Wholesale" ? wholesalePrice : retailPrice;
+            const aiMrp = Number(res.estimated_mrp) || Number((retailPrice * 1.25).toFixed(2));
+
+            const finalPrice = currentPrice > 0 ? currentPrice : targetAiPrice;
+            const finalMrp = currentMrp > 0 ? currentMrp : aiMrp;
+
+            return {
+              ...item,
+              hsn_code: res.hsn_code,
+              tax_rate: res.gst_rate,
+              is_tax_inclusive: res.is_tax_inclusive !== false,
+              unit_price: finalPrice,
+              mrp: finalMrp,
+            };
+          }
+          return item;
+        })
+      );
+
+      const activeTierPrice =
+        pricingMode === "B2B"
+          ? (res.estimated_b2b_price || Math.round((res.estimated_selling_price || 150) * 0.70))
+          : pricingMode === "Wholesale"
+          ? (res.estimated_wholesale_price || Math.round((res.estimated_selling_price || 150) * 0.85))
+          : (res.estimated_selling_price || Math.round((res.estimated_mrp || 180) * 0.85));
+
+      const priceMsg = ` | ${pricingMode} Price: ₹${activeTierPrice} | MRP: ₹${res.estimated_mrp || Math.round(activeTierPrice * 1.25)}`;
+      toast.success(`AI Auto-Classified: "${productName}" → HSN ${res.hsn_code} (${res.gst_rate}% GST)${priceMsg}`);
+    } catch (e: any) {
+      toast.error(e?.detail || "AI HSN Lookup failed");
+    } finally {
+      setAiFetchingHsnId(null);
+    }
+  };
 
   useEffect(() => {
     posApi
       .getProducts()
-      .then((res: any) => setProducts(res.items || res))
+      .then((res: any) => setProducts(res?.items || (Array.isArray(res) ? res : [])))
       .catch(console.error);
+    inventoryApi
+      .getBatches()
+      .then((bList: any) => setBatches(bList?.items || (Array.isArray(bList) ? bList : [])))
+      .catch(() => setBatches([]));
     crmApi
       .getCustomers(1, 100)
-      .then((data: any) => setCustomers(data.items || data))
+      .then((data: any) => setCustomers(data?.items || (Array.isArray(data) ? data : [])))
       .catch(console.error);
     fetchSalesEmployees()
       .then((emps) => {
@@ -178,11 +359,60 @@ export function PosSalesInvoice() {
       .catch(console.error);
   }, []);
 
+  const getProductBatchInfo = (prod: any) => {
+    if (!prod) return { batch_number: "", expiry_date: "", mrp: 0, unit_price: 0 };
+    const basePrice = Number(prod.selling_price || prod.price || prod.mrp || 0);
+    const wholesalePrice = Number(prod.wholesale_price || (basePrice * 0.85));
+    const b2bPrice = Number(prod.b2b_price || (basePrice * 0.70));
+    const targetPrice =
+      pricingMode === "B2B"
+        ? b2bPrice
+        : pricingMode === "Wholesale"
+        ? wholesalePrice
+        : basePrice;
+
+    const matchingBatches = batches.filter(
+      (b) =>
+        (b.product_id === prod.id ||
+          (b.product_name && prod.name && b.product_name.toLowerCase() === prod.name.toLowerCase())) &&
+        Number(b.remaining_quantity || b.quantity || 0) > 0
+    ).sort(
+      (a, b) =>
+        new Date(a.expiry_date || "2099-12-31").getTime() -
+        new Date(b.expiry_date || "2099-12-31").getTime()
+    );
+
+    const activeBatch = matchingBatches[0];
+
+    return {
+      batch_number: activeBatch?.batch_number || "",
+      expiry_date: activeBatch?.expiry_date ? String(activeBatch.expiry_date).slice(0, 10) : "",
+      mrp: Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (prod.mrp || Number((basePrice * 1.25).toFixed(2))),
+      unit_price: Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : targetPrice,
+    };
+  };
+
   useEffect(() => {
     if (!selectedCustomer) {
       setCustomerSummary(null);
       setIncludePreviousDueInBill(false);
       return;
+    }
+    const cust = customers.find((c: any) => c.id === selectedCustomer);
+    if (cust) {
+      const custGst = (cust.tax_id || cust.gst_number || "").trim().toUpperCase();
+      const custState = (cust.state || cust.shipping_address || cust.billing_address || "").toLowerCase();
+      // Store state is Andhra Pradesh (Code 37)
+      const isInterstate =
+        (custGst.length >= 2 && !custGst.startsWith("37")) ||
+        (custState && !custState.includes("andhra") && !custState.includes("ap") && !custState.includes("516"));
+
+      if (isInterstate) {
+        setGstType("igst");
+        toast.info(`Inter-State Sale (${cust.state || (custGst ? `State Code ${custGst.slice(0, 2)}` : "Out of State")}). Tax switched to IGST.`);
+      } else {
+        setGstType("cgst_sgst");
+      }
     }
     invoicesApi
       .getCustomerSummary(selectedCustomer)
@@ -197,7 +427,7 @@ export function PosSalesInvoice() {
       .catch(() => {
         setCustomerSummary(null);
       });
-  }, [selectedCustomer]);
+  }, [selectedCustomer, customers]);
 
   const handlePricingModeChange = (mode: "Retail" | "Wholesale") => {
     setPricingMode(mode);
@@ -213,6 +443,12 @@ export function PosSalesInvoice() {
       })
     );
   };
+
+  // Multi-Product Selection Modal State
+  const [isMultiProductModalOpen, setIsMultiProductModalOpen] = useState(false);
+  const [multiProductSearch, setMultiProductSearch] = useState("");
+  const [multiProductCategory, setMultiProductCategory] = useState("all");
+  const [selectedProductQuantities, setSelectedProductQuantities] = useState<Record<string, number>>({});
 
   const handleAddItem = () => {
     setItems([
@@ -234,14 +470,68 @@ export function PosSalesInvoice() {
     ]);
   };
 
+  const toggleMultiSelectProduct = (productId: string) => {
+    setSelectedProductQuantities((prev) => {
+      const next = { ...prev };
+      if (next[productId]) {
+        delete next[productId];
+      } else {
+        next[productId] = 1;
+      }
+      return next;
+    });
+  };
+
+  const updateMultiSelectQty = (productId: string, delta: number) => {
+    setSelectedProductQuantities((prev) => {
+      const currentQty = prev[productId] || 1;
+      const nextQty = Math.max(1, currentQty + delta);
+      return { ...prev, [productId]: nextQty };
+    });
+  };
+
+  const handleAddMultipleProductsToInvoice = () => {
+    const selectedIds = Object.keys(selectedProductQuantities);
+    if (selectedIds.length === 0) {
+      toast.error("Please select at least one product");
+      return;
+    }
+
+    const newItems: InvoiceItem[] = [];
+    selectedIds.forEach((pid) => {
+      const prod = products.find((p) => p.id === pid);
+      if (!prod) return;
+      const qty = selectedProductQuantities[pid] || 1;
+      const batchInfo = getProductBatchInfo(prod);
+
+      newItems.push({
+        id: Math.random().toString(36).substr(2, 9),
+        product_id: prod.id,
+        product_name: prod.name,
+        quantity: qty,
+        unit_price: batchInfo.unit_price,
+        mrp: batchInfo.mrp,
+        batch_number: batchInfo.batch_number,
+        expiry_date: batchInfo.expiry_date,
+        discount_value: 0,
+        discount_type: "percent",
+        tax_rate: prod.tax_percent || 18,
+        is_tax_inclusive: prod.is_tax_inclusive !== false,
+      });
+    });
+
+    setItems((prev) => [...prev, ...newItems]);
+    toast.success(`Added ${newItems.length} products to sales invoice!`);
+    setSelectedProductQuantities({});
+    setIsMultiProductModalOpen(false);
+  };
+
   const handleBarcodeSubmit = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && barcodeInput.trim() !== "") {
       const queryCode = barcodeInput.trim();
       const product = products.find((p) => p.barcode === queryCode || p.sku === queryCode);
       if (product) {
-        const basePrice = product.selling_price || product.price || product.mrp || 0;
-        const wholesalePrice = product.wholesale_price || (basePrice * 0.9);
-        const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
+        const batchInfo = getProductBatchInfo(product);
 
         setItems((prev) => [
           ...prev,
@@ -250,8 +540,10 @@ export function PosSalesInvoice() {
             product_id: product.id,
             product_name: product.name,
             quantity: 1,
-            unit_price: targetPrice,
-            mrp: product.mrp || 0,
+            unit_price: batchInfo.unit_price,
+            mrp: batchInfo.mrp,
+            batch_number: batchInfo.batch_number,
+            expiry_date: batchInfo.expiry_date,
             discount_value: 0,
             discount_type: "percent",
             tax_rate: product.tax_percent || 18,
@@ -307,16 +599,16 @@ export function PosSalesInvoice() {
           if (field === "product_id" && value) {
             const product = products.find((p) => p.id === value);
             if (product) {
-              const basePrice = product.selling_price || product.price || product.mrp || 0;
-              const wholesalePrice = product.wholesale_price || (basePrice * 0.9);
-              const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
+              const batchInfo = getProductBatchInfo(product);
 
               updated.product_name = product.name;
-              updated.unit_price = targetPrice;
-              updated.mrp = product.mrp || 0;
-              updated.hsn_code = product.hsn_code || "";
-              updated.tax_rate = product.tax_percent || 18;
+              updated.unit_price = batchInfo.unit_price;
+              updated.mrp = batchInfo.mrp;
+              updated.hsn_code = product.hsn_code || "1905";
+              updated.tax_rate = Number(product.tax_percent) > 0 ? Number(product.tax_percent) : 18;
               updated.is_tax_inclusive = product.is_tax_inclusive !== false;
+              updated.batch_number = batchInfo.batch_number;
+              updated.expiry_date = batchInfo.expiry_date;
               if (!updated.quantity || updated.quantity === 0) {
                 updated.quantity = 1;
               }
@@ -419,6 +711,12 @@ export function PosSalesInvoice() {
   const handleCreateNewParty = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPartyName.trim()) return toast.error("Party name is required");
+
+    const fullBillingAddress = [newPartyStreet, newPartyCity, newPartyState, newPartyPincode].filter(Boolean).join(", ");
+    const fullShippingAddress = isShippingSameAsBilling
+      ? fullBillingAddress
+      : [newPartyShipStreet, newPartyShipCity, newPartyShipState, newPartyShipPincode].filter(Boolean).join(", ");
+
     try {
       const created = await crmApi.createCustomer({
         name: newPartyName.trim(),
@@ -426,51 +724,48 @@ export function PosSalesInvoice() {
         email: newPartyEmail.trim() || undefined,
         company_name: newPartyCompany.trim() || undefined,
         customer_type: newPartyType || "Retail",
-        gst_number: newPartyGST.trim() || undefined,
-        address: newPartyBillingAddress.trim() || undefined,
-        billing_address: newPartyBillingAddress.trim() || undefined,
-        shipping_address: isShippingSameAsBilling ? newPartyBillingAddress.trim() : (newPartyShippingAddress.trim() || undefined),
+        gst_number: newPartyGST.trim().toUpperCase() || undefined,
+        address: fullBillingAddress || undefined,
+        billing_address: fullBillingAddress || undefined,
+        shipping_address: fullShippingAddress || undefined,
       });
       const customerObj = created.data || created;
+      customerObj.state = newPartyState;
+      customerObj.billing_address = fullBillingAddress;
+      customerObj.shipping_address = fullShippingAddress;
       setCustomers([customerObj, ...customers]);
       setSelectedCustomer(customerObj.id);
+
+      // Check Inter-State vs Intra-State
+      const cleanGst = newPartyGST.trim().toUpperCase();
+      if (
+        (cleanGst.length >= 2 && !cleanGst.startsWith("37")) ||
+        (!newPartyState.toLowerCase().includes("andhra") && !newPartyState.toLowerCase().includes("ap"))
+      ) {
+        setGstType("igst");
+        toast.info(`Inter-State Customer Created (${newPartyState}). Tax switched to IGST.`);
+      } else {
+        setGstType("cgst_sgst");
+      }
+
       setIsAddPartyOpen(false);
       setNewPartyName("");
       setNewPartyPhone("");
       setNewPartyEmail("");
       setNewPartyCompany("");
       setNewPartyGST("");
-      setNewPartyBillingAddress("");
-      setNewPartyShippingAddress("");
+      setNewPartyStreet("");
+      setNewPartyCity("");
+      setNewPartyState("Andhra Pradesh");
+      setNewPartyPincode("");
+      setNewPartyShipStreet("");
+      setNewPartyShipCity("");
+      setNewPartyShipState("Andhra Pradesh");
+      setNewPartyShipPincode("");
       setIsShippingSameAsBilling(true);
       setNewPartyType("Retail");
-      toast.success(`Party "${customerObj.name}" saved to database & selected!`);
-    } catch (err) {
-      const newCust = {
-        id: `party-${Date.now()}`,
-        name: newPartyName.trim(),
-        phone: newPartyPhone.trim() || undefined,
-        email: newPartyEmail.trim() || undefined,
-        company: newPartyCompany.trim() || undefined,
-        customer_type: newPartyType || "Retail",
-        gst_number: newPartyGST.trim() || undefined,
-        address: newPartyBillingAddress.trim() || undefined,
-        billing_address: newPartyBillingAddress.trim() || undefined,
-        shipping_address: isShippingSameAsBilling ? newPartyBillingAddress.trim() : (newPartyShippingAddress.trim() || undefined),
-      };
-      setCustomers([newCust, ...customers]);
-      setSelectedCustomer(newCust.id);
-      setIsAddPartyOpen(false);
-      setNewPartyName("");
-      setNewPartyPhone("");
-      setNewPartyEmail("");
-      setNewPartyCompany("");
-      setNewPartyGST("");
-      setNewPartyBillingAddress("");
-      setNewPartyShippingAddress("");
-      setIsShippingSameAsBilling(true);
-      setNewPartyType("Retail");
-      toast.success(`Party "${newCust.name}" created and selected!`);
+      toast.success(`Party "${customerObj.name}" saved & selected!`);
+    } catch (err: any) {
     }
   };
 
@@ -479,7 +774,8 @@ export function PosSalesInvoice() {
     if (!newProdName.trim()) return toast.error("Product name is required");
     const unitPriceVal = Number(newProdPrice) || 0;
     const mrpVal = Number(newProdMrp) || unitPriceVal;
-    const wholesaleVal = Number(newProdWholesalePrice) || unitPriceVal;
+    const wholesaleVal = Number(newProdWholesalePrice) || Number((unitPriceVal * 0.85).toFixed(2));
+    const b2bVal = Number(newProdB2bPrice) || Number((unitPriceVal * 0.70).toFixed(2));
     const generatedProduct = {
       id: `prod-${Date.now()}`,
       name: newProdName.trim(),
@@ -488,10 +784,14 @@ export function PosSalesInvoice() {
       category: newProdCategory,
       selling_price: unitPriceVal,
       wholesale_price: wholesaleVal,
+      b2b_price: b2bVal,
       mrp: mrpVal,
       tax_percent: Number(newProdTax) || 18,
       stock_quantity: Number(newProdStock) || 100,
     };
+
+    const targetTierPrice =
+      pricingMode === "B2B" ? b2bVal : pricingMode === "Wholesale" ? wholesaleVal : unitPriceVal;
 
     setProducts([generatedProduct, ...products]);
     setItems([
@@ -501,7 +801,7 @@ export function PosSalesInvoice() {
         product_id: generatedProduct.id,
         product_name: generatedProduct.name,
         quantity: 1,
-        unit_price: pricingMode === "Wholesale" ? generatedProduct.wholesale_price : generatedProduct.selling_price,
+        unit_price: targetTierPrice,
         mrp: generatedProduct.mrp,
         discount_value: 0,
         discount_type: "percent",
@@ -515,6 +815,7 @@ export function PosSalesInvoice() {
     setNewProdBarcode("");
     setNewProdPrice("");
     setNewProdWholesalePrice("");
+    setNewProdB2bPrice("");
     setNewProdMrp("");
     toast.success(`Created "${generatedProduct.name}" & added to bill!`);
   };
@@ -776,18 +1077,24 @@ export function PosSalesInvoice() {
           </div>
 
           {/* Pricing Tier Mode Selector */}
-          <div className="flex items-center bg-slate-100 p-1 border border-slate-200 rounded-xl text-xs font-bold">
+          <div className="flex items-center bg-slate-100 p-1 border border-slate-200 rounded-xl text-xs font-bold gap-0.5">
             <button
-              onClick={() => setPricingMode("Retail")}
+              onClick={() => handleSwitchPricingTier("Retail")}
               className={`px-2.5 py-1 rounded-lg transition-all ${pricingMode === "Retail" ? "bg-white text-blue-600 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
             >
-              Retail Tier
+              🛒 Retail
             </button>
             <button
-              onClick={() => setPricingMode("Wholesale")}
+              onClick={() => handleSwitchPricingTier("Wholesale")}
               className={`px-2.5 py-1 rounded-lg transition-all ${pricingMode === "Wholesale" ? "bg-purple-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
             >
-              Wholesale/B2B Tier
+              📦 Wholesale
+            </button>
+            <button
+              onClick={() => handleSwitchPricingTier("B2B")}
+              className={`px-2.5 py-1 rounded-lg transition-all ${pricingMode === "B2B" ? "bg-indigo-700 text-white shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+            >
+              🏢 B2B Contract
             </button>
           </div>
 
@@ -999,35 +1306,77 @@ export function PosSalesInvoice() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-slate-500">Payment Terms</label>
-                <select
-                  value={paymentTerms}
-                  onChange={(e) => {
-                    const days = parseInt(e.target.value, 10);
-                    setPaymentTerms(e.target.value);
-                    if (!isNaN(days)) {
-                      setDueDate(new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
-                    }
-                  }}
-                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="0">Due on Receipt</option>
-                  <option value="15">Net 15 Days</option>
-                  <option value="30">Net 30 Days</option>
-                  <option value="60">Net 60 Days</option>
-                </select>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-500">Payment Terms</label>
+                  <select
+                    value={paymentTerms}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPaymentTerms(val);
+                      if (val !== "custom") {
+                        const days = parseInt(val, 10);
+                        if (!isNaN(days)) {
+                          setDueDate(new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
+                        }
+                      }
+                    }}
+                    className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="0">Immediate / Cash (Net 0)</option>
+                    <option value="7">Net 7 Days</option>
+                    <option value="15">Net 15 Days</option>
+                    <option value="30">Net 30 Days</option>
+                    <option value="45">Net 45 Days</option>
+                    <option value="60">Net 60 Days</option>
+                    <option value="90">Net 90 Days</option>
+                    <option value="custom">✏️ Custom Payment Terms...</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-500">Due Date</label>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-slate-500">Due Date</label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+
+              {/* Custom Payment Terms Description / Days input */}
+              {paymentTerms === "custom" && (
+                <div className="grid grid-cols-2 gap-3 p-2.5 bg-blue-50/60 border border-blue-200 rounded-xl">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-blue-800">Custom Terms Description</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 50% Advance, 50% on Delivery"
+                      value={customPaymentTermsText}
+                      onChange={(e) => setCustomPaymentTermsText(e.target.value)}
+                      className="w-full h-8 bg-white border border-blue-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-blue-800">Days to Payment</label>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Days"
+                      value={customPaymentDays}
+                      onChange={(e) => {
+                        const val = e.target.value === "" ? "" : Number(e.target.value);
+                        setCustomPaymentDays(val);
+                        if (typeof val === "number" && !isNaN(val)) {
+                          setDueDate(new Date(Date.now() + val * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
+                        }
+                      }}
+                      className="w-full h-8 bg-white border border-blue-200 rounded-lg px-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1080,9 +1429,7 @@ export function PosSalesInvoice() {
                     key={prod.id}
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      const basePrice = prod.selling_price || prod.price || prod.mrp || 0;
-                      const wholesalePrice = prod.wholesale_price || (basePrice * 0.9);
-                      const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
+                      const batchInfo = getProductBatchInfo(prod);
                       setItems((prev) =>
                         prev.map((it) =>
                           it.id === dropdownAnchor.itemId
@@ -1091,9 +1438,11 @@ export function PosSalesInvoice() {
                                 product_id: prod.id,
                                 product_name: prod.name,
                                 search_query: prod.name,
-                                unit_price: targetPrice,
-                                mrp: prod.mrp || 0,
-                                hsn_code: prod.hsn_code || "",
+                                unit_price: batchInfo.unit_price,
+                                mrp: batchInfo.mrp,
+                                batch_number: batchInfo.batch_number,
+                                expiry_date: batchInfo.expiry_date,
+                                hsn_code: prod.hsn_code || "1905",
                                 tax_rate: prod.tax_percent || 18,
                                 is_tax_inclusive: prod.is_tax_inclusive !== false,
                                 is_search_open: false,
@@ -1112,7 +1461,18 @@ export function PosSalesInvoice() {
                       </div>
                     </div>
                     <div className="text-right font-extrabold text-blue-700 ml-3 shrink-0">
-                      {currency.symbol}{Number(pricingMode === "Wholesale" ? (prod.wholesale_price || prod.selling_price || 0) : (prod.selling_price || prod.mrp || 0)).toFixed(2)}
+                      <div>
+                        {currency.symbol}{Number(
+                          pricingMode === "B2B"
+                            ? (prod.b2b_price || (prod.selling_price || prod.mrp || 0) * 0.70)
+                            : pricingMode === "Wholesale"
+                            ? (prod.wholesale_price || (prod.selling_price || prod.mrp || 0) * 0.85)
+                            : (prod.selling_price || prod.mrp || 0)
+                        ).toFixed(2)}
+                      </div>
+                      <div className="text-[9px] font-normal text-slate-400">
+                        {pricingMode} Price
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1223,19 +1583,17 @@ export function PosSalesInvoice() {
                                 }}
                                 className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
                               />
-                              {/* GST badge */}
-                              <button
-                                type="button"
-                                onClick={() => updateItem(item.id, "is_tax_inclusive", !isIncl)}
-                                title="Toggle GST Inclusive / Exclusive"
-                                className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider transition-all ${
+                              {/* GST Mode Informational Badge */}
+                              <span
+                                title={isIncl ? "Tax Inclusive: Selling Price includes GST" : "Tax Exclusive: GST added on top of Price"}
+                                className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider select-none cursor-default ${
                                   isIncl
-                                    ? "bg-emerald-100 text-emerald-700 border border-emerald-300"
-                                    : "bg-amber-100 text-amber-700 border border-amber-300"
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border border-amber-200"
                                 }`}
                               >
                                 {isIncl ? "INCL" : "EXCL"}
-                              </button>
+                              </span>
                               {/* Note icon */}
                               <button
                                 type="button"
@@ -1281,13 +1639,28 @@ export function PosSalesInvoice() {
                         </td>
 
                         <td className="px-3 py-3">
-                          <input
-                            type="text"
-                            placeholder="HSN"
-                            value={item.hsn_code || ""}
-                            onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center outline-none font-mono"
-                          />
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              placeholder="HSN"
+                              value={item.hsn_code || ""}
+                              onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center outline-none font-mono text-xs"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAIFetchHsn(item.id, item.product_name)}
+                              disabled={aiFetchingHsnId === item.id || !item.product_name}
+                              className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 shrink-0 transition"
+                              title="AI Auto-Fetch HSN & GST Rate"
+                            >
+                              {aiFetchingHsnId === item.id ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
                         </td>
                         <td className="px-3 py-3">
                           <input
@@ -1413,13 +1786,30 @@ export function PosSalesInvoice() {
             </table>
           </div>
 
-          <div className="p-4 border-t border-slate-200 bg-slate-50/50">
-            <button
-              onClick={handleAddItem}
-              className="bg-white border border-slate-300 hover:border-blue-500 hover:text-blue-600 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Add Line Item
-            </button>
+          <div className="p-4 border-t border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <button
+                onClick={handleAddItem}
+                className="bg-white border border-slate-300 hover:border-blue-500 hover:text-blue-600 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <Plus className="w-4 h-4" /> Add Single Blank Row
+              </button>
+              <button
+                onClick={() => setIsMultiProductModalOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-sm shadow-blue-200"
+              >
+                <Boxes className="w-4 h-4 text-blue-200" />
+                📦 Multi-Select Products
+                <span className="bg-white/20 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">
+                  {products.length} Items
+                </span>
+              </button>
+            </div>
+            {items.length > 0 && (
+              <span className="text-xs font-semibold text-slate-500">
+                {items.length} line {items.length === 1 ? "item" : "items"} in invoice
+              </span>
+            )}
           </div>
         </div>
 
@@ -1796,6 +2186,159 @@ export function PosSalesInvoice() {
         </div>
       </div>
 
+      {/* Inline Create Product Modal */}
+      {isAddProductOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-[520px] w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                <Plus className="w-5 h-5 text-emerald-600" /> Create & Add New Product
+              </h3>
+              <button
+                onClick={() => setIsAddProductOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateNewProduct} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Product Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Pain d'épices artisanal"
+                  value={newProdName}
+                  onChange={(e) => setNewProdName(e.target.value)}
+                  required
+                  className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">SKU Code</label>
+                  <input
+                    type="text"
+                    placeholder="Auto-generated if empty"
+                    value={newProdSku}
+                    onChange={(e) => setNewProdSku(e.target.value)}
+                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Barcode</label>
+                  <input
+                    type="text"
+                    placeholder="Optional barcode"
+                    value={newProdBarcode}
+                    onChange={(e) => setNewProdBarcode(e.target.value)}
+                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* 3-Tier Pricing Breakdown */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                  💰 3-Tier Multi-Pricing Breakdown
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">🛒 Retail Price (₹) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g. 200.00"
+                      value={newProdPrice}
+                      onChange={(e) => setNewProdPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                      required
+                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">📦 Wholesale (₹)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g. 165.00"
+                      value={newProdWholesalePrice}
+                      onChange={(e) => setNewProdWholesalePrice(e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-purple-500 font-bold text-purple-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">🏢 B2B Contract (₹)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g. 140.00"
+                      value={newProdB2bPrice}
+                      onChange={(e) => setNewProdB2bPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-700"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Market MRP (₹)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g. 240.00"
+                      value={newProdMrp}
+                      onChange={(e) => setNewProdMrp(e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-slate-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">GST Tax Rate</label>
+                    <select
+                      value={newProdTax}
+                      onChange={(e) => setNewProdTax(Number(e.target.value))}
+                      className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2 text-xs font-bold outline-none"
+                    >
+                      <option value={0}>0% GST</option>
+                      <option value={5}>5% GST</option>
+                      <option value={12}>12% GST</option>
+                      <option value={18}>18% GST</option>
+                      <option value={28}>28% GST</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Initial Stock</label>
+                    <input
+                      type="number"
+                      placeholder="Qty"
+                      value={newProdStock}
+                      onChange={(e) => setNewProdStock(Number(e.target.value))}
+                      className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddProductOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Create Product & Add to Bill
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Add Party Modal */}
       {isAddPartyOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1873,52 +2416,162 @@ export function PosSalesInvoice() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">GSTIN / Tax ID Number</label>
+              {/* GSTIN Field with Live Verification */}
+              <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800">GSTIN / Tax ID Number</label>
+                  <span className="text-[10px] text-slate-500 font-medium">Auto-populates company & address</span>
+                </div>
+                <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="37AAAAA0000A1Z5"
+                    placeholder="e.g. 37AABCU9603R1ZM"
                     value={newPartyGST}
-                    onChange={(e) => setNewPartyGST(e.target.value)}
-                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+                    onChange={(e) => setNewPartyGST(e.target.value.toUpperCase())}
+                    maxLength={15}
+                    className="flex-1 h-10 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono font-bold"
                   />
+                  <button
+                    type="button"
+                    onClick={handleVerifyGstin}
+                    disabled={isVerifyingGstin || !newPartyGST.trim()}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 shrink-0"
+                  >
+                    {isVerifyingGstin ? (
+                      <span className="animate-spin text-xs">⏳</span>
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    )}
+                    {isVerifyingGstin ? "Verifying..." : "⚡ Verify & Auto-fill"}
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Billing Address Structured Fields */}
+              <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                  🏢 Billing Address Details
+                </span>
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Billing Address</label>
-                  <textarea
-                    rows={2}
-                    placeholder="Street, City, State, Pincode"
-                    value={newPartyBillingAddress}
-                    onChange={(e) => setNewPartyBillingAddress(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">Building, Street & Area</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Door 14/2, Market Street"
+                    value={newPartyStreet}
+                    onChange={(e) => setNewPartyStreet(e.target.value)}
+                    className="w-full h-9 bg-white border border-slate-300 rounded-lg px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs font-bold text-slate-700">Shipping Address</label>
-                    <label className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-600 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isShippingSameAsBilling}
-                        onChange={(e) => setIsShippingSameAsBilling(e.target.checked)}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      Same as Billing
-                    </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">City / Town</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Proddatur"
+                      value={newPartyCity}
+                      onChange={(e) => setNewPartyCity(e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
                   </div>
-                  <textarea
-                    rows={2}
-                    placeholder="Street, City, State, Pincode"
-                    value={isShippingSameAsBilling ? newPartyBillingAddress : newPartyShippingAddress}
-                    onChange={(e) => setNewPartyShippingAddress(e.target.value)}
-                    disabled={isShippingSameAsBilling}
-                    className={`w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 ${isShippingSameAsBilling ? "opacity-60 cursor-not-allowed bg-slate-100" : ""}`}
-                  />
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">State / UT (GST)</label>
+                    <select
+                      value={newPartyState}
+                      onChange={(e) => {
+                        setNewPartyState(e.target.value);
+                        if (isShippingSameAsBilling) setNewPartyShipState(e.target.value);
+                      }}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {INDIAN_STATES.map((st) => (
+                        <option key={st.code} value={st.name}>
+                          {st.code} - {st.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">PIN Code</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 516360"
+                      maxLength={6}
+                      value={newPartyPincode}
+                      onChange={(e) => setNewPartyPincode(e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                    />
+                  </div>
                 </div>
+              </div>
+
+              {/* Shipping Address Header & Checkbox */}
+              <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                    🚚 Shipping / Delivery Address
+                  </span>
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isShippingSameAsBilling}
+                      onChange={(e) => setIsShippingSameAsBilling(e.target.checked)}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Same as Billing Address
+                  </label>
+                </div>
+
+                {!isShippingSameAsBilling && (
+                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">Shipping Building, Street & Area</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Warehouse 3, Industrial Area"
+                        value={newPartyShipStreet}
+                        onChange={(e) => setNewPartyShipStreet(e.target.value)}
+                        className="w-full h-9 bg-white border border-slate-300 rounded-lg px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">City / Town</label>
+                        <input
+                          type="text"
+                          placeholder="City"
+                          value={newPartyShipCity}
+                          onChange={(e) => setNewPartyShipCity(e.target.value)}
+                          className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">State / UT (GST)</label>
+                        <select
+                          value={newPartyShipState}
+                          onChange={(e) => setNewPartyShipState(e.target.value)}
+                          className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          {INDIAN_STATES.map((st) => (
+                            <option key={st.code} value={st.name}>
+                              {st.code} - {st.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">PIN Code</label>
+                        <input
+                          type="text"
+                          placeholder="PIN"
+                          maxLength={6}
+                          value={newPartyShipPincode}
+                          onChange={(e) => setNewPartyShipPincode(e.target.value)}
+                          className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
@@ -1931,7 +2584,7 @@ export function PosSalesInvoice() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md"
+                  className="px-6 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition-all"
                 >
                   Create & Select Party
                 </button>
@@ -2038,6 +2691,223 @@ export function PosSalesInvoice() {
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Product Selection Catalog Modal */}
+      {isMultiProductModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-4xl w-full h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-md shadow-blue-200">
+                  <Boxes className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-slate-900 leading-tight">
+                    Multi-Product Catalog Selector
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    Select multiple products & quantities to add directly to invoice items
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsMultiProductModalOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="p-4 border-b border-slate-100 bg-white flex flex-col sm:flex-row gap-3 items-center justify-between">
+              <div className="relative flex-1 w-full">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  placeholder="Search by product name, barcode, SKU, brand..."
+                  value={multiProductSearch}
+                  onChange={(e) => setMultiProductSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filtered = products.filter((p: any) =>
+                      !multiProductSearch.trim() ||
+                      p.name?.toLowerCase().includes(multiProductSearch.toLowerCase()) ||
+                      p.barcode?.includes(multiProductSearch) ||
+                      p.sku?.toLowerCase().includes(multiProductSearch.toLowerCase())
+                    );
+                    const newSelected: Record<string, number> = {};
+                    filtered.forEach((p: any) => {
+                      newSelected[p.id] = selectedProductQuantities[p.id] || 1;
+                    });
+                    setSelectedProductQuantities(newSelected);
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-all shrink-0"
+                >
+                  Select All Visible
+                </button>
+                {Object.keys(selectedProductQuantities).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProductQuantities({})}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 transition-all shrink-0"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Product Grid / List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50">
+              {products
+                .filter((p: any) => {
+                  const q = multiProductSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return (
+                    p.name?.toLowerCase().includes(q) ||
+                    p.barcode?.toLowerCase().includes(q) ||
+                    p.sku?.toLowerCase().includes(q) ||
+                    p.brand?.toLowerCase().includes(q)
+                  );
+                })
+                .map((p: any) => {
+                  const isSelected = !!selectedProductQuantities[p.id];
+                  const qty = selectedProductQuantities[p.id] || 1;
+                  const price =
+                    pricingMode === "B2B"
+                      ? (p.b2b_price || (p.selling_price || p.mrp || 0) * 0.70)
+                      : pricingMode === "Wholesale"
+                      ? (p.wholesale_price || (p.selling_price || p.mrp || 0) * 0.85)
+                      : (p.selling_price || p.mrp || 0);
+
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => toggleMultiSelectProduct(p.id)}
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                        isSelected
+                          ? "bg-blue-50/80 border-blue-500 shadow-sm ring-1 ring-blue-500"
+                          : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                        <div
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                            isSelected ? "bg-blue-600 text-white" : "border-2 border-slate-300 text-transparent"
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-slate-900 truncate">
+                              {p.name}
+                            </span>
+                            {p.barcode && (
+                              <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                                {p.barcode}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
+                            <span>SKU: {p.sku || "N/A"}</span>
+                            <span>•</span>
+                            <span className="font-semibold text-slate-700">
+                              Stock: <span className={(p.stock || p.initial_stock || 0) > 10 ? "text-emerald-600" : "text-amber-600"}>{p.stock || p.initial_stock || 0}</span>
+                            </span>
+                            <span>•</span>
+                            <span>GST: {p.tax_percent || 18}%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pricing & Quantity Stepper */}
+                      <div className="flex items-center gap-4 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <div className="text-right">
+                          <div className="font-black text-xs text-slate-900">
+                            ₹{Number(price).toFixed(2)}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-semibold">
+                            MRP: ₹{Number(p.mrp || price).toFixed(2)}
+                          </div>
+                        </div>
+
+                        {isSelected ? (
+                          <div className="flex items-center gap-1.5 bg-white border border-blue-300 rounded-xl p-1 shadow-xs">
+                            <button
+                              type="button"
+                              onClick={() => updateMultiSelectQty(p.id, -1)}
+                              className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="w-8 text-center text-xs font-black text-blue-700">
+                              {qty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateMultiSelectQty(p.id, 1)}
+                              className="w-6 h-6 flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => toggleMultiSelectProduct(p.id)}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-600 font-bold text-xs rounded-xl border border-slate-200 transition-all"
+                          >
+                            + Select
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Sticky Bottom Summary & Action */}
+            <div className="p-4 border-t border-slate-200 bg-white flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-900 block">
+                  {Object.keys(selectedProductQuantities).length} Product{Object.keys(selectedProductQuantities).length === 1 ? "" : "s"} Selected
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Pricing Mode: <strong className="text-indigo-600">{pricingMode}</strong>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsMultiProductModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={Object.keys(selectedProductQuantities).length === 0}
+                  onClick={handleAddMultipleProductsToInvoice}
+                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-200 transition-all flex items-center gap-2"
+                >
+                  <Boxes className="w-4 h-4" />
+                  Add {Object.keys(selectedProductQuantities).length} Selected to Invoice
+                </button>
               </div>
             </div>
           </div>

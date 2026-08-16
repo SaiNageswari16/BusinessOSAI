@@ -16,7 +16,12 @@ import {
   CheckCircle,
   Clock,
   Sparkles,
-  Info
+  Info,
+  Upload,
+  ScanLine,
+  Loader2,
+  AlertCircle,
+  RefreshCw
 } from "lucide-react";
 import { inventoryApi, posApi } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -58,6 +63,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   // Master data
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
@@ -96,6 +102,16 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [linkedPrId, setLinkedPrId] = useState<string>("");
   const [linkedRfqId, setLinkedRfqId] = useState<string>("");
+  // For PINV: linked PO selection
+  const [linkedPoId, setLinkedPoId] = useState<string>("");
+  // OCR upload state
+  const [ocrFile, setOcrFile] = useState<File | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [ocrResult, setOcrResult] = useState<any>(null);
+  // PO status update state (only relevant for docType === "PO" when editing)
+  const [currentPoStatus, setCurrentPoStatus] = useState<string>("Draft");
+  // GRN received date state
+  const [receivedDate, setReceivedDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     const fetchData = async () => {
@@ -113,10 +129,15 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         const quotations = await inventoryApi.getPurchaseQuotations().catch(() => []);
         setRfqs(quotations || []);
 
+        const pos = await inventoryApi.getPurchaseOrders().catch(() => []);
+        setPurchaseOrders(pos || []);
+
         if (initialData) {
           setDocNumber(initialData.order_number || initialData.po_number || initialData.bill_number || initialData.id || "DOC-2026-0001");
           if (initialData.supplier_id) setSelectedSupplierId(initialData.supplier_id);
           if (initialData.notes) setNotes(initialData.notes);
+          if (initialData.status) setCurrentPoStatus(initialData.status);
+          if (initialData.delivery_date) setDueDate(new Date(initialData.delivery_date).toISOString().slice(0, 10));
           if (initialData.items && initialData.items.length > 0) {
             setItems(initialData.items.map((it: any, idx: number) => {
               const pName = it.product_name || it.name || "";
@@ -386,21 +407,43 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         });
         toast.success(`Purchase Requisition ${docNumber} created successfully!`);
       } else if (docType === "PO") {
-        await inventoryApi.createPurchaseOrder({
-          po_number: docNumber,
-          supplier_id: selectedSupplierId,
-          items: items.map((it) => ({
-            product_id: it.product_id || products[0]?.id,
-            quantity: Number(it.quantity),
-            unit_price: Number(it.unit_price),
-            tax_percent: Number(it.tax_rate),
-          })),
-        });
-        toast.success(`Purchase Order ${docNumber} issued successfully!`);
+        if (linkedPrId) {
+          // Check if the linked PR is Approved before allowing PO creation
+          const linkedPr = approvedPRs.find((pr) => pr.id === linkedPrId);
+          if (linkedPr && linkedPr.status !== "Approved" && linkedPr.status !== "approved") {
+            return toast.error(`Cannot create PO from PR ${linkedPr.request_number} — PR status is "${linkedPr.status}". PR must be Approved first.`);
+          }
+        }
+        if (initialData?.id) {
+          await inventoryApi.updatePurchaseOrder(initialData.id, {
+            status: currentPoStatus,
+            delivery_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+          });
+          toast.success(`Purchase Order ${docNumber} updated successfully (Status: ${currentPoStatus})!`);
+        } else {
+          await inventoryApi.createPurchaseOrder({
+            po_number: docNumber,
+            supplier_id: selectedSupplierId,
+            purchase_request_id: linkedPrId || undefined,
+            delivery_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+            status: currentPoStatus || "Draft",
+            items: items.map((it) => ({
+              product_id: it.product_id || products[0]?.id,
+              quantity: Number(it.quantity),
+              unit_price: Number(it.unit_price),
+              tax_percent: Number(it.tax_rate),
+            })),
+          });
+          toast.success(`Purchase Order ${docNumber} created as ${currentPoStatus || "Draft"}!`);
+        }
       } else {
+        // PINV: Purchase Invoice / Vendor Bill — FIX: use linkedPoId instead of products[0]?.id
+        if (!linkedPoId) {
+          return toast.error("Please select a linked Purchase Order for this vendor bill.");
+        }
         await inventoryApi.createVendorBill({
           bill_number: docNumber,
-          purchase_order_id: products[0]?.id || "",
+          purchase_order_id: linkedPoId,
           total_amount: roundedTotal,
           due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
         });
@@ -411,6 +454,105 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       onClose();
     } catch (err: any) {
       toast.error(err.message || "Failed to save procurement document");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // OCR Extraction Handlers
+  const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setOcrFile(file);
+    setIsExtracting(true);
+    setOcrResult(null);
+
+    try {
+      let data: any = null;
+      if (docType === "PO") {
+        data = await inventoryApi.extractPODocumentOCR(file);
+      } else if (docType === "PINV") {
+        data = await inventoryApi.extractInvoiceDocumentOCR(file);
+      } else {
+        data = await inventoryApi.extractPRDocumentOCR(file);
+      }
+
+      setOcrResult(data);
+      toast.success(data.extracted ? "Document data extracted successfully via AI OCR!" : "Could not extract structured data. Please fill manually.");
+
+      // Auto-fill form fields from OCR result
+      if (data.extracted && data.po_number && docType === "PO") {
+        setDocNumber(data.po_number);
+      }
+      if (data.extracted && data.bill_number && docType === "PINV") {
+        setDocNumber(data.bill_number);
+      }
+      if (data.extracted && data.supplier_name) {
+        const matchedSupplier = suppliers.find((s) =>
+          s.name.toLowerCase().includes(data.supplier_name.toLowerCase()) ||
+          data.supplier_name.toLowerCase().includes(s.name.toLowerCase())
+        );
+        if (matchedSupplier) {
+          setSelectedSupplierId(matchedSupplier.id);
+        }
+      }
+      if (data.extracted && data.delivery_date && docType === "PO") {
+        setDueDate(data.delivery_date);
+      }
+      if (data.extracted && data.due_date && docType === "PINV") {
+        setDueDate(data.due_date);
+      }
+      if (data.extracted && data.items && data.items.length > 0) {
+        setItems(data.items.map((it: any) => {
+          const pName = it.product_name || "Extracted Item";
+          const foundProd = products.find((p) => p.name?.toLowerCase().trim() === pName.toLowerCase().trim());
+          return {
+            id: Math.random().toString(36).substring(2, 9),
+            product_id: foundProd?.id,
+            product_name: pName,
+            hsn_code: it.hsn_code || foundProd?.hsn_code || "2202",
+            batch_number: it.batch_number || `B-${Math.floor(100 + Math.random() * 900)}`,
+            mrp: it.unit_price || foundProd?.mrp || 0,
+            quantity: Number(it.quantity) || 1,
+            unit_price: Number(it.unit_price) || (foundProd ? Number(foundProd.cost_price || foundProd.selling_price || 0) : 0),
+            discount_value: 0,
+            discount_type: "percent",
+            tax_rate: Number(it.tax_percent) || foundProd?.tax_percent || 18,
+          };
+        }));
+      }
+      if (data.extracted && data.notes) {
+        setNotes(data.notes);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to extract document data");
+    } finally {
+      setIsExtracting(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleClearOcr = () => {
+    setOcrFile(null);
+    setOcrResult(null);
+  };
+
+  // PO Status Update Handler
+  const handleUpdatePoStatus = async () => {
+    if (docType !== "PO" || !initialData?.id) {
+      return toast.error("PO status can only be updated on an existing Purchase Order.");
+    }
+    if (!currentPoStatus) {
+      return toast.error("Please select a status to update.");
+    }
+    setIsSaving(true);
+    try {
+      await inventoryApi.updatePurchaseOrder(initialData.id, { status: currentPoStatus });
+      toast.success(`PO status updated to "${currentPoStatus}"`);
+      if (onSaved) onSaved();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update PO status");
     } finally {
       setIsSaving(false);
     }
@@ -509,6 +651,21 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
+          {docType === "PO" && (
+            <select
+              value={currentPoStatus}
+              onChange={(e) => setCurrentPoStatus(e.target.value)}
+              className="h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+            >
+              <option value="Draft">Draft PO</option>
+              <option value="Sent">Sent / Issued</option>
+              <option value="Partially Received">Partially Received</option>
+              <option value="Fully Received">Fully Received</option>
+              <option value="Billed">Billed / Closed</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          )}
+
           <button
             disabled={isSaving}
             onClick={onClose}
@@ -527,7 +684,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               : docType === "PR"
               ? "Submit PR Request"
               : docType === "PO"
-              ? "Issue Purchase Order"
+              ? (currentPoStatus === "Draft" ? "Save Draft PO" : "Save & Issue PO")
               : "Save Purchase Invoice"}
           </button>
         </div>
@@ -587,6 +744,161 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               </select>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* OCR Upload Section */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="p-1.5 bg-indigo-100 rounded-lg">
+            <ScanLine className="w-4 h-4 text-indigo-600" />
+          </div>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+            Upload Document for {docType === "PO" ? "Purchase Order" : "GRN"} ({docType === "PO" ? "PO" : "Goods Received Note"})
+          </h2>
+          <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+            OCR Auto-Extract
+          </span>
+        </div>
+
+        <div className="flex items-start gap-4">
+          {/* Upload area */}
+          <div className="flex-1">
+            <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition-all bg-slate-50/50">
+              <div className="flex flex-col items-center justify-center pt-3 pb-4">
+                <Upload className="w-6 h-6 text-slate-400 mb-1" />
+                <p className="text-xs font-medium text-slate-500">
+                  {ocrFile ? ocrFile.name : "Drop a PO/GRN document here or click to browse"}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Supports PDF, JPG, PNG (Max 10MB)
+                </p>
+              </div>
+              <input
+                type="file"
+                className="hidden"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleOcrUpload}
+                disabled={isExtracting}
+              />
+            </label>
+          </div>
+
+          {/* OCR Status / Actions */}
+          <div className="flex flex-col gap-2 min-w-[160px]">
+            {isExtracting && (
+              <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                <span className="text-xs font-medium text-indigo-700">Extracting...</span>
+              </div>
+            )}
+            {ocrResult && !isExtracting && (
+              <div className="flex flex-col gap-1">
+                <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${ocrResult.extracted ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
+                  {ocrResult.extracted ? (
+                    <><CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-[11px] font-bold text-green-700">Extracted</span></>
+                  ) : (
+                    <><AlertCircle className="w-4 h-4 text-amber-600" />
+                    <span className="text-[11px] font-bold text-amber-700">Partial</span></>
+                  )}
+                </div>
+                {ocrResult.confidence && (
+                  <span className="text-[10px] text-slate-500 pl-1">
+                    Confidence: {Math.round(ocrResult.confidence * 100)}%
+                  </span>
+                )}
+                <button
+                  onClick={handleClearOcr}
+                  className="text-[10px] font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-2 py-1 transition-all"
+                >
+                  Clear OCR
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* OCR Result Preview */}
+        {ocrResult && ocrResult.extracted && (
+          <div className="mt-4 bg-slate-50 rounded-xl border border-slate-200 p-4">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2">Extracted Data Preview</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {ocrResult.po_number && (
+                <div><span className="text-slate-400 text-[10px]">PO Number:</span>
+                <p className="font-bold text-slate-800">{ocrResult.po_number}</p></div>
+              )}
+              {ocrResult.supplier_name && (
+                <div><span className="text-slate-400 text-[10px]">Supplier:</span>
+                <p className="font-bold text-slate-800">{ocrResult.supplier_name}</p></div>
+              )}
+              {ocrResult.delivery_date && (
+                <div><span className="text-slate-400 text-[10px]">Delivery Date:</span>
+                <p className="font-bold text-slate-800">{ocrResult.delivery_date}</p></div>
+              )}
+              {ocrResult.received_date && (
+                <div><span className="text-slate-400 text-[10px]">Received Date:</span>
+                <p className="font-bold text-slate-800">{ocrResult.received_date}</p></div>
+              )}
+              {ocrResult.items && (
+                <div className="col-span-2 sm:col-span-4">
+                  <span className="text-slate-400 text-[10px]">Items ({ocrResult.items.length}):</span>
+                  <ul className="mt-0.5 list-disc list-inside text-slate-700">
+                    {ocrResult.items.map((item: any, i: number) => (
+                      <li key={i} className="text-[11px]">
+                        {item.product_name || "Item"} — Qty: {item.quantity} × ₹{item.unit_price || 0}
+                        {item.tax_percent ? ` (GST ${item.tax_percent}%)` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* PO Status Update (Editing Existing PO) */}
+      {docType === "PO" && initialData?.id && (
+        <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="p-1.5 bg-amber-100 rounded-lg">
+              <RefreshCw className="w-4 h-4 text-amber-600" />
+            </div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              Update Purchase Order Status
+            </h2>
+            {initialData.status && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                Current: {initialData.status}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              value={currentPoStatus}
+              onChange={(e) => setCurrentPoStatus(e.target.value)}
+              className="flex-1 md:w-64 h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
+            >
+              <option value="Draft">Draft</option>
+              <option value="Sent">Sent / Issued to Vendor</option>
+              <option value="Partially Received">Partially Received</option>
+              <option value="Fully Received">Fully Received</option>
+              <option value="Billed">Billed / Closed</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+            <button
+              onClick={handleUpdatePoStatus}
+              disabled={isSaving || currentPoStatus === initialData?.status}
+              className="px-4 py-2 text-xs font-black text-white bg-amber-600 hover:bg-amber-500 rounded-xl shadow-sm shadow-amber-600/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Update Status
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-2">
+            Update PO status to reflect real-world progress. This status feeds into the Vendor Bill linking workflow.
+          </p>
         </div>
       )}
 

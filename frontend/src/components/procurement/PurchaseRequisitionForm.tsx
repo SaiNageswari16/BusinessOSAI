@@ -17,7 +17,10 @@ import {
   Layers,
   MapPin,
   Send,
-  Search
+  Search,
+  Loader2,
+  Sparkles,
+  Upload
 } from "lucide-react";
 import { inventoryApi, employeesApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -49,9 +52,12 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isExtractingOcr, setIsExtractingOcr] = useState<boolean>(false);
+  const prOcrFileRef = useRef<HTMLInputElement | null>(null);
 
   // Global Enterprise PR Fields
   const [prNumber, setPrNumber] = useState<string>("");
+  const [prStatus, setPrStatus] = useState<string>("Pending Approval");
   const [requisitionDate, setRequisitionDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
@@ -230,6 +236,48 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
     0
   );
 
+  const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsExtractingOcr(true);
+    toast.info(`Extracting PR line items from ${file.name} via OCR AI...`);
+    try {
+      const data = await inventoryApi.extractPRDocumentOCR(file);
+      if (data.extracted) {
+        if (data.pr_number) setPrNumber(data.pr_number);
+        if (data.department) setDepartment(data.department);
+        if (data.priority) setPriority(data.priority);
+        if (data.purpose_justification) setPurposeJustification(data.purpose_justification);
+        if (data.items && data.items.length > 0) {
+          setItems(data.items.map((it: any, idx: number) => {
+            const pName = it.product_name || "Requisition Item";
+            const found = products.find((p: any) => p.name?.toLowerCase().trim() === pName.toLowerCase().trim());
+            return {
+              id: Math.random().toString(36).substring(2, 9),
+              product_id: found?.id,
+              product_name: pName,
+              category: it.category || found?.category_name || "General",
+              unit_of_measure: it.unit_of_measure || "Pcs",
+              quantity: Number(it.quantity) || 1,
+              estimated_unit_cost: Number(it.estimated_unit_cost) || (found ? Number(found.cost_price || found.selling_price || 0) : 0),
+              notes: `Extracted via OCR from ${file.name}`,
+              search_query: pName,
+              is_search_open: false,
+            };
+          }));
+        }
+        toast.success(`OCR AI successfully extracted ${data.items?.length || 0} line items from ${file.name}!`);
+      } else {
+        toast.error("Could not extract structured data from document. Please fill manually.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "OCR extraction failed");
+    } finally {
+      setIsExtractingOcr(false);
+      e.target.value = "";
+    }
+  };
+
   const handleSubmitRequisition = async () => {
     if (items.length === 0) return toast.error("Please add at least one item to the requisition.");
     if (!prNumber.trim()) return toast.error("Requisition number is required.");
@@ -240,6 +288,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
       await inventoryApi.createPurchaseRequest({
         request_number: prNumber,
         requester_id: requesterId,
+        status: prStatus || "Pending Approval",
         items: items.map((it) => ({
           product_id: it.product_id || products[0]?.id,
           quantity: Number(it.quantity),
@@ -247,7 +296,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
         })),
       });
 
-      toast.success(`Purchase Requisition ${prNumber} submitted for Manager Approval!`);
+      toast.success(`Purchase Requisition ${prNumber} saved as ${prStatus}!`);
       if (onSaved) onSaved();
       onClose();
     } catch (err: any) {
@@ -259,6 +308,15 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
 
   return (
     <div className="bg-slate-50/50 min-h-screen p-4 md:p-6 text-slate-800 space-y-6 max-w-[1600px] mx-auto pb-24">
+      {/* Hidden OCR File Input */}
+      <input
+        ref={prOcrFileRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,.webp"
+        className="hidden"
+        onChange={handleOcrUpload}
+      />
+
       {/* Top Header */}
       <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -286,6 +344,28 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
         </div>
 
         <div className="flex items-center gap-2">
+          {/* OCR AI Extraction Trigger Button */}
+          <button
+            type="button"
+            disabled={isExtractingOcr || isSaving}
+            onClick={() => prOcrFileRef.current?.click()}
+            className="px-3.5 py-2.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl border border-purple-200 shadow-sm flex items-center gap-1.5 transition-all"
+          >
+            {isExtractingOcr ? <Loader2 className="w-4 h-4 animate-spin text-purple-600" /> : <Sparkles className="w-4 h-4 text-purple-600" />}
+            {isExtractingOcr ? "Scanning Indent..." : "Upload Indent (OCR AI)"}
+          </button>
+
+          {/* Status Selection */}
+          <select
+            value={prStatus}
+            onChange={(e) => setPrStatus(e.target.value)}
+            className="h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            <option value="Draft">Save as Draft</option>
+            <option value="Pending Approval">Submit for Approval</option>
+            <option value="Approved">Directly Approved</option>
+          </select>
+
           <button
             disabled={isSaving}
             onClick={onClose}
@@ -294,12 +374,12 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
             Cancel
           </button>
           <button
-            disabled={isSaving}
+            disabled={isSaving || isExtractingOcr}
             onClick={handleSubmitRequisition}
             className="px-5 py-2.5 text-xs font-black text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl shadow-md shadow-purple-600/20 flex items-center gap-1.5 uppercase tracking-wider disabled:opacity-50"
           >
             <Send className="w-4 h-4" />
-            {isSaving ? "Submitting..." : "Submit PR for Manager Approval"}
+            {isSaving ? "Saving..." : prStatus === "Approved" ? "Save & Approve PR" : "Submit PR"}
           </button>
         </div>
       </div>
