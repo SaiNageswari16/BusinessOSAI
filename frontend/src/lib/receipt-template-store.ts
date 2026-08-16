@@ -282,4 +282,61 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate): void {
     ];
   }
   saveReceiptTemplates(newTemplates);
+
+  // Synchronize with businessos_print_templates_v1 and user_active_print_templates_v1
+  if (typeof window !== 'undefined') {
+    try {
+      const rawActive = localStorage.getItem('user_active_print_templates_v1');
+      const activeMap = rawActive ? JSON.parse(rawActive) : {};
+      activeMap.thermal = updated.id;
+      localStorage.setItem('user_active_print_templates_v1', JSON.stringify(activeMap));
+
+      const rawInv = localStorage.getItem('businessos_print_templates_v1');
+      let invList = rawInv ? JSON.parse(rawInv) : [];
+      if (!Array.isArray(invList)) invList = [];
+
+      const mappedInvTemplate = {
+        id: updated.id,
+        name: updated.name,
+        category: 'thermal',
+        isDefault: true,
+        paperSize: updated.paperSize,
+        storeName: updated.storeName,
+        storeAddress: updated.address,
+        storePhone: updated.phone,
+        storeEmail: updated.email,
+        gstin: updated.gstin,
+        cin: updated.cin,
+        headerTitle: updated.invoiceTitle,
+        footerText: updated.footerNote,
+        termsText: updated.declarationText,
+        fields: {
+          showLogo: updated.showLogo,
+          showStoreAddress: updated.showStoreAddress,
+          showTaxSplit: updated.showTaxBreakdown,
+          showCustomerDetails: updated.showCustomerDetails,
+          showProductName: true,
+          showPrice: true,
+          showMRP: true,
+          showSKU: true,
+          showHSN: updated.showItemHSN,
+          showPartyBalance: true,
+          showItemDescription: updated.showItemDiscount,
+          showTime: true,
+          showPaymentQR: updated.showQrCode,
+          showBankDetails: updated.showPaymentMode,
+        }
+      };
+
+      const existingInvIdx = invList.findIndex((t: any) => t.id === updated.id);
+      if (existingInvIdx >= 0) {
+        invList[existingInvIdx] = mappedInvTemplate;
+      } else {
+        invList.push(mappedInvTemplate);
+      }
+      localStorage.setItem('businessos_print_templates_v1', JSON.stringify(invList));
+    } catch (e) {
+      console.error('Failed to sync active template with inventory store:', e);
+    }
+  }
 }

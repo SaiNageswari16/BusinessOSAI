@@ -266,10 +266,20 @@ export interface InventoryBatch {
   supplier: string | null;
   quantity: number;
   remaining_quantity: number;
+  uom?: string | null;
+  cost_price?: number | null;
+  mrp?: number | null;
+  selling_price?: number | null;
+  tax_percent?: number | null;
+  location?: string | null;
+  supplier_invoice_no?: string | null;
+  qc_status?: string | null;
+  barcode?: string | null;
   manufacturing_date: string | null;
   expiry_date: string | null;
   notes: string | null;
   status: string;
+  sync_to_stock?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -3430,8 +3440,24 @@ export const inventoryApi = {
       is_fallback?: boolean;
     }>("POST", "/inventory/procurement/verify-gstin", { gstin }),
 
+  lookupGstin: (gstin: string) =>
+    inventoryApi.verifyGstin(gstin),
+
   getHsnCodes: (search?: string) =>
     request<Array<{ hsn_code: string; description: string; gst_rate: number }>>("GET", "/inventory/hsn-codes", undefined, search ? { search } : undefined),
+
+  suggestHsn: (payload: { name: string; category?: string; description?: string }) =>
+    request<{
+      success: boolean;
+      found: boolean;
+      hsn_code: string;
+      gst_rate: number;
+      description: string;
+      category: string;
+      uom: string;
+      is_tax_inclusive: boolean;
+      confidence: number;
+    }>("POST", "/inventory/suggest-hsn", payload),
 
   getProducts: (params?: { category_id?: string; brand_id?: string; search?: string; page?: number; page_size?: number; sort_by?: string; sort_order?: string }) =>
 
@@ -3568,6 +3594,55 @@ export const inventoryApi = {
         throw { detail, status: r.status };
       }
       return r.json() as Promise<ProductImage>;
+    });
+  },
+
+  uploadSingleProductImage: (productId: string, file: File, isPrimary = true) => {
+    const fd = new FormData();
+    fd.append("product_id", productId);
+    fd.append("is_primary", String(isPrimary));
+    fd.append("file", file);
+    return fetch(`${API_BASE_URL}/inventory/product-images/upload-single`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken() || ""}` },
+      body: fd,
+    }).then(async (r) => {
+      if (!r.ok) {
+        const detail = await r.text();
+        throw { detail, status: r.status };
+      }
+      return r.json() as Promise<{ success: boolean; image_url: string; product_id: string; product_name: string }>;
+    });
+  },
+
+  bulkUploadImagesByBarcode: (files: File[]) => {
+    const fd = new FormData();
+    files.forEach((f) => fd.append("files", f));
+    return fetch(`${API_BASE_URL}/inventory/product-images/bulk-upload-by-barcode`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken() || ""}` },
+      body: fd,
+    }).then(async (r) => {
+      if (!r.ok) {
+        const detail = await r.text();
+        throw { detail, status: r.status };
+      }
+      return r.json() as Promise<{
+        total_files: number;
+        matched_count: number;
+        unmatched_count: number;
+        results: Array<{
+          filename: string;
+          matched: boolean;
+          product_id?: string;
+          product_name?: string;
+          sku?: string;
+          barcode?: string;
+          image_url?: string;
+          searched_code?: string;
+          error?: string;
+        }>;
+      }>;
     });
   },
 
@@ -3709,9 +3784,38 @@ export const inventoryApi = {
 
   getPurchaseOrders: () => request<any[]>("GET", "/inventory/procurement/purchase-orders"),
   createPurchaseOrder: (data: any) => request<any>("POST", "/inventory/procurement/purchase-orders", data),
+  updatePurchaseOrder: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/purchase-orders/${id}`, data),
 
   getGoodsReceivedNotes: () => request<any[]>("GET", "/inventory/procurement/goods-received-notes"),
   createGoodsReceivedNote: (data: any) => request<any>("POST", "/inventory/procurement/goods-received-notes", data),
+  updateGoodsReceivedNote: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/goods-received-notes/${id}`, data),
+  deleteGoodsReceivedNote: (id: string) => request<void>("DELETE", `/inventory/procurement/goods-received-notes/${id}`),
+
+  extractPRDocumentOCR: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<{filename: string; extracted: boolean; pr_number?: string; department?: string; priority?: string; purpose_justification?: string; items?: any[]; confidence?: number}>("POST", "/inventory/procurement/ocr/extract-pr-document", fd);
+  },
+  extractQuotationOCR: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<{filename: string; extracted: boolean; supplier_name?: string; quoted_unit_price?: number; delivery_lead_days?: number; payment_terms?: string}>("POST", "/inventory/procurement/extract-quotation-ocr", fd);
+  },
+  extractPODocumentOCR: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<{filename: string; extracted: boolean; po_number?: string; supplier_name?: string; delivery_date?: string; items?: any[]; notes?: string; confidence?: number}>("POST", "/inventory/procurement/ocr/extract-po-document", fd);
+  },
+  extractGRNDocumentOCR: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<{filename: string; extracted: boolean; grn_number?: string; received_date?: string; items?: any[]; notes?: string; confidence?: number}>("POST", "/inventory/procurement/ocr/extract-grn-document", fd);
+  },
+  extractInvoiceDocumentOCR: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<{filename: string; extracted: boolean; bill_number?: string; supplier_name?: string; total_amount?: number; due_date?: string; po_reference?: string; items?: any[]; notes?: string; confidence?: number}>("POST", "/inventory/procurement/ocr/extract-invoice-document", fd);
+  },
 
   getPurchaseReturns: () => request<any[]>("GET", "/inventory/procurement/purchase-returns"),
   createPurchaseReturn: (data: any) => request<any>("POST", "/inventory/procurement/purchase-returns", data),
@@ -4144,6 +4248,8 @@ export const whatsappAutomationApi = {
 };
 
 export const procurementApi = {
+  lookupGstin: (gstin: string) => inventoryApi.verifyGstin(gstin),
+  verifyGstin: (gstin: string) => inventoryApi.verifyGstin(gstin),
   getVendors: (page = 1, pageSize = 200) => request<any>("GET", "/erp/procurement/vendors", undefined, { page, page_size: pageSize }),
   getVendorSummary: (vendorId: string) => request<any>("GET", `/erp/procurement/vendors/${vendorId}/summary`),
   listVendorPayments: () => request<any>("GET", "/erp/procurement/payments"),

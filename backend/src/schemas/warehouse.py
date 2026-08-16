@@ -84,6 +84,15 @@ class InventoryBatchBase(BaseModel):
     warehouse_name: Optional[str] = None
     quantity: int = 0
     remaining_quantity: int = 0
+    uom: Optional[str] = "Pcs"
+    cost_price: Optional[float] = 0.0
+    mrp: Optional[float] = 0.0
+    selling_price: Optional[float] = 0.0
+    tax_percent: Optional[float] = 0.0
+    location: Optional[str] = None
+    supplier_invoice_no: Optional[str] = None
+    qc_status: Optional[str] = "Passed"
+    barcode: Optional[str] = None
     manufacturing_date: Optional[date] = None
     expiry_date: Optional[date] = None
     supplier: Optional[str] = None
@@ -91,7 +100,7 @@ class InventoryBatchBase(BaseModel):
     notes: Optional[str] = None
 
 class InventoryBatchCreate(InventoryBatchBase):
-    pass
+    sync_to_stock: Optional[bool] = False
 
 class InventoryBatchUpdate(BaseModel):
     batch_number: Optional[str] = None
@@ -99,6 +108,15 @@ class InventoryBatchUpdate(BaseModel):
     warehouse_name: Optional[str] = None
     quantity: Optional[int] = None
     remaining_quantity: Optional[int] = None
+    uom: Optional[str] = None
+    cost_price: Optional[float] = None
+    mrp: Optional[float] = None
+    selling_price: Optional[float] = None
+    tax_percent: Optional[float] = None
+    location: Optional[str] = None
+    supplier_invoice_no: Optional[str] = None
+    qc_status: Optional[str] = None
+    barcode: Optional[str] = None
     manufacturing_date: Optional[date] = None
     expiry_date: Optional[date] = None
     supplier: Optional[str] = None

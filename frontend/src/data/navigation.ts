@@ -139,7 +139,6 @@ export const nav: NavGroup[] = [
           { to: "/inventory?tab=bundles", label: "Product Bundles", icon: PackagePlus },
           { to: "/inventory?tab=kits", label: "Product Kits", icon: Blocks },
           { to: "/inventory?tab=images", label: "Product Images", icon: Image },
-          { to: "/inventory?tab=master_catalog", label: "Global Master Catalog (Admin)", icon: Database },
         ]
       },
       {

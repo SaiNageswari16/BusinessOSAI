@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
 from src.models import POSTransaction, POSTransactionItem, POSPayment, Product, Customer
+from src.models.inventory import InventoryBatch
 from src.models.erp import Invoice, InvoiceLine
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
 from src.services.invoice_pdf import get_active_invoice_template, render_invoice_pdf_b64, save_invoice_pdf
@@ -71,7 +72,7 @@ async def checkout(
         if parent_tx:
             parent_tx.status = "refunded"
 
-    # 2. Create Items + deduct stock
+    # 2. Create Items + deduct stock from Products and Batches
     for item in payload.items:
         tx_item = POSTransactionItem(
             transaction_id=transaction.id,
@@ -85,7 +86,7 @@ async def checkout(
         db.add(tx_item)
 
         # Deduct stock (skip for ON_HOLD)
-        if payload.status != "on_hold":
+        if payload.status != "on_hold" and item.product_id:
             prod_stmt = select(Product).where(
                 Product.id == item.product_id,
                 Product.tenant_id == ctx.user.tenant_id
@@ -95,7 +96,21 @@ async def checkout(
             if product:
                 if product.initial_stock is None:
                     product.initial_stock = 0
-                product.initial_stock -= item.quantity
+                product.initial_stock = max(0, product.initial_stock - item.quantity)
+
+            # Deduct from active FEFO batch in erp_inventory_batches
+            try:
+                batch_stmt = select(InventoryBatch).where(
+                    InventoryBatch.product_id == item.product_id,
+                    InventoryBatch.tenant_id == ctx.user.tenant_id,
+                    InventoryBatch.remaining_quantity > 0
+                ).order_by(InventoryBatch.expiry_date.asc().nullslast()).with_for_update()
+                batch_res = await db.execute(batch_stmt)
+                active_batch = batch_res.scalars().first()
+                if active_batch:
+                    active_batch.remaining_quantity = max(0, active_batch.remaining_quantity - int(item.quantity))
+            except Exception as batch_deduct_err:
+                logger.warning(f"Batch stock deduction note: {batch_deduct_err}")
 
     # 3. Create Payments
     for payment in payload.payments:

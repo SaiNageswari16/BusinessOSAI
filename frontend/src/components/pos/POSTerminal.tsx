@@ -5,7 +5,7 @@ import {
   Info, Camera, Sparkles, Printer, Database, Boxes, LayoutGrid, List as ListIcon, Combine, ArrowRightLeft, ArrowLeft,
   Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus
 } from "lucide-react";
-import { posApi, inventoryApi, crmApi, invoicesApi, crmWalletApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
+import { posApi, inventoryApi, crmApi, invoicesApi, crmWalletApi, procurementApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { posStore, posSession, posCustomers, paymentMethods, posCategories } from "../../lib/pos-fallback";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,6 +19,7 @@ import {
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { formatCurrency } from "../../lib/utils";
+import { INDIAN_STATES } from "./PosSalesInvoice";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -67,11 +68,69 @@ function PosTerminalInner() {
   const [newCustCompany, setNewCustCompany] = useState("");
   const [newCustType, setNewCustType] = useState("Retail");
   const [newCustGST, setNewCustGST] = useState("");
-  const [newCustAddress, setNewCustAddress] = useState("");
+  
+  // Structured Address States
+  const [newCustStreet, setNewCustStreet] = useState("");
+  const [newCustCity, setNewCustCity] = useState("");
+  const [newCustState, setNewCustState] = useState("Andhra Pradesh");
+  const [newCustPincode, setNewCustPincode] = useState("");
+
+  const [newCustShipStreet, setNewCustShipStreet] = useState("");
+  const [newCustShipCity, setNewCustShipCity] = useState("");
+  const [newCustShipState, setNewCustShipState] = useState("Andhra Pradesh");
+  const [newCustShipPincode, setNewCustShipPincode] = useState("");
+  const [isCustShippingSameAsBilling, setIsCustShippingSameAsBilling] = useState(true);
+
   const [newCustTier, setNewCustTier] = useState("Silver");
 
   const [customerSummary, setCustomerSummary] = useState<any | null>(null);
   const [includePreviousDueInBill, setIncludePreviousDueInBill] = useState<boolean>(false);
+  const [verifyingCustGST, setVerifyingCustGST] = useState(false);
+
+  const handleVerifyPOSCustomerGST = async () => {
+    const cleanGst = (newCustGST || "").trim().toUpperCase();
+    if (!cleanGst || cleanGst.length !== 15) {
+      toast.error("Please enter a valid 15-character GSTIN");
+      return;
+    }
+    try {
+      setVerifyingCustGST(true);
+      const res = await procurementApi.lookupGstin(cleanGst);
+      if (res && res.valid) {
+        if (res.trade_name || res.legal_name) {
+          setNewCustName(res.trade_name || res.legal_name);
+          setNewCustCompany(res.legal_name || res.trade_name);
+        }
+        if (res.state) {
+          setNewCustState(res.state);
+          if (isCustShippingSameAsBilling) setNewCustShipState(res.state);
+        }
+        if (res.pincode) {
+          setNewCustPincode(res.pincode);
+          if (isCustShippingSameAsBilling) setNewCustShipPincode(res.pincode);
+        }
+        if (res.address?.city) {
+          setNewCustCity(res.address.city);
+          if (isCustShippingSameAsBilling) setNewCustShipCity(res.address.city);
+        }
+        if (res.address?.street) {
+          setNewCustStreet(res.address.street);
+          if (isCustShippingSameAsBilling) setNewCustShipStreet(res.address.street);
+        }
+        if (res.phone && !newCustPhone) setNewCustPhone(res.phone);
+        if (res.email && !newCustEmail) setNewCustEmail(res.email);
+        setNewCustType("B2B");
+        setNewCustTier("Wholesale B2B");
+        toast.success(`GSTIN Verified: ${res.legal_name || res.trade_name} (${res.state || 'Active'})`);
+      } else {
+        toast.error("GSTIN verification returned invalid or inactive status");
+      }
+    } catch (e: any) {
+      toast.error(e?.detail || e?.message || "GSTIN lookup failed");
+    } finally {
+      setVerifyingCustGST(false);
+    }
+  };
 
   useEffect(() => {
     crmApi.getCustomers(1, 100)
@@ -119,6 +178,11 @@ function PosTerminalInner() {
     e.preventDefault();
     if (!newCustName.trim()) return toast.error("Customer name is required");
 
+    const fullBilling = [newCustStreet, newCustCity, newCustState, newCustPincode].filter(Boolean).join(", ");
+    const fullShipping = isCustShippingSameAsBilling
+      ? fullBilling
+      : [newCustShipStreet, newCustShipCity, newCustShipState, newCustShipPincode].filter(Boolean).join(", ");
+
     try {
       const created = await crmApi.createCustomer({
         name: newCustName.trim(),
@@ -126,8 +190,10 @@ function PosTerminalInner() {
         email: newCustEmail.trim() || undefined,
         company_name: newCustCompany.trim() || undefined,
         customer_type: newCustType || "Retail",
-        gst_number: newCustGST.trim() || undefined,
-        address: newCustAddress.trim() || undefined,
+        gst_number: newCustGST.trim().toUpperCase() || undefined,
+        address: fullBilling || undefined,
+        billing_address: fullBilling || undefined,
+        shipping_address: fullShipping || undefined,
       });
 
       const customerObj = created.data || created;
@@ -139,7 +205,8 @@ function PosTerminalInner() {
         company: customerObj.company_name || "",
         customer_type: customerObj.customer_type || "Retail",
         gstin: customerObj.gst_number || "",
-        address: customerObj.address || "",
+        address: fullBilling,
+        state: newCustState,
         points: 100,
         tier: newCustTier,
         wallet: 0,
@@ -155,7 +222,15 @@ function PosTerminalInner() {
       setNewCustEmail("");
       setNewCustCompany("");
       setNewCustGST("");
-      setNewCustAddress("");
+      setNewCustStreet("");
+      setNewCustCity("");
+      setNewCustState("Andhra Pradesh");
+      setNewCustPincode("");
+      setNewCustShipStreet("");
+      setNewCustShipCity("");
+      setNewCustShipState("Andhra Pradesh");
+      setNewCustShipPincode("");
+      setIsCustShippingSameAsBilling(true);
       setNewCustType("Retail");
       toast.success(`Customer "${formatted.name}" created and selected!`);
     } catch {
@@ -251,11 +326,16 @@ function PosTerminalInner() {
     const loadData = async () => {
       setIsLoadingProducts(true);
       try {
-        const [cats, prods, heldHistory] = await Promise.all([
+        const [cats, prods, bList, heldHistory] = await Promise.all([
           posApi.getCategories(),
           posApi.getProducts(),
+          inventoryApi.getBatches().catch(() => []),
           posApi.getHistory({ status_filter: 'on_hold', limit: 100 }).catch(() => [])
         ]);
+
+        if (Array.isArray(bList)) {
+          setBatches(bList);
+        }
 
         if (Array.isArray(heldHistory)) {
           setHeldBillsCount(heldHistory.length);
@@ -283,29 +363,41 @@ function PosTerminalInner() {
           }));
           setCategories(mappedCats);
         }
-        if (Array.isArray(prods)) {
+        let fetchedProds: any[] = Array.isArray(prods) ? prods : [];
+        if (fetchedProds.length === 0) {
+          try {
+            const invProdsRes = await inventoryApi.getProducts({ page_size: 300 });
+            if (invProdsRes && Array.isArray(invProdsRes.items)) {
+              fetchedProds = invProdsRes.items;
+            }
+          } catch (e) {
+            console.warn("Could not fetch inventory products fallback:", e);
+          }
+        }
+
+        if (Array.isArray(fetchedProds)) {
           // Map backend products to frontend cart format
-          const mappedProds = prods.map((p: POSProduct) => ({
+          const mappedProds = fetchedProds.map((p: any) => ({
             id: p.id,
             name: p.name,
-            brand: p.brand || "",
-            category: p.category_id || "all",
-            shortDesc: p.description || `${p.name}`,
+            brand: p.brand?.name || p.brand || "",
+            category: p.category_id || p.category?.id || "all",
+            shortDesc: p.description || p.short_description || `${p.name}`,
             longDesc: p.description || "",
             barcode: p.barcode || "",
             sku: p.sku || "",
-            sellingPrice: p.selling_price || p.mrp || 0,
-            wholesalePrice: p.wholesale_price || 0,
-            minWholesaleQty: p.min_wholesale_qty || 1,
-            mrp: p.mrp,
-            purchasePrice: p.purchase_price,
-            tax: (p.selling_price || p.mrp || 0) * (p.tax_percent / 100),
-            discount: p.discount,
-            stock: p.stock,
-            reorderLevel: p.reorder_level,
+            sellingPrice: Number(p.selling_price || p.mrp || 0),
+            wholesalePrice: Number(p.wholesale_price || 0),
+            minWholesaleQty: Number(p.min_wholesale_qty || 1),
+            mrp: Number(p.mrp || p.selling_price || 0),
+            purchasePrice: Number(p.purchase_price || p.cost_price || 0),
+            tax: Number(p.selling_price || p.mrp || 0) * (Number(p.tax_percent || 0) / 100),
+            discount: Number(p.discount || p.discount_limit || 0),
+            stock: Number(p.stock || p.initial_stock || 0),
+            reorderLevel: Number(p.reorder_level || 10),
             image: p.image_url ? resolveImageUrl(p.image_url) : null,
             aiScore: Math.floor(Math.random() * 30) + 70,
-            isFastMoving: p.stock > 50,
+            isFastMoving: (p.stock || p.initial_stock || 0) > 50,
           }));
           setProducts(mappedProds);
         }
@@ -337,17 +429,46 @@ function PosTerminalInner() {
     };
   }, []);
 
-  // Keyboard shortcut listener
+  // Professional Cashier Keyboard shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Avoid triggering when user is typing inside an open modal or input field
+      const isInputFocused = ["INPUT", "TEXTAREA", "SELECT"].includes((document.activeElement?.tagName || ""));
+
       if (e.key === "F2") {
         e.preventDefault();
-        document.getElementById("global-search")?.focus();
+        const searchInput = document.getElementById("pos-barcode-input") || document.getElementById("global-search");
+        if (searchInput) (searchInput as HTMLInputElement).focus();
+      } else if (e.key === "F4" && !isInputFocused) {
+        e.preventDefault();
+        if (cart.length > 0) {
+          handleHoldBill();
+        } else {
+          openHeldBillsModal();
+        }
+      } else if (e.key === "F8" && !isInputFocused && cart.length > 0) {
+        e.preventDefault();
+        setDiscountModalItem(cart[0]);
+        setDiscountInput(cart[0]?.discount?.toString() || "0");
+      } else if (e.key === "F9" && !isInputFocused && cart.length > 0) {
+        e.preventDefault();
+        setCashModalOpen(true);
+      } else if (e.key === "F10" && !isInputFocused && cart.length > 0) {
+        e.preventDefault();
+        setCheckoutModalOpen(true);
+      } else if (e.key === "Escape") {
+        setDiscountModalItem(null);
+        setCheckoutModalOpen(false);
+        setSplitPaymentModalOpen(false);
+        setCashModalOpen(false);
+        setHeldBillsModalOpen(false);
+        setCustomerModalOpen(false);
+        setSessionModalOpen(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [cart]);
 
   // Hardware Barcode Scanner Listener in POS Terminal
   useHardwareBarcodeScanner({
@@ -512,12 +633,50 @@ function PosTerminalInner() {
   // Cart actions
   const addToCart = (product: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
+
+    // Match active inventory batch via FEFO (First Expired First Out)
+    const matchingBatches = batches.filter(
+      (b) =>
+        (b.product_id === product.id ||
+          (b.product_name && product.name && b.product_name.toLowerCase() === product.name.toLowerCase())) &&
+        Number(b.remaining_quantity || b.quantity || 0) > 0
+    ).sort(
+      (a, b) =>
+        new Date(a.expiry_date || "2099-12-31").getTime() -
+        new Date(b.expiry_date || "2099-12-31").getTime()
+    );
+
+    const activeBatch = matchingBatches[0];
+    const effectiveHsn =
+      product.hsn_code ||
+      (product.category?.toLowerCase().includes("dairy")
+        ? "0405"
+        : product.category?.toLowerCase().includes("biscuit")
+        ? "1905"
+        : product.category?.toLowerCase().includes("shampoo")
+        ? "3305"
+        : "1905");
+    const effectiveTax = Number(product.tax_percent ?? product.tax ?? 18);
+    const enrichedProduct = {
+      ...product,
+      batch_number: activeBatch?.batch_number || product.batch_number || "",
+      batch_id: activeBatch?.id || null,
+      expiry_date: activeBatch?.expiry_date ? String(activeBatch.expiry_date).slice(0, 10) : product.expiry_date || null,
+      mrp: Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (product.mrp || product.sellingPrice * 1.2),
+      sellingPrice: Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : product.sellingPrice,
+      hsn_code: effectiveHsn,
+      tax_percent: effectiveTax,
+      is_tax_inclusive: product.is_tax_inclusive !== false,
+    };
+
+    setCart((prev) => {
+      const existing = prev.find((item) => item.id === product.id);
       if (existing) {
-        return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
+        return prev.map((item) =>
+          item.id === product.id ? { ...item, qty: item.qty + 1 } : item
+        );
       }
-      return [...prev, { ...product, qty: 1 }];
+      return [...prev, { ...enrichedProduct, qty: 1 }];
     });
   };
 
@@ -1854,6 +2013,28 @@ function PosTerminalInner() {
                             <h5 className="text-[13px] font-bold text-slate-900 leading-tight truncate pr-6">{item.name}</h5>
                             <div className="text-[10px] font-bold text-slate-400 mt-0.5 tracking-wider uppercase">{item.sku}</div>
 
+                            {/* Batch, HSN & GST Tax-Inclusive Badges */}
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              {item.batch_number && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 text-[9px] font-bold rounded">
+                                  Batch #{item.batch_number}
+                                </span>
+                              )}
+                              {item.hsn_code && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 text-slate-700 text-[9px] font-mono font-bold rounded">
+                                  HSN: {item.hsn_code}
+                                </span>
+                              )}
+                              <span className="text-[9px] text-slate-500 font-semibold">
+                                GST: {itemTaxPercent}% ({isIncl ? "Incl." : "Excl."})
+                              </span>
+                              {mrpVal > 0 && (
+                                <span className="text-[9px] text-emerald-700 font-semibold">
+                                  • MRP: {formatCurrency(mrpVal)}
+                                </span>
+                              )}
+                            </div>
+
                             <div className="flex items-center justify-between mt-3">
                               <div className="flex items-center gap-1 bg-slate-100 rounded-lg border border-slate-200/60 p-0.5">
                                 <button onClick={(e) => { e.stopPropagation(); updateQty(item.id, -1); }} className="w-6 h-6 flex items-center justify-center rounded-md bg-white text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"><Minus className="w-3.5 h-3.5" /></button>
@@ -2690,42 +2871,162 @@ function PosTerminalInner() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">GSTIN / Tax ID Number</label>
+                    {/* GSTIN Field with Live Verification */}
+                    <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-800">GSTIN / Tax ID Number</label>
+                        <span className="text-[10px] text-slate-500 font-medium">Auto-populates business & address</span>
+                      </div>
+                      <div className="flex gap-2">
                         <input
                           type="text"
-                          placeholder="37AAAAA0000A1Z5"
+                          placeholder="e.g. 37AABCU9603R1ZM"
                           value={newCustGST}
-                          onChange={(e) => setNewCustGST(e.target.value)}
-                          className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 uppercase"
+                          onChange={(e) => setNewCustGST(e.target.value.toUpperCase())}
+                          maxLength={15}
+                          className="flex-1 h-10 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono font-bold"
                         />
-                      </div>
-                      <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">Loyalty Tier</label>
-                        <select
-                          value={newCustTier}
-                          onChange={(e) => setNewCustTier(e.target.value)}
-                          className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        <button
+                          type="button"
+                          onClick={handleVerifyPOSCustomerGST}
+                          disabled={verifyingCustGST || !newCustGST.trim()}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 shrink-0"
                         >
-                          <option value="Bronze">Bronze Tier</option>
-                          <option value="Silver">Silver Tier</option>
-                          <option value="Gold">Gold Tier</option>
-                          <option value="Platinum">Platinum Tier</option>
-                          <option value="Wholesale B2B">B2B Wholesale / Retailer</option>
-                        </select>
+                          {verifyingCustGST ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          )}
+                          {verifyingCustGST ? "Verifying..." : "⚡ Verify & Auto-fill"}
+                        </button>
                       </div>
                     </div>
 
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Billing & Shipping Address</label>
-                      <textarea
-                        rows={2}
-                        placeholder="Street address, City, State, Pincode"
-                        value={newCustAddress}
-                        onChange={(e) => setNewCustAddress(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+                    {/* Billing Address Structured Fields */}
+                    <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                        🏢 Billing Address Details
+                      </span>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">Building, Street & Area</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Door 14/2, Market Street"
+                          value={newCustStreet}
+                          onChange={(e) => setNewCustStreet(e.target.value)}
+                          className="w-full h-9 bg-white border border-slate-300 rounded-lg px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-600 block mb-1">City / Town</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Proddatur"
+                            value={newCustCity}
+                            onChange={(e) => setNewCustCity(e.target.value)}
+                            className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-600 block mb-1">State / UT (GST)</label>
+                          <select
+                            value={newCustState}
+                            onChange={(e) => {
+                              setNewCustState(e.target.value);
+                              if (isCustShippingSameAsBilling) setNewCustShipState(e.target.value);
+                            }}
+                            className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+                          >
+                            {INDIAN_STATES.map((st) => (
+                              <option key={st.code} value={st.name}>
+                                {st.code} - {st.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-600 block mb-1">PIN Code</label>
+                          <input
+                            type="text"
+                            placeholder="PIN Code"
+                            maxLength={6}
+                            value={newCustPincode}
+                            onChange={(e) => setNewCustPincode(e.target.value)}
+                            className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Shipping Address Header & Checkbox */}
+                    <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                          🚚 Shipping / Delivery Address
+                        </span>
+                        <label className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isCustShippingSameAsBilling}
+                            onChange={(e) => setIsCustShippingSameAsBilling(e.target.checked)}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          Same as Billing Address
+                        </label>
+                      </div>
+
+                      {!isCustShippingSameAsBilling && (
+                        <div className="space-y-2 pt-2 border-t border-slate-200">
+                          <div>
+                            <label className="text-[11px] font-semibold text-slate-600 block mb-1">Shipping Building, Street & Area</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Warehouse 3, Industrial Area"
+                              value={newCustShipStreet}
+                              onChange={(e) => setNewCustShipStreet(e.target.value)}
+                              className="w-full h-9 bg-white border border-slate-300 rounded-lg px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="text-[11px] font-semibold text-slate-600 block mb-1">City / Town</label>
+                              <input
+                                type="text"
+                                placeholder="City"
+                                value={newCustShipCity}
+                                onChange={(e) => setNewCustShipCity(e.target.value)}
+                                className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-semibold text-slate-600 block mb-1">State / UT (GST)</label>
+                              <select
+                                value={newCustShipState}
+                                onChange={(e) => setNewCustShipState(e.target.value)}
+                                className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+                              >
+                                {INDIAN_STATES.map((st) => (
+                                  <option key={st.code} value={st.name}>
+                                    {st.code} - {st.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-semibold text-slate-600 block mb-1">PIN Code</label>
+                              <input
+                                type="text"
+                                placeholder="PIN"
+                                maxLength={6}
+                                value={newCustShipPincode}
+                                onChange={(e) => setNewCustShipPincode(e.target.value)}
+                                className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">

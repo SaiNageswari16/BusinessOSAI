@@ -16,8 +16,9 @@ import {
   Tag,
 } from "lucide-react";
 import { toast } from "sonner";
-import { crmCustomersApi, type CrmCustomer } from "@/lib/api-client";
+import { crmCustomersApi, inventoryApi, type CrmCustomer } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { Sparkles, Loader2 } from "lucide-react";
 
 const CUSTOMER_TYPES = [
   "Retail",
@@ -68,9 +69,43 @@ export function Customers() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [verifyingGst, setVerifyingGst] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CrmCustomer | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>(blankCustomer);
+
+  const handleVerifyGstin = async () => {
+    const cleanGst = String(form.gst_number || "").trim().toUpperCase();
+    if (!cleanGst || cleanGst.length !== 15) {
+      toast.error("Please enter a valid 15-character GSTIN");
+      return;
+    }
+    try {
+      setVerifyingGst(true);
+      const res = await inventoryApi.verifyGstin(cleanGst);
+      setForm((prev) => ({
+        ...prev,
+        gst_number: res.gstin || cleanGst,
+        name: res.trade_name || res.legal_name,
+        company_name: res.legal_name || res.trade_name,
+        contact_person: prev.contact_person || res.contact_person || "",
+        email: prev.email || res.email || "",
+        phone: prev.phone || res.phone || "",
+        pan_number: res.pan || prev.pan_number,
+        address: res.address || prev.address,
+        city: res.city || prev.city,
+        state: res.state || prev.state,
+        postal_code: res.pincode || prev.postal_code,
+        customer_type: "Corporate",
+        status: "Active",
+      }));
+      toast.success(`GSTIN Verified: ${res.trade_name || res.legal_name} (${res.state})`);
+    } catch (e: any) {
+      toast.error(e?.detail || "GSTIN lookup failed");
+    } finally {
+      setVerifyingGst(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -291,7 +326,32 @@ export function Customers() {
           {/* Tax & Financial */}
           <FieldSection label="Tax & Financial">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input label="GST Number" value={form.gst_number as string} onChange={(v) => setForm({ ...form, gst_number: v })} />
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                  GST Number (GSTIN) — Auto-Fill Customer Profile
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    value={(form.gst_number as string) || ""}
+                    onChange={(e) => setForm({ ...form, gst_number: e.target.value.toUpperCase() })}
+                    placeholder="e.g. 37AAAAA0000A1Z5"
+                    className="flex-1 rounded-lg border border-border bg-background/80 px-3 py-2 text-sm uppercase font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyGstin}
+                    disabled={verifyingGst || !form.gst_number}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+                  >
+                    {verifyingGst ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="size-3.5" />
+                    )}
+                    Verify & Autofill Details
+                  </button>
+                </div>
+              </div>
               <Input label="PAN Number" value={form.pan_number as string} onChange={(v) => setForm({ ...form, pan_number: v })} />
               <Input label="Credit Limit (₹)" type="number" value={String(form.credit_limit)} onChange={(v) => setForm({ ...form, credit_limit: Number(v) })} />
               <Select label="Status" value={form.status as string} onChange={(v) => setForm({ ...form, status: v })} options={STATUSES} />

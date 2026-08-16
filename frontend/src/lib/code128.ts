@@ -186,19 +186,49 @@ export function encodeCode128(text: string): BarcodeElement[] {
 }
 
 /**
+ * GS1 EAN-13 Check Digit Calculation (Mod-10 with alternate 1x/3x weights)
+ */
+export function calculateEAN13CheckDigit(digits12: string): number {
+  const d = digits12.padEnd(12, "0").substring(0, 12);
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const num = parseInt(d[i], 10) || 0;
+    sum += i % 2 === 0 ? num * 1 : num * 3;
+  }
+  const mod = sum % 10;
+  return mod === 0 ? 0 : 10 - mod;
+}
+
+export interface EAN13Structured {
+  firstDigit: string;
+  leftDigits: string;
+  rightDigits: string;
+  allBars: (BarcodeElement & { isGuard: boolean })[];
+}
+
+/**
  * GS1 EAN-13 Barcode Encoder (Universal Standard for 12/13 Digit Product Barcodes)
  */
 export function encodeEAN13(digits: string): BarcodeElement[] {
+  const structured = encodeEAN13Structured(digits);
+  return structured.allBars.map(b => ({ width: b.width, isBlack: b.isBlack }));
+}
+
+export function encodeEAN13Structured(digits: string): EAN13Structured {
   let clean = (digits || "8901234567890").replace(/\D/g, "");
-  if (clean.length < 13) {
-    clean = clean.padStart(13, "0");
+  if (clean.length === 12) {
+    clean = clean + calculateEAN13CheckDigit(clean);
+  } else if (clean.length < 13) {
+    clean = clean.padStart(12, "0");
+    clean = clean + calculateEAN13CheckDigit(clean);
   } else if (clean.length > 13) {
     clean = clean.substring(0, 13);
   }
 
-  const firstDigit = parseInt(clean[0], 10);
+  const firstDigit = clean[0];
   const leftDigits = clean.substring(1, 7);
   const rightDigits = clean.substring(7, 13);
+  const firstDigitNum = parseInt(firstDigit, 10);
 
   // EAN-13 Parity Table for Left Digits (L = 0, G = 1)
   const PARITY_PATTERNS: number[][] = [
@@ -232,46 +262,51 @@ export function encodeEAN13(digits: string): BarcodeElement[] {
     [1, 2, 3, 1], [1, 1, 1, 4], [1, 3, 1, 2], [1, 2, 1, 3], [3, 1, 1, 2]
   ];
 
-  const result: BarcodeElement[] = [];
+  const allBars: (BarcodeElement & { isGuard: boolean })[] = [];
 
-  // Left Guard: 101
-  result.push({ width: 1, isBlack: true });
-  result.push({ width: 1, isBlack: false });
-  result.push({ width: 1, isBlack: true });
+  // Left Guard: 101 (isGuard = true)
+  allBars.push({ width: 1, isBlack: true, isGuard: true });
+  allBars.push({ width: 1, isBlack: false, isGuard: true });
+  allBars.push({ width: 1, isBlack: true, isGuard: true });
 
-  const parity = PARITY_PATTERNS[firstDigit] || PARITY_PATTERNS[0];
+  const parity = PARITY_PATTERNS[firstDigitNum] || PARITY_PATTERNS[0];
 
-  // Left 6 Digits
+  // Left 6 Digits (isGuard = false)
   for (let i = 0; i < 6; i++) {
     const d = parseInt(leftDigits[i], 10);
     const pattern = parity[i] === 1 ? G_PATTERNS[d] : L_PATTERNS[d];
     pattern.forEach((w, idx) => {
-      result.push({ width: w, isBlack: idx % 2 === 0 });
+      allBars.push({ width: w, isBlack: idx % 2 === 0, isGuard: false });
     });
   }
 
-  // Center Guard: 01010
-  result.push({ width: 1, isBlack: false });
-  result.push({ width: 1, isBlack: true });
-  result.push({ width: 1, isBlack: false });
-  result.push({ width: 1, isBlack: true });
-  result.push({ width: 1, isBlack: false });
+  // Center Guard: 01010 (isGuard = true)
+  allBars.push({ width: 1, isBlack: false, isGuard: true });
+  allBars.push({ width: 1, isBlack: true, isGuard: true });
+  allBars.push({ width: 1, isBlack: false, isGuard: true });
+  allBars.push({ width: 1, isBlack: true, isGuard: true });
+  allBars.push({ width: 1, isBlack: false, isGuard: true });
 
-  // Right 6 Digits
+  // Right 6 Digits (isGuard = false)
   for (let i = 0; i < 6; i++) {
     const d = parseInt(rightDigits[i], 10);
     const pattern = R_PATTERNS[d];
     pattern.forEach((w, idx) => {
-      result.push({ width: w, isBlack: idx % 2 === 1 });
+      allBars.push({ width: w, isBlack: idx % 2 === 1, isGuard: false });
     });
   }
 
-  // Right Guard: 101
-  result.push({ width: 1, isBlack: true });
-  result.push({ width: 1, isBlack: false });
-  result.push({ width: 1, isBlack: true });
+  // Right Guard: 101 (isGuard = true)
+  allBars.push({ width: 1, isBlack: true, isGuard: true });
+  allBars.push({ width: 1, isBlack: false, isGuard: true });
+  allBars.push({ width: 1, isBlack: true, isGuard: true });
 
-  return result;
+  return {
+    firstDigit,
+    leftDigits,
+    rightDigits,
+    allBars,
+  };
 }
 
 /**

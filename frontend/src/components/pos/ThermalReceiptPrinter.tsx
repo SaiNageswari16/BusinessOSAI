@@ -212,25 +212,39 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
         </div>
       )}
 
+      {/* Savings Banner */}
+      {rawDiscount > 0 && (
+        <div className="text-center font-bold text-[9.5px] border border-dashed border-black py-0.5 my-1.5 uppercase">
+          ★ YOU SAVED ₹{Number(rawDiscount).toFixed(2)} ON THIS ORDER ★
+        </div>
+      )}
+
       {/* Payment QR */}
       {f.showPaymentQR && (
-        <div className="flex flex-col items-center justify-center pt-2 my-1 border-t border-dashed border-black text-center">
-          <div className="h-14 w-14 bg-black p-1 rounded flex items-center justify-center text-white text-[8px] font-bold">
-            [ UPI QR ]
-          </div>
-          <span className="text-[8px] mt-1 font-semibold">Scan to pay via UPI</span>
+        <div className="flex flex-col items-center justify-center pt-1.5 my-1 border-t border-dashed border-black text-center">
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=0&data=${encodeURIComponent(
+              `upi://pay?pa=${fallbackStore.upiId || 'merchant@upi'}&pn=${encodeURIComponent(
+                storeName
+              )}&am=${Number(grandTotal || 0).toFixed(2)}&cu=INR`
+            )}`}
+            alt="UPI QR Code"
+            className="w-16 h-16 object-contain border border-black p-0.5 rounded my-1"
+          />
+          <span className="text-[8px] font-bold block uppercase tracking-wider">
+            Scan & Pay via UPI / QR
+          </span>
         </div>
       )}
 
       {/* Terms & Footer */}
       {termsText && (
-        <div className="text-[8.5px] text-justify mt-1.5 border-t border-dashed border-black pt-1 leading-tight">
-          <span className="font-bold">Declaration:</span> {termsText}
+        <div className="text-[8px] border-t border-dashed border-black pt-1 mt-1 text-center text-slate-700 leading-tight">
+          {termsText}
         </div>
       )}
-
       {footerText && (
-        <div className="text-center font-bold text-[9px] mt-1.5 whitespace-pre-line leading-tight border-t border-black pt-1">
+        <div className="text-[8.5px] font-bold border-t border-dashed border-black pt-1 mt-1 text-center whitespace-pre-line leading-tight">
           {footerText}
         </div>
       )}

@@ -219,17 +219,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
     toast.info(`Parsing ${file.name} via OCR AI...`);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      // Call OCR AI Backend Route
-      const res = await fetch("/api/v1/inventory/procurement/extract-quotation-ocr", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error("OCR extraction failed");
-      const data = await res.json();
+      const data = await inventoryApi.extractQuotationOCR(file);
 
       setVendorBids((prev) =>
         prev.map((v) => {

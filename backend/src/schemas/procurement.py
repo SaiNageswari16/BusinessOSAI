@@ -186,6 +186,7 @@ class PurchaseRequestBase(BaseModel):
 class PurchaseRequestCreate(BaseModel):
     request_number: str
     requester_id: uuid.UUID
+    status: Optional[str] = "Draft"
     items: List[PurchaseRequestItemCreate]
 
 
@@ -285,7 +286,15 @@ class PurchaseOrderCreate(BaseModel):
     supplier_id: uuid.UUID
     purchase_request_id: Optional[uuid.UUID] = None
     delivery_date: Optional[datetime] = None
+    status: Optional[str] = "Draft"
     items: List[PurchaseOrderItemCreate]
+
+
+class PurchaseOrderUpdate(BaseModel):
+    po_number: Optional[str] = None
+    supplier_id: Optional[uuid.UUID] = None
+    delivery_date: Optional[datetime] = None
+    status: Optional[str] = None
 
 
 class PurchaseOrderResponse(PurchaseOrderBase):
@@ -334,6 +343,11 @@ class GoodsReceivedNoteCreate(BaseModel):
     purchase_order_id: uuid.UUID
     received_by: uuid.UUID
     items: List[GoodsReceivedNoteItemCreate]
+
+
+class GoodsReceivedNoteUpdate(BaseModel):
+    received_date: Optional[datetime] = None
+    status: Optional[str] = None
 
 
 class GoodsReceivedNoteResponse(GoodsReceivedNoteBase):

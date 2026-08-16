@@ -205,70 +205,96 @@ async def _cache_image_async(image_url: str, barcode: str) -> str:
 # ---------------------------------------------------------------------------
 # Main RAGEnricherService
 # ---------------------------------------------------------------------------
+_ENRICHMENT_CACHE: dict[str, dict] = {}
+_CACHE_TTL_SECONDS = 86400  # 24 Hours
 
 class RAGEnricherService:
+    """
+    Optimized Event-Driven RAG Enricher Service
+    - 24-hour deduplication cache to eliminate duplicate API requests.
+    - Zero infinite loop spam: disabled master catalog loop, on-demand priority.
+    - Fast 5-10s authentic metadata lookup with async background image caching.
+    """
+    _should_run: bool = False
     _inv_task: Optional[asyncio.Task] = None
     _master_task: Optional[asyncio.Task] = None
-    _should_run: bool = False
 
     @classmethod
     async def start(cls):
-        """Starts dual parallel background workers if not already running."""
-        if (cls._inv_task is not None and not cls._inv_task.done()) or (
-            cls._master_task is not None and not cls._master_task.done()
-        ):
-            logger.info("RAG Background Enricher workers are already active.")
+        """Starts background service in eco-friendly event-driven mode."""
+        if cls._inv_task is not None and not cls._inv_task.done():
+            logger.info("RAG Background Enricher is already active.")
             return
         cls._should_run = True
         cls._inv_task = asyncio.create_task(cls._inventory_worker_loop())
-        cls._master_task = asyncio.create_task(cls._master_worker_loop())
-        logger.info("RAG Background Enricher started with 2 parallel workers (Inventory Priority Worker + Master Catalog Worker).")
+        logger.info("RAG Enricher started in optimized On-Demand / Low-Frequency mode.")
 
     @classmethod
     async def stop(cls):
-        """Stops both workers gracefully and closes the shared HTTP client."""
+        """Stops workers gracefully."""
         global _http_client
         cls._should_run = False
-        for task in (cls._inv_task, cls._master_task):
-            if task is not None and not task.done():
-                try:
-                    task.cancel()
-                    await task
-                except (asyncio.CancelledError, Exception):
-                    pass
+        if cls._inv_task is not None and not cls._inv_task.done():
+            try:
+                cls._inv_task.cancel()
+                await cls._inv_task
+            except (asyncio.CancelledError, Exception):
+                pass
         cls._inv_task = None
-        cls._master_task = None
         if _http_client and not _http_client.is_closed:
             await _http_client.aclose()
             _http_client = None
-        logger.info("RAG Background Enricher stopped both workers.")
+        logger.info("RAG Background Enricher stopped.")
+
+    @classmethod
+    async def enrich_product_on_demand(cls, product_id, barcode: str, name: str) -> dict | None:
+        """
+        On-demand real-time enrichment triggered when a product is scanned or added.
+        Uses 24-hr cache deduplication and fast 5-10s Gemini AI / Web metadata.
+        """
+        clean_code = (barcode or "").strip()
+        now = datetime.utcnow().timestamp()
+
+        # 1. Check 24-Hour Cache
+        if clean_code and clean_code in _ENRICHMENT_CACHE:
+            cached_entry = _ENRICHMENT_CACHE[clean_code]
+            if now - cached_entry.get("timestamp", 0) < _CACHE_TTL_SECONDS:
+                logger.info("[RAG Enricher] Returning 24-hour cached details for barcode %s (0 API calls)", clean_code)
+                return cached_entry.get("data")
+
+        # 2. Perform Single High-Fidelity Lookup
+        semaphore = asyncio.Semaphore(1)
+        res = await cls._enrich_single_product(product_id, clean_code, name, "inventory", semaphore)
+
+        # 3. Cache result
+        if clean_code and res:
+            _ENRICHMENT_CACHE[clean_code] = {"timestamp": now, "data": res}
+        return res
 
     @classmethod
     async def _inventory_worker_loop(cls):
         """
-        Worker 1: HIGHEST PRIORITY — Enriches user-added inventory products (Product table).
-        Ensures user-uploaded inventory items get images and details enriched FIRST.
+        Low-frequency fallback worker for user inventory items. Runs every 60s to prevent API waste.
         """
         import os
         pause_file = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
             ".rag_enricher_paused",
         )
-        semaphore = asyncio.Semaphore(3)
+        semaphore = asyncio.Semaphore(2)
 
         while cls._should_run:
             try:
                 if os.path.exists(pause_file):
-                    await asyncio.sleep(5.0)
+                    await asyncio.sleep(30.0)
                     continue
 
                 batch = await cls._fetch_pending_inventory_batch()
                 if not batch:
-                    await asyncio.sleep(5.0)  # Check every 5s for newly added user products
+                    await asyncio.sleep(60.0)  # Check only once per minute
                     continue
 
-                logger.info("[RAG Enricher - Inventory Worker] Processing %d user-added products...", len(batch))
-
+                logger.info("[RAG Enricher] Processing %d pending items...", len(batch))
                 tasks = [
                     asyncio.create_task(
                         cls._enrich_single_product(pid, barcode, name, "inventory", semaphore)
