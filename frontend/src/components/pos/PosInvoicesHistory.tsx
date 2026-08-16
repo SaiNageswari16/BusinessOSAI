@@ -110,7 +110,7 @@ export function PosInvoicesHistory() {
           total_tax: inv.tax_amount || (inv.cgst_amount || 0) + (inv.sgst_amount || 0) || 0,
           discount_amount: inv.discount_amount || 0,
           grand_total: inv.total_amount || 0,
-          amount_received: inv.amount_paid || inv.total_amount || 0,
+          amount_received: Number(inv.amount_paid) || (String(inv.status).toLowerCase() === "paid" ? (inv.total_amount || 0) : 0),
           print_status: "A4 PDF Generated",
           items: (inv.lines || []).map((l: any) => ({
             id: l.id,
@@ -327,9 +327,9 @@ export function PosInvoicesHistory() {
             <span>₹${Number(inv.grand_total || 0).toFixed(2)}</span>
                   </div>
                   <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:4px;">
-                    <span>Payment Mode: ${inv.payment_mode}</span>
-            <span>Paid: ₹${Number(inv.amount_received || 0).toFixed(2)}</span>
-          </div>
+                    <span>${inv.payment_status === "Unpaid" ? "Payment Status: Unpaid / Credit" : `Payment Mode: ${inv.payment_mode || "Cash"}`}</span>
+                    <span>Paid: ₹${Number(inv.amount_received || 0).toFixed(2)}</span>
+                  </div>
           <div class="line"></div>
           <p style="margin-top:10px; font-weight:bold;">*** THANK YOU FOR YOUR BUSINESS ***</p>
           <script>
@@ -559,9 +559,11 @@ export function PosInvoicesHistory() {
                         >
                           {inv.payment_status}
                         </span>
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                          {inv.payment_mode}
-                        </span>
+                        {inv.payment_status !== "Unpaid" && (
+                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                            {inv.payment_mode || "Cash"}
+                          </span>
+                        )}
                       </div>
                     </td>
 

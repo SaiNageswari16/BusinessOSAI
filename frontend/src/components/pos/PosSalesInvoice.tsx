@@ -309,7 +309,7 @@ export function PosSalesInvoice() {
               ...item,
               hsn_code: res.hsn_code,
               tax_rate: res.gst_rate,
-              is_tax_inclusive: res.is_tax_inclusive !== false,
+              is_tax_inclusive: false,
               unit_price: finalPrice,
               mrp: finalMrp,
             };
@@ -399,33 +399,18 @@ export function PosSalesInvoice() {
       return;
     }
     const cust = customers.find((c: any) => c.id === selectedCustomer);
-    if (cust) {
-      const custGst = (cust.tax_id || cust.gst_number || "").trim().toUpperCase();
-      const custState = (cust.state || cust.shipping_address || cust.billing_address || "").toLowerCase();
-      // Store state is Andhra Pradesh (Code 37)
-      const isInterstate =
-        (custGst.length >= 2 && !custGst.startsWith("37")) ||
-        (custState && !custState.includes("andhra") && !custState.includes("ap") && !custState.includes("516"));
+    if (!cust) return;
 
-      if (isInterstate) {
-        setGstType("igst");
-        toast.info(`Inter-State Sale (${cust.state || (custGst ? `State Code ${custGst.slice(0, 2)}` : "Out of State")}). Tax switched to IGST.`);
-      } else {
-        setGstType("cgst_sgst");
-      }
-    }
-    invoicesApi
-      .getCustomerSummary(selectedCustomer)
-      .then((data: any) => {
-        if (data) {
-          setCustomerSummary(data);
-          if (data.total_pending_due > 0) {
-            setShowPendingDueAlert(true);
-          }
+    posApi
+      .getCustomerSummary(cust.name, cust.phone)
+      .then((summary) => {
+        setCustomerSummary(summary);
+        if (summary.total_pending_due > 0) {
+          setShowPendingDueAlert(true);
         }
       })
-      .catch(() => {
-        setCustomerSummary(null);
+      .catch((err) => {
+        console.error("Failed to fetch customer summary:", err);
       });
   }, [selectedCustomer, customers]);
 
@@ -461,7 +446,7 @@ export function PosSalesInvoice() {
         discount_value: 0,
         discount_type: "percent",
         tax_rate: 18,
-        is_tax_inclusive: true,
+        is_tax_inclusive: false,
         custom_note: "",
         is_note_open: false,
         is_search_open: false,
@@ -516,7 +501,7 @@ export function PosSalesInvoice() {
         discount_value: 0,
         discount_type: "percent",
         tax_rate: prod.tax_percent || 18,
-        is_tax_inclusive: prod.is_tax_inclusive !== false,
+        is_tax_inclusive: prod.is_tax_inclusive === true,
       });
     });
 
@@ -547,7 +532,7 @@ export function PosSalesInvoice() {
             discount_value: 0,
             discount_type: "percent",
             tax_rate: product.tax_percent || 18,
-            is_tax_inclusive: product.is_tax_inclusive !== false,
+            is_tax_inclusive: product.is_tax_inclusive === true,
           },
         ]);
         toast.success(`Added ${product.name} (${pricingMode} Price)`);
@@ -577,7 +562,7 @@ export function PosSalesInvoice() {
               discount_value: 0,
               discount_type: "percent",
               tax_rate: p.gst || 18,
-              is_tax_inclusive: p.is_tax_inclusive !== false,
+              is_tax_inclusive: p.is_tax_inclusive === true,
             },
           ]);
           toast.success(`Found & Added: ${p.name} (${p.source || "Master Catalog"})`);
@@ -606,7 +591,7 @@ export function PosSalesInvoice() {
               updated.mrp = batchInfo.mrp;
               updated.hsn_code = product.hsn_code || "1905";
               updated.tax_rate = Number(product.tax_percent) > 0 ? Number(product.tax_percent) : 18;
-              updated.is_tax_inclusive = product.is_tax_inclusive !== false;
+              updated.is_tax_inclusive = product.is_tax_inclusive === true;
               updated.batch_number = batchInfo.batch_number;
               updated.expiry_date = batchInfo.expiry_date;
               if (!updated.quantity || updated.quantity === 0) {
@@ -638,70 +623,70 @@ export function PosSalesInvoice() {
   let totalTax = 0;
 
   items.forEach((item) => {
-    const isIncl = item.is_tax_inclusive !== false;
+    const isIncl = item.is_tax_inclusive === true;
     const price = Number(item.unit_price) || 0;
     const qty = Number(item.quantity) || 1;
     const taxRate = Number(item.tax_rate) || 0;
 
-    let lineFinal = 0;
+    const lineGross = qty * price;
+    const dAmt = item.discount_type === "percent"
+      ? lineGross * (Number(item.discount_value || 0) / 100)
+      : Math.min(Number(item.discount_value || 0), lineGross);
+
+    const effectiveGross = Math.max(0, lineGross - dAmt);
     let lineTaxable = 0;
     let lineTax = 0;
 
     if (isIncl) {
-      lineFinal = qty * price;
-      lineTaxable = taxRate > 0 ? lineFinal / (1 + taxRate / 100) : lineFinal;
-      lineTax = lineFinal - lineTaxable;
+      // Tax Inclusive: Unit price already includes GST
+      lineTaxable = taxRate > 0 ? effectiveGross / (1 + taxRate / 100) : effectiveGross;
+      lineTax = effectiveGross - lineTaxable;
     } else {
-      lineTaxable = qty * price;
+      // Tax Exclusive (Default): GST is added ON TOP of unit price
+      lineTaxable = effectiveGross;
       lineTax = (lineTaxable * taxRate) / 100;
-      lineFinal = lineTaxable + lineTax;
     }
 
-    const dAmt = item.discount_type === "percent"
-      ? lineFinal * (item.discount_value / 100)
-      : Math.min(item.discount_value, lineFinal);
-
-    subtotal += lineFinal;
+    subtotal += lineGross;
     itemDiscountTotal += dAmt;
-    const discRatio = lineFinal > 0 ? dAmt / lineFinal : 0;
-    totalTaxableValue += lineTaxable * (1 - discRatio);
-    totalTax += lineTax * (1 - discRatio);
+    totalTaxableValue += lineTaxable;
+    totalTax += lineTax;
   });
-
-  const netSubtotal = Math.max(0, subtotal - itemDiscountTotal);
 
   // 1. Before-Tax Invoice Discount
   let beforeTaxDiscount = 0;
   if (invoiceDiscountMode === "before_tax" && invoiceDiscountValue > 0) {
     beforeTaxDiscount = invoiceDiscountType === "percent"
-      ? netSubtotal * (invoiceDiscountValue / 100)
-      : Math.min(invoiceDiscountValue, netSubtotal);
+      ? totalTaxableValue * (invoiceDiscountValue / 100)
+      : Math.min(invoiceDiscountValue, totalTaxableValue);
   }
 
   const taxableValue = Math.max(0, totalTaxableValue - beforeTaxDiscount);
-  const grossTotal = Math.max(0, netSubtotal - beforeTaxDiscount);
+  const effectiveTotalTax = totalTaxableValue > 0 ? (totalTax * (taxableValue / totalTaxableValue)) : 0;
+
+  // Additional charges: base amount + GST on each charge
+  const baseAdditionalCharges = customCharges.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+  const chargesGstTotal = customCharges.reduce((sum, c) => {
+    const amt = Number(c.amount || 0);
+    return sum + (amt * (Number(c.tax_rate || 0) / 100));
+  }, 0);
+  const totalAdditionalCharges = baseAdditionalCharges + chargesGstTotal;
+  const combinedTax = effectiveTotalTax + chargesGstTotal;
+
+  // Gross total before after-tax discount
+  const grossBillAmount = taxableValue + combinedTax + baseAdditionalCharges;
 
   // 3. After-Tax Invoice Discount
   let afterTaxDiscount = 0;
   if (invoiceDiscountMode === "after_tax" && invoiceDiscountValue > 0) {
     afterTaxDiscount = invoiceDiscountType === "percent"
-      ? grossTotal * (invoiceDiscountValue / 100)
-      : Math.min(invoiceDiscountValue, grossTotal);
+      ? grossBillAmount * (invoiceDiscountValue / 100)
+      : Math.min(invoiceDiscountValue, grossBillAmount);
   }
 
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
   const previousDueAmount = (includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
-  // Additional charges: base amount + GST on each charge
-  const totalAdditionalCharges = customCharges.reduce((sum, c) => {
-    const amt = Number(c.amount || 0);
-    const gstOnCharge = amt * (Number(c.tax_rate || 0) / 100);
-    return sum + amt + gstOnCharge;
-  }, 0);
-  const chargesGstTotal = customCharges.reduce((sum, c) => {
-    const amt = Number(c.amount || 0);
-    return sum + amt * (Number(c.tax_rate || 0) / 100);
-  }, 0);
-  const baseRawTotal = Math.max(0, grossTotal - afterTaxDiscount) + totalAdditionalCharges;
+  const baseRawTotal = Math.max(0, grossBillAmount - afterTaxDiscount);
   const rawTotal = baseRawTotal + previousDueAmount;
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
   const grandTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
@@ -977,13 +962,13 @@ export function PosSalesInvoice() {
         sales_points_earned: earnedPts,
         invoice_date: invoiceDate,
         due_date: dueDate,
-        payment_mode: paymentMode,
+        payment_mode: isCredit ? "Credit / Due" : paymentMode,
         payment_status: isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
         subtotal: subtotal,
-        total_tax: totalTax,
+        total_tax: combinedTax,
         discount_amount: totalDiscount,
         grand_total: grandTotal,
-        amount_received: Number(amountReceived) || grandTotal,
+        amount_received: isCredit ? 0 : (amountReceived === "" ? grandTotal : (Number(amountReceived) || 0)),
         print_status: printMode === 'thermal' ? 'Thermal Printed' : printMode === 'a4' ? 'A4 PDF Generated' : 'Pending Print',
         items: items.map(it => ({
           product_name: it.product_name || "Item",
@@ -1504,7 +1489,7 @@ export function PosSalesInvoice() {
               <tbody className="divide-y divide-slate-100">
                 {items.length > 0 ? (
                   items.map((item, idx) => {
-                    const isIncl = item.is_tax_inclusive !== false;
+                    const isIncl = item.is_tax_inclusive === true;
                     const price = Number(item.unit_price) || 0;
                     const qty = Number(item.quantity) || 1;
                     const taxRate = Number(item.tax_rate) || 0;
@@ -1514,15 +1499,13 @@ export function PosSalesInvoice() {
                       baseUnitPrice = price / (1 + taxRate / 100);
                     }
 
-                    const lineGross = qty * baseUnitPrice;
+                    const lineGross = qty * (isIncl ? baseUnitPrice : price);
                     const dAmt = item.discount_type === "percent"
                       ? lineGross * (item.discount_value / 100)
                       : Math.min(item.discount_value, lineGross);
 
                     const lineTaxable = Math.max(0, lineGross - dAmt);
-                    const lineTaxAmount = isIncl
-                      ? (qty * price - dAmt) - lineTaxable
-                      : (lineTaxable * taxRate) / 100;
+                    const lineTaxAmount = (lineTaxable * taxRate) / 100;
                     const lineAmount = isIncl ? (qty * price - dAmt) : (lineTaxable + lineTaxAmount);
 
                     const matchingProducts = products.filter(
@@ -1533,39 +1516,33 @@ export function PosSalesInvoice() {
                         (p.sku && p.sku.toLowerCase().includes((item.search_query || "").toLowerCase()))
                     );
 
-                    // MRP warning: compare INCLUSIVE selling price to MRP (Indian MRP is always tax-inclusive)
                     const sellingPriceIncl = isIncl ? price : price * (1 + taxRate / 100);
-                    const priceExclTax = isIncl && taxRate > 0 ? price / (1 + taxRate / 100) : price;
                     const mrpVal = Number(item.mrp) || 0;
                     const isMrpExceeded = mrpVal > 0 && sellingPriceIncl > mrpVal;
 
                     return (
-                      <>
-                      <tr key={item.id} className={`transition-colors ${isMrpExceeded ? "bg-red-50/40" : "hover:bg-slate-50/80"}`}>
-                        <td className="px-3 py-2 text-center text-slate-400 font-bold text-xs align-middle">{idx + 1}</td>
+                      <React.Fragment key={item.id}>
+                      <tr className={`transition-colors ${isMrpExceeded ? "bg-red-50/40" : "hover:bg-slate-50/80"}`}>
+                        <td className="px-3 py-2.5 text-slate-400 font-mono font-medium">{idx + 1}</td>
 
-                        {/* Product Search & Autocomplete Cell — single compact row */}
-                        <td className="px-2 py-2 align-middle" style={{ minWidth: 220 }}>
-                          <div>
-                            {/* Single-row search: icon + input + GST badge + note btn */}
-                            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 focus-within:ring-2 focus-within:ring-blue-400 focus-within:border-blue-400 shadow-sm transition-all">
-                              <Search className="w-3 h-3 text-slate-400 shrink-0" />
+                        {/* Product Search & Dropdown */}
+                        <td className="px-3 py-2.5">
+                          <div className="relative">
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 focus-within:border-blue-500 focus-within:bg-white rounded-lg px-2 py-1.5 transition-all">
+                              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                               <input
                                 type="text"
-                                placeholder="Search product..."
-                                value={item.search_query !== undefined ? item.search_query : item.product_name}
+                                placeholder="Search product name / scan barcode..."
+                                value={item.product_name || item.search_query || ""}
                                 onChange={(e) => {
-                                  const val = e.target.value;
-                                  setItems(
-                                    items.map((it) =>
-                                      it.id === item.id
-                                        ? { ...it, search_query: val, product_name: val, is_search_open: true }
-                                        : it
-                                    )
-                                  );
+                                  updateItem(item.id, "product_name", e.target.value);
+                                  updateItem(item.id, "search_query", e.target.value);
+                                  if (!item.is_search_open) {
+                                    updateItem(item.id, "is_search_open", true);
+                                  }
                                 }}
                                 onFocus={(e) => {
-                                  const rect = e.currentTarget.closest('td')!.getBoundingClientRect();
+                                  const rect = e.currentTarget.getBoundingClientRect();
                                   setDropdownAnchor({
                                     itemId: item.id,
                                     top: rect.bottom + window.scrollY,
@@ -1583,17 +1560,19 @@ export function PosSalesInvoice() {
                                 }}
                                 className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
                               />
-                              {/* GST Mode Informational Badge */}
-                              <span
-                                title={isIncl ? "Tax Inclusive: Selling Price includes GST" : "Tax Exclusive: GST added on top of Price"}
-                                className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider select-none cursor-default ${
+                              {/* GST Mode Interactive Toggle Badge */}
+                              <button
+                                type="button"
+                                onClick={() => updateItem(item.id, "is_tax_inclusive", !isIncl)}
+                                title={isIncl ? "Tax Inclusive: Price includes GST. Click to switch to Tax Exclusive (Add GST on top)" : "Tax Exclusive: GST is added on top of Price. Click to switch to Tax Inclusive"}
+                                className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider transition-all hover:scale-105 cursor-pointer shadow-2xs ${
                                   isIncl
-                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100"
+                                    : "bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100"
                                 }`}
                               >
                                 {isIncl ? "INCL" : "EXCL"}
-                              </span>
+                              </button>
                               {/* Note icon */}
                               <button
                                 type="button"
@@ -1772,7 +1751,7 @@ export function PosSalesInvoice() {
                           </td>
                         </tr>
                       )}
-                      </>
+                      </React.Fragment>
                     );
                   })
                 ) : (

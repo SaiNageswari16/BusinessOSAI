@@ -60,16 +60,19 @@ function PosDashboardInner() {
   const totalReturns = summaryData?.total_returns || 0;
   const avgBill = todayOrders > 0 ? todayRevenue / todayOrders : 0;
 
-  const displayTransactions = historyData || [];
+  const displayTransactions = Array.isArray(historyData) ? historyData : [];
   const displayInventoryAlerts = widgetsData?.inventoryAlerts || [];
 
-  if (historyError) {
-    return (
-      <div className="p-8 text-rose-500 font-bold text-xl">
-        Error loading transactions: {(historyError as any).detail || (historyError as any).message || JSON.stringify(historyError)}
-      </div>
-    );
-  }
+  const formatTxDate = (tx: any) => {
+    try {
+      const dateVal = tx.created_at || tx.date;
+      if (!dateVal) return "Just now";
+      const d = new Date(dateVal);
+      return isNaN(d.getTime()) ? "Just now" : format(d, "hh:mm a");
+    } catch {
+      return "Just now";
+    }
+  };
 
   return (
     <div className="p-6 lg:p-8 space-y-8 max-w-full">
@@ -111,10 +114,10 @@ function PosDashboardInner() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="hour" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${currency.symbol}${val}`} />
                 <Tooltip
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value: number) => [formatCurrency(value), "Revenue"]}
+                  formatter={(value: number) => [fmtCurrency(value), "Revenue"]}
                 />
                 <Area type="monotone" dataKey="revenue" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
               </AreaChart>
@@ -131,7 +134,7 @@ function PosDashboardInner() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <StatCard
           title="Today's Revenue"
-          value={formatCurrency(todayRevenue)}
+          value={fmtCurrency(todayRevenue)}
           trend="Live"
           isPositive={true}
           icon={DollarSign}
@@ -147,7 +150,7 @@ function PosDashboardInner() {
         />
         <StatCard
           title="Average Bill"
-          value={formatCurrency(avgBill)}
+          value={fmtCurrency(avgBill)}
           trend="Live"
           isPositive={true}
           icon={CreditCard}
@@ -155,7 +158,7 @@ function PosDashboardInner() {
         />
         <StatCard
           title="Returns & Refunds"
-          value={formatCurrency(totalReturns)}
+          value={fmtCurrency(totalReturns)}
           trend="Live"
           isPositive={false}
           icon={RotateCcw}
@@ -233,18 +236,18 @@ function PosDashboardInner() {
                       </span>
                     </td>
                     <td className="py-4 px-4 whitespace-nowrap text-slate-600">
-                      {tx.created_at ? format(new Date(tx.created_at), 'hh:mm a') : format(new Date(tx.date || new Date()), 'hh:mm a')}
+                      {formatTxDate(tx)}
                     </td>
                     <td className="py-4 px-4 whitespace-nowrap text-slate-900">
                       {tx.customer?.name || tx.customerName || "Walk-in"}
                     </td>
                     <td className="py-4 px-4 whitespace-nowrap">
                       <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-slate-100 text-slate-600 border border-slate-200">
-                        {tx.payments?.[0]?.payment_method || tx.paymentMethod || "UNKNOWN"}
+                        {tx.payments?.[0]?.payment_method || tx.paymentMethod || "CASH"}
                       </span>
                     </td>
                     <td className="py-4 px-4 whitespace-nowrap text-right font-bold text-slate-900">
-                      {formatCurrency(tx.total_amount || tx.total || 0)}
+                      {fmtCurrency(tx.total_amount || tx.total || 0)}
                     </td>
                     <td className="py-4 px-4 whitespace-nowrap text-center">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${(tx.status || 'completed').toLowerCase() === "completed"
