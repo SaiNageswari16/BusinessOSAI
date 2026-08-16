@@ -11,10 +11,10 @@ export function LoyaltyPrograms() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Loyalty Programs</h2>
-          <p className="text-sm text-muted-foreground">Configure point accumulation logic and reward tiers.</p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Loyalty Programs</h2>
+          <p className="text-sm text-slate-500 mt-1">Configure point accumulation logic and reward tiers.</p>
         </div>
         <Button variant="outline"><Settings className="size-4 mr-2" /> Global Settings</Button>
       </div>

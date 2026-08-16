@@ -5,10 +5,10 @@ import { Clock, Lock, Play, DollarSign, History } from "lucide-react";
 export function ShiftManagement() {
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Shift Management</h2>
-          <p className="text-sm text-muted-foreground">Manage cash registers, opening floats, and end-of-day reports.</p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Shift Management</h2>
+          <p className="text-sm text-slate-500 mt-1">Manage cash registers, opening floats, and end-of-day reports.</p>
         </div>
       </div>
 

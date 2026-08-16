@@ -61,22 +61,17 @@ export function ReceiptTemplates() {
   return (
     <div className="p-6 max-w-[1500px] mx-auto space-y-6 font-sans text-slate-800">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-gradient-to-tr from-indigo-600 via-purple-600 to-emerald-500 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
-            <Printer className="w-6 h-6" />
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">POS Receipt Templates & Thermal Print Setup</h2>
+            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Active Printer: HSPRINTER (HS-KH80)
+            </span>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900">POS Receipt Templates & Thermal Print Setup</h1>
-              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Active Printer: HSPRINTER (HS-KH80)
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Customize 80mm thermal receipt headers, GSTIN tax breakdown, loyalty points & QR codes
-            </p>
-          </div>
+          <p className="text-sm text-slate-500 mt-1">
+            Customize 80mm thermal receipt headers, GSTIN tax breakdown, loyalty points & QR codes
+          </p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -380,7 +375,7 @@ export function ReceiptTemplates() {
                       {item.name}
                       {template.showItemHSN && <span className="block text-[8.5px] text-slate-500">HSN:{item.hsn}</span>}
                     </span>
-                    <span className="w-2/12 text-center">{item.quantity}</span>
+                    <span className="w-2/12 text-center">{item.qty}</span>
                     <span className="w-2/12 text-right">{item.rate.toFixed(2)}</span>
                     <span className="w-2/12 text-right font-bold">{item.amt.toFixed(2)}</span>
                   </div>

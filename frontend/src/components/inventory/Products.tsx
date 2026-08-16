@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3 } from "lucide-react";
+import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign } from "lucide-react";
 
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -784,6 +784,7 @@ export function Products() {
 
   // ── Modal state ──────────────────────────────────────────────────
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeModalTab, setActiveModalTab] = useState("basic");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1408,382 +1409,560 @@ export function Products() {
   // ══════════════════════════════════════════════════════════════════
   //  RENDER: Product form modal
   // ══════════════════════════════════════════════════════════════════
-  const renderProductForm = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-        className="bg-card border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b flex items-center justify-between">
-          <h2 className="text-lg font-bold">{editingProductId ? "Edit Product" : "Create Product"}</h2>
-          <button onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); }} className="p-1.5 rounded-lg hover:bg-muted"><X className="size-5" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Product Image Upload Section */}
-          <div className="border-b pb-4 mb-4">
-            <label className="block text-xs font-semibold text-muted-foreground mb-2">Product Image</label>
-            <div className="flex items-center gap-4">
-              {currentForm.image_url ? (
-                <div className="relative size-20 rounded-xl overflow-hidden border bg-white group shadow-sm">
-                  <img src={resolveImageUrl(currentForm.image_url)} alt="Preview" className="object-cover w-full h-full" />
-                  <button type="button" onClick={() => setCurrentForm(p => ({ ...p, image_url: "" }))} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition-opacity cursor-pointer border-0">
-                    Remove
-                  </button>
+  const renderProductForm = () => {
+    const selectedCatObj = categories.find(c => c.id === currentForm.category_id);
+    const activeParentId = selectedCatObj ? (selectedCatObj.parent_id || selectedCatObj.id) : "";
+    const activeSubId = selectedCatObj && selectedCatObj.parent_id ? selectedCatObj.id : "";
+    
+    const mainCategories = categories.filter(c => !c.parent_id);
+    const subCategories = categories.filter(c => c.parent_id && c.parent_id === activeParentId);
+
+    const tabs = [
+      { id: "basic", label: "Basic Details", desc: "Name, SKU, Category", icon: Package },
+      { id: "inventory", label: "Inventory", desc: "Stock, Warehouse, Reorder", icon: Box },
+      { id: "pricing", label: "Pricing & Tax", desc: "Prices, Tax, HSN", icon: DollarSign },
+      { id: "purchase", label: "Purchase & Supplier", desc: "Supplier, Purchase Price", icon: Truck },
+      { id: "other", label: "Other Details", desc: "Description, Options", icon: FileText }
+    ];
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+          className="bg-card border rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="p-6 border-b flex items-center justify-between shrink-0 bg-white">
+            <h2 className="text-xl font-bold tracking-tight">{editingProductId ? "Edit Product" : "Create Product"}</h2>
+            <button type="button" onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); setActiveModalTab("basic"); }} className="p-1.5 rounded-lg hover:bg-muted"><X className="size-5" /></button>
+          </div>
+          
+          <div className="flex flex-1 overflow-hidden">
+            {/* Sidebar */}
+            <div className="w-72 bg-slate-50 border-r flex flex-col overflow-y-auto shrink-0 p-4">
+              <div className="space-y-2 flex-1">
+                {tabs.map(tab => {
+                  const Icon = tab.icon;
+                  const isActive = activeModalTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveModalTab(tab.id)}
+                      className={`w-full text-left p-3 rounded-xl flex gap-3 transition-colors ${
+                        isActive ? "bg-indigo-50 border border-indigo-100" : "hover:bg-muted border border-transparent"
+                      }`}
+                    >
+                      <div className={`shrink-0 p-2 rounded-lg ${isActive ? "bg-indigo-100 text-indigo-700" : "bg-white border text-slate-500"}`}>
+                        <Icon className="size-5" />
+                      </div>
+                      <div>
+                        <div className={`text-sm font-semibold ${isActive ? "text-indigo-900" : "text-slate-700"}`}>{tab.label}</div>
+                        <div className={`text-xs ${isActive ? "text-indigo-600" : "text-slate-500"}`}>{tab.desc}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 flex gap-3">
+                <Lightbulb className="size-5 text-indigo-600 shrink-0" />
+                <div>
+                  <div className="text-sm font-bold text-indigo-900 mb-1">Tip</div>
+                  <div className="text-xs text-indigo-700 leading-relaxed">Fill the basic details first, you can update the rest later.</div>
                 </div>
-              ) : (
-                <div className="size-20 rounded-xl border border-dashed flex items-center justify-center text-muted-foreground bg-muted/20">
-                  <Package className="size-6 text-muted-foreground opacity-60" />
-                </div>
-              )}
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-2">
-                  <input type="file" accept="image/*" id="prod-img-upload" className="hidden" onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    try {
-                      const res = await inventoryApi.uploadProductImage(file);
-                      setCurrentForm(p => ({ ...p, image_url: res.image_url }));
-                      toast.success("Product image uploaded successfully!");
-                    } catch (err) {
-                      toast.error("Failed to upload product image.");
-                    }
-                  }} />
-                  <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById("prod-img-upload")?.click()} className="cursor-pointer">
-                    <Upload className="size-3.5 mr-1.5" /> Upload Photo
+              </div>
+            </div>
+
+            {/* Form Area */}
+            <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden bg-white">
+              <div className="flex-1 overflow-y-auto p-8">
+                
+                {activeModalTab === "basic" && (
+                  <div className="space-y-6 max-w-3xl">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Basic Details</h3>
+                      <p className="text-sm text-slate-500 mb-6">Add the essential details to identify your product.</p>
+                      
+                      <div className="p-4 border border-dashed rounded-xl flex items-center justify-between bg-slate-50/50 mb-6">
+                        <div className="flex items-center gap-4">
+                          {currentForm.image_url ? (
+                            <div className="relative size-16 rounded-xl overflow-hidden border bg-white group shadow-sm shrink-0">
+                              <img src={resolveImageUrl(currentForm.image_url)} alt="Preview" className="object-cover w-full h-full" />
+                              <button type="button" onClick={() => setCurrentForm(p => ({ ...p, image_url: "" }))} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition-opacity cursor-pointer border-0">
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="size-16 rounded-xl border flex items-center justify-center text-muted-foreground bg-white shrink-0">
+                              <UploadCloud className="size-6 text-slate-400" />
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-semibold text-sm text-slate-900">Upload Image</div>
+                            <div className="text-xs text-slate-500 mt-0.5">PNG, JPG or WebP • Max 5MB</div>
+                          </div>
+                        </div>
+                        <input type="file" accept="image/*" id="prod-img-upload" className="hidden" onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const res = await inventoryApi.uploadProductImage(file);
+                            setCurrentForm(p => ({ ...p, image_url: res.image_url }));
+                            toast.success("Product image uploaded successfully!");
+                          } catch (err) {
+                            toast.error("Failed to upload product image.");
+                          }
+                        }} />
+                        <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById("prod-img-upload")?.click()} className="bg-white">
+                          Browse
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-900 mb-1.5">
+                        Product Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="name"
+                        value={currentForm.name}
+                        onChange={handleFormChange}
+                        placeholder="Enter product name"
+                        required
+                        className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">SKU</label>
+                        <input
+                          type="text"
+                          name="sku"
+                          value={currentForm.sku}
+                          onChange={handleFormChange}
+                          placeholder="Enter SKU"
+                          className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Barcode</label>
+                        <input
+                          type="text"
+                          name="barcode"
+                          value={currentForm.barcode}
+                          onChange={handleFormChange}
+                          placeholder="Enter barcode"
+                          className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Brand</label>
+                        <div className="relative">
+                          <div className="flex gap-2">
+                            <select
+                              name="brand_id"
+                              value={currentForm.brand_id}
+                              onChange={handleFormChange}
+                              className="flex-1 h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            >
+                              <option value="">Select brand</option>
+                              {brands.map((b) => (
+                                <option key={b.id} value={b.id}>{b.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => { setBrandPopoverOpen(v => !v); setCatPopoverOpen(false); setSubCatPopoverOpen(false); }}
+                              title="Create new brand"
+                              className="w-11 h-11 shrink-0 rounded-xl border text-indigo-600 bg-white hover:bg-indigo-50 flex items-center justify-center transition-all"
+                            >
+                              <Plus className="size-4" />
+                            </button>
+                          </div>
+                          {brandPopoverOpen && (
+                            <InlineCreatePopover
+                              label="Brand"
+                              onClose={() => setBrandPopoverOpen(false)}
+                              onSave={async (name) => {
+                                const created = await inventoryApi.createBrand({ name });
+                                setBrands(prev => [...prev, created]);
+                                setCurrentForm(prev => ({ ...prev, brand_id: created.id }));
+                                toast.success(`Brand "${name}" created!`);
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">
+                          Category <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <div className="flex gap-2">
+                            <select
+                              value={activeParentId}
+                              onChange={(e) => {
+                                const newParentId = e.target.value;
+                                setCurrentForm(prev => ({ ...prev, category_id: newParentId }));
+                              }}
+                              className="flex-1 h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            >
+                              <option value="">Select category</option>
+                              {mainCategories.map((c) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => { setCatPopoverOpen(v => !v); setBrandPopoverOpen(false); setSubCatPopoverOpen(false); }}
+                              title="Create new category"
+                              className="w-11 h-11 shrink-0 rounded-xl border text-indigo-600 bg-white hover:bg-indigo-50 flex items-center justify-center transition-all"
+                            >
+                              <Plus className="size-4" />
+                            </button>
+                          </div>
+                          {catPopoverOpen && (
+                            <InlineCreatePopover
+                              label="Category"
+                              onClose={() => setCatPopoverOpen(false)}
+                              onSave={async (name) => {
+                                const created = await inventoryApi.createCategory({ name });
+                                setCategories(prev => [...prev, created]);
+                                setCurrentForm(prev => ({ ...prev, category_id: created.id }));
+                                toast.success(`Category "${name}" created!`);
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Sub-Category</label>
+                        <div className="relative">
+                          <div className="flex gap-2">
+                            <select
+                              value={activeSubId}
+                              disabled={!activeParentId}
+                              onChange={(e) => {
+                                const newSubId = e.target.value;
+                                setCurrentForm(prev => ({ ...prev, category_id: newSubId || activeParentId }));
+                              }}
+                              className="flex-1 h-11 px-4 text-sm rounded-xl border bg-background disabled:opacity-50 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            >
+                              <option value="">{activeParentId ? "Select sub-category" : "Select Category First"}</option>
+                              {subCategories.map((sc) => (
+                                <option key={sc.id} value={sc.id}>{sc.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={!activeParentId}
+                              onClick={() => { setSubCatPopoverOpen(v => !v); setBrandPopoverOpen(false); setCatPopoverOpen(false); }}
+                              title="Create new sub-category"
+                              className="w-11 h-11 shrink-0 rounded-xl border text-indigo-600 bg-white hover:bg-indigo-50 flex items-center justify-center transition-all disabled:opacity-50"
+                            >
+                              <Plus className="size-4" />
+                            </button>
+                          </div>
+                          {subCatPopoverOpen && activeParentId && (
+                            <InlineCreatePopover
+                              label="Sub-Category"
+                              onClose={() => setSubCatPopoverOpen(false)}
+                              onSave={async (name) => {
+                                const created = await inventoryApi.createCategory({ name, parent_id: activeParentId });
+                                setCategories(prev => [...prev, created]);
+                                setCurrentForm(prev => ({ ...prev, category_id: created.id }));
+                                toast.success(`Sub-Category "${name}" created!`);
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">
+                          Unit of Measurement (UoM) <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          name="uom_id"
+                          value={currentForm.uom_id}
+                          onChange={handleFormChange}
+                          className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        >
+                          <option value="">Select unit</option>
+                          {uoms.map((u) => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeModalTab === "inventory" && (
+                  <div className="space-y-6 max-w-3xl">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Inventory Management</h3>
+                      <p className="text-sm text-slate-500 mb-6">Track and manage stock levels.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      {[
+                        { label: "Initial Stock", name: "initial_stock", type: "number" },
+                        { label: "Reorder Level", name: "reorder_level", type: "number" },
+                        { label: "Safety Stock", name: "safety_stock", type: "number" },
+                        { label: "Warehouse", name: "warehouse", type: "text" },
+                      ].map((field) => (
+                        <div key={field.name}>
+                          <label className="block text-sm font-semibold text-slate-900 mb-1.5">{field.label}</label>
+                          <input
+                            type={field.type}
+                            name={field.name}
+                            value={(currentForm as any)[field.name]}
+                            onChange={handleFormChange}
+                            placeholder={`Enter ${field.label.toLowerCase()}`}
+                            className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeModalTab === "pricing" && (
+                  <div className="space-y-6 max-w-3xl">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Pricing & Tax</h3>
+                      <p className="text-sm text-slate-500 mb-6">Set up your retail prices and tax structures.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      {[
+                        { label: "Retail Selling Price", name: "selling_price", type: "number", step: "0.01" },
+                        { label: "MRP", name: "mrp", type: "number", step: "0.01" },
+                        { label: "Tax (%)", name: "tax_percent", type: "number" },
+                        { label: "Discount Limit (%)", name: "discount_limit", type: "number" },
+                      ].map((field) => (
+                        <div key={field.name}>
+                          <label className="block text-sm font-semibold text-slate-900 mb-1.5">{field.label}</label>
+                          <input
+                            type={field.type}
+                            name={field.name}
+                            step={field.step || "any"}
+                            value={(currentForm as any)[field.name]}
+                            onChange={handleFormChange}
+                            placeholder={`Enter ${field.label.toLowerCase()}`}
+                            className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-xl border border-dashed space-y-3 mt-6">
+                      <label className="block text-sm font-semibold text-slate-900">
+                        HSN Code & GST Tax Schedule Lookup
+                      </label>
+                      <select
+                        className="w-full h-11 px-4 text-sm rounded-xl border bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        value={(currentForm as any).hsn_code || ""}
+                        onChange={(e) => {
+                          const selectedCode = e.target.value;
+                          const match = hsnCodes.find(h => h.hsn_code === selectedCode);
+                          setCurrentForm(prev => ({
+                            ...prev,
+                            hsn_code: selectedCode,
+                            tax_percent: match ? match.gst_rate : prev.tax_percent
+                          }));
+                          if (match) {
+                            toast.success(`Selected HSN ${selectedCode} (${match.gst_rate}% GST Rate)`);
+                          }
+                        }}
+                      >
+                        <option value="">Select Official HSN Code / GST Rate...</option>
+                        {hsnCodes.map((item) => (
+                          <option key={item.hsn_code} value={item.hsn_code}>
+                            {item.hsn_code} — {item.description.slice(0, 55)}... ({item.gst_rate}% GST)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 p-4 rounded-xl space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-sm font-bold text-slate-900">
+                          GST Tax Pricing Mode *
+                        </label>
+                        <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-lg border">
+                          <button
+                            type="button"
+                            onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: true }))}
+                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                              (currentForm as any).is_tax_inclusive !== false
+                                ? "bg-indigo-600 text-white shadow-sm"
+                                : "text-slate-600 hover:bg-slate-200"
+                            }`}
+                          >
+                            GST Inclusive (Included)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: false }))}
+                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                              (currentForm as any).is_tax_inclusive === false
+                                ? "bg-indigo-600 text-white shadow-sm"
+                                : "text-slate-600 hover:bg-slate-200"
+                            }`}
+                          >
+                            GST Exclusive (Extra)
+                          </button>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const price = Number((currentForm as any).selling_price) || 0;
+                        const taxRate = Number((currentForm as any).tax_percent) || 0;
+                        const isIncl = (currentForm as any).is_tax_inclusive !== false;
+
+                        let basePrice = 0;
+                        let taxAmount = 0;
+                        let finalCustomerPrice = 0;
+
+                        if (isIncl) {
+                          basePrice = taxRate > 0 ? price / (1 + taxRate / 100) : price;
+                          taxAmount = price - basePrice;
+                          finalCustomerPrice = price;
+                        } else {
+                          basePrice = price;
+                          taxAmount = (price * taxRate) / 100;
+                          finalCustomerPrice = price + taxAmount;
+                        }
+
+                        return (
+                          <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg text-sm">
+                            <div>
+                              <span className="text-slate-500 font-medium block text-xs mb-1">Net Base Price (Excl. Tax)</span>
+                              <span className="font-bold text-slate-900">₹{basePrice.toFixed(2)}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-medium block text-xs mb-1">GST Tax Amount ({taxRate}%)</span>
+                              <span className="font-bold text-indigo-700">₹{taxAmount.toFixed(2)}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-medium block text-xs mb-1">Final Customer Price</span>
+                              <span className="font-extrabold text-slate-900 text-base">₹{finalCustomerPrice.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {activeModalTab === "purchase" && (
+                  <div className="space-y-6 max-w-3xl">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Purchase & Supplier</h3>
+                      <p className="text-sm text-slate-500 mb-6">Manage wholesale prices and supplier details.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      {[
+                        { label: "Purchase Price", name: "purchase_price", type: "number", step: "0.01" },
+                        { label: "Wholesale Price", name: "wholesale_price", type: "number", step: "0.01" },
+                        { label: "Min Wholesale Qty", name: "min_wholesale_qty", type: "number" },
+                        { label: "Supplier", name: "supplier", type: "text" },
+                      ].map((field) => (
+                        <div key={field.name}>
+                          <label className="block text-sm font-semibold text-slate-900 mb-1.5">{field.label}</label>
+                          <input
+                            type={field.type}
+                            name={field.name}
+                            step={field.step || "any"}
+                            value={(currentForm as any)[field.name]}
+                            onChange={handleFormChange}
+                            placeholder={`Enter ${field.label.toLowerCase()}`}
+                            className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeModalTab === "other" && (
+                  <div className="space-y-6 max-w-3xl">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Other Details</h3>
+                      <p className="text-sm text-slate-500 mb-6">Add descriptions and manage product status.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-900 mb-1.5">Short Description</label>
+                      <textarea
+                        name="short_description"
+                        value={currentForm.short_description || ""}
+                        onChange={handleFormChange}
+                        rows={3}
+                        placeholder="Enter short description"
+                        className="w-full p-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-900 mb-1.5">Long Description</label>
+                      <textarea
+                        name="long_description"
+                        value={currentForm.long_description || ""}
+                        onChange={handleFormChange}
+                        rows={5}
+                        placeholder="Enter detailed description"
+                        className="w-full p-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-900 mb-1.5">Status</label>
+                      <select
+                        name="status"
+                        value={currentForm.status}
+                        onChange={handleFormChange}
+                        className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+              
+              {/* Footer */}
+              <div className="p-5 border-t bg-slate-50 flex items-center justify-between shrink-0">
+                <Button type="button" variant="outline" className="h-11 px-6 rounded-xl font-semibold bg-white hover:bg-slate-100" onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); setActiveModalTab("basic"); }}>
+                  Cancel
+                </Button>
+                <div className="flex gap-3">
+                  {!editingProductId && (
+                    <Button type="submit" name="saveAndNew" value="true" disabled={isSubmitting} variant="outline" className="h-11 px-6 rounded-xl font-semibold text-indigo-700 border-indigo-200 bg-indigo-50 hover:bg-indigo-100">
+                      Save & New
+                    </Button>
+                  )}
+                  <Button type="submit" disabled={isSubmitting} className="h-11 px-6 rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all border-0">
+                    {isSubmitting ? "Saving..." : editingProductId ? "Update Product" : "Save Product"}
                   </Button>
                 </div>
-                <p className="text-[10px] text-muted-foreground">PNG, JPG or WebP — Max 5MB. Matches local listings style.</p>
               </div>
-            </div>
+            </form>
           </div>
-
-          {/* Form Fields */}
-          {(() => {
-            const selectedCatObj = categories.find(c => c.id === currentForm.category_id);
-            const activeParentId = selectedCatObj ? (selectedCatObj.parent_id || selectedCatObj.id) : "";
-            const activeSubId = selectedCatObj && selectedCatObj.parent_id ? selectedCatObj.id : "";
-            
-            const mainCategories = categories.filter(c => !c.parent_id);
-            const subCategories = categories.filter(c => c.parent_id && c.parent_id === activeParentId);
-
-            return (
-              <div className="grid grid-cols-2 gap-4">
-                {/* Product Name */}
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">
-                    Product Name<span className="text-red-500 ml-0.5">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={currentForm.name}
-                    onChange={handleFormChange}
-                    required
-                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
-                  />
-                </div>
-
-                {/* SKU & Barcode */}
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">SKU</label>
-                  <input
-                    type="text"
-                    name="sku"
-                    value={currentForm.sku}
-                    onChange={handleFormChange}
-                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Barcode</label>
-                  <input
-                    type="text"
-                    name="barcode"
-                    value={currentForm.barcode}
-                    onChange={handleFormChange}
-                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
-                  />
-                </div>
-
-                {/* Brand & Category */}
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Brand</label>
-                  <div className="relative">
-                    <div className="flex gap-1.5">
-                      <select
-                        name="brand_id"
-                        value={currentForm.brand_id}
-                        onChange={handleFormChange}
-                        className="flex-1 h-10 px-3 text-sm rounded-lg border bg-background"
-                      >
-                        <option value="">Select Brand</option>
-                        {brands.map((b) => (
-                          <option key={b.id} value={b.id}>{b.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => { setBrandPopoverOpen(v => !v); setCatPopoverOpen(false); setSubCatPopoverOpen(false); }}
-                        title="Create new brand"
-                        className="w-10 h-10 shrink-0 rounded-lg border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 flex items-center justify-center transition"
-                      >
-                        <Plus className="size-4" />
-                      </button>
-                    </div>
-                    {brandPopoverOpen && (
-                      <InlineCreatePopover
-                        label="Brand"
-                        onClose={() => setBrandPopoverOpen(false)}
-                        onSave={async (name) => {
-                          const created = await inventoryApi.createBrand({ name });
-                          setBrands(prev => [...prev, created]);
-                          setCurrentForm(prev => ({ ...prev, brand_id: created.id }));
-                          toast.success(`Brand "${name}" created!`);
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Category</label>
-                  <div className="relative">
-                    <div className="flex gap-1.5">
-                      <select
-                        value={activeParentId}
-                        onChange={(e) => {
-                          const newParentId = e.target.value;
-                          setCurrentForm(prev => ({ ...prev, category_id: newParentId }));
-                        }}
-                        className="flex-1 h-10 px-3 text-sm rounded-lg border bg-background"
-                      >
-                        <option value="">Select Category</option>
-                        {mainCategories.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => { setCatPopoverOpen(v => !v); setBrandPopoverOpen(false); setSubCatPopoverOpen(false); }}
-                        title="Create new category"
-                        className="w-10 h-10 shrink-0 rounded-lg border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 flex items-center justify-center transition"
-                      >
-                        <Plus className="size-4" />
-                      </button>
-                    </div>
-                    {catPopoverOpen && (
-                      <InlineCreatePopover
-                        label="Category"
-                        onClose={() => setCatPopoverOpen(false)}
-                        onSave={async (name) => {
-                          const created = await inventoryApi.createCategory({ name });
-                          setCategories(prev => [...prev, created]);
-                          setCurrentForm(prev => ({ ...prev, category_id: created.id }));
-                          toast.success(`Category "${name}" created!`);
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {/* Sub-Category & UoM */}
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Sub-Category</label>
-                  <div className="relative">
-                    <div className="flex gap-1.5">
-                      <select
-                        value={activeSubId}
-                        disabled={!activeParentId}
-                        onChange={(e) => {
-                          const newSubId = e.target.value;
-                          setCurrentForm(prev => ({ ...prev, category_id: newSubId || activeParentId }));
-                        }}
-                        className="flex-1 h-10 px-3 text-sm rounded-lg border bg-background disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <option value="">{activeParentId ? "Select Sub-Category (Optional)" : "Select Category First"}</option>
-                        {subCategories.map((sc) => (
-                          <option key={sc.id} value={sc.id}>{sc.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={!activeParentId}
-                        onClick={() => { setSubCatPopoverOpen(v => !v); setBrandPopoverOpen(false); setCatPopoverOpen(false); }}
-                        title="Create new sub-category"
-                        className="w-10 h-10 shrink-0 rounded-lg border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Plus className="size-4" />
-                      </button>
-                    </div>
-                    {subCatPopoverOpen && activeParentId && (
-                      <InlineCreatePopover
-                        label="Sub-Category"
-                        onClose={() => setSubCatPopoverOpen(false)}
-                        onSave={async (name) => {
-                          const created = await inventoryApi.createCategory({ name, parent_id: activeParentId });
-                          setCategories(prev => [...prev, created]);
-                          setCurrentForm(prev => ({ ...prev, category_id: created.id }));
-                          toast.success(`Sub-Category "${name}" created!`);
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">UoM</label>
-                  <select
-                    name="uom_id"
-                    value={currentForm.uom_id}
-                    onChange={handleFormChange}
-                    className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
-                  >
-                    <option value="">Select UoM</option>
-                    {uoms.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Pricing & Stock Fields */}
-                {[
-                  { label: "Purchase Price", name: "purchase_price", type: "number", step: "0.01" },
-                  { label: "MRP", name: "mrp", type: "number", step: "0.01" },
-                  { label: "Retail Selling Price", name: "selling_price", type: "number", step: "0.01" },
-                  { label: "Wholesale Price", name: "wholesale_price", type: "number", step: "0.01" },
-                  { label: "Min Wholesale Qty", name: "min_wholesale_qty", type: "number" },
-                  { label: "Tax (%)", name: "tax_percent", type: "number" },
-                  { label: "Discount Limit (%)", name: "discount_limit", type: "number" },
-                  { label: "Initial Stock", name: "initial_stock", type: "number" },
-                  { label: "Reorder Level", name: "reorder_level", type: "number" },
-                  { label: "Safety Stock", name: "safety_stock", type: "number" },
-                  { label: "Warehouse", name: "warehouse" },
-                  { label: "Supplier", name: "supplier" },
-                ].map((field) => (
-                  <div key={field.name}>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">{field.label}</label>
-                    <input
-                      type={field.type || "text"}
-                      name={field.name}
-                      step={field.step || "any"}
-                      value={(currentForm as any)[field.name]}
-                      onChange={handleFormChange}
-                      className="w-full h-10 px-3 text-sm rounded-lg border bg-background"
-                    />
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-
-            {/* HSN Code Selector */}
-            <div className="col-span-2 bg-muted/20 p-3 rounded-xl border border-dashed space-y-2">
-              <label className="block text-xs font-semibold text-muted-foreground">
-                HSN Code & GST Tax Schedule Lookup
-              </label>
-              <div className="flex gap-2">
-                <select
-                  className="flex-1 h-10 px-3 text-sm rounded-lg border bg-background"
-                  value={(currentForm as any).hsn_code || ""}
-                  onChange={(e) => {
-                    const selectedCode = e.target.value;
-                    const match = hsnCodes.find(h => h.hsn_code === selectedCode);
-                    setCurrentForm(prev => ({
-                      ...prev,
-                      hsn_code: selectedCode,
-                      tax_percent: match ? match.gst_rate : prev.tax_percent
-                    }));
-                    if (match) {
-                      toast.success(`Selected HSN ${selectedCode} (${match.gst_rate}% GST Rate)`);
-                    }
-                  }}
-                >
-                  <option value="">Select Official HSN Code / GST Rate...</option>
-                  {hsnCodes.map((item) => (
-                    <option key={item.hsn_code} value={item.hsn_code}>
-                      {item.hsn_code} — {item.description.slice(0, 55)}... ({item.gst_rate}% GST)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* GST Tax Mode Selector & Live Calculation Preview */}
-            <div className="col-span-2 bg-slate-50 border border-slate-200 p-3.5 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold text-slate-800">
-                  GST Tax Pricing Mode *
-                </label>
-                <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-slate-300">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: true }))}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
-                      (currentForm as any).is_tax_inclusive !== false
-                        ? "bg-teal-600 text-white shadow-sm"
-                        : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    GST Inclusive (Price Includes Tax)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: false }))}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
-                      (currentForm as any).is_tax_inclusive === false
-                        ? "bg-amber-600 text-white shadow-sm"
-                        : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    GST Exclusive (Tax Added Extra)
-                  </button>
-                </div>
-              </div>
-
-              {(() => {
-                const price = Number((currentForm as any).selling_price) || 0;
-                const taxRate = Number((currentForm as any).tax_percent) || 0;
-                const isIncl = (currentForm as any).is_tax_inclusive !== false;
-
-                let basePrice = 0;
-                let taxAmount = 0;
-                let finalCustomerPrice = 0;
-
-                if (isIncl) {
-                  basePrice = taxRate > 0 ? price / (1 + taxRate / 100) : price;
-                  taxAmount = price - basePrice;
-                  finalCustomerPrice = price;
-                } else {
-                  basePrice = price;
-                  taxAmount = (price * taxRate) / 100;
-                  finalCustomerPrice = price + taxAmount;
-                }
-
-                return (
-                  <div className="grid grid-cols-3 gap-2 p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700">
-                    <div>
-                      <span className="text-slate-500 font-normal block text-[10px]">Net Base Price (Excl. Tax)</span>
-                      <span className="font-bold text-slate-900">₹{basePrice.toFixed(2)}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 font-normal block text-[10px]">GST Tax Amount ({taxRate}%)</span>
-                      <span className="font-bold text-teal-700">₹{taxAmount.toFixed(2)}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 font-normal block text-[10px]">Final Customer Price</span>
-                      <span className="font-extrabold text-slate-900 text-sm">₹{finalCustomerPrice.toFixed(2)}</span>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          <div className="flex justify-end gap-3 pt-4 border-t">
-
-            <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); }}>Cancel</Button>
-            <Button type="submit" disabled={isSubmitting} className="gradient-brand text-white border-0">
-              {isSubmitting ? "Saving..." : editingProductId ? "Update Product" : "Create Product"}
-            </Button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
-  );
+        </motion.div>
+      </div>
+    );
+  };
 
   // ══════════════════════════════════════════════════════════════════
   //  RENDER: Table body for local products

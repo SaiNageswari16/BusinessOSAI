@@ -46,6 +46,9 @@ const blankCustomer: Record<string, unknown> = {
   status: "Active",
   source: "",
   address: "",
+  billing_address: "",
+  shipping_address: "",
+  isShippingSameAsBilling: true,
   city: "",
   state: "",
   country: "India",
@@ -141,6 +144,9 @@ export function Customers() {
       status: customer.status,
       source: customer.source || "",
       address: customer.address || "",
+      billing_address: customer.billing_address || customer.address || "",
+      shipping_address: customer.shipping_address || "",
+      isShippingSameAsBilling: customer.shipping_address ? (customer.shipping_address === (customer.billing_address || customer.address)) : true,
       city: customer.city || "",
       state: customer.state || "",
       country: customer.country || "India",
@@ -172,6 +178,8 @@ export function Customers() {
         status: form.status,
         source: form.source || null,
         address: form.address || null,
+        billing_address: form.address || null,
+        shipping_address: form.isShippingSameAsBilling ? (form.address || null) : (form.shipping_address || null),
         city: form.city || null,
         state: form.state || null,
         country: form.country || null,
@@ -280,12 +288,29 @@ export function Customers() {
           {/* Address */}
           <FieldSection label="Address">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input label="Address" value={form.address as string} onChange={(v) => setForm({ ...form, address: v })} />
+              <Input label="Billing Address" value={form.address as string} onChange={(v) => setForm({ ...form, address: v })} />
               <Input label="City" value={form.city as string} onChange={(v) => setForm({ ...form, city: v })} />
               <Input label="State" value={form.state as string} onChange={(v) => setForm({ ...form, state: v })} />
               <Input label="Country" value={form.country as string} onChange={(v) => setForm({ ...form, country: v })} />
               <Input label="Pincode" value={form.postal_code as string} onChange={(v) => setForm({ ...form, postal_code: v })} />
             </div>
+
+            <div className="flex items-center gap-2 mt-4 mb-2">
+              <input 
+                type="checkbox" 
+                id="sameAsBilling" 
+                checked={form.isShippingSameAsBilling as boolean} 
+                onChange={(e) => setForm({...form, isShippingSameAsBilling: e.target.checked})}
+                className="rounded border-border text-primary focus:ring-primary"
+              />
+              <label htmlFor="sameAsBilling" className="text-xs cursor-pointer text-muted-foreground">Shipping address same as Billing address</label>
+            </div>
+            
+            {!(form.isShippingSameAsBilling as boolean) && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Input label="Shipping Address" value={(form.shipping_address as string) || ""} onChange={(v) => setForm({ ...form, shipping_address: v })} />
+              </div>
+            )}
           </FieldSection>
 
           {/* Tax & Financial */}
@@ -468,11 +493,11 @@ export function Customers() {
             <Detail label="Lifetime Value" value={`₹${(selectedCustomer.lifetime_value || 0).toLocaleString()}`} icon={<Star className="size-3.5" />} />
             <Detail label="Loyalty Points" value={String(selectedCustomer.loyalty_points_balance ?? 0)} />
           </div>
-          {(selectedCustomer as Record<string, unknown>).membership_plan_id && (
+          {(selectedCustomer as any).membership_plan_id && (
             <div className="pt-3 border-t">
               <p className="text-xs text-muted-foreground">
-                Membership: <span className="font-medium text-foreground">{(selectedCustomer as Record<string, unknown>).membership_status as string || (selectedCustomer as Record<string, unknown>).membership_plan_id as string}</span>
-                {(selectedCustomer as Record<string, unknown>).membership_end_at && ` — Expires ${new Date((selectedCustomer as Record<string, unknown>).membership_end_at as string).toLocaleDateString()}`}
+                Membership: <span className="font-medium text-foreground">{(selectedCustomer as any).membership_status as string || (selectedCustomer as any).membership_plan_id as string}</span>
+                {(selectedCustomer as any).membership_end_at && ` — Expires ${new Date((selectedCustomer as any).membership_end_at as string).toLocaleDateString()}`}
               </p>
             </div>
           )}

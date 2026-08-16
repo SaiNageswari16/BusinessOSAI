@@ -56,6 +56,9 @@ export interface DashboardWidgetsData {
 }
 
 export const workspaceApi = {
+  getCurrentWorkspace: async (): Promise<{ name: string; id: string }> => {
+    return { id: "W-1", name: "Store HQ" };
+  },
   getDashboardKPIs: async (): Promise<DashboardData> => {
     return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/kpis`);
   },
