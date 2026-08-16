@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 import { crmLoyaltyApi, crmCustomersApi, type LoyaltyRule, type LoyaltyTransaction, type CrmCustomer } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const RULE_TYPES = ["purchase_amount", "order_count", "referral", "birthday", "review", "milestone"] as const;
 const REWARD_TYPES = ["points_fixed", "points_percentage", "coupon"] as const;
@@ -31,6 +32,7 @@ const blankRule: Record<string, unknown> = {
 };
 
 export function LoyaltyProgram() {
+    const { currency, formatCurrency } = useCurrency();
   const [rules, setRules] = useState<LoyaltyRule[]>([]);
   const [totalRules, setTotalRules] = useState(0);
   const [transactions, setTransactions] = useState<LoyaltyTransaction[]>([]);

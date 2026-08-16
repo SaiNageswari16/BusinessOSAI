@@ -4,10 +4,12 @@ import { Plus, BookOpen, Award, ClipboardList, CheckCircle, Clock, Star, XCircle
 import { learningApi, employeesApi, LearningCourse, LearningCertificate, LearningAssessment, Employee } from "../../lib/api-client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
 export function LearningManagement({ tab = "training" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [courses, setCourses] = useState<LearningCourse[]>([]);
   const [certificates, setCertificates] = useState<LearningCertificate[]>([]);
   const [assessments, setAssessments] = useState<LearningAssessment[]>([]);

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 function NumberSeriesFormModal({ ns, companies, onClose, onSaved }: {
   ns: NumberSeries | null; companies: Company[]; onClose: () => void; onSaved: () => void;
@@ -103,6 +104,7 @@ function NumberSeriesFormModal({ ns, companies, onClose, onSaved }: {
 }
 
 export function NumberSeries() {
+    const { currency, formatCurrency } = useCurrency();
   const [series, setSeries] = useState<NumberSeries[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);

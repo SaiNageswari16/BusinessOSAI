@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { useCurrency } from "@/hooks/use-currency";
 
 /**
  * CartProduct is a minimal, standalone type for items in the cart.
@@ -36,6 +37,7 @@ interface StoreCartContextType {
 const StoreCartContext = createContext<StoreCartContextType | undefined>(undefined);
 
 export function StoreCartProvider({ children }: { children: React.ReactNode }) {
+    const { currency, formatCurrency } = useCurrency();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
   // Load from local storage on mount

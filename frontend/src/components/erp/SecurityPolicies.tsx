@@ -1,8 +1,10 @@
 import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Key, Clock, Monitor } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function PasswordPolicies() {
+    const { currency, formatCurrency } = useCurrency();
   return (
     <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-500 max-w-5xl">
       <div className="flex items-center gap-4 mb-6">
@@ -50,7 +52,7 @@ export function PasswordPolicies() {
           <div className="flex justify-between items-center py-3">
             <div>
               <p className="font-medium">Require Special Characters</p>
-              <p className="text-xs text-muted-foreground">Password must contain at least one symbol (!@#$%^&*)</p>
+              <p className="text-xs text-muted-foreground">Password must contain at least one symbol (!@#{currency.symbol}%^&*)</p>
             </div>
             <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary" defaultChecked />
           </div>

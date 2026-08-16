@@ -9,7 +9,7 @@ import {
 import { inventoryApi, GoodsReceipt as GoodsReceiptType, Warehouse, InventoryProduct } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
 import { toast } from "sonner";
-import { formatCurrency } from "../../lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ReceiptItemInput {
   product_id: string;
@@ -21,6 +21,7 @@ interface ReceiptItemInput {
 }
 
 export function GoodsReceipt() {
+    const { currency, formatCurrency } = useCurrency();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [receipts, setReceipts] = useState<GoodsReceiptType[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -175,7 +176,7 @@ export function GoodsReceipt() {
       {viewMode === "list" ? (
         <>
           {/* List Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
                 <Package className="size-6 text-indigo-600" /> Goods Received Notes (GRN)
@@ -302,8 +303,8 @@ export function GoodsReceipt() {
                                           <th className="px-4 py-2.5">#</th>
                                           <th className="px-4 py-2.5">Product ID / Name</th>
                                           <th className="px-4 py-2.5 text-center">Qty Received</th>
-                                          <th className="px-4 py-2.5 text-right">Unit Price (₹)</th>
-                                          <th className="px-4 py-2.5 text-right">Subtotal (₹)</th>
+                                          <th className="px-4 py-2.5 text-right">Unit Price ({currency.symbol})</th>
+                                          <th className="px-4 py-2.5 text-right">Subtotal ({currency.symbol})</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100 bg-white">
@@ -457,8 +458,8 @@ export function GoodsReceipt() {
                         <th className="px-4 py-3">#</th>
                         <th className="px-4 py-3">Product Item</th>
                         <th className="px-4 py-3 text-center">Qty Received</th>
-                        <th className="px-4 py-3 text-right">Unit Price (₹)</th>
-                        <th className="px-4 py-3 text-right">Valuation (₹)</th>
+                        <th className="px-4 py-3 text-right">Unit Price ({currency.symbol})</th>
+                        <th className="px-4 py-3 text-right">Valuation ({currency.symbol})</th>
                         <th className="px-3 py-3 text-center"></th>
                       </tr>
                     </thead>

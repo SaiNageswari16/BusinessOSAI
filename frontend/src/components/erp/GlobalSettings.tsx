@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Settings, Globe, Shield, Bell, Palette, Database, Check, Loader2, Facebook } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 const CATEGORIES = [
   { id: "general", icon: Globe, label: "Localization" },
@@ -42,6 +43,7 @@ const DEFAULT_SETTINGS: { key: string; label: string; category: string; type: "t
 ];
 
 export function GlobalSettings() {
+    const { currency, formatCurrency } = useCurrency();
   const [activeCategory, setActiveCategory] = useState("general");
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [localValues, setLocalValues] = useState<Record<string, string>>({});

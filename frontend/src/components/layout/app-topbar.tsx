@@ -22,8 +22,10 @@ import { format } from "date-fns";
 import { cn, AVAILABLE_CURRENCIES, getActiveCurrency, setActiveCurrency } from "@/lib/utils";
 import { liveNotificationsApi, LiveNotification } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function AppTopbar() {
+    const { currency, formatCurrency } = useCurrency();
   const { user, logout } = useAuth();
   const { language, setLanguage } = useI18n();
   const {

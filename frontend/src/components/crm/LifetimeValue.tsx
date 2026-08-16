@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, ShoppingCart, Users, DollarSign, RefreshCw, AlertCircle, Building2 } from "lucide-react";
 import { crmIntelligenceApi, IntelLtv, IntelLtvCustomer } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 const GRADIENT_COLORS = [
   "from-cyan-500 to-blue-600",
@@ -13,6 +14,7 @@ const GRADIENT_COLORS = [
 ];
 
 export function LifetimeValue({ tab = "ltv" }: { tab?: string }) {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelLtv | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

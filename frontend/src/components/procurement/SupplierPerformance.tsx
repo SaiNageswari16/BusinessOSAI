@@ -4,8 +4,10 @@ import { Button } from "../ui/button";
 import { Activity, Clock, ShieldCheck, Truck, Loader2, Star, Plus, X } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function SupplierPerformance() {
+    const { currency, formatCurrency } = useCurrency();
   const [performance, setPerformance] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

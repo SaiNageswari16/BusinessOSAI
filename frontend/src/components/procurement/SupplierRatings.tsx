@@ -1,8 +1,10 @@
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Star, Sparkles, Building2 } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function SupplierRatings() {
+    const { currency, formatCurrency } = useCurrency();
   const data = [
     { id: 1, name: "Apple India Pvt Ltd", score: 98, stars: 5, ai: "Consistently delivers ahead of schedule. Zero quality issues reported in Q2." },
     { id: 2, name: "Tata Consumer Products", score: 85, stars: 4, ai: "Excellent bulk pricing but experienced minor delays in logistics last month." },

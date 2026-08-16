@@ -21,9 +21,9 @@ import {
   Send,
   ShieldAlert
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
 import { inventoryApi } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ReturnItem {
   id: string;
@@ -44,6 +44,7 @@ interface PurchaseReturnFormProps {
 }
 
 export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseReturnFormProps) {
+    const { currency, formatCurrency } = useCurrency();
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
@@ -438,9 +439,9 @@ export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseRe
                 <th className="px-3 py-3 w-10 text-center">#</th>
                 <th className="px-3 py-3 min-w-[280px]">Catalog Item Autocomplete</th>
                 <th className="px-3 py-3 w-28">Batch No</th>
-                <th className="px-3 py-3 w-28 text-right">Unit Cost (₹)</th>
+                <th className="px-3 py-3 w-28 text-right">Unit Cost ({currency.symbol})</th>
                 <th className="px-3 py-3 w-28 text-right">Returned Qty</th>
-                <th className="px-3 py-3 w-32 text-right font-bold">Debit Line Total (₹)</th>
+                <th className="px-3 py-3 w-32 text-right font-bold">Debit Line Total ({currency.symbol})</th>
                 <th className="px-3 py-3 min-w-[220px]">Reason for Return</th>
                 <th className="px-3 py-3 w-10 text-center">Action</th>
               </tr>
@@ -540,7 +541,7 @@ export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseRe
                     </td>
 
                     <td className="px-3 py-2.5 text-right font-black text-rose-700 text-xs">
-                      ₹{lineTotal.toFixed(2)}
+                      {currency.symbol}{lineTotal.toFixed(2)}
                     </td>
 
                     <td className="px-3 py-2.5">
@@ -604,7 +605,7 @@ export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseRe
 
           <div className="flex justify-between items-center text-xs">
             <span className="text-slate-600 font-medium">Total Debit Note Amount:</span>
-            <span className="font-extrabold text-rose-700 text-lg">₹{totalDebitNoteAmount.toFixed(2)}</span>
+            <span className="font-extrabold text-rose-700 text-lg">{currency.symbol}{totalDebitNoteAmount.toFixed(2)}</span>
           </div>
         </div>
       </div>

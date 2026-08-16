@@ -5,8 +5,10 @@ import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, ComposedChart } from "recharts";
 import { motion, AnimatePresence, Variants } from "framer-motion";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ProcurementForecast() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"replenishment" | "risk">("replenishment");
@@ -103,7 +105,7 @@ export function ProcurementForecast() {
                 </div>
                 <div>
                   <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Est. Reorder Cost</div>
-                  <div className="text-2xl font-black font-mono tracking-tighter mt-0.5 text-foreground">₹{(estReorderCost/100000).toFixed(1)}L</div>
+                  <div className="text-2xl font-black font-mono tracking-tighter mt-0.5 text-foreground">{currency.symbol}{(estReorderCost/100000).toFixed(1)}L</div>
                 </div>
               </Card>
             </motion.div>
@@ -219,7 +221,7 @@ export function ProcurementForecast() {
                               <span className="text-muted-foreground font-semibold flex items-center gap-1">
                                 <Info className="size-3" /> Est. Cost
                               </span>
-                              <span className="font-mono font-bold text-foreground">₹{item.est_cost?.toLocaleString("en-IN") || 0}</span>
+                              <span className="font-mono font-bold text-foreground">{currency.symbol}{item.est_cost?.toLocaleString("en-IN") || 0}</span>
                             </div>
                           </div>
                         )) : (
@@ -250,7 +252,7 @@ export function ProcurementForecast() {
                             </div>
                             <div className="mt-3 pt-3 border-t border-rose-500/10 pl-2">
                               <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-0.5">Est. Missed Revenue</div>
-                              <div className="font-mono font-black text-rose-500">₹{item.missed_revenue?.toLocaleString("en-IN")}</div>
+                              <div className="font-mono font-black text-rose-500">{currency.symbol}{item.missed_revenue?.toLocaleString("en-IN")}</div>
                             </div>
                           </div>
                         )) : (

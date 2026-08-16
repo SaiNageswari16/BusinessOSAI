@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type BatchGenealogy, type InventoryBatch, type TraceabilityEvent } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 const EVENT_META: Record<string, { label: string; icon: any; color: string; bg: string; dotColor: string }> = {
   received:     { label: "Received",       icon: ClipboardCheck, color: "text-emerald-600", bg: "bg-emerald-500/10", dotColor: "bg-emerald-500" },
@@ -238,6 +239,7 @@ function GenealogyTimeline({ events }: { events: BatchGenealogy["events"] }) {
 }
 
 export function Traceability({ preselectedBatchId }: { preselectedBatchId?: string | null }) {
+    const { currency, formatCurrency } = useCurrency();
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(preselectedBatchId || null);
   const [genealogy, setGenealogy] = useState<BatchGenealogy | null>(null);

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import * as Screens from "@/components/reports/screens";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/_app/reports")({
   component: ReportsModule,

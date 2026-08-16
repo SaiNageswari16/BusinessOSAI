@@ -3,6 +3,7 @@ import { inventoryApi, type StorageLocation, type Warehouse } from "../../lib/ap
 import { Card } from "../ui/card";
 import { Loader2, Inbox, MapPin, Search, Filter, Trash2, Eye, Pencil } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useCurrency } from "@/hooks/use-currency";
 
 const STATUS_STYLE: Record<string, string> = {
   Available: "bg-emerald-500/10 text-emerald-600",
@@ -12,6 +13,7 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export function Bins() {
+    const { currency, formatCurrency } = useCurrency();
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);

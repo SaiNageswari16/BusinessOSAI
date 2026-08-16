@@ -9,6 +9,7 @@ import {
 import { crmCampaignsApi, crmLeadsApi, paidAdsApi, assetLibraryApi } from "@/lib/api-client";
 import PaidCampaignBuilder from "./PaidCampaignBuilder";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ type PipelineStatus = "idle" | "generating" | "review" | "approved" | "rejected"
 // ── Pipeline Component ─────────────────────────────────────────────────────────
 
 export function AdGenerator() {
+    const { currency, formatCurrency } = useCurrency();
   const [provider, setProvider] = useState<"gemini" | "openai" | "claude">("gemini");
 
   // Facebook connection
@@ -687,7 +689,7 @@ export function AdGenerator() {
           {/* Paid Ads Quick Launch */}
           <div className="border border-primary/30 bg-gradient-to-br from-primary/5 to-indigo-500/5 rounded-xl p-5 space-y-3">
             <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-              <span className="flex items-center justify-center size-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">$</span>
+              <span className="flex items-center justify-center size-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">{currency.symbol}</span>
               Skip to Paid Ads
             </h2>
             <p className="text-[11px] text-muted-foreground leading-relaxed">

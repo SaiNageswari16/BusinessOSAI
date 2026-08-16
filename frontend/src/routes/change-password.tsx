@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth, resolvePostAuthRoute } from "@/contexts/auth-context";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/change-password")({
   component: ChangePasswordPage,

@@ -4,6 +4,7 @@ import { Plus, TrendingUp, TrendingDown, BarChart3, X, Save, Loader2 } from "luc
 import { toast } from "sonner";
 import { budgetsApi, Budget } from "@/lib/api-client";
 import { fmt } from "@/components/accounting/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -104,6 +105,7 @@ function BudgetFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
 
 // ─── Main Budgets Component ──────────────────────────────────────────────
 export function Budgets({ tab = "budgets" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [budgets, setBudgets] = useState<BudgetRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);

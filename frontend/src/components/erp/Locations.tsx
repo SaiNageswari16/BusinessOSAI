@@ -4,6 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Search, Plus, MapPin, Edit2, Trash2, Loader2, Building, Warehouse } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 const LOCATION_TYPES = ["office", "warehouse", "factory", "site", "showroom", "store"];
 
@@ -108,6 +109,7 @@ function LocationDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function Locations() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<ERPLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

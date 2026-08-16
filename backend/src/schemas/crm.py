@@ -16,6 +16,8 @@ class CustomerBase(BaseModel):
     customer_type: str = "Retail"
     status: str = "Active"
     address: str | None = None
+    billing_address: str | None = None
+    shipping_address: str | None = None
     gst_number: str | None = Field(default=None, max_length=50)
     owner_user_id: uuid.UUID | None = None
 
@@ -32,6 +34,8 @@ class CustomerUpdate(BaseModel):
     customer_type: str | None = None
     status: str | None = None
     address: str | None = None
+    billing_address: str | None = None
+    shipping_address: str | None = None
     gst_number: str | None = None
     owner_user_id: uuid.UUID | None = None
 
@@ -46,6 +50,8 @@ class CustomerResponse(ORMModel):
     customer_type: str
     status: str
     address: str | None
+    billing_address: str | None = None
+    shipping_address: str | None = None
     gst_number: str | None
     owner_user_id: uuid.UUID | None
     lead_id: uuid.UUID | None

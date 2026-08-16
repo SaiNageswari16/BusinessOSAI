@@ -9,7 +9,7 @@ import {
 import { inventoryApi, StockAdjustment as StockAdjustmentType, Warehouse, InventoryProduct } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
 import { toast } from "sonner";
-import { formatCurrency } from "../../lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface AdjustmentItemInput {
   product_id: string;
@@ -22,6 +22,7 @@ interface AdjustmentItemInput {
 }
 
 export function StockAdjustment() {
+    const { currency, formatCurrency } = useCurrency();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [adjustments, setAdjustments] = useState<StockAdjustmentType[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -175,7 +176,7 @@ export function StockAdjustment() {
       {viewMode === "list" ? (
         <>
           {/* List Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
                 <Sliders className="size-6 text-amber-600" /> Stock Adjustment & Audit Vouchers
@@ -458,7 +459,7 @@ export function StockAdjustment() {
                         <th className="px-4 py-3">Product Item</th>
                         <th className="px-4 py-3">Adjustment Type</th>
                         <th className="px-4 py-3 text-center">Qty Variance</th>
-                        <th className="px-4 py-3 text-right">Valuation Impact (₹)</th>
+                        <th className="px-4 py-3 text-right">Valuation Impact ({currency.symbol})</th>
                         <th className="px-3 py-3 text-center"></th>
                       </tr>
                     </thead>

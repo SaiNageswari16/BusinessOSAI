@@ -11,9 +11,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { formatCurrency } from "../../lib/utils";
 import { RealBarcodeSvg, SingleBarcodeLabelCard } from "../../lib/barcode-svg";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
+import { useCurrency } from "@/hooks/use-currency";
 
 // ── Types ───────────────────────────────────────────────────────────
 interface MasterResult {
@@ -644,12 +644,12 @@ function ImportPreviewModal({
                   className="w-full h-9 px-3 text-sm rounded-lg border bg-background" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Selling Price (₹)</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Selling Price ({currency.symbol})</label>
                 <input type="number" step="0.01" value={sellingPrice} onChange={(e) => setSellingPrice(parseFloat(e.target.value) || 0)}
                   className="w-full h-9 px-3 text-sm rounded-lg border bg-background" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Purchase Price (₹)</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Purchase Price ({currency.symbol})</label>
                 <input type="number" step="0.01" value={purchasePrice} onChange={(e) => setPurchasePrice(parseFloat(e.target.value) || 0)}
                   className="w-full h-9 px-3 text-sm rounded-lg border bg-background" />
               </div>
@@ -723,6 +723,7 @@ function ImportPreviewModal({
 //  MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════
 export function Products() {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
@@ -1300,6 +1301,14 @@ export function Products() {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 
+  const handleDownloadSample = () => {
+    const headers = ["name", "brand", "sku", "barcode", "description", "purchase_price", "mrp", "selling_price", "tax_percent", "discount_limit", "initial_stock", "reorder_level", "status"];
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sample Products");
+    XLSX.writeFile(wb, "products_import_sample.xlsx");
+  };
+
   // ── Open create modal helper ────────────────────────────────────
   const openCreateModal = () => {
     setCurrentForm(defaultFormData());
@@ -1845,15 +1854,15 @@ export function Products() {
                           <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg text-sm">
                             <div>
                               <span className="text-slate-500 font-medium block text-xs mb-1">Net Base Price (Excl. Tax)</span>
-                              <span className="font-bold text-slate-900">₹{basePrice.toFixed(2)}</span>
+                              <span className="font-bold text-slate-900">{currency.symbol}{basePrice.toFixed(2)}</span>
                             </div>
                             <div>
                               <span className="text-slate-500 font-medium block text-xs mb-1">GST Tax Amount ({taxRate}%)</span>
-                              <span className="font-bold text-indigo-700">₹{taxAmount.toFixed(2)}</span>
+                              <span className="font-bold text-indigo-700">{currency.symbol}{taxAmount.toFixed(2)}</span>
                             </div>
                             <div>
                               <span className="text-slate-500 font-medium block text-xs mb-1">Final Customer Price</span>
-                              <span className="font-extrabold text-slate-900 text-base">₹{finalCustomerPrice.toFixed(2)}</span>
+                              <span className="font-extrabold text-slate-900 text-base">{currency.symbol}{finalCustomerPrice.toFixed(2)}</span>
                             </div>
                           </div>
                         );
@@ -2149,6 +2158,9 @@ export function Products() {
         </div>
         <div className="flex gap-2">
           <input type="file" accept=".csv,.xlsx,.xls" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
+          <Button variant="outline" className="hidden lg:flex text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-200" onClick={handleDownloadSample}>
+            <Download className="size-4 mr-2" /> Sample Excel
+          </Button>
           <Button variant="outline" className="hidden lg:flex" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
             <Upload className="size-4 mr-2" /> {isImporting ? "Importing..." : "Import File"}
           </Button>

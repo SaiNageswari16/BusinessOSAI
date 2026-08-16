@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ProductRFID } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 const TAG_TYPES = ["passive", "active", "semi-passive"];
 const FREQUENCIES = ["LF 125kHz", "HF 13.56MHz", "UHF 860-960MHz", "NFC"];
@@ -156,6 +157,7 @@ function ScanModal({
 }
 
 export function RfidManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<ProductRFID[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

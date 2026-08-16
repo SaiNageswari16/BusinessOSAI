@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { whatsappAutomationApi, crmApi, type CrmLead } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ChatMessage {
   id: string;
@@ -29,6 +30,7 @@ interface WhatsAppSession {
 }
 
 export function WhatsappCampaigns() {
+    const { currency, formatCurrency } = useCurrency();
   // Session States
   const [sessions, setSessions] = useState<Record<string, WhatsAppSession>>({});
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);

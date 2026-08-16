@@ -4,6 +4,7 @@ import { Plus, CheckCircle, Clock, XCircle, Plane, Building, X, Save, Loader2 } 
 import { toast } from "sonner";
 import { expenseClaimsApi, ExpenseClaim } from "@/lib/api-client";
 import { fmt, statusStyle } from "@/components/accounting/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -143,6 +144,7 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
 // ─── Main Expense Claims Component ────────────────────────────────────────
 export function ExpenseClaims({ tab = "claims" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [claims, setClaims] = useState<ExpenseRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [showClaimModal, setShowClaimModal] = useState(false);

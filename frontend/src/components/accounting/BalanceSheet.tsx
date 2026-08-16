@@ -3,10 +3,12 @@ import { FileText } from "lucide-react";
 import { financialReportsApi, BalanceSheetReport, downloadCsv } from "@/lib/api-client";
 import { fmt } from "@/components/accounting/utils";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
 export function BalanceSheet({ tab = "balance_sheet" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<BalanceSheetReport | null>(null);
   const today = new Date().toISOString().split("T")[0];

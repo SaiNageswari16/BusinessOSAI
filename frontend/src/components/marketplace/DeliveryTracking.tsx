@@ -2,8 +2,10 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Truck, MapPin, Package, CheckCircle2, Navigation, Clock, Phone, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function DeliveryTracking() {
+    const { currency, formatCurrency } = useCurrency();
   const deliveries = [
     { id: "DEL-4482", orderId: "ORD-98235", status: "In Transit", driver: "Mike Johnson", phone: "+1 555-0198", eta: "45 mins", progress: 75, destination: "742 Evergreen Terrace, Springfield", currentLocation: "Route 9, Northbound" },
     { id: "DEL-4483", orderId: "ORD-98236", status: "Out for Delivery", driver: "Sarah Connor", phone: "+1 555-0122", eta: "2 hours", progress: 30, destination: "100 Universal City Plaza, CA", currentLocation: "Distribution Center South" },

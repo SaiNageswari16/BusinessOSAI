@@ -46,6 +46,7 @@ import {
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { RealBarcodeSvg } from "../../lib/barcode-svg";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 const STATUS_OPTS = ["Active", "Quarantined", "Expired", "Consumed"];
 const QC_STATUS_OPTS = ["Passed", "Under Testing", "Quarantined", "Failed"];
@@ -569,7 +570,7 @@ function BatchModal({
   const onSelectProduct = (productId: string) => {
     const p = products.find((x) => x.id === productId);
     if (p) {
-      const cost = Number(p.cost_price || p.purchase_price || 0);
+      const cost = Number((p as any).cost_price || p.purchase_price || 0);
       const sell = Number(p.selling_price || 0);
       const mrpVal = Number((p as any).mrp || sell * 1.2 || 0);
       const tax = Number((p as any).tax_percent || (p as any).tax_rate || 0);
@@ -1102,6 +1103,7 @@ function BatchModal({
 // 4. MAIN BATCH NUMBERS COMPONENT WITH FULL POST-CREATION ACTIVITIES
 // ─────────────────────────────────────────────────────────────
 export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: string) => void }) {
+    const { currency, formatCurrency } = useCurrency();
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);

@@ -15,12 +15,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props {
   tab?: string;
 }
 
 export function Deals({ tab = "all_deals" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -123,7 +125,7 @@ export function Deals({ tab = "all_deals" }: Props) {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Amount (₹)</Label>
+                    <Label>Amount ({currency.symbol})</Label>
                     <Input required type="number" min="0" value={newDeal.amount} onChange={e => setNewDeal({...newDeal, amount: Number(e.target.value)})} />
                   </div>
                   <div className="space-y-2">
@@ -162,7 +164,7 @@ export function Deals({ tab = "all_deals" }: Props) {
                   <h3 className="font-semibold text-foreground text-sm uppercase tracking-wider mb-1">{stage}</h3>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">{stageDeals.length} Deals</span>
-                    <span className="font-bold text-primary">₹{totalValue.toLocaleString()}</span>
+                    <span className="font-bold text-primary">{currency.symbol}{totalValue.toLocaleString()}</span>
                   </div>
                   <div className="h-1 w-full bg-accent mt-2 rounded-full overflow-hidden">
                     <div className={`h-full ${
@@ -192,7 +194,7 @@ export function Deals({ tab = "all_deals" }: Props) {
                       
                       <div className="flex justify-between items-center gap-2 mb-3">
                         <div className="text-xs font-bold text-emerald-600">
-                          ₹{Number(deal.amount || 0).toLocaleString()}
+                          {currency.symbol}{Number(deal.amount || 0).toLocaleString()}
                         </div>
                         <select
                           value={deal.stage}

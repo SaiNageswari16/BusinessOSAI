@@ -28,8 +28,10 @@ import { inventoryApi, ProductImage, InventoryProduct } from "../../lib/api-clie
 import { ProductPicker } from "./ProductPicker";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ProductImages() {
+  const { currency, formatCurrency } = useCurrency();
   const [products, setProducts] = useState<InventoryProduct[]>([]);
   const [galleryImages, setGalleryImages] = useState<ProductImage[]>([]);
   const [search, setSearch] = useState("");

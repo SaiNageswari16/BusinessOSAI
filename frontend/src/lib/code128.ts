@@ -1,3 +1,5 @@
+import { useCurrency } from "@/hooks/use-currency";
+
 /**
  * ISO/IEC 15417 Code 128 & GS1 EAN-13 Hardware-Optimized Barcode Encoder
  * Generates exact high-contrast, 100% hardware-scannable bar/space patterns.

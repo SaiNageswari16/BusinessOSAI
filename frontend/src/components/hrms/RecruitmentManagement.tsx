@@ -38,6 +38,7 @@ import { Textarea } from "../ui/textarea";
 import { Card } from "../ui/card";
 import { Progress } from "../ui/progress";
 import { recruitmentApi, employeesApi, inventoryApi, JobOpening, Applicant, Interview, Offer, Onboarding, Employee } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props {
   tab?: string;
@@ -56,6 +57,7 @@ const stageColor = (s: string) => {
 };
 
 export function RecruitmentManagement({ tab = "job_openings" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   // ─── Unified Database States ────────────────────────────────────────────────
   const [jobs, setJobs] = useState<JobOpening[]>([]);
   const [applicants, setApplicants] = useState<Applicant[]>([]);
@@ -886,54 +888,54 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
       <html>
         <head>
           <title>${job.title} - Job Description</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-          <style>
-            @media print {
-              body {
-                padding: 0;
-                margin: 0;
-                background: white;
-              }
-              .no-print {
-                display: none;
-              }
-              .page-card {
-                border: none;
-                box-shadow: none;
-                padding: 0;
-                margin: 0;
-              }
-            }
-          </style>
-        </head>
-        <body class="bg-slate-50 min-h-screen p-6 text-slate-800 antialiased font-sans">
-          <div class="max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-slate-100 page-card">
-            <div class="no-print flex justify-between items-center bg-indigo-50 border border-indigo-100 p-4 rounded-xl mb-6">
-              <div class="text-xs text-indigo-700 font-medium">
-                📄 Confirm JD layout details, then click "Print/Save as PDF".
-              </div>
-              <button 
-                onclick="window.print()" 
-                class="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 active:scale-[0.98] transition-all"
-              >
-                Print / Save PDF
-              </button>
-            </div>
-            
-            <div class="flex justify-between items-start border-b pb-4 mb-6">
-              <div>
-                <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">${job.department} Department</span>
-                <h1 class="text-2xl font-extrabold text-slate-900 mt-1">${job.title}</h1>
-                <p class="text-xs text-slate-500 mt-2">Location: ${job.location} · Job Type: ${job.type} · Experience: ${job.experience}</p>
-              </div>
-              <div class="text-right">
-                <div class="text-xl font-bold text-slate-900">${job.openings}</div>
-                <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Openings</div>
-              </div>
-            </div>
-            
-            <div class="prose max-w-none">
-              ${formattedDesc}
+                  <script src="https://cdn.tailwindcss.com"></script>
+                  <style>
+                    @media print {
+                      body {
+                        padding: 0;
+                        margin: 0;
+                        background: white;
+                      }
+                      .no-print {
+                        display: none;
+                      }
+                      .page-card {
+                        border: none;
+                        box-shadow: none;
+                        padding: 0;
+                        margin: 0;
+                      }
+                    }
+                  </style>
+                </head>
+                <body class="bg-slate-50 min-h-screen p-6 text-slate-800 antialiased font-sans">
+                  <div class="max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-slate-100 page-card">
+                    <div class="no-print flex justify-between items-center bg-indigo-50 border border-indigo-100 p-4 rounded-xl mb-6">
+                      <div class="text-xs text-indigo-700 font-medium">
+                        📄 Confirm JD layout details, then click "Print/Save as PDF".
+                      </div>
+                      <button 
+                        onclick="window.print()" 
+                        class="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 active:scale-[0.98] transition-all"
+                      >
+                        Print / Save PDF
+                      </button>
+                    </div>
+                    
+                    <div class="flex justify-between items-start border-b pb-4 mb-6">
+                      <div>
+                        <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">${job.department} Department</span>
+                        <h1 class="text-2xl font-extrabold text-slate-900 mt-1">${job.title}</h1>
+                        <p class="text-xs text-slate-500 mt-2">Location: ${job.location} · Job Type: ${job.type} · Experience: ${job.experience}</p>
+                      </div>
+                      <div class="text-right">
+                        <div class="text-xl font-bold text-slate-900">${job.openings}</div>
+                        <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Openings</div>
+                      </div>
+                    </div>
+                    
+                    <div class="prose max-w-none">
+                      ${formattedDesc}
             </div>
           </div>
           <script>
@@ -1336,7 +1338,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                           )}
                         </div>
                         <h3 className="font-bold text-foreground text-lg">{offer.candidate}</h3>
-                        <p className="text-sm text-muted-foreground">{offer.role} · CTC: <span className="font-semibold text-foreground">${offer.ctc.toLocaleString()}/yr</span></p>
+                        <p className="text-sm text-muted-foreground">{offer.role} · CTC: <span className="font-semibold text-foreground">{currency.symbol}{offer.ctc.toLocaleString()}/yr</span></p>
                         <p className="text-xs text-muted-foreground mt-1">Target Joining: {offer.joining_date} · Expiry: {offer.expiry_date}</p>
                       </div>
 
@@ -2597,7 +2599,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                     </p>
 
                     <p>
-                      Your annual compensation structure is designed at a base Gross CTC of <span className="font-bold">${offerForm.ctc.toLocaleString()} per annum</span>, which will be paid out in equal monthly increments subject to tax declarations.
+                      Your annual compensation structure is designed at a base Gross CTC of <span className="font-bold">{currency.symbol}{offerForm.ctc.toLocaleString()} per annum</span>, which will be paid out in equal monthly increments subject to tax declarations.
                     </p>
 
                     <p>

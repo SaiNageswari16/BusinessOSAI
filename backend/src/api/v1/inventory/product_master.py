@@ -462,7 +462,20 @@ async def list_brands(
     result = await db.execute(
         query.order_by(Brand.name.asc()).offset((page - 1) * page_size).limit(page_size)
     )
-    return paginate(result.scalars().all(), total or 0, page, page_size)
+    brands = list(result.scalars().all())
+    
+    if brands:
+        brand_ids = [b.id for b in brands]
+        counts_res = await db.execute(
+            select(Product.brand_id, func.count(Product.id))
+            .where(Product.tenant_id == ctx.tenant_id, Product.brand_id.in_(brand_ids))
+            .group_by(Product.brand_id)
+        )
+        counts_map = {row[0]: row[1] for row in counts_res.all()}
+        for b in brands:
+            b.products_count = counts_map.get(b.id, 0)
+            
+    return paginate(brands, total or 0, page, page_size)
 
 
 @router.post("/brands", response_model=BrandResponse, status_code=status.HTTP_201_CREATED)
@@ -603,7 +616,20 @@ async def list_uoms(
     result = await db.execute(
         query.order_by(UnitOfMeasure.name.asc()).offset((page - 1) * page_size).limit(page_size)
     )
-    return paginate(result.scalars().all(), total or 0, page, page_size)
+    uoms = list(result.scalars().all())
+    
+    if uoms:
+        uom_ids = [u.id for u in uoms]
+        counts_res = await db.execute(
+            select(Product.uom_id, func.count(Product.id))
+            .where(Product.tenant_id == ctx.tenant_id, Product.uom_id.in_(uom_ids))
+            .group_by(Product.uom_id)
+        )
+        counts_map = {row[0]: row[1] for row in counts_res.all()}
+        for u in uoms:
+            u.products_count = counts_map.get(u.id, 0)
+            
+    return paginate(uoms, total or 0, page, page_size)
 
 
 

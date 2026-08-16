@@ -1,3 +1,5 @@
+import { useCurrency } from "@/hooks/use-currency";
+
 /**
  * LazyMonkeyAI â€” Central API Client
  * All backend API calls go through this module.
@@ -185,6 +187,11 @@ export interface InventoryUOM {
   id: string;
   name: string;
   abbreviation: string;
+  unit_type?: string | null;
+  base_unit?: boolean;
+  conversion_rate?: number;
+  unit_symbol?: string | null;
+  products_count?: number;
   description: string | null;
   status: string;
   created_at: string;
@@ -3197,6 +3204,7 @@ export interface InventoryCategory {
 export interface InventoryBrand {
   id: string; name: string; description: string | null;
   manufacturer: string | null; status: string;
+  image_url?: string | null; category?: string | null; products_count?: number;
   created_at: string; updated_at: string;
 }
 
@@ -3204,6 +3212,11 @@ export interface InventoryUOM {
   id: string;
   name: string;
   abbreviation: string;
+  unit_type?: string | null;
+  base_unit?: boolean;
+  conversion_rate?: number;
+  unit_symbol?: string | null;
+  products_count?: number;
   description: string | null;
   status: string;
   created_at: string;

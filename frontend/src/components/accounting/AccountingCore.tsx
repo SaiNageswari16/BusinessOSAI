@@ -7,6 +7,7 @@ import {
 import { accountingApi, ChartOfAccount, JournalEntry, PaginatedResponse } from "@/lib/api-client";
 import { toast } from "sonner";
 import { fmt, statusStyle } from "@/components/accounting/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -906,6 +907,7 @@ function EditableCell({ value, onSave, saving }: { value: number; onSave: (v: nu
 
 // ─── Main Export ─────────────────────────────────────────────────────────────
 export function AccountingCore({ tab = "chart_of_accounts" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   if (tab === "chart_of_accounts") return <ChartOfAccountsTab />;
   if (tab === "journal_entries") return <JournalEntriesTab />;
   if (tab === "closing_entries") return <JournalEntriesTab filterClosing />;

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type PickingRule } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 const STRATEGIES: { value: string; label: string; description: string }[] = [
   { value: "discrete",     label: "Discrete",     description: "Pick one order at a time" },
@@ -158,6 +159,7 @@ function RuleModal({
 }
 
 export function PickingRules() {
+    const { currency, formatCurrency } = useCurrency();
   const [rules, setRules] = useState<PickingRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

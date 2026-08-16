@@ -15,6 +15,7 @@ import {
   SingleBarcodeLabelCard as SharedBarcodeLabelCard,
   FmcgProductLabelCard,
 } from "../../lib/barcode-svg";
+import { useCurrency } from "@/hooks/use-currency";
 
 // LocalBarcodeLabelCard adapts ProductBarcode to the shared label shape
 function SingleBarcodeLabelCard({
@@ -47,6 +48,7 @@ type LayoutType = "1up" | "2up" | "3up" | "a4_24" | "a4_30" | "a4_65" | "fmcg";
 type Mode = "with" | "without" | "all";
 
 export function BarcodeManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const [allProducts, setAllProducts] = useState<ProductBarcode[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,7 +142,7 @@ export function BarcodeManagement() {
       pageCss = "@page { size: 100mm 25mm portrait !important; margin: 0mm !important; }";
     } else if (layoutType === "3up") {
       pageCss = "@page { size: 114mm 25mm portrait !important; margin: 0mm !important; }";
-    } else if (layoutType === "a4") {
+    } else if (layoutType.startsWith("a4")) {
       pageCss = "@page { size: A4 portrait !important; margin: 5mm !important; }";
     }
 

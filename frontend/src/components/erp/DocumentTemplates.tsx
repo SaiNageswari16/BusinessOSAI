@@ -4,6 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Search, Plus, FileText, Edit2, Trash2, Loader2, Star } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 const DOC_TYPES = ["invoice", "purchase_order", "receipt", "delivery_note", "quotation", "report", "contract"];
 const FORMATS = ["pdf", "word", "excel", "html"];
@@ -87,6 +88,7 @@ function DocTemplateDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function DocumentTemplates() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<DocumentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

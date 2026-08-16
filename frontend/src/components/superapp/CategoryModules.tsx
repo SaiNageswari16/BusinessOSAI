@@ -17,6 +17,7 @@ import {
   Crown, 
   Gift 
 } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface CategoryModulesProps {
   onSelectCategory: (category: string) => void;
@@ -24,6 +25,7 @@ interface CategoryModulesProps {
 }
 
 export function CategoryModules({ onSelectCategory, activeCategory }: CategoryModulesProps) {
+    const { currency, formatCurrency } = useCurrency();
   const modules = [
     { id: "Grocery", icon: ShoppingBag, color: "bg-green-100 text-green-600" },
     { id: "Fashion", icon: Shirt, color: "bg-pink-100 text-pink-600" },

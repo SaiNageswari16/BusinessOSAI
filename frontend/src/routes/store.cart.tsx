@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useStoreCart } from "@/contexts/StoreCartContext";
 import { Trash2 } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/store/cart")({
   component: CartPage,

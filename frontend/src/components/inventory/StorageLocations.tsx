@@ -4,6 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Plus, MapPin, Loader2, Search, Trash2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCurrency } from "@/hooks/use-currency";
 
 const ZONES = ["Receiving", "Storage", "Pick & Pack", "Dispatch", "Returns", "Quarantine", "Cold Storage", "Hazmat"];
 const STATUSES = ["Available", "Occupied", "Reserved", "Blocked"];
@@ -14,6 +15,7 @@ const defaultForm = {
 };
 
 export function StorageLocations() {
+    const { currency, formatCurrency } = useCurrency();
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);

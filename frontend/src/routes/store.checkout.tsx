@@ -3,12 +3,14 @@ import { useStoreCart } from "@/contexts/StoreCartContext";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/store/checkout")({
   component: CheckoutPage,
 });
 
 function CheckoutPage() {
+  const { currency } = useCurrency();
   const { cartItems, cartTotal, clearCart } = useStoreCart();
   const navigate = useNavigate();
   
@@ -24,7 +26,13 @@ function CheckoutPage() {
   const total = subTotal + tax - couponDiscount + shippingCost;
 
   // Use the first cart item for the review section, or mock if empty for design purposes
-  const reviewItem = cartItems.length > 0 ? cartItems[0] : {
+  const firstCartItem = cartItems.length > 0 ? cartItems[0] : null;
+  const reviewItem = firstCartItem ? {
+    name: firstCartItem.product?.name || "Product",
+    price: firstCartItem.product?.price || 0,
+    quantity: firstCartItem.quantity || 1,
+    image_url: firstCartItem.product?.image_url || "https://images.unsplash.com/photo-1612083216599-52e857416954?w=200&h=200&fit=crop"
+  } : {
     name: "Airpods- Max",
     price: 549.00,
     quantity: 1,
@@ -66,7 +74,7 @@ function CheckoutPage() {
                 <div className="flex-1 flex flex-col justify-center">
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="text-xl font-bold text-gray-900">{reviewItem.name}</h3>
-                    <span className="text-lg font-bold text-gray-900">${(reviewItem.price || 0).toFixed(2)}</span>
+                    <span className="text-lg font-bold text-gray-900">{currency.symbol}{(reviewItem.price || 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm text-gray-500">
                     <span>Color: Pink</span>
@@ -214,23 +222,23 @@ function CheckoutPage() {
               <div className="space-y-3 mb-6 font-medium text-sm">
                 <div className="flex justify-between text-gray-800">
                   <span>Sub Total</span>
-                  <span>${subTotal.toFixed(2)}</span>
+                  <span>{currency.symbol}{subTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-gray-800">
                   <span>Tax(10%)</span>
-                  <span>${tax.toFixed(2)}</span>
+                  <span>{currency.symbol}{tax.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-gray-800">
                   <span>Coupon Discount</span>
-                  <span>-${couponDiscount.toFixed(2)}</span>
+                  <span>-{currency.symbol}{couponDiscount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-gray-800">
                   <span>Shipping Cost</span>
-                  <span>-${shippingCost.toFixed(2)}</span>
+                  <span>-{currency.symbol}{shippingCost.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-gray-900 font-bold border-t border-gray-200 pt-3 mt-3">
                   <span></span>
-                  <span>=${total.toFixed(2)}</span>
+                  <span>={currency.symbol}{total.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -240,7 +248,7 @@ function CheckoutPage() {
                 disabled={isSubmitting}
                 className="w-full bg-[#003d29] hover:bg-[#00271a] text-white font-bold h-14 rounded-full transition-colors flex items-center justify-center text-lg disabled:opacity-70 disabled:cursor-not-allowed mb-4"
               >
-                {isSubmitting ? "Processing..." : `Pay $${total.toFixed(2)}`}
+                {isSubmitting ? "Processing..." : `Pay ${currency.symbol}${total.toFixed(2)}`}
               </button>
 
               {/* Cashback banner */}

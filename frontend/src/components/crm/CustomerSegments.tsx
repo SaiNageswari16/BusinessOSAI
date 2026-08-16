@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { crmSegmentsApi, type CrmSegment } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 type Condition = {
   attribute: string;
@@ -76,6 +77,7 @@ const blankSegment = {
 };
 
 export function CustomerSegments() {
+    const { currency, formatCurrency } = useCurrency();
   const [segments, setSegments] = useState<CrmSegment[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");

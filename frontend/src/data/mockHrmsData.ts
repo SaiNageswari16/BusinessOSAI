@@ -1,3 +1,5 @@
+import { useCurrency } from "@/hooks/use-currency";
+
 // ─── Employee Management ────────────────────────────────────────────────────
 
 export interface Employee {

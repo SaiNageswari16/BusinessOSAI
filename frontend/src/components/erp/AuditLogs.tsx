@@ -5,6 +5,7 @@ import { auditLogsApi, type AuditLog } from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -29,6 +30,7 @@ function formatDate(iso: string) {
 }
 
 export function AuditLogs() {
+    const { currency, formatCurrency } = useCurrency();
   const { user, accessToken } = useAuth();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);

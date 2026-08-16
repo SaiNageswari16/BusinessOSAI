@@ -4,8 +4,10 @@ import { Button } from "../ui/button";
 import { Sparkles, ArrowRight, Loader2 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function AIPurchaseSuggestions() {
+    const { currency, formatCurrency } = useCurrency();
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [executingIds, setExecutingIds] = useState<string[]>([]);

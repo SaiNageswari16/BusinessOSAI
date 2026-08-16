@@ -27,12 +27,18 @@ class BrandBase(BaseModel):
     name: str = Field(..., max_length=100)
     description: Optional[str] = None
     manufacturer: Optional[str] = Field(None, max_length=150)
+    image_url: Optional[str] = Field(None, max_length=1024)
+    category: Optional[str] = Field(None, max_length=100)
     status: Optional[str] = "active"
 
 
 class UnitOfMeasureBase(BaseModel):
     name: str = Field(..., max_length=50)
     abbreviation: str = Field(..., max_length=20)
+    unit_type: Optional[str] = Field(None, max_length=50)
+    base_unit: Optional[bool] = False
+    conversion_rate: Optional[float] = 1.0
+    unit_symbol: Optional[str] = Field(None, max_length=20)
     description: Optional[str] = None
     status: Optional[str] = "active"
 
@@ -131,6 +137,7 @@ class ProductCategoryResponse(ProductCategoryBase, TimestampSchema):
 class BrandResponse(BrandBase, TimestampSchema):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    products_count: Optional[int] = 0
 
     class Config:
         from_attributes = True
@@ -139,6 +146,7 @@ class BrandResponse(BrandBase, TimestampSchema):
 class UnitOfMeasureResponse(UnitOfMeasureBase, TimestampSchema):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    products_count: Optional[int] = 0
 
     class Config:
         from_attributes = True

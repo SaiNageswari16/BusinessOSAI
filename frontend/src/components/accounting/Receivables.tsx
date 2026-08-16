@@ -4,6 +4,7 @@ import { Plus, Download, Search, ArrowRight, Clock, AlertTriangle, RefreshCw, Lo
 import { invoicesApi, Invoice } from "@/lib/api-client";
 import { toast } from "sonner";
 import { fmt, statusStyle } from "@/components/accounting/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -221,6 +222,7 @@ function RecordPaymentModal({ invoice, onClose, onSaved }: { invoice: Invoice; o
 
 // ─── Main Receivables Component ───────────────────────────────────────────
 export function Receivables({ tab = "invoices" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);

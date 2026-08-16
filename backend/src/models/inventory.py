@@ -27,6 +27,8 @@ class Brand(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     manufacturer: Mapped[str | None] = mapped_column(String(150))
+    image_url: Mapped[str | None] = mapped_column(String(1024))
+    category: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[EntityStatus] = mapped_column(
         Enum(EntityStatus, name="entity_status", create_type=False),
         default=EntityStatus.ACTIVE,
@@ -40,6 +42,10 @@ class UnitOfMeasure(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
     
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     abbreviation: Mapped[str] = mapped_column(String(20), nullable=False)
+    unit_type: Mapped[str | None] = mapped_column(String(50))
+    base_unit: Mapped[bool] = mapped_column(Boolean, default=False)
+    conversion_rate: Mapped[float] = mapped_column(Float, default=1.0)
+    unit_symbol: Mapped[str | None] = mapped_column(String(20))
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[EntityStatus] = mapped_column(
         Enum(EntityStatus, name="entity_status", create_type=False),

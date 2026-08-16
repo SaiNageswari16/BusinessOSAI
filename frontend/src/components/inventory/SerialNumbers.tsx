@@ -31,6 +31,7 @@ import {
   type InventoryProduct as Product,
 } from "../../lib/api-client";
 import { RealBarcodeSvg } from "../../lib/barcode-svg";
+import { useCurrency } from "@/hooks/use-currency";
 
 const STATUS_STYLES: Record<string, string> = {
   "In Stock": "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20",
@@ -650,6 +651,7 @@ function SerialModal({
 // 4. MAIN SERIAL NUMBERS MODULE
 // ─────────────────────────────────────────────────────────────
 export function SerialNumbers() {
+    const { currency, formatCurrency } = useCurrency();
   const [serials, setSerials] = useState<InventorySerial[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);

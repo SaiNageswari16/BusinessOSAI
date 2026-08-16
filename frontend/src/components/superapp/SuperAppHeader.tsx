@@ -4,8 +4,10 @@ import { useStoreCart } from "@/contexts/StoreCartContext";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchStorefrontNotifications, markStorefrontNotificationsRead } from "@/lib/storefront-api";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function SuperAppHeader() {
+    const { currency, formatCurrency } = useCurrency();
   const { cartCount } = useStoreCart();
   const wishlistCount = 0;
   const navigate = useNavigate();

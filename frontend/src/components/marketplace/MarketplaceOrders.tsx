@@ -3,8 +3,10 @@ import { motion } from "framer-motion";
 import { ShoppingCart, Search, Filter, Store, User, MapPin, Calendar, Clock, CreditCard, Box, ExternalLink } from "lucide-react";
 import { mockMarketplaceOrders } from "@/data/mockMarketplaceData";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function MarketplaceOrders() {
+    const { currency, formatCurrency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
 
   const filtered = mockMarketplaceOrders.filter(o => 
@@ -91,7 +93,7 @@ export function MarketplaceOrders() {
                 <Box className="size-4" /> {order.items} {order.items === 1 ? 'item' : 'items'}
               </div>
               <div className="text-lg font-bold text-foreground">
-                ${order.total.toFixed(2)}
+                {currency.symbol}{order.total.toFixed(2)}
               </div>
             </div>
             

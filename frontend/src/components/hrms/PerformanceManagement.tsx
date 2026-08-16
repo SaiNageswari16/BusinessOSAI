@@ -5,6 +5,7 @@ import { performanceApi, employeesApi, PerformanceGoal, PerformanceKpi, Performa
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -19,6 +20,7 @@ const ratingStyle = (r: string) => {
 };
 
 export function PerformanceManagement({ tab = "goals" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [goals, setGoals] = useState<PerformanceGoal[]>([]);
   const [kpis, setKpis] = useState<PerformanceKpi[]>([]);
   const [appraisals, setAppraisals] = useState<PerformanceAppraisal[]>([]);
@@ -557,7 +559,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
                 <p className="font-bold text-foreground">{inc.employee_name} <span className="font-normal text-muted-foreground">· {inc.department}</span></p>
                 <p className="text-xs text-muted-foreground font-semibold">{inc.basis}</p>
               </div>
-              <p className="text-2xl font-bold text-emerald-500">${inc.amount.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-emerald-500">{currency.symbol}{inc.amount.toLocaleString()}</p>
             </motion.div>
           ))}
         </div>
@@ -597,7 +599,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Amount ($)</label>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Amount ({currency.symbol})</label>
                       <Input type="number" value={incentiveForm.amount} onChange={(e) => setIncentiveForm({...incentiveForm, amount: Number(e.target.value)})} />
                     </div>
                   </div>

@@ -12,12 +12,11 @@ import { posApi, POSTransactionHistory } from "../../lib/api-client";
 import { useTenant } from "../../contexts/tenant-context";
 import { ESCPOSPrinter } from "../../lib/escpos-printer";
 import { triggerThermalPrint } from "../../lib/print-helper";
-
-import { formatCurrency } from "../../lib/utils";
-
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
+import { useCurrency } from "@/hooks/use-currency";
 
 const PrintableReceipt = ({ bill, allBills }: { bill: any, allBills: any[] }) => {
+    const { currency, formatCurrency } = useCurrency();
   if (!bill) return null;
   return <ThermalReceiptPrinter bill={bill} />;
 };
@@ -516,7 +515,7 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
             </div>
             <h3 className="text-lg font-bold text-slate-800 mb-4">Cash Allocation</h3>
             <div className="relative w-full">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{currency.symbol}</span>
               <input
                 type="number"
                 value={cash || ''}
@@ -534,7 +533,7 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
             </div>
             <h3 className="text-lg font-bold text-slate-800 mb-4">Card Allocation</h3>
             <div className="relative w-full">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{currency.symbol}</span>
               <input
                 type="number"
                 value={card || ''}
@@ -552,7 +551,7 @@ export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onS
             </div>
             <h3 className="text-lg font-bold text-slate-800 mb-4">UPI Allocation</h3>
             <div className="relative w-full">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{currency.symbol}</span>
               <input
                 type="number"
                 value={upi || ''}

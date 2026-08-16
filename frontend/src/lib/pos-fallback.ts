@@ -1,3 +1,5 @@
+import { useCurrency } from "@/hooks/use-currency";
+
 export const posStore = {
     name: "LazyMonkeyAI Store",
     code: "BOS-HQ-01",

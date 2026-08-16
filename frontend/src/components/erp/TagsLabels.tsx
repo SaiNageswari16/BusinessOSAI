@@ -4,6 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Search, Plus, Tag as TagIcon, Edit2, Trash2, Loader2 } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 const ENTITY_TYPES = ["any", "employee", "customer", "supplier", "product", "order"];
 const PRESET_COLORS = [
@@ -94,6 +95,7 @@ function TagDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function TagsLabels() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

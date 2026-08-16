@@ -14,8 +14,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function Opportunities() {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
   const [opportunities, setOpportunities] = useState<CrmOpportunity[]>([]);
@@ -92,7 +94,7 @@ export function Opportunities() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Amount (₹)</Label>
+                    <Label>Amount ({currency.symbol})</Label>
                     <Input required type="number" min="0" value={newOpp.amount} onChange={e => setNewOpp({...newOpp, amount: Number(e.target.value)})} />
                   </div>
                   <div className="space-y-2">
@@ -190,7 +192,7 @@ export function Opportunities() {
                         </span>
                       </td>
                       <td className="px-6 py-4 font-bold text-emerald-600 text-right">
-                        ₹{Number(opp.amount).toLocaleString()}
+                        {currency.symbol}{Number(opp.amount).toLocaleString()}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">

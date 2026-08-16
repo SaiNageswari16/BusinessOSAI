@@ -19,6 +19,7 @@ import {
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export interface PrintTemplate {
   id: string;
@@ -649,6 +650,7 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
 ];
 
 export function PrintTemplates() {
+    const { currency, formatCurrency } = useCurrency();
   const [activeCategory, setActiveCategory] = useState<"invoices" | "thermal" | "barcodes" | "qrcodes">("invoices");
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
     const saved = localStorage.getItem("businessos_print_templates_v1");
@@ -2103,8 +2105,8 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
               </div>
               {f.showPartyBalance && (
                 <div className="text-[10px] font-bold text-red-600 mt-2">
-                  Outstanding Balance: ₹14,200.00
-                </div>
+                  Outstanding Balance: {currency.symbol}14,200.00
+                                                </div>
               )}
             </div>
           </div>
@@ -2137,8 +2139,8 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
               </td>
               {f.showHSN && <td className={`p-2.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>85171200</td>}
               <td className={`p-2.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 PCS</td>
-              <td className={`p-2.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>₹12,000.00</td>
-              <td className="p-2.5 text-right font-bold text-slate-900">₹10,620.00</td>
+              <td className={`p-2.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}12,000.00</td>
+              <td className="p-2.5 text-right font-bold text-slate-900">{currency.symbol}10,620.00</td>
             </tr>
             <tr className={isTally ? "border-b border-slate-900" : ""}>
               <td className={`p-2.5 text-slate-400 ${isTally ? "border-r border-slate-900 text-slate-900 text-center" : ""}`}>2</td>
@@ -2153,8 +2155,8 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
               </td>
               {f.showHSN && <td className={`p-2.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>19059090</td>}
               <td className={`p-2.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 BOX</td>
-              <td className={`p-2.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>₹400.00</td>
-              <td className="p-2.5 text-right font-bold text-slate-900">₹342.86</td>
+              <td className={`p-2.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}400.00</td>
+              <td className="p-2.5 text-right font-bold text-slate-900">{currency.symbol}342.86</td>
             </tr>
           </tbody>
         </table>
@@ -2179,17 +2181,17 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
           <div className="w-52 space-y-1.5 text-slate-700 text-[11px]">
             <div className="flex justify-between">
               <span>Subtotal:</span>
-              <span className="font-semibold">₹11,497.00</span>
+              <span className="font-semibold">{currency.symbol}11,497.00</span>
             </div>
             {f.showTaxSplit && (
               <>
                 <div className="flex justify-between text-slate-500">
                   <span>CGST (9%):</span>
-                  <span>₹1,034.73</span>
+                  <span>{currency.symbol}1,034.73</span>
                 </div>
                 <div className="flex justify-between text-slate-500">
                   <span>SGST (9%):</span>
-                  <span>₹1,034.73</span>
+                  <span>{currency.symbol}1,034.73</span>
                 </div>
               </>
             )}
@@ -2200,7 +2202,7 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
               style={!isTally ? { borderColor: template.primaryColor } : {}}
             >
               <span>Total Amount:</span>
-              <span style={{ color: template.primaryColor }}>₹13,566.46</span>
+              <span style={{ color: template.primaryColor }}>{currency.symbol}13,566.46</span>
             </div>
           </div>
         </div>
@@ -2289,7 +2291,7 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
             <div className="text-[9px] text-slate-800 mt-1 border-t border-dashed border-black/20 pt-1">
               <span>Customer: ACME Enterprises</span>
               {f.showPartyBalance && (
-                <span className="block text-red-700 font-bold">O/S Balance: ₹14,200.00</span>
+                <span className="block text-red-700 font-bold">O/S Balance: {currency.symbol}14,200.00</span>
               )}
             </div>
           )}
@@ -2348,7 +2350,7 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
           )}
           <div className={`flex justify-between font-bold text-sm ${borderClass}`}>
             <span>TOTAL AMOUNT:</span>
-            <span>₹651.00</span>
+            <span>{currency.symbol}651.00</span>
           </div>
         </div>
 
@@ -2406,10 +2408,10 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
 
           <div className="flex items-baseline gap-2 mt-1">
             {f.showPrice && (
-              <span className="text-sm font-extrabold text-slate-900">₹4,999.00</span>
+              <span className="text-sm font-extrabold text-slate-900">{currency.symbol}4,999.00</span>
             )}
             {f.showMRP && (
-              <span className="text-[10px] text-slate-500 line-through">MRP: ₹6,999</span>
+              <span className="text-[10px] text-slate-500 line-through">MRP: {currency.symbol}6,999</span>
             )}
           </div>
         </div>
@@ -2482,7 +2484,7 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
 
           <div>
             {f.showPrice && (
-              <span className="text-sm font-extrabold text-slate-900 block">₹8,999.00</span>
+              <span className="text-sm font-extrabold text-slate-900 block">{currency.symbol}8,999.00</span>
             )}
             {f.showCustomTagline && (
               <span className="text-[8px] font-medium text-slate-500">{f.customTaglineText}</span>

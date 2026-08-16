@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Search, RefreshCw, Loader2, AlertCircle, Building2, CreditCard, ArrowUpRight, ArrowDownLeft, CheckCircle, Clock, ChevronRight, X, Save } from "lucide-react";
 import { bankApi, BankAccountRecord, BankTransaction, accountingApi, ChartOfAccount } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
-import { formatCurrency } from "@/lib/utils";
 function fmt(n: number) {
   return formatCurrency(n);
 }
@@ -568,6 +568,7 @@ function ReconciliationTab() {
 
 // ─── Main Export ─────────────────────────────────────────────────────────────
 export function BankAccounts({ tab = "bank_accounts" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   if (tab === "reconciliation") return <ReconciliationTab />;
   return <BankAccountsTab />;
 }

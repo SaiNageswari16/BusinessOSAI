@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface MasterCatalogItem {
   id?: string;
@@ -50,6 +51,7 @@ interface MasterCatalogItem {
 }
 
 export function MasterCatalogAdmin() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<MasterCatalogItem[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [page, setPage] = useState(1);
@@ -350,7 +352,7 @@ export function MasterCatalogAdmin() {
                 <th className="py-3 px-4">Brand</th>
                 <th className="py-3 px-4">Category</th>
                 <th className="py-3 px-4">RAG Status</th>
-                <th className="py-3 px-4 text-right">MRP (₹)</th>
+                <th className="py-3 px-4 text-right">MRP ({currency.symbol})</th>
                 <th className="py-3 px-4 text-center">Action</th>
               </tr>
             </thead>

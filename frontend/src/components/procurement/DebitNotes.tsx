@@ -4,8 +4,10 @@ import { Button } from "../ui/button";
 import { Plus, FileCheck, Loader2, X } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function DebitNotes() {
+    const { currency, formatCurrency } = useCurrency();
   const [notes, setNotes] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,7 +111,7 @@ export function DebitNotes() {
                     </td>
                     <td className="py-4 px-6 font-bold">{dn.supplier_name}</td>
                     <td className="py-4 px-6 text-right font-bold text-rose-600">
-                      ₹{dn.amount.toLocaleString("en-IN")}
+                      {currency.symbol}{dn.amount.toLocaleString("en-IN")}
                     </td>
                     <td className="py-4 px-6 font-mono text-xs text-muted-foreground">
                       {dn.created_at ? new Date(dn.created_at).toLocaleDateString() : "—"}
@@ -170,7 +172,7 @@ export function DebitNotes() {
                 </div>
 
                 <div className="space-y-1.5 col-span-2">
-                  <label className="font-semibold text-muted-foreground">Debit Value (₹) *</label>
+                  <label className="font-semibold text-muted-foreground">Debit Value ({currency.symbol}) *</label>
                   <input
                     type="number"
                     required

@@ -4,6 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Search, Plus, Bell, Mail, MessageSquare, Smartphone, Edit2, Trash2, Loader2, CheckCircle } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 const CHANNELS = ["email", "sms", "in_app"];
 const CHANNEL_ICONS: Record<string, React.ElementType> = { email: Mail, sms: Smartphone, in_app: MessageSquare };
@@ -92,6 +93,7 @@ function TemplateDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function NotificationTemplates() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<NotificationTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

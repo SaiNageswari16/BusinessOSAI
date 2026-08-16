@@ -14,8 +14,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function Quotations() {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
   const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
@@ -95,7 +97,7 @@ export function Quotations() {
                   <Input value={newQuote.customer_name} onChange={e => setNewQuote({...newQuote, customer_name: e.target.value})} placeholder="e.g. Acme Corp" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Total Amount (₹)</Label>
+                  <Label>Total Amount ({currency.symbol})</Label>
                   <Input required type="number" min="0" value={newQuote.total} onChange={e => setNewQuote({...newQuote, total: Number(e.target.value)})} />
                 </div>
                 <div className="space-y-2">
@@ -195,7 +197,7 @@ export function Quotations() {
                       {new Date(quote.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 font-bold text-foreground text-right">
-                      ₹{Number(quote.total).toLocaleString()}
+                      {currency.symbol}{Number(quote.total).toLocaleString()}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${

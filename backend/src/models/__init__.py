@@ -1410,6 +1410,8 @@ class Customer(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     customer_type: Mapped[str] = mapped_column(String(50), default="Retail")
     status: Mapped[str] = mapped_column(String(30), default="Active")
     address: Mapped[str | None] = mapped_column(Text)
+    billing_address: Mapped[str | None] = mapped_column(Text)
+    shipping_address: Mapped[str | None] = mapped_column(Text)
     gst_number: Mapped[str | None] = mapped_column(String(50))
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="SET NULL"), unique=True)

@@ -4,6 +4,7 @@ import { X, Mail, Phone, MapPin, Building, Star, CreditCard, History, Box, FileT
 import type { Customer } from "@/data/mockCrmData";
 import { useCrmData } from "@/hooks/useCrmData";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface CustomerProfileProps {
   customer: Customer;
@@ -11,6 +12,7 @@ interface CustomerProfileProps {
 }
 
 export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
+    const { currency, formatCurrency } = useCurrency();
   const { mockCustomers } = useCrmData();
   const [activeTab, setActiveTab] = useState("Overview");
 
@@ -115,11 +117,11 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Credit Limit</p>
-                          <p className="font-bold text-lg">${customer.creditLimit.toLocaleString()}</p>
+                          <p className="font-bold text-lg">{currency.symbol}{customer.creditLimit.toLocaleString()}</p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Outstanding</p>
-                          <p className="font-bold text-lg text-amber-600">${customer.outstandingAmount.toLocaleString()}</p>
+                          <p className="font-bold text-lg text-amber-600">{currency.symbol}{customer.outstandingAmount.toLocaleString()}</p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Purchases</p>

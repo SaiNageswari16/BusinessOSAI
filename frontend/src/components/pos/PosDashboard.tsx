@@ -6,13 +6,13 @@ import {
 } from "lucide-react";
 import { posSession, posStore } from "../../lib/pos-fallback";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
-
-import { formatCurrency } from "../../lib/utils";
 import { posApi } from "../../lib/pos-api";
 import { workspaceApi } from "../../lib/workspace-api";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useAuth } from "../../contexts/auth-context";
+import { formatCurrency } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -29,6 +29,7 @@ export function PosDashboard() {
 
 function PosDashboardInner() {
   const { user } = useAuth();
+  const { currency, formatCurrency: fmtCurrency } = useCurrency();
   
   const { data: workspaceData } = useQuery({
     queryKey: ["current-workspace"],

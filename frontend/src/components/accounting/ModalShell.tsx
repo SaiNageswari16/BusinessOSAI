@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ModalShellProps {
   open: boolean;
@@ -27,6 +28,7 @@ export function ModalShell({
   maxWidth = "max-w-lg",
   extraFooter,
 }: ModalShellProps) {
+    const { currency, formatCurrency } = useCurrency();
   return (
     <AnimatePresence>
       {open && (

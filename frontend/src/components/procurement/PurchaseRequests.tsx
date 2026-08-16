@@ -7,8 +7,10 @@ import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 
 import { PurchaseRequisitionForm } from "./PurchaseRequisitionForm";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function PurchaseRequests() {
+    const { currency, formatCurrency } = useCurrency();
   const [requests, setRequests] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +113,7 @@ export function PurchaseRequests() {
                       )}
                     </td>
                     <td className="py-4 px-6 text-right font-extrabold text-foreground">
-                      ₹{Number(req.total_amount || 0).toLocaleString("en-IN")}
+                      {currency.symbol}{Number(req.total_amount || 0).toLocaleString("en-IN")}
                     </td>
                     <td className="py-4 px-6 text-muted-foreground font-mono text-xs">
                       {req.request_date || req.created_at

@@ -8,11 +8,13 @@ import {
 import { toast } from "sonner";
 import { crmLeadsApi, type CrmLead, type LeadAttribution } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
+import { useCurrency } from "@/hooks/use-currency";
 
 const stages: CrmLead["status"][] = ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"];
 const blankLead = { name: "", company_name: "", email: "", phone: "", source: "Website", estimated_value: "0" };
 
 export function Leads() {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [search, setSearch] = useState("");
@@ -380,7 +382,7 @@ export function Leads() {
                       {lead.phone && <p className="flex gap-1.5 mt-1 text-xs text-muted-foreground"><Phone className="size-3 shrink-0 mt-0.5" />{lead.phone}</p>}
 
                       <div className="mt-3 pt-3 border-t flex justify-between items-center gap-2">
-                        <span className="text-xs font-bold text-emerald-600 shrink-0">₹{Number(lead.estimated_value).toLocaleString()}</span>
+                        <span className="text-xs font-bold text-emerald-600 shrink-0">{currency.symbol}{Number(lead.estimated_value).toLocaleString()}</span>
                         <select
                           value={lead.status}
                           onChange={(e) => void moveLead(lead, e.target.value as CrmLead["status"])}
@@ -486,7 +488,7 @@ export function Leads() {
                     <strong>{callTarget.company_name || "individual"}</strong>
                   </p>
                   <p className="text-muted-foreground">
-                    Deal value: <strong className="text-emerald-600">₹{Number(callTarget.estimated_value).toLocaleString()}</strong>
+                    Deal value: <strong className="text-emerald-600">{currency.symbol}{Number(callTarget.estimated_value).toLocaleString()}</strong>
                     {callTarget.ai_score != null && (
                       <> · AI Score: <strong>{callTarget.ai_score}%</strong></>
                     )}

@@ -5,6 +5,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { employeesApi, attendanceApi, leavesApi, payrollApi, Employee, AttendanceRecord, EmployeeDocument, LeaveRequest, LeaveBalance, Payslip } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
+import { useCurrency } from "@/hooks/use-currency";
+
 const formatDate = (dateStr: string | null | undefined, options?: Intl.DateTimeFormatOptions) => {
   if (!dateStr) return "N/A";
   const d = new Date(dateStr);
@@ -32,6 +34,7 @@ const attStatusStyle = (s: string) => {
 };
 
 export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const { user } = useAuth();
   
   const [emp, setEmp] = useState<Employee | null>(null);
@@ -321,10 +324,10 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                 ) : myPayslips.map(ps => (
                   <tr key={ps.id} className="hover:bg-muted/5 transition-colors">
                     <td className="px-6 py-4 font-semibold text-foreground">{ps.year}-{ps.month.toString().padStart(2, '0')}</td>
-                    <td className="px-6 py-4 text-right font-mono">${ps.basic_salary.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right font-mono text-muted-foreground">${(ps.hra + ps.other_allowances).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right font-mono text-red-400">-${(ps.pf_deduction + ps.esi_deduction + ps.tds_deduction + ps.other_deductions).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right font-mono font-bold text-emerald-500">${ps.net_salary.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right font-mono">{currency.symbol}{ps.basic_salary.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right font-mono text-muted-foreground">{currency.symbol}{(ps.hra + ps.other_allowances).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right font-mono text-red-400">-{currency.symbol}{(ps.pf_deduction + ps.esi_deduction + ps.tds_deduction + ps.other_deductions).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right font-mono font-bold text-emerald-500">{currency.symbol}{ps.net_salary.toLocaleString()}</td>
                     <td className="px-6 py-4 text-center">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${ps.status === "Paid" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>
                         {ps.status}

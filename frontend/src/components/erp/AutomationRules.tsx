@@ -4,6 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Search, Plus, Zap, Edit2, Trash2, Loader2, Play, Pause } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 const MODULES = ["HR", "Finance", "Purchase", "Sales", "Inventory", "General"];
 const TRIGGER_EVENTS = [
@@ -85,6 +86,7 @@ function RuleDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function AutomationRules() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

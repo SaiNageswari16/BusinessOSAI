@@ -5,12 +5,14 @@ import { Filter, Download, PieChart, TrendingUp, DollarSign, Target, Percent } f
 
 import { crmOpportunitiesApi, type CrmOpportunity } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props {
   tab?: string;
 }
 
 export function SalesPipeline({ tab = "kanban" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
   const [deals, setDeals] = useState<CrmOpportunity[]>([]);
@@ -85,7 +87,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
                 <Percent className="size-5" />
               </div>
               <p className="text-sm font-medium text-muted-foreground mb-1">Total Pipeline Value</p>
-              <h3 className="text-2xl font-bold text-foreground">₹{totalPipelineValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
+              <h3 className="text-2xl font-bold text-foreground">{currency.symbol}{totalPipelineValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
               <p className="text-xs font-medium mt-2 text-emerald-500">+12% vs last quarter</p>
             </div>
             
@@ -95,7 +97,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
                 <TrendingUp className="size-5" />
               </div>
               <p className="text-sm font-medium text-muted-foreground mb-1">Expected Revenue</p>
-              <h3 className="text-2xl font-bold text-foreground">₹{expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
+              <h3 className="text-2xl font-bold text-foreground">{currency.symbol}{expectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
               <p className="text-xs font-medium mt-2 text-muted-foreground">Weighted by probability</p>
             </div>
 

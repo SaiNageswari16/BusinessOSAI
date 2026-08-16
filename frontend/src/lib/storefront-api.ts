@@ -1,3 +1,5 @@
+import { useCurrency } from "@/hooks/use-currency";
+
 /**
  * Storefront API — connects to the public inventory endpoints that expose
  * products from ALL tenants (Amazon-style marketplace).

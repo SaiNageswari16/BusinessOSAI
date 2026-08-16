@@ -2,8 +2,10 @@ import React, { useState, useEffect } from "react";
 import { Bell, Smartphone, Globe, Monitor, Target, Save, Loader2, Info } from "lucide-react";
 import { liveNotificationsApi } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function NotificationSettings() {
+    const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [enabled, setEnabled] = useState(true);

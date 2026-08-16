@@ -2,8 +2,10 @@ import { inventoryLowStock } from "../../data/inventory-mock";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { AlertTriangle, TrendingUp, Search, Plus, ShoppingCart, Sparkles } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function LowStockAlerts() {
+    const { currency, formatCurrency } = useCurrency();
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">

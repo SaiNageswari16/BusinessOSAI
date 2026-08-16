@@ -6,8 +6,10 @@ import { Plus, Truck, Loader2, Eye, Printer, FileText } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ProcurementDocumentForm } from "./ProcurementDocumentForm";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function PurchaseOrders() {
+    const { currency, formatCurrency } = useCurrency();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateMode, setIsCreateMode] = useState(false);
@@ -95,7 +97,7 @@ export function PurchaseOrders() {
                     <td className="py-4 px-6 font-medium text-foreground">{po.supplier_name || po.supplier?.name || "Global Vendor"}</td>
                     <td className="py-4 px-6 text-muted-foreground">{po.items?.length || 1} material items</td>
                     <td className="py-4 px-6 text-right font-bold text-foreground">
-                      ₹{po.total_amount?.toLocaleString("en-IN") || 0}
+                      {currency.symbol}{po.total_amount?.toLocaleString("en-IN") || 0}
                     </td>
                     <td className="py-4 px-6">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${

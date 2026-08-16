@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface MockScreenProps {
   title: string;
@@ -28,6 +29,7 @@ const mockChartData = [
 ];
 
 export function MockScreen({ title, description, type = "crm" }: MockScreenProps) {
+    const { currency, formatCurrency } = useCurrency();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 

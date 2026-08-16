@@ -3,10 +3,12 @@ import { motion } from "framer-motion";
 import { BrainCircuit, AlertTriangle, Search, ArrowUpRight, RefreshCw, AlertCircle } from "lucide-react";
 import { crmIntelligenceApi, IntelChurn, IntelChurnCustomer } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
 export function ChurnPrediction({ tab = "churn_prediction" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelChurn | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

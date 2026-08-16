@@ -1,4 +1,5 @@
 import { FileCheck, ShoppingCart, UserCog, Activity, AlertTriangle, ArrowRightLeft, Sparkles, History, Inbox, Radio, Network, PieChart, Skull, LineChart, Grid } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export interface Customer {
   id: string;

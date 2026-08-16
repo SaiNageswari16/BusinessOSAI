@@ -5,6 +5,7 @@ import { Search, Plus, Trash2, Loader2, X, RotateCw } from "lucide-react";
 import { inventoryApi, CycleCount } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface CycleItemInput {
   product_id: string;
@@ -14,6 +15,7 @@ interface CycleItemInput {
 }
 
 export function CycleCounting() {
+    const { currency, formatCurrency } = useCurrency();
   const [counts, setCounts] = useState<CycleCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

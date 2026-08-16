@@ -9,6 +9,7 @@ import { branchesApi, companiesApi, type Branch, type Company } from "@/lib/api-
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 function StatusBadge({ status }: { status: string }) {
   const active = status === "active";
@@ -164,6 +165,7 @@ function BranchFormModal({
 }
 
 export function BranchManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);

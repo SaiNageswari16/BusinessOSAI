@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { crmCustomersApi, inventoryApi, type CrmCustomer } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 import { Sparkles, Loader2 } from "lucide-react";
 
 const CUSTOMER_TYPES = [
@@ -64,6 +65,7 @@ const blankCustomer: Record<string, unknown> = {
 };
 
 export function Customers() {
+    const { currency, formatCurrency } = useCurrency();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
@@ -496,7 +498,7 @@ export function Customers() {
                         {customer.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-medium">₹{(customer.lifetime_value || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 font-medium">{currency.symbol}{(customer.lifetime_value || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-muted-foreground">{customer.total_orders ?? 0}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">

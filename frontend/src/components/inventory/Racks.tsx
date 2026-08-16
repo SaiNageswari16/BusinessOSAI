@@ -3,8 +3,10 @@ import { inventoryApi, type StorageLocation, type Warehouse } from "../../lib/ap
 import { Card } from "../ui/card";
 import { Loader2, Package, MapPin, Filter, Eye, Box, Pencil, Trash2, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function Racks() {
+    const { currency, formatCurrency } = useCurrency();
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useCurrency } from "@/hooks/use-currency";
 
 const MOBILE_BREAKPOINT = 768;
 

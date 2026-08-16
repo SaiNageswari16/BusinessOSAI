@@ -7,6 +7,7 @@ import {
 import { invoicesApi, inventoryApi, financialReportsApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { fmt } from "@/components/accounting/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -33,6 +34,7 @@ interface BillRow {
 }
 
 export function FinanceDashboard({ tab = "overview" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [bills, setBills] = useState<BillRow[]>([]);

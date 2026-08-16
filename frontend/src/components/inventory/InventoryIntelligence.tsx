@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { inventoryApi, type IntelligenceSummary } from "../../lib/api-client";
 import * as Icons from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 /* ─── types ─── */
 
@@ -72,6 +73,7 @@ function gradeRing(grade: string, score: number, color: string) {
 /* ─── component ─── */
 
 export function InventoryIntelligence() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelligenceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -247,7 +249,7 @@ export function InventoryIntelligence() {
                     <td className="px-4 py-3 font-mono text-xs">{item.sku}</td>
                     <td className="px-4 py-3 text-xs">{item.category}</td>
                     <td className="px-4 py-3 text-right font-mono">{item.on_hand}</td>
-                    <td className="px-4 py-3 text-right font-mono">₹{item.stock_value.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono">{currency.symbol}{item.stock_value.toLocaleString()}</td>
                     <td className="px-4 py-3"><span className="text-xs font-bold text-amber-600">{item.no_movement_for}</span></td>
                     <td className="px-4 py-3 text-xs">{item.days_to_expiry != null ? `${item.days_to_expiry}d` : "—"}</td>
                     <td className="px-4 py-3 text-center">
@@ -312,7 +314,7 @@ export function InventoryIntelligence() {
                     <td className="px-4 py-3 text-right font-mono">{item.on_hand}</td>
                     <td className="px-4 py-3 text-right font-mono text-muted-foreground">{item.reorder_level}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold">{item.suggested_order_qty}</td>
-                    <td className="px-4 py-3 text-right font-mono">₹{item.suggested_order_value.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono">{currency.symbol}{item.suggested_order_value.toLocaleString()}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px]">{item.reason}</td>
                   </tr>
                 );
@@ -465,7 +467,7 @@ export function InventoryIntelligence() {
                     <td className="py-2 font-bold text-xs">{c.category}</td>
                     <td className="py-2 text-right text-xs">{c.product_count}</td>
                     <td className="py-2 text-right text-xs font-mono">{c.units}</td>
-                    <td className="py-2 text-right text-xs font-mono">₹{c.value.toLocaleString()}</td>
+                    <td className="py-2 text-right text-xs font-mono">{currency.symbol}{c.value.toLocaleString()}</td>
                     <td className="py-2 text-right text-xs">{c.margin_pct.toFixed(0)}%</td>
                     <td className="py-2 text-right text-xs">{c.dead_value > 0 ? `₹${c.dead_value.toLocaleString()}` : "—"}</td>
                   </tr>
@@ -521,7 +523,7 @@ export function InventoryIntelligence() {
             Inventory Intelligence
           </h2>
           <p className="text-sm text-muted-foreground">
-            AI-powered analysis · {h.total_products} products · ₹{h.total_value.toLocaleString()} stock value · Generated {new Date(data.generated_at).toLocaleTimeString()}
+            AI-powered analysis · {h.total_products} products · {currency.symbol}{h.total_value.toLocaleString()} stock value · Generated {new Date(data.generated_at).toLocaleTimeString()}
           </p>
         </div>
         <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>

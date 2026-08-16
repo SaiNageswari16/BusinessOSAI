@@ -4,6 +4,7 @@ import { Search, ShoppingCart, Mail, Phone, Ticket, CreditCard, RotateCcw, Activ
 import { crmCustomersApi, crmTicketsApi, crmSalesOrdersApi, crmQuotationsApi, type CrmCustomer } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface TimelineEvent {
   id: string;
@@ -18,6 +19,7 @@ interface TimelineEvent {
 const filterTypes = ["All", "Purchases", "Support", "Quotations"];
 
 export function CustomerTimeline() {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<CrmCustomer | null>(null);

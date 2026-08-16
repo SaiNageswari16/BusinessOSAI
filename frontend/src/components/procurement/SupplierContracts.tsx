@@ -4,8 +4,10 @@ import { Button } from "../ui/button";
 import { Plus, Briefcase, CalendarClock, Loader2, X } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function SupplierContracts() {
+    const { currency, formatCurrency } = useCurrency();
   const [contracts, setContracts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

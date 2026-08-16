@@ -4,8 +4,10 @@ import { Button } from "../ui/button";
 import { Plus, Users, Mail, Phone, Building2, Loader2, X } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function SupplierContacts() {
+    const { currency, formatCurrency } = useCurrency();
   const [contacts, setContacts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

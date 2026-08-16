@@ -31,6 +31,7 @@ import { PermissionMatrix } from "@/components/erp/PermissionMatrix";
 import { NumberSeries } from "@/components/erp/NumberSeries";
 import { TaxConfiguration } from "@/components/erp/TaxConfiguration";
 import { CurrencyManagement } from "@/components/erp/CurrencyManagement";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/_app/settings")({
   component: SettingsModule,

@@ -3,8 +3,10 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Printer, RotateCcw, ReceiptText } from "lucide-react";
 import { posApi, POSTransactionHistory } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function SalesHistory() {
+    const { currency, formatCurrency } = useCurrency();
   const [history, setHistory] = useState<POSTransactionHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -72,7 +74,7 @@ export function SalesHistory() {
                   <td className="px-6 py-4 font-mono text-xs">{new Date(sale.created_at).toLocaleTimeString()}</td>
                   <td className="px-6 py-4 font-bold">{sale.cashier_id || "Customer"}</td>
                   <td className="px-6 py-4 font-mono">{sale.items.length} items</td>
-                  <td className="px-6 py-4 font-bold text-emerald-600">${sale.total_amount.toFixed(2)}</td>
+                  <td className="px-6 py-4 font-bold text-emerald-600">{currency.symbol}{sale.total_amount.toFixed(2)}</td>
                   <td className="px-6 py-4">
                     <span className="px-2.5 py-1 rounded-full text-[10px] uppercase font-bold bg-slate-100 text-slate-700">
                       {sale.payments?.[0]?.payment_method || "cash"}

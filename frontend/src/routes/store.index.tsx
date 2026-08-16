@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchStorefrontProducts } from "@/lib/storefront-api";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/store/")({
   component: StoreHome,

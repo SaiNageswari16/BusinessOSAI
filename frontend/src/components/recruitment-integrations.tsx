@@ -4,8 +4,10 @@ import {
 } from "lucide-react";
 import { inventoryApi } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function RecruitmentIntegrations() {
+    const { currency, formatCurrency } = useCurrency();
   const [status, setStatus] = useState<{
     connected: boolean;
     organization_name?: string;

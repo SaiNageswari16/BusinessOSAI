@@ -13,6 +13,7 @@ import PaidCampaignBuilder from "./PaidCampaignBuilder";
 import PaidAdsSection from "./PaidAdsSection";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/tenant-context";
+import { useCurrency } from "@/hooks/use-currency";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -291,6 +292,7 @@ function LeadSyncToast({ pageId }: { pageId: string }) {
 // ── MAIN DASHBOARD COMPONENT ──────────────────────────────────────────────────
 
 export function AdHistory() {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const navigate = useNavigate();
 

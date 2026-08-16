@@ -4,6 +4,7 @@ import { Plus, AlertTriangle, X, Save, Loader2, CheckCircle, Clock } from "lucid
 import { toast } from "sonner";
 import { taxApi, TaxReturn, TaxCode, TaxPayment } from "@/lib/api-client";
 import { fmt, statusStyle, typeStyle } from "@/components/accounting/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -103,6 +104,7 @@ function TaxRuleFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
 // ─── Main Tax Management Component ───────────────────────────────────────
 export function TaxManagement({ tab = "gst" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [returns, setReturns] = useState<TaxReturn[]>([]);
   const [rules, setRules] = useState<TaxRule[]>([]);
   const [payments, setPayments] = useState<TaxPayment[]>([]);

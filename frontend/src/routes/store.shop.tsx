@@ -4,12 +4,14 @@ import { ProductGrid } from "@/components/storefront/ProductGrid";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchStorefrontProducts, fetchStorefrontCategories } from "@/lib/storefront-api";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/store/shop")({
   component: ShopPage,
 });
 
 function ShopPage() {
+  const { currency } = useCurrency();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
 
@@ -97,7 +99,7 @@ function ShopPage() {
                 />
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Price: $10 - $2000</span>
+                <span className="text-sm text-gray-600">Price: {currency.symbol}10 - {currency.symbol}2000</span>
                 <button className="bg-[#1A1A1A] hover:bg-blue-600 text-white px-4 py-1.5 text-xs font-bold uppercase rounded transition-colors">
                   Filter
                 </button>

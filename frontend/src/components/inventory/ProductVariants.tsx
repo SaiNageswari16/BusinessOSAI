@@ -6,6 +6,7 @@ import { inventoryApi, ProductVariant } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface VariantAttributeInput {
   name: string;
@@ -13,6 +14,7 @@ interface VariantAttributeInput {
 }
 
 export function ProductVariants() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<ProductVariant[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -189,7 +191,7 @@ export function ProductVariants() {
               <div className="flex justify-between items-center pt-2 border-t">
                 <div>
                   <div className="text-xs text-muted-foreground">Additional Price</div>
-                  <div className="font-bold text-emerald-600">+₹{variant.additional_price}</div>
+                  <div className="font-bold text-emerald-600">+{currency.symbol}{variant.additional_price}</div>
                 </div>
                 {variant.stock_override != null && (
                   <div className="text-right">
@@ -277,7 +279,7 @@ export function ProductVariants() {
 
                 <div className="grid grid-cols-2 gap-3 border-t pt-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Additional Price (₹)</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Additional Price ({currency.symbol})</label>
                     <input type="number" step="0.01" value={form.additional_price} onChange={(e) => setForm({ ...form, additional_price: parseFloat(e.target.value) || 0 })}
                       className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
                   </div>

@@ -4,6 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Search, Plus, Globe, Edit2, Trash2, Loader2, MapPin } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 function CountryDialog({ open, onClose, initial, onSaved }: {
   open: boolean; onClose: () => void; initial?: GeographyCountry; onSaved: () => void;
@@ -75,6 +76,7 @@ function CountryDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function Geography() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<GeographyCountry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

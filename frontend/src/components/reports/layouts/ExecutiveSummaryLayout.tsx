@@ -5,8 +5,10 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 import { DashboardLayoutProps } from "./LayoutTypes";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ExecutiveSummaryLayout({ reportData, filteredTableData, getKpiIcon }: DashboardLayoutProps) {
+    const { currency, formatCurrency } = useCurrency();
   const { metrics, chartData, chartConfig, tableColumns, aiSummary } = reportData;
 
   const renderChart = () => {

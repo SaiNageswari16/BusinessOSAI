@@ -3,7 +3,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchStorefrontFlashDeals } from "@/lib/storefront-api";
+import { useCurrency } from "@/hooks/use-currency";
+
 export function FlashDeals() {
+    const { currency, formatCurrency } = useCurrency();
   const [timeLeft, setTimeLeft] = useState({ h: 2, m: 45, s: 30 });
 
   useEffect(() => {

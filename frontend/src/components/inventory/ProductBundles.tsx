@@ -6,6 +6,7 @@ import { inventoryApi, ProductBundle } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface BundleItemInput {
   product_id: string;
@@ -14,6 +15,7 @@ interface BundleItemInput {
 }
 
 export function ProductBundles() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<ProductBundle[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -172,7 +174,7 @@ export function ProductBundles() {
 
               <div className="pt-2 border-t flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">Bundle Price</span>
-                <span className="font-bold text-emerald-600">₹{bundle.price.toFixed(2)}</span>
+                <span className="font-bold text-emerald-600">{currency.symbol}{bundle.price.toFixed(2)}</span>
               </div>
             </Card>
           ))}
@@ -219,7 +221,7 @@ export function ProductBundles() {
                     rows={2} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bundle Price (₹)</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bundle Price ({currency.symbol})</label>
                   <input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
                     className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none text-sm" />
                 </div>
