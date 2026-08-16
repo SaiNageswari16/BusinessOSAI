@@ -44,7 +44,7 @@ frontend/.env.production
 # Generated files
 backend/static/invoices/
 image.png
-
+backend/src/images/
 # Local environment
 frontend/.env
 

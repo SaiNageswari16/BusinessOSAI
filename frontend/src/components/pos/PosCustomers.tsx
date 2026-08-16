@@ -29,7 +29,9 @@ export function PosCustomers() {
     gst_number: "",
     credit_limit: 0,
     address: "",
-    city: ""
+    city: "",
+    shipping_address: "",
+    isShippingSameAsBilling: true
   });
 
   const loadCustomers = async () => {
@@ -55,11 +57,13 @@ export function PosCustomers() {
     try {
       await crmCustomersApi.create({
         ...form,
-        credit_limit: Number(form.credit_limit) || 0
+        credit_limit: Number(form.credit_limit) || 0,
+        billing_address: form.address,
+        shipping_address: form.isShippingSameAsBilling ? form.address : form.shipping_address
       });
       toast.success(`Customer ${form.name} registered successfully!`);
       setIsOpen(false);
-      setForm({ name: "", phone: "", email: "", customer_type: "Retail", gst_number: "", credit_limit: 0, address: "", city: "" });
+      setForm({ name: "", phone: "", email: "", customer_type: "Retail", gst_number: "", credit_limit: 0, address: "", city: "", shipping_address: "", isShippingSameAsBilling: true });
       loadCustomers();
     } catch (err: any) {
       toast.error(err.message || "Failed to create customer");
@@ -70,10 +74,10 @@ export function PosCustomers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">POS Customers</h2>
-          <p className="text-sm text-muted-foreground">Manage your retail & B2B customer database, credit limits, and lifetime value.</p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">POS Customers</h2>
+          <p className="text-sm text-slate-500 mt-1">Manage your retail & B2B customer database, credit limits, and lifetime value.</p>
         </div>
         <Button onClick={() => setIsOpen(true)} className="gradient-brand text-white border-0 font-semibold shadow-sm">
           <Plus className="size-4 mr-2" /> New Customer
@@ -204,6 +208,28 @@ export function PosCustomers() {
                 <Input value={form.address} onChange={e => setForm({...form, address: e.target.value})} placeholder="Street address..." />
               </div>
             </div>
+
+            <div className="flex items-center gap-2 mt-2">
+              <input 
+                type="checkbox" 
+                id="sameAsBillingPos" 
+                checked={form.isShippingSameAsBilling} 
+                onChange={(e) => setForm({...form, isShippingSameAsBilling: e.target.checked})}
+                className="rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <Label htmlFor="sameAsBillingPos" className="text-xs cursor-pointer text-slate-600">Shipping address same as Billing address</Label>
+            </div>
+
+            {!form.isShippingSameAsBilling && (
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-700">Shipping Address</Label>
+                <Input 
+                  value={form.shipping_address} 
+                  onChange={e => setForm({...form, shipping_address: e.target.value})} 
+                  placeholder="Enter shipping address..." 
+                />
+              </div>
+            )}
 
             <DialogFooter className="pt-2">
               <Button type="submit" disabled={isSubmitting} className="w-full gradient-brand text-white font-bold">

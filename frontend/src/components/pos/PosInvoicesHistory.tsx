@@ -103,8 +103,8 @@ export function PosInvoicesHistory() {
             String(inv.status).toLowerCase() === "paid"
               ? "Paid"
               : String(inv.status).toLowerCase() === "partial"
-              ? "Partial"
-              : "Unpaid",
+                ? "Partial"
+                : "Unpaid",
           subtotal: inv.subtotal || (inv.total_amount ? inv.total_amount * 0.85 : 0),
           total_tax: inv.tax_amount || (inv.cgst_amount || 0) + (inv.sgst_amount || 0) || 0,
           discount_amount: inv.discount_amount || 0,
@@ -365,29 +365,22 @@ export function PosInvoicesHistory() {
   const pdfCount = invoices.filter((i) => i.print_status === "A4 PDF Generated").length;
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-[1600px] mx-auto min-h-screen pb-24">
+    <div className="p-6 md:p-8 space-y-6 mx-auto min-h-screen pb-24">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-blue-600/10 text-blue-600 flex items-center justify-center font-bold">
-              <Receipt className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">Generated Invoices History</h1>
-              <p className="text-xs text-slate-500 font-medium">
-                View, track print status, and manage all store sales invoices in real-time
-              </p>
-            </div>
-          </div>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Generated Invoices History</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            View, track print status, and manage all store sales invoices in real-time
+          </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex gap-3">
           <button
             onClick={loadInvoices}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200 transition-all"
+            className="bg-white hover:bg-slate-50 text-slate-700 font-semibold px-5 py-2.5 rounded-xl shadow-sm border border-slate-200 flex items-center gap-2 transition-all"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Refresh
           </button>
         </div>
       </div>
@@ -556,13 +549,12 @@ export function PosInvoicesHistory() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            inv.payment_status === "Paid"
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.payment_status === "Paid"
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                               : inv.payment_status === "Partial"
-                              ? "bg-amber-50 text-amber-700 border border-amber-200"
-                              : "bg-rose-50 text-rose-700 border border-rose-200"
-                          }`}
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : "bg-rose-50 text-rose-700 border border-rose-200"
+                            }`}
                         >
                           {inv.payment_status}
                         </span>
@@ -575,13 +567,12 @@ export function PosInvoicesHistory() {
                     {/* Print Status */}
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold ${
-                          inv.print_status === "Thermal Printed"
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold ${inv.print_status === "Thermal Printed"
                             ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
                             : inv.print_status === "A4 PDF Generated"
-                            ? "bg-indigo-50 text-indigo-800 border border-indigo-200"
-                            : "bg-amber-50 text-amber-800 border border-amber-200"
-                        }`}
+                              ? "bg-indigo-50 text-indigo-800 border border-indigo-200"
+                              : "bg-amber-50 text-amber-800 border border-amber-200"
+                          }`}
                       >
                         {inv.print_status === "Thermal Printed" && "🖨️ Thermal Printed"}
                         {inv.print_status === "A4 PDF Generated" && "📄 A4 PDF Generated"}

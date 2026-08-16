@@ -31,10 +31,10 @@ export function SalesHistory() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Sales History</h2>
-          <p className="text-sm text-muted-foreground">View past receipts, reprint bills, and initiate refunds.</p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Sales History</h2>
+          <p className="text-sm text-slate-500 mt-1">View past receipts, reprint bills, and initiate refunds.</p>
         </div>
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />

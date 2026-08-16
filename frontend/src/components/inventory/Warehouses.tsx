@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { inventoryApi, type Warehouse } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Plus, Warehouse as WarehouseIcon, Users, Loader2, X, Trash2, Eye, Pencil, Copy } from "lucide-react";
+import { Plus, Warehouse as WarehouseIcon, Users, Loader2, X, Trash2, Eye, Pencil, Copy, Box, MapPin, Building, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const WAREHOUSE_TYPES = ["Distribution Center", "Fulfillment Center", "Cold Storage", "Retail Store", "Transit Hub", "Dark Store"];
@@ -20,6 +20,7 @@ export function Warehouses() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(defaultForm);
+  const [activeModalTab, setActiveModalTab] = useState("basic");
 
   useEffect(() => { fetchWarehouses(); }, []);
 
@@ -35,7 +36,7 @@ export function Warehouses() {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     setFormData(prev => ({ ...prev, [name]: type === "number" ? Number(value) : value }));
   };
@@ -181,98 +182,161 @@ export function Warehouses() {
       {/* CREATE WAREHOUSE MODAL */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
-            />
-            <motion.div
-              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
-              className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
-            >
-              <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
-                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                  <WarehouseIcon className="w-5 h-5 text-indigo-600" /> Create New Warehouse
-                </h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-card border rounded-2xl shadow-2xl w-full max-w-5xl h-[70vh] flex flex-col overflow-hidden">
+              
+              {/* Header */}
+              <div className="p-6 border-b flex items-center justify-between shrink-0 bg-white">
+                <h2 className="text-xl font-bold tracking-tight">Create New Warehouse</h2>
+                <button type="button" onClick={() => { setIsModalOpen(false); setFormData(defaultForm); setActiveModalTab("basic"); }} className="p-1.5 rounded-lg hover:bg-muted"><X className="size-5" /></button>
               </div>
-
-              <div className="p-6 overflow-y-auto flex-1">
-                <form id="warehouse-form" onSubmit={handleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Warehouse Name *</label>
-                      <input required type="text" name="name" value={formData.name} onChange={handleInputChange}
-                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="e.g. Mumbai Central Hub" />
-                    </div>
-
+              
+              <div className="flex flex-1 overflow-hidden">
+                {/* Sidebar */}
+                <div className="w-72 bg-slate-50 border-r flex flex-col overflow-y-auto shrink-0 p-4">
+                  <div className="space-y-2 flex-1">
+                    {[
+                      { id: "basic", label: "Basic Details", desc: "Name, Type, Status", icon: WarehouseIcon },
+                      { id: "capacity", label: "Capacity & Environment", desc: "Size, Temperature", icon: Box },
+                      { id: "management", label: "Management & Location", desc: "Manager, Staff, Address", icon: Users }
+                    ].map(tab => {
+                      const Icon = tab.icon;
+                      const isActive = activeModalTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setActiveModalTab(tab.id)}
+                          className={`w-full text-left p-3 rounded-xl flex gap-3 transition-colors ${
+                            isActive ? "bg-indigo-50 border border-indigo-100" : "hover:bg-muted border border-transparent"
+                          }`}
+                        >
+                          <div className={`shrink-0 p-2 rounded-lg ${isActive ? "bg-indigo-100 text-indigo-700" : "bg-white border text-slate-500"}`}>
+                            <Icon className="size-5" />
+                          </div>
+                          <div>
+                            <div className={`text-sm font-semibold ${isActive ? "text-indigo-900" : "text-slate-700"}`}>{tab.label}</div>
+                            <div className={`text-xs ${isActive ? "text-indigo-600" : "text-slate-500"}`}>{tab.desc}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 flex gap-3">
+                    <ShieldCheck className="size-5 text-indigo-600 shrink-0" />
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Type *</label>
-                      <select name="warehouse_type" value={formData.warehouse_type} onChange={handleInputChange}
-                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                        {WAREHOUSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Temperature Control</label>
-                      <select name="temperature_control" value={formData.temperature_control} onChange={handleInputChange}
-                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                        {TEMP_CONTROLS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Capacity (sqft)</label>
-                      <input type="text" name="capacity" value={formData.capacity} onChange={handleInputChange}
-                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="e.g. 50,000 sqft" />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Staff Count</label>
-                      <input type="number" name="employees" value={formData.employees} onChange={handleInputChange} min={0}
-                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
-                    </div>
-
-                    <div className="col-span-2">
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Manager Name</label>
-                      <input type="text" name="manager_name" value={formData.manager_name} onChange={handleInputChange}
-                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="e.g. Ravi Kumar" />
-                    </div>
-
-                    <div className="col-span-2">
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Address</label>
-                      <input type="text" name="address" value={formData.address} onChange={handleInputChange}
-                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="e.g. 123 Industrial Area, Mumbai - 400001" />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Status</label>
-                      <select name="status" value={formData.status} onChange={handleInputChange}
-                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                        <option value="Under Maintenance">Under Maintenance</option>
-                      </select>
+                      <div className="text-sm font-bold text-indigo-900 mb-1">Security</div>
+                      <div className="text-xs text-indigo-700 leading-relaxed">Warehouses control access to stock items. Ensure details are correct.</div>
                     </div>
                   </div>
-                </form>
-              </div>
+                </div>
 
-              <div className="p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex justify-end gap-3 shrink-0">
-                <button type="button" onClick={() => setIsModalOpen(false)}
-                  className="px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
-                <button type="submit" form="warehouse-form" disabled={isSubmitting}
-                  className="px-8 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-sm shadow-indigo-600/20 transition-all flex items-center gap-2">
-                  {isSubmitting ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving...</> : 'Create Warehouse'}
-                </button>
+                {/* Form Area */}
+                <form id="warehouse-form" onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden bg-white">
+                  <div className="flex-1 overflow-y-auto p-8">
+                    
+                    {activeModalTab === "basic" && (
+                      <div className="space-y-6 max-w-2xl">
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-900">Basic Details</h3>
+                          <p className="text-sm text-slate-500 mb-6">Enter core information about the warehouse.</p>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-900 mb-1.5">Warehouse Name <span className="text-red-500">*</span></label>
+                          <input required type="text" name="name" value={formData.name} onChange={handleInputChange}
+                            className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            placeholder="e.g. Mumbai Central Hub" />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-900 mb-1.5">Type <span className="text-red-500">*</span></label>
+                            <select name="warehouse_type" value={formData.warehouse_type} onChange={handleInputChange}
+                              className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                              {WAREHOUSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-900 mb-1.5">Status <span className="text-red-500">*</span></label>
+                            <select name="status" value={formData.status} onChange={handleInputChange}
+                              className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                              <option value="Active">Active</option>
+                              <option value="Inactive">Inactive</option>
+                              <option value="Under Maintenance">Under Maintenance</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeModalTab === "capacity" && (
+                      <div className="space-y-6 max-w-2xl">
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-900">Capacity & Environment</h3>
+                          <p className="text-sm text-slate-500 mb-6">Set storage capacity and climate settings.</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-900 mb-1.5">Capacity (sqft)</label>
+                            <input type="text" name="capacity" value={formData.capacity} onChange={handleInputChange}
+                              className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                              placeholder="e.g. 50,000 sqft" />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-900 mb-1.5">Temperature Control</label>
+                            <select name="temperature_control" value={formData.temperature_control} onChange={handleInputChange}
+                              className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                              {TEMP_CONTROLS.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeModalTab === "management" && (
+                      <div className="space-y-6 max-w-2xl">
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-900">Management & Location</h3>
+                          <p className="text-sm text-slate-500 mb-6">Assign managers and specific locations.</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-900 mb-1.5">Manager Name</label>
+                            <input type="text" name="manager_name" value={formData.manager_name} onChange={handleInputChange}
+                              className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                              placeholder="e.g. Ravi Kumar" />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-900 mb-1.5">Staff Count</label>
+                            <input type="number" name="employees" value={formData.employees} onChange={handleInputChange} min={0}
+                              className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-900 mb-1.5">Address</label>
+                          <textarea name="address" value={formData.address} onChange={handleInputChange} rows={3}
+                            className="w-full p-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+                            placeholder="e.g. 123 Industrial Area, Mumbai - 400001" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Footer */}
+                  <div className="p-5 border-t bg-slate-50 flex items-center justify-between shrink-0">
+                    <Button type="button" variant="outline" className="h-11 px-6 rounded-xl font-semibold bg-white hover:bg-slate-100" onClick={() => { setIsModalOpen(false); setFormData(defaultForm); setActiveModalTab("basic"); }}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isSubmitting} className="h-11 px-6 rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all border-0">
+                      {isSubmitting ? "Creating..." : "Create Warehouse"}
+                    </Button>
+                  </div>
+                </form>
               </div>
             </motion.div>
           </div>

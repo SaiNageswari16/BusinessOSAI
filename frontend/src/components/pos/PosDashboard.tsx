@@ -73,9 +73,9 @@ function PosDashboardInner() {
   return (
     <div className="p-6 lg:p-8 space-y-8 max-w-full">
       {/* Header section with Store / Shift Details */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">POS Dashboard</h1>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900">POS Dashboard</h1>
           <p className="text-slate-500 mt-1">
             {workspaceData?.name || "Store HQ"} &mdash; Register: REG-01
           </p>
@@ -86,7 +86,7 @@ function PosDashboardInner() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            Shift Open: {user?.full_name || "Cashier"}
+            Shift Open: {user?.name || "Cashier"}
           </div>
           <button className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-lg font-medium shadow-sm transition-all active:scale-95 flex items-center gap-2">
             <ShoppingCart className="w-4 h-4" />

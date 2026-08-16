@@ -1024,20 +1024,10 @@ export function PosSalesInvoice() {
     <div className="flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
       <ThermalReceiptPrinter bill={printedBill} />
       {/* Sleek Modern Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between shadow-sm sticky top-0 z-30">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl shadow-md shadow-blue-500/20">
-            <Receipt className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-slate-900 tracking-tight">Create Sales Invoice</h1>
-              <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                New Invoice
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">Draft sales receipt & manage line item billing</p>
-          </div>
+      <div className="flex justify-between items-center mb-6 px-6 lg:px-8 pt-6 lg:pt-8">
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Create Sales Invoice</h2>
+          <p className="text-sm text-slate-500 mt-1">Draft sales receipt & manage line item billing</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
