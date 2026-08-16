@@ -1,9 +1,15 @@
 import uuid
+import json
+import base64
+import requests
 from typing import Annotated, List
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.config.settings import get_settings
+settings = get_settings()
 
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.session import get_db
@@ -2119,16 +2125,15 @@ async def extract_quotation_ocr(
     payment_terms = "Net 15 Days"
     extracted_vendor = "Uploaded Vendor Quote"
     
-    # Try Gemini Vision API if key available and image
-    if settings.gemini_api_key and any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+    # Try Gemini Vision API if key available and image or PDF
+    if settings.gemini_api_key and any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
         try:
-            import base64
             b64_image = base64.b64encode(contents).decode("utf-8")
             model = settings.gemini_model or "gemini-2.5-flash"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
             
             prompt = """
-            Analyze this uploaded vendor quotation document image and extract:
+            Analyze this uploaded vendor quotation document and extract:
             1. supplier_name: Name of the supplier/vendor
             2. quoted_unit_price: Numerical quoted price per item in INR/rupees
             3. delivery_lead_days: Number of delivery lead time days
@@ -2143,11 +2148,12 @@ async def extract_quotation_ocr(
             }
             """
             
+            mime_type = "application/pdf" if filename.endswith(".pdf") else (file.content_type or "image/jpeg")
             body = {
                 "contents": [{
                     "parts": [
                         {"text": prompt},
-                        {"inline_data": {"mime_type": file.content_type or "image/jpeg", "data": b64_image}}
+                        {"inline_data": {"mime_type": mime_type, "data": b64_image}}
                     ]
                 }]
             }
