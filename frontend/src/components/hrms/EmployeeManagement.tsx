@@ -25,6 +25,7 @@ const formatDate = (dateStr: string | null | undefined) => {
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -38,6 +39,7 @@ const empStatusStyle = (s: string) => {
 };
 
 export function EmployeeManagement({ tab = "employees" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   // Common state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

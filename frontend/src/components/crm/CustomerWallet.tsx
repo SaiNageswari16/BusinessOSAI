@@ -15,12 +15,14 @@ import {
 import { toast } from "sonner";
 import { crmWalletApi, crmCustomersApi, type CrmCustomer, type WalletTransaction } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 type TxType = "credit" | "debit" | "adjust";
 
 const blankTx = { amount: 0, description: "", reference_id: "" };
 
 export function CustomerWallet() {
+    const { currency, formatCurrency } = useCurrency();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [customerSearch, setCustomerSearch] = useState("");
@@ -162,7 +164,7 @@ export function CustomerWallet() {
             >
               <p className="font-medium text-sm">{c.name}</p>
               <p className="text-xs text-muted-foreground">{c.email || c.phone}</p>
-              <p className="text-xs text-primary mt-1">Balance: ₹{(c.wallet_balance ?? 0).toLocaleString()}</p>
+              <p className="text-xs text-primary mt-1">Balance: {currency.symbol}{(c.wallet_balance ?? 0).toLocaleString()}</p>
             </button>
           ))}
           {filteredCustomers.length === 0 && (
@@ -205,7 +207,7 @@ export function CustomerWallet() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Amount (₹) *</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Amount ({currency.symbol}) *</label>
               <input type="number" required min={0.01} step={0.01}
                 value={String(form.amount)}
                 onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
@@ -214,7 +216,7 @@ export function CustomerWallet() {
                 <p className="text-xs text-muted-foreground mt-1">Use negative amount to deduct.</p>
               )}
               {showForm === "debit" && (
-                <p className="text-xs text-muted-foreground mt-1">Available balance: ₹{balance.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground mt-1">Available balance: {currency.symbol}{balance.toLocaleString()}</p>
               )}
             </div>
             <div>
@@ -280,9 +282,9 @@ export function CustomerWallet() {
                       <td className="px-4 py-3 text-sm">{tx.description}</td>
                       <td className="px-4 py-3 font-medium">
                         {tx.transaction_type === "credit" ? "+" : tx.transaction_type === "debit" ? "−" : "±"}
-                        ₹{tx.amount.toLocaleString()}
+                        {currency.symbol}{tx.amount.toLocaleString()}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">₹{tx.balance_after.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{currency.symbol}{tx.balance_after.toLocaleString()}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{tx.reference_id || "—"}</td>
                     </tr>
                   ))

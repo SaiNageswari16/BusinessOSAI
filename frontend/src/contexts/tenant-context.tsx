@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { companies as mockCompanies } from "@/data/mock";
 import { companiesApi, branchesApi, type Company as RealCompany, type Branch as RealBranch } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 export interface TenantCompany {
   id: string;
@@ -70,6 +71,7 @@ function getAuthIsPlatformAdmin(): boolean {
 
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
+    const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [companiesList, setCompaniesList] = useState<TenantCompany[]>([]);
   const [branchesList, setBranchesList] = useState<TenantBranch[]>([]);

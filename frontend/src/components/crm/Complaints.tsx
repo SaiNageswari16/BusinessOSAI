@@ -4,8 +4,10 @@ import { Search, Filter, AlertTriangle, MessageSquare, Plus, Clock, User, CheckC
 import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function Complaints() {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
   const [complaints, setComplaints] = useState<CrmTicket[]>([]);

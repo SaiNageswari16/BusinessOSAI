@@ -3,6 +3,7 @@ import { inventoryApi, type StorageLocation, type Warehouse } from "../../lib/ap
 import { Card } from "../ui/card";
 import { Grid, Loader2, ChevronRight, Package, MapPin, Eye, Box, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useCurrency } from "@/hooks/use-currency";
 
 const ZONE_META: Record<string, { color: string; bg: string; description: string }> = {
   "Receiving":     { color: "text-sky-600",     bg: "bg-sky-500/10",     description: "Inbound staging & quality check" },
@@ -16,6 +17,7 @@ const ZONE_META: Record<string, { color: string; bg: string; description: string
 };
 
 export function WarehouseZones() {
+    const { currency, formatCurrency } = useCurrency();
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);

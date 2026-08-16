@@ -12,7 +12,8 @@ import { PosPaymentIn } from "../components/pos/PosPaymentIn";
 import { PosInvoicesHistory } from "../components/pos/PosInvoicesHistory";
 import { Sparkles, ShieldCheck, TrendingUp, AlertTriangle, Clock, ArrowRightLeft, RefreshCw, CheckCircle, XCircle, Package, Users, BarChart3 } from "lucide-react";
 import { posTransactions, posCustomers, paymentMethods, posStore, posSession, posDashboardStats, posProducts } from "../lib/pos-fallback";
-import { formatCurrency } from "../lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
+import { formatCurrency } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/pos")({ component: PosModule });
 
@@ -1070,7 +1071,7 @@ function PosAiAssistant() {
       messages: [
         `Today's revenue stands at ${fmt(posDashboardStats.todayRevenue)} across ${posDashboardStats.todayOrders} transactions. This is 12.5% above yesterday's benchmark.`,
         `Top performing category today is Electronics — contributing 48% of total revenue. UPI adoption is up 8% week-on-week.`,
-        `Recommend cross-selling Accessories to customers purchasing Electronics — potential uplift of $320 per day.`,
+        `Recommend cross-selling Accessories to customers purchasing Electronics — potential uplift of ${fmt(320)} per day.`,
       ],
       insights: [{ label: "Revenue", val: fmt(posDashboardStats.todayRevenue), color: "text-indigo-600" }, { label: "Orders", val: `${posDashboardStats.todayOrders}`, color: "text-emerald-600" }, { label: "Avg. Bill", val: fmt(posDashboardStats.avgBill), color: "text-amber-600" }],
     },

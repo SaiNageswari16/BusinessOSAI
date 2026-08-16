@@ -5,8 +5,10 @@ import { Button } from "../ui/button";
 import { ShieldCheck, CheckCircle2, XCircle, Loader2, Eye, ChevronDown, ChevronUp, Printer, FileText } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function PurchaseApprovals() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actingIds, setActingIds] = useState<string[]>([]);

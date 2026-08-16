@@ -1,3 +1,5 @@
+import { useCurrency } from "@/hooks/use-currency";
+
 export const companies = [
   { id: "c1", name: "Nimbus Retail Group", industry: "Retail", logo: "NR" },
   { id: "c2", name: "Atlas Manufacturing", industry: "Manufacturing", logo: "AM" },

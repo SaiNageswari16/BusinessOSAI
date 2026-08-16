@@ -6,8 +6,10 @@ import { Plus, Receipt, Loader2, Eye, Printer, FileText } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ProcurementDocumentForm } from "./ProcurementDocumentForm";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function VendorBills() {
+    const { currency, formatCurrency } = useCurrency();
   const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateMode, setIsCreateMode] = useState(false);
@@ -95,10 +97,10 @@ export function VendorBills() {
                     <td className="py-4 px-6 font-mono font-bold text-primary">{b.bill_number || b.id.slice(0, 8)}</td>
                     <td className="py-4 px-6 font-medium text-foreground">{b.purchase_order_id ? `PO-${b.purchase_order_id.slice(0, 6)}` : "Direct Invoice"}</td>
                     <td className="py-4 px-6 text-right font-bold text-foreground">
-                      ₹{b.total_amount?.toLocaleString("en-IN") || 0}
+                      {currency.symbol}{b.total_amount?.toLocaleString("en-IN") || 0}
                     </td>
                     <td className="py-4 px-6 text-right font-semibold text-emerald-600">
-                      ₹{b.paid_amount?.toLocaleString("en-IN") || 0}
+                      {currency.symbol}{b.paid_amount?.toLocaleString("en-IN") || 0}
                     </td>
                     <td className="py-4 px-6 text-muted-foreground">
                       {b.due_date ? new Date(b.due_date).toLocaleDateString() : "Net 30"}

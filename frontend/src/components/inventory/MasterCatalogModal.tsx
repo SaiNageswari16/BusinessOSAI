@@ -23,6 +23,7 @@ import {
   Info
 } from "lucide-react";
 import { inventoryApi } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface MasterCatalogItem {
   id?: string;
@@ -87,6 +88,7 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
   onClose,
   onProductAdded
 }) => {
+    const { currency, formatCurrency } = useCurrency();
   const [searchQuery, setSearchQuery] = useState("");
   const [provider, setProvider] = useState<"gemini" | "openai" | "auto">("auto");
   const [isLoading, setIsLoading] = useState(false);
@@ -739,7 +741,7 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
                         {item.mrp ? (
                           <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
                             <Tag className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                            <span>MRP: ₹{item.mrp.toLocaleString()}</span>
+                            <span>MRP: {currency.symbol}{item.mrp.toLocaleString()}</span>
                           </div>
                         ) : null}
                         {item.hsn_code && (
@@ -751,13 +753,13 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
                         {item.cost_price ? (
                           <div className="flex items-center gap-1.5 text-slate-300">
                             <DollarSign className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                            <span>Cost: ₹{item.cost_price}</span>
+                            <span>Cost: {currency.symbol}{item.cost_price}</span>
                           </div>
                         ) : null}
                         {item.sale_price ? (
                           <div className="flex items-center gap-1.5 text-slate-300">
                             <Tag className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                            <span>Sale: ₹{item.sale_price}</span>
+                            <span>Sale: {currency.symbol}{item.sale_price}</span>
                           </div>
                         ) : null}
                         {item.quantity ? (
@@ -873,7 +875,7 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-400 font-medium mb-1">Selling Price (₹)</label>
+                    <label className="block text-slate-400 font-medium mb-1">Selling Price ({currency.symbol})</label>
                     <input
                       type="number"
                       value={localSellingPrice}
@@ -882,7 +884,7 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-400 font-medium mb-1">Purchase Price (₹)</label>
+                    <label className="block text-slate-400 font-medium mb-1">Purchase Price ({currency.symbol})</label>
                     <input
                       type="number"
                       value={localPurchasePrice}

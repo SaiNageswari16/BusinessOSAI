@@ -3,8 +3,10 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { ArrowRightLeft, Search, CheckCircle2, RotateCcw, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ReturnsRefunds() {
+    const { currency, formatCurrency } = useCurrency();
   const [receiptId, setReceiptId] = useState("");
   const [searchDone, setSearchDone] = useState(false);
   const [returnItems, setReturnItems] = useState([
@@ -106,7 +108,7 @@ export function ReturnsRefunds() {
             </div>
             <div className="flex justify-between pt-1 text-base font-bold">
               <span>Total Refund Amount:</span>
-              <span className="text-emerald-600">₹{processedReturn.refundAmount.toLocaleString("en-IN")}</span>
+              <span className="text-emerald-600">{currency.symbol}{processedReturn.refundAmount.toLocaleString("en-IN")}</span>
             </div>
           </div>
 
@@ -132,7 +134,7 @@ export function ReturnsRefunds() {
                 <div key={item.id} className="flex items-center justify-between p-3.5 bg-muted/30 border rounded-xl">
                   <div>
                     <p className="font-bold text-sm">{item.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">Billed Qty: {item.qty} | Price: ₹{item.price}</p>
+                    <p className="text-xs text-muted-foreground font-mono">Billed Qty: {item.qty} | Price: {currency.symbol}{item.price}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
@@ -191,7 +193,7 @@ export function ReturnsRefunds() {
                 </div>
                 <div className="flex justify-between text-lg font-black text-emerald-600">
                   <span>Total Refund:</span>
-                  <span>₹{totalRefund.toLocaleString("en-IN")}</span>
+                  <span>{currency.symbol}{totalRefund.toLocaleString("en-IN")}</span>
                 </div>
               </div>
             </div>

@@ -8,6 +8,7 @@ import { companiesApi, branchesApi, type Company, type Branch } from "@/lib/api-
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCurrency } from "@/hooks/use-currency";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -167,6 +168,7 @@ function WorkspaceModal({
 }
 
 export function WorkspaceManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const { accessToken } = useAuth();
   const { tenant: activeTenant, setTenant } = useTenant();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);

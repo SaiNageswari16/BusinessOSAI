@@ -10,10 +10,12 @@ import {
   ProductivityScore, 
   TrainingRecommendation 
 } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
 export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   
@@ -124,8 +126,8 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
                       className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                       <td className="px-6 py-4 font-semibold text-foreground">{dept.dept}</td>
                       <td className="px-6 py-4 text-center">{dept.headcount}</td>
-                      <td className="px-6 py-4 text-right">${dept.totalPayroll.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right">${Math.round(dept.avgSalary).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right">{currency.symbol}{dept.totalPayroll.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right">{currency.symbol}{Math.round(dept.avgSalary).toLocaleString()}</td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-emerald-500 flex items-center justify-end gap-1"><TrendingUp className="size-3" />+{dept.yoyChange}%</span>
                       </td>

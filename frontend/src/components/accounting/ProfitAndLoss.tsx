@@ -4,10 +4,12 @@ import { FileText, TrendingUp } from "lucide-react";
 import { financialReportsApi, ProfitAndLossReport, TrialBalanceReport, downloadCsv } from "@/lib/api-client";
 import { fmt } from "@/components/accounting/utils";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
 export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ProfitAndLossReport | null>(null);
   const [trial, setTrial] = useState<TrialBalanceReport | null>(null);

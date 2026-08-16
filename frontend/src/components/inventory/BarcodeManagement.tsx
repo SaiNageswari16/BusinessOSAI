@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ProductBarcode, type InventoryCategory } from "../../lib/api-client";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { RealBarcodeSvg, SingleBarcodeLabelCard as SharedBarcodeLabelCard } from "../../lib/barcode-svg";
+import { useCurrency } from "@/hooks/use-currency";
 
 // LocalBarcodeLabelCard adapts ProductBarcode to the shared label shape
 function SingleBarcodeLabelCard({
@@ -43,6 +44,7 @@ type LayoutType = "1up" | "2up" | "3up" | "a4";
 type Mode = "with" | "without" | "all";
 
 export function BarcodeManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const [allProducts, setAllProducts] = useState<ProductBarcode[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
   const [loading, setLoading] = useState(true);

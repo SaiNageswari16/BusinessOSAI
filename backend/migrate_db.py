@@ -47,6 +47,23 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to 'crm_leads': {e}")
 
+    # Add address columns to crm_customers
+    customer_columns_to_add = [
+        ("billing_address", "TEXT"),
+        ("shipping_address", "TEXT"),
+    ]
+    
+    for name, col_type in customer_columns_to_add:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE crm_customers ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'crm_customers' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in 'crm_customers'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to 'crm_customers': {e}")
+
     # Add columns to ar_invoice_lines for POS Sales
     invoice_lines_columns = [
         ("batch_number", "VARCHAR(100)"),
@@ -168,7 +185,13 @@ async def migrate():
     # Add specifications column to erp_products and erp_master_catalog
     spec_cols = [
         ("erp_products", "specifications", "JSONB DEFAULT '{}'::jsonb"),
-        ("erp_master_catalog", "specifications", "TEXT")
+        ("erp_master_catalog", "specifications", "TEXT"),
+        ("erp_brands", "image_url", "VARCHAR(1024)"),
+        ("erp_brands", "category", "VARCHAR(100)"),
+        ("erp_uoms", "unit_type", "VARCHAR(50)"),
+        ("erp_uoms", "base_unit", "BOOLEAN DEFAULT FALSE"),
+        ("erp_uoms", "conversion_rate", "FLOAT DEFAULT 1.0"),
+        ("erp_uoms", "unit_symbol", "VARCHAR(20)")
     ]
     for table_name, name, col_type in spec_cols:
         async with engine.begin() as conn:

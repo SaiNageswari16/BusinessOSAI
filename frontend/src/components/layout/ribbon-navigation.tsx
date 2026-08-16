@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Menu, X, ArrowLeft } from "lucide-react";
 import { useRbac } from "@/contexts/rbac-context";
 import { useI18n } from "@/contexts/i18n-context";
+import { useCurrency } from "@/hooks/use-currency";
 
 const navGroupKeys: Record<string, string> = {
   "Workspace": "nav.workspace",
@@ -38,6 +39,7 @@ const themeMap: Record<string, { text: string; indicator: string; bgL2: string; 
 };
 
 export function RibbonNavigation() {
+    const { currency, formatCurrency } = useCurrency();
   const location = useLocation();
   const navigate = useNavigate();
   const { hasPermission } = useRbac();

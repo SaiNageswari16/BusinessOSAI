@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 import { crmGroupsApi, crmCustomersApi, type CustomerGroup, type CustomerGroupMember } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const blankGroup = { name: "", description: "", color: "#6366f1", is_active: true };
 
@@ -23,6 +24,7 @@ const PALETTE = [
 ];
 
 export function CustomerGroups() {
+    const { currency, formatCurrency } = useCurrency();
   const [groups, setGroups] = useState<CustomerGroup[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");

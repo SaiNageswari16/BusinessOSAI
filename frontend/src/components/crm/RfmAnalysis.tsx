@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Grid3X3, Users, RefreshCw, AlertCircle } from "lucide-react";
 import { crmIntelligenceApi, IntelRfm, IntelRfmSegment } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 const rfmDefinitions: Record<string, { r: number; f: number }> = {
   "Champions": { r: 5, f: 5 },
@@ -18,6 +19,7 @@ const rfmDefinitions: Record<string, { r: number; f: number }> = {
 const cellIntensity = (r: number, f: number) => (r + f) / 10;
 
 export function RfmAnalysis() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelRfm | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

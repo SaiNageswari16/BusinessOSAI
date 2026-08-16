@@ -5,8 +5,10 @@ import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { motion, AnimatePresence, Variants } from "framer-motion";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function CostAnalysis() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"category" | "products">("category");
@@ -84,7 +86,7 @@ export function CostAnalysis() {
                 <div>
                   <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Total Purchase Cost</div>
                   <div className="text-2xl font-black font-mono tracking-tighter mt-0.5 text-foreground">
-                    ₹{totalCost.toLocaleString("en-IN")}
+                    {currency.symbol}{totalCost.toLocaleString("en-IN")}
                   </div>
                 </div>
               </Card>
@@ -98,7 +100,7 @@ export function CostAnalysis() {
                 <div>
                   <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Estimated Tax Paid</div>
                   <div className="text-2xl font-black font-mono tracking-tighter mt-0.5 text-foreground">
-                    ₹{estimatedTax.toLocaleString("en-IN")}
+                    {currency.symbol}{estimatedTax.toLocaleString("en-IN")}
                   </div>
                 </div>
               </Card>
@@ -115,7 +117,7 @@ export function CostAnalysis() {
                 <div className="relative z-10">
                   <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Price Variance (Savings)</div>
                   <div className="text-2xl font-black font-mono tracking-tighter mt-0.5 text-foreground flex items-center gap-1">
-                    {isPositiveVariance ? "-" : "+"}₹{priceVariance.toLocaleString("en-IN")}
+                    {isPositiveVariance ? "-" : "+"}{currency.symbol}{priceVariance.toLocaleString("en-IN")}
                   </div>
                 </div>
               </Card>
@@ -129,7 +131,7 @@ export function CostAnalysis() {
                 <div>
                   <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Return Loss Value</div>
                   <div className="text-2xl font-black font-mono tracking-tighter mt-0.5 text-foreground">
-                    ₹{returnLoss.toLocaleString("en-IN")}
+                    {currency.symbol}{returnLoss.toLocaleString("en-IN")}
                   </div>
                 </div>
               </Card>
@@ -224,7 +226,7 @@ export function CostAnalysis() {
                               <div className="flex justify-between items-center text-xs mb-1.5">
                                 <span className="font-semibold text-foreground">{item.category}</span>
                                 <span className="font-bold font-mono text-muted-foreground group-hover:text-primary transition-colors">
-                                  ₹{item.value.toLocaleString("en-IN")} ({Math.round(pct)}%)
+                                  {currency.symbol}{item.value.toLocaleString("en-IN")} ({Math.round(pct)}%)
                                 </span>
                               </div>
                               <div className="w-full bg-muted/50 rounded-full h-2 overflow-hidden border border-white/5">
@@ -254,7 +256,7 @@ export function CostAnalysis() {
                               <div className="text-[10px] text-muted-foreground uppercase font-semibold mt-0.5">{item.sku}</div>
                             </div>
                             <div className="font-mono font-black text-primary bg-primary/10 px-2 py-1 rounded-lg">
-                              ₹{item.cost.toLocaleString("en-IN")}
+                              {currency.symbol}{item.cost.toLocaleString("en-IN")}
                             </div>
                           </div>
                         )) : (

@@ -18,9 +18,9 @@ import {
   Sparkles,
   Info
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
 import { inventoryApi, posApi } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export type ProcurementDocType = "PR" | "PO" | "PINV";
 
@@ -54,6 +54,7 @@ interface ProcurementDocumentFormProps {
 }
 
 export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData }: ProcurementDocumentFormProps) {
+    const { currency, formatCurrency } = useCurrency();
   // Master data
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -562,7 +563,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 <option value="">-- Select Approved PR --</option>
                 {approvedPRs.map((pr) => (
                   <option key={pr.id} value={pr.id}>
-                    {pr.request_number || pr.id.slice(0, 8)} (Est. ₹{pr.total_amount || 0})
+                    {pr.request_number || pr.id.slice(0, 8)} (Est. {currency.symbol}{pr.total_amount || 0})
                   </option>
                 ))}
               </select>
@@ -757,14 +758,14 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 <th className="px-3 py-3 w-24">HSN/SAC</th>
                 <th className="px-3 py-3 w-24">Batch No</th>
                 <th className="px-3 py-3 w-28">Exp Date</th>
-                <th className="px-3 py-3 w-20 text-right">MRP (₹)</th>
+                <th className="px-3 py-3 w-20 text-right">MRP ({currency.symbol})</th>
                 <th className="px-3 py-3 w-20 text-right">Qty</th>
                 <th className="px-3 py-3 w-24 text-right">
                   {docType === "PR" ? "Est. Price (₹)" : "Price/Item (₹)"}
                 </th>
                 <th className="px-3 py-3 w-24 text-right">Discount</th>
                 <th className="px-3 py-3 w-24 text-right">GST Tax %</th>
-                <th className="px-3 py-3 w-28 text-right font-bold">Amount (₹)</th>
+                <th className="px-3 py-3 w-28 text-right font-bold">Amount ({currency.symbol})</th>
                 <th className="px-3 py-3 w-12 text-center">Action</th>
               </tr>
             </thead>
@@ -916,7 +917,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
                       {/* Line Amount */}
                       <td className="px-3 py-2 text-right font-black text-slate-900 text-xs">
-                        ₹{lineAmount.toFixed(2)}
+                        {currency.symbol}{lineAmount.toFixed(2)}
                       </td>
 
                       {/* Action */}
@@ -980,7 +981,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           <div className="space-y-2 text-xs">
             <div className="flex justify-between text-slate-600">
               <span>Gross Subtotal Amount:</span>
-              <span className="font-bold text-slate-800">₹{subtotal.toFixed(2)}</span>
+              <span className="font-bold text-slate-800">{currency.symbol}{subtotal.toFixed(2)}</span>
             </div>
 
             {/* Custom Additional Charges */}
@@ -1024,7 +1025,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
             <div className="flex justify-between text-slate-600">
               <span>GST Tax Amount:</span>
-              <span className="font-bold text-slate-800">+₹{totalTax.toFixed(2)}</span>
+              <span className="font-bold text-slate-800">+{currency.symbol}{totalTax.toFixed(2)}</span>
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
@@ -1041,13 +1042,13 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-base font-extrabold text-slate-900">
               <span>Grand Total Amount:</span>
-              <span className="text-2xl font-black text-blue-600">₹{roundedTotal.toFixed(2)}</span>
+              <span className="text-2xl font-black text-blue-600">{currency.symbol}{roundedTotal.toFixed(2)}</span>
             </div>
 
             {docType === "PINV" && (
               <div className="pt-3 border-t border-slate-200 grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid (₹)</label>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid ({currency.symbol})</label>
                   <input
                     type="number"
                     value={amountPaid}
@@ -1056,9 +1057,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Balance Due (₹)</label>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Balance Due ({currency.symbol})</label>
                   <div className="h-9 bg-rose-50 border border-rose-200 rounded-xl px-2.5 flex items-center font-black text-rose-700 text-xs">
-                    ₹{balanceDue.toFixed(2)}
+                    {currency.symbol}{balanceDue.toFixed(2)}
                   </div>
                 </div>
               </div>

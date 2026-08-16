@@ -7,8 +7,10 @@ import { ThermalReceiptPrinter } from "../pos/ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { Printer } from "lucide-react";
 import { Button } from "../ui/button";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function PaymentHistory() {
+    const { currency, formatCurrency } = useCurrency();
   const [payments, setPayments] = useState<any[]>([]);
   const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +101,7 @@ export function PaymentHistory() {
                       <td className="py-4 px-6 font-mono text-primary font-semibold">{txn.bill_number || "—"}</td>
                       <td className="py-4 px-6 font-bold">{bill?.supplier_name || "—"}</td>
                       <td className="py-4 px-6 font-bold text-emerald-600 text-right">
-                        ₹{txn.amount_paid.toLocaleString("en-IN")}
+                        {currency.symbol}{txn.amount_paid.toLocaleString("en-IN")}
                       </td>
                       <td className="py-4 px-6 font-semibold">{txn.payment_method}</td>
                       <td className="py-4 px-6 font-mono text-xs text-muted-foreground text-right">{txn.reference_number || "—"}</td>

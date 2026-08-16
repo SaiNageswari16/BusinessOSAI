@@ -3,8 +3,10 @@ import { motion } from "framer-motion";
 import { Store, Search, Filter, MoreHorizontal, Star, Package, DollarSign, MapPin, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { mockVendors } from "@/data/mockMarketplaceData";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function Vendors() {
+    const { currency, formatCurrency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
 
   const filtered = mockVendors.filter(v => 
@@ -91,7 +93,7 @@ export function Vendors() {
                 <p className="text-[10px] text-muted-foreground uppercase mb-0.5">Revenue</p>
                 <p className="font-semibold text-foreground text-sm flex items-center justify-center gap-1">
                   <DollarSign className="size-3 text-emerald-500" />
-                  ${(vendor.revenue / 1000).toFixed(0)}K
+                  {currency.symbol}{(vendor.revenue / 1000).toFixed(0)}K
                 </p>
               </div>
             </div>

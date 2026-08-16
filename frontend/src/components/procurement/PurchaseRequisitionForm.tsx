@@ -19,9 +19,9 @@ import {
   Send,
   Search
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
 import { inventoryApi, employeesApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface RequisitionItem {
   id: string;
@@ -43,6 +43,7 @@ interface PurchaseRequisitionFormProps {
 }
 
 export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: PurchaseRequisitionFormProps) {
+    const { currency, formatCurrency } = useCurrency();
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -476,8 +477,8 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
                 <th className="px-3 py-3 w-32">Category</th>
                 <th className="px-3 py-3 w-28">Unit of Measure</th>
                 <th className="px-3 py-3 w-24 text-right">Requested Qty</th>
-                <th className="px-3 py-3 w-28 text-right">Est. Unit Cost (₹)</th>
-                <th className="px-3 py-3 w-32 text-right font-bold">Total Est. Cost (₹)</th>
+                <th className="px-3 py-3 w-28 text-right">Est. Unit Cost ({currency.symbol})</th>
+                <th className="px-3 py-3 w-32 text-right font-bold">Total Est. Cost ({currency.symbol})</th>
                 <th className="px-3 py-3 min-w-[180px]">Technical Notes / Specs</th>
                 <th className="px-3 py-3 w-12 text-center">Action</th>
               </tr>
@@ -534,7 +535,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
                                     </div>
                                   </div>
                                   <div className="text-right font-bold text-purple-700">
-                                    ₹{prod.cost_price || prod.purchase_price || prod.selling_price || 0}
+                                    {currency.symbol}{prod.cost_price || prod.purchase_price || prod.selling_price || 0}
                                   </div>
                                 </div>
                               ))
@@ -593,7 +594,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
                     </td>
 
                     <td className="px-3 py-2.5 text-right font-black text-slate-900 text-xs">
-                      ₹{lineTotal.toFixed(2)}
+                      {currency.symbol}{lineTotal.toFixed(2)}
                     </td>
 
                     <td className="px-3 py-2.5">
@@ -655,12 +656,12 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
           <div className="space-y-3 text-xs">
             <div className="flex justify-between text-slate-600">
               <span>Department Allocated Quarterly Budget:</span>
-              <span className="font-bold text-slate-800">₹2,50,000.00</span>
+              <span className="font-bold text-slate-800">{currency.symbol}2,50,000.00</span>
             </div>
 
             <div className="flex justify-between text-slate-600">
               <span>Requisition Total Estimated Budget:</span>
-              <span className="font-extrabold text-purple-700 text-sm">₹{totalEstimatedBudget.toFixed(2)}</span>
+              <span className="font-extrabold text-purple-700 text-sm">{currency.symbol}{totalEstimatedBudget.toFixed(2)}</span>
             </div>
 
             <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 text-[11px] text-purple-900 space-y-1">

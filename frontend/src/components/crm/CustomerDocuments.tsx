@@ -4,12 +4,14 @@ import { motion } from "framer-motion";
 import { FileText, Upload, Search, Download, Trash2, Eye, Folder, File, Filter } from "lucide-react";
 
 import { useCrmData } from "@/hooks/useCrmData";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props {
   tab?: string;
 }
 
 export function CustomerDocuments({ tab = "all_documents" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const { mockCustomerDocuments } = useCrmData();
   const documents = mockCustomerDocuments;
 

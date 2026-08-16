@@ -3,8 +3,10 @@ import { motion } from "framer-motion";
 import { Package, Search, Filter, ShieldCheck, DollarSign, Star, Store, Plus, Tag } from "lucide-react";
 import { mockMarketplaceProducts } from "@/data/mockMarketplaceData";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function MarketplaceProducts() {
+    const { currency, formatCurrency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
 
   const filtered = mockMarketplaceProducts.filter(p => 
@@ -86,7 +88,7 @@ export function MarketplaceProducts() {
                     </div>
                   </td>
                   <td className="px-6 py-4 font-medium text-foreground">
-                    ${product.price.toFixed(2)}
+                    {currency.symbol}{product.price.toFixed(2)}
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn("px-2 py-1 rounded text-xs font-medium", 

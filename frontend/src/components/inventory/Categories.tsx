@@ -6,8 +6,10 @@ import { inventoryApi, InventoryCategory } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function Categories() {
+    const { currency, formatCurrency } = useCurrency();
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);

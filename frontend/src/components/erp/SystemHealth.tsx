@@ -3,8 +3,10 @@ import { systemHealthApi, SystemHealth } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Activity, Cpu, HardDrive, Network, Server, Database, BrainCircuit, RefreshCw, Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function SystemHealth() {
+    const { currency, formatCurrency } = useCurrency();
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

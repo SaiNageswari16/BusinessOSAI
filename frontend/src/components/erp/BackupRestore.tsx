@@ -3,8 +3,10 @@ import { backupApi } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Download, Upload, History, Shield, HardDrive, AlertCircle, Loader2, CheckCircle } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function BackupRestore() {
+    const { currency, formatCurrency } = useCurrency();
   const [backupStatus, setBackupStatus] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

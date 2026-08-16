@@ -3,6 +3,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { getActiveReceiptTemplate, ReceiptTemplate } from '../../lib/receipt-template-store';
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ThermalReceiptPrinterProps {
   bill: {
@@ -41,6 +42,7 @@ interface ThermalReceiptPrinterProps {
 }
 
 export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPrinterProps) {
+    const { currency, formatCurrency } = useCurrency();
   if (!bill) return null;
   if (typeof document === 'undefined') return null;
 
@@ -149,7 +151,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
           <div className="text-[9px] text-slate-800 mt-1 border-t border-dashed border-black/30 pt-1">
             <span>Customer: {customerName}</span>
             {f.showPartyBalance && (
-              <span className="block text-red-700 font-bold mt-0.5">O/S Balance: ₹14,200.00</span>
+              <span className="block text-red-700 font-bold mt-0.5">O/S Balance: {currency.symbol}14,200.00</span>
             )}
           </div>
         )}
@@ -200,7 +202,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
         )}
         <div className="flex justify-between font-bold text-sm border-t border-black pt-1 mt-1">
           <span>TOTAL AMOUNT:</span>
-          <span>₹{Number(grandTotal || 0).toFixed(2)}</span>
+          <span>{currency.symbol}{Number(grandTotal || 0).toFixed(2)}</span>
         </div>
       </div>
 

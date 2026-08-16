@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type InventoryBatch, type Warehouse, type InventoryProduct as Product } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 const STATUS_OPTS = ["Active", "Quarantined", "Expired", "Consumed"];
 
@@ -179,6 +180,7 @@ function BatchModal({
 }
 
 export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: string) => void }) {
+    const { currency, formatCurrency } = useCurrency();
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);

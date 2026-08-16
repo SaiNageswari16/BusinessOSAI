@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 const images = [
   "https://images.unsplash.com/photo-1607082349566-187342175e2f?q=80&w=1600&auto=format&fit=crop", // generic e-commerce
@@ -8,6 +9,7 @@ const images = [
 ];
 
 export function HeroCarousel() {
+    const { currency, formatCurrency } = useCurrency();
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {

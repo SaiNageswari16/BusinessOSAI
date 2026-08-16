@@ -5,10 +5,12 @@ import { exitApi, employeesApi, ExitResignation, ExitClearanceTask, ExitFinalSet
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
 export function ExitManagement({ tab = "resignation" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [resignations, setResignations] = useState<ExitResignation[]>([]);
   const [clearanceTasks, setClearanceTasks] = useState<ExitClearanceTask[]>([]);
   const [settlements, setSettlements] = useState<ExitFinalSettlement[]>([]);
@@ -335,7 +337,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
                       <div key={i} className="flex justify-between text-xs font-medium">
                         <span className="text-muted-foreground">{c.item}</span>
                         <span className={c.amount < 0 ? "text-red-500 font-bold" : "text-foreground font-bold"}>
-                          ${c.amount.toLocaleString()}
+                          {currency.symbol}{c.amount.toLocaleString()}
                         </span>
                       </div>
                     ))}
@@ -344,7 +346,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
 
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-foreground text-sm">F&F Settlement Payout:</span>
-                  <span className="text-2xl font-bold text-emerald-500">${total.toLocaleString()}</span>
+                  <span className="text-2xl font-bold text-emerald-500">{currency.symbol}{total.toLocaleString()}</span>
                 </div>
               </div>
             );
@@ -378,27 +380,27 @@ export function ExitManagement({ tab = "resignation" }: Props) {
                       <Input type="date" value={settlementForm.lastWorkingDay} onChange={(e) => setSettlementForm({...settlementForm, lastWorkingDay: e.target.value})} />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Final Month Salary ($)</label>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Final Month Salary ({currency.symbol})</label>
                       <Input type="number" value={settlementForm.salaryAmount} onChange={(e) => setSettlementForm({...settlementForm, salaryAmount: Number(e.target.value)})} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Leave Encashment ($)</label>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Leave Encashment ({currency.symbol})</label>
                       <Input type="number" value={settlementForm.leaveEncashment} onChange={(e) => setSettlementForm({...settlementForm, leaveEncashment: Number(e.target.value)})} />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Gratuity Benefit ($)</label>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Gratuity Benefit ({currency.symbol})</label>
                       <Input type="number" value={settlementForm.gratuity} onChange={(e) => setSettlementForm({...settlementForm, gratuity: Number(e.target.value)})} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Annual Performance Bonus ($)</label>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Annual Performance Bonus ({currency.symbol})</label>
                       <Input type="number" value={settlementForm.bonus} onChange={(e) => setSettlementForm({...settlementForm, bonus: Number(e.target.value)})} />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">TDS Tax Deductions ($)</label>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">TDS Tax Deductions ({currency.symbol})</label>
                       <Input type="number" value={settlementForm.tax} onChange={(e) => setSettlementForm({...settlementForm, tax: Number(e.target.value)})} />
                     </div>
                   </div>

@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Plus, Calendar, CheckCircle, Clock, XCircle, Loader2, BookOpen, FileText } from "lucide-react";
 import { leavesApi, LeaveRequest, LeaveBalance, LeavePolicy } from "../../lib/api-client";
 import { Button } from "../ui/button";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -18,6 +19,7 @@ const leaveTypeColor = (t: string) => {
 };
 
 export function LeaveManagement({ tab = "leave_requests" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [policies, setPolicies] = useState<LeavePolicy[]>([]);

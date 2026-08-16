@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { crmIntelligenceApi, IntelRecommendations, IntelRecommendation } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   alert: AlertTriangle,
@@ -26,6 +27,7 @@ const ICON_COLOR_MAP: Record<string, { iconColor: string; iconBg: string }> = {
 };
 
 export function AiRecommendations({ tab = "recommendations" }: { tab?: string }) {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelRecommendations | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

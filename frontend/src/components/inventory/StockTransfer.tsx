@@ -9,7 +9,7 @@ import {
 import { inventoryApi, StockMovement as StockMovementType, Warehouse, InventoryProduct } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
 import { toast } from "sonner";
-import { formatCurrency } from "../../lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface TransferItemInput {
   product_id: string;
@@ -20,6 +20,7 @@ interface TransferItemInput {
 }
 
 export function StockTransfer() {
+    const { currency, formatCurrency } = useCurrency();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [transfers, setTransfers] = useState<StockMovementType[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -176,7 +177,7 @@ export function StockTransfer() {
       {viewMode === "list" ? (
         <>
           {/* List Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
                 <ArrowRightLeft className="size-6 text-emerald-600" /> Stock Transfer Vouchers
@@ -420,8 +421,8 @@ export function StockTransfer() {
                         <th className="px-4 py-3">#</th>
                         <th className="px-4 py-3">Product Item</th>
                         <th className="px-4 py-3 text-center">Transfer Qty</th>
-                        <th className="px-4 py-3 text-right">Unit Price (₹)</th>
-                        <th className="px-4 py-3 text-right">Transferred Value (₹)</th>
+                        <th className="px-4 py-3 text-right">Unit Price ({currency.symbol})</th>
+                        <th className="px-4 py-3 text-right">Transferred Value ({currency.symbol})</th>
                         <th className="px-3 py-3 text-center"></th>
                       </tr>
                     </thead>

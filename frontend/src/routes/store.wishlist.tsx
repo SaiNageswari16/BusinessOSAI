@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Heart, Trash2, ShoppingCart, ArrowRight } from "lucide-react";
 import { useStoreCart } from "@/contexts/StoreCartContext";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/store/wishlist")({
   component: WishlistPage,

@@ -4,6 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Search, Filter, Plus, GitMerge, ChevronRight, Edit2, Trash2, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 const MODULES = ["Purchase", "HR", "Finance", "Sales", "Inventory", "General"];
 
@@ -78,6 +79,7 @@ function WorkflowDialog({
 }
 
 export function ApprovalWorkflows() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<ApprovalWorkflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

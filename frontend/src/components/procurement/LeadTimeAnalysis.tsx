@@ -5,8 +5,10 @@ import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { motion, Variants } from "framer-motion";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function LeadTimeAnalysis() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 

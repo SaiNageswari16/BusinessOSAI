@@ -4,8 +4,10 @@ import { Activity, Search, Loader2, User as UserIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ActivityLogs() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

@@ -6,6 +6,7 @@ import { costCentersApi, departmentsApi, type CostCenter, type Department } from
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 function CostCenterFormModal({ cc, departments, onClose, onSaved }: {
   cc: CostCenter | null; departments: Department[]; onClose: () => void; onSaved: () => void;
@@ -61,7 +62,7 @@ function CostCenterFormModal({ cc, departments, onClose, onSaved }: {
                 placeholder="Marketing Ops" />
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1.5">Budget (₹)</label>
+              <label className="block text-xs font-semibold mb-1.5">Budget ({currency.symbol})</label>
               <input type="number" min="0" value={form.budget_amount} onChange={set("budget_amount")}
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
@@ -87,6 +88,7 @@ function CostCenterFormModal({ cc, departments, onClose, onSaved }: {
 }
 
 export function CostCenters() {
+    const { currency, formatCurrency } = useCurrency();
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -172,11 +174,11 @@ export function CostCenters() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Budget</span>
-                    <span className="font-mono font-semibold">₹{cc.budget_amount.toLocaleString()}</span>
+                    <span className="font-mono font-semibold">{currency.symbol}{cc.budget_amount.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground flex items-center gap-1"><TrendingUp className="size-3" /> Spent</span>
-                    <span className="font-mono font-semibold">₹{cc.expense_amount.toLocaleString()}</span>
+                    <span className="font-mono font-semibold">{currency.symbol}{cc.expense_amount.toLocaleString()}</span>
                   </div>
                   {cc.budget_amount > 0 && (
                     <div>

@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type InventorySerial, type Warehouse } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 const STATUS_STYLES: Record<string, string> = {
   "In Stock":     "bg-emerald-500/10 text-emerald-600",
@@ -130,6 +131,7 @@ function SerialModal({
 }
 
 export function SerialNumbers() {
+    const { currency, formatCurrency } = useCurrency();
   const [serials, setSerials] = useState<InventorySerial[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);

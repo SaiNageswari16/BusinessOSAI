@@ -1,3 +1,5 @@
+import { useCurrency } from "@/hooks/use-currency";
+
 export const procurementSuppliers = [
   { id: "s1", code: "VEN-001", name: "Apple India Pvt Ltd", company: "Apple Inc.", type: "Manufacturer", products: "Electronics, Hardware", branches: 4, rating: 4.8, status: "Active", creditLimit: "₹50,00,000" },
   { id: "s2", code: "VEN-002", name: "Samsung Electronics", company: "Samsung", type: "Manufacturer", products: "Electronics", branches: 2, rating: 4.5, status: "Active", creditLimit: "₹25,00,000" },

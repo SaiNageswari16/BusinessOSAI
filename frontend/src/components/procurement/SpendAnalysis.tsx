@@ -4,8 +4,10 @@ import { BarChart3, Loader2, Building2, Briefcase, TrendingUp } from "lucide-rea
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { motion, Variants } from "framer-motion";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function SpendAnalysis() {
+    const { currency, formatCurrency } = useCurrency();
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -79,7 +81,7 @@ export function SpendAnalysis() {
                             {item.supplier}
                           </span>
                           <span className="font-bold font-mono text-muted-foreground group-hover:text-primary transition-colors">
-                            ₹{item.amount.toLocaleString("en-IN")} ({Math.round(pct)}%)
+                            {currency.symbol}{item.amount.toLocaleString("en-IN")} ({Math.round(pct)}%)
                           </span>
                         </div>
                         <div className="w-full bg-muted/50 rounded-full h-2 overflow-hidden border border-white/5">
@@ -111,7 +113,7 @@ export function SpendAnalysis() {
               <div className="relative z-10">
                 <div className="text-[11px] uppercase font-bold text-white/70 mb-1 tracking-wider">Total Procurement Spend (YTD)</div>
                 <div className="text-4xl font-black font-mono tracking-tighter drop-shadow-md">
-                  ₹{totalSpend.toLocaleString("en-IN")}
+                  {currency.symbol}{totalSpend.toLocaleString("en-IN")}
                 </div>
                 <div className="flex items-center gap-2 mt-4 text-xs font-semibold bg-black/20 w-fit px-2.5 py-1 rounded-md backdrop-blur-sm border border-white/10">
                   <TrendingUp className="size-3 text-emerald-300" />

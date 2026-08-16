@@ -6,6 +6,8 @@ import { attendanceApi, employeesApi, AttendanceRecord, BiometricDevice, FaceRec
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { useCurrency } from "@/hooks/use-currency";
+
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "N/A";
   const d = new Date(dateStr);
@@ -42,6 +44,7 @@ const methodIcon = (m: string | null | undefined) => {
 };
 
 export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

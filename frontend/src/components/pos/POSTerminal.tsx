@@ -18,7 +18,7 @@ import {
 } from "./POSTerminalViews";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
-import { formatCurrency } from "../../lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -30,6 +30,7 @@ export class ErrorBoundary extends React.Component<any, any> {
 }
 
 export function PosTerminal() {
+    const { currency, formatCurrency } = useCurrency();
   return <ErrorBoundary><PosTerminalInner /></ErrorBoundary>;
 }
 
@@ -1530,7 +1531,7 @@ function PosTerminalInner() {
 
                       <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Selling Price (₹)</label>
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Selling Price ({currency.symbol})</label>
                           <input
                             type="number"
                             value={editForm.sellingPrice}
@@ -1539,7 +1540,7 @@ function PosTerminalInner() {
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">MRP (₹)</label>
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">MRP ({currency.symbol})</label>
                           <input
                             type="number"
                             value={editForm.mrp}
@@ -1548,7 +1549,7 @@ function PosTerminalInner() {
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Purchase Price (₹)</label>
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Purchase Price ({currency.symbol})</label>
                           <input
                             type="number"
                             value={editForm.purchasePrice}
@@ -1777,7 +1778,7 @@ function PosTerminalInner() {
                     <p className="text-sm font-bold text-slate-900 leading-tight">{selectedCustomer.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">{(selectedCustomer as any).customer_type || selectedCustomer.tier || 'Retail'}</span>
-                      <span className="text-[10px] text-slate-500 font-medium">{selectedCustomer.points} Pts • ₹{selectedCustomer.wallet} Wallet</span>
+                      <span className="text-[10px] text-slate-500 font-medium">{selectedCustomer.points} Pts • {currency.symbol}{selectedCustomer.wallet} Wallet</span>
                     </div>
                   </div>
                 </div>
@@ -1791,7 +1792,7 @@ function PosTerminalInner() {
                     <span className="font-semibold text-amber-900 flex items-center gap-1">
                       ⚠️ Previous Outstanding Due:
                     </span>
-                    <span className="font-extrabold text-amber-700">₹{customerSummary.total_pending_due?.toFixed(2)}</span>
+                    <span className="font-extrabold text-amber-700">{currency.symbol}{customerSummary.total_pending_due?.toFixed(2)}</span>
                   </div>
                   <label className="flex items-center gap-2 text-slate-700 cursor-pointer pt-1 border-t border-amber-200/60 font-medium">
                     <input
@@ -1881,7 +1882,7 @@ function PosTerminalInner() {
                         {isMrpExceeded && (
                           <div className="flex items-center gap-1.5 bg-red-100 text-red-800 border border-red-300 rounded-lg px-2 py-1 text-[10px] font-bold">
                             <span className="animate-pulse">⚠️</span>
-                            <span>MRP Alert: Price ₹{sellingPriceIncl.toFixed(2)} &gt; MRP ₹{mrpVal.toFixed(2)}</span>
+                            <span>MRP Alert: Price {currency.symbol}{sellingPriceIncl.toFixed(2)} &gt; MRP {currency.symbol}{mrpVal.toFixed(2)}</span>
                           </div>
                         )}
                       </div>
@@ -1975,7 +1976,7 @@ function PosTerminalInner() {
                           className="flex-1 min-w-0 text-xs font-semibold text-slate-800 outline-none px-1.5"
                         />
                         <div className="flex items-center bg-slate-50 border border-slate-200 rounded-md px-1 shrink-0">
-                          <span className="text-[10px] text-slate-400 font-bold">₹</span>
+                          <span className="text-[10px] text-slate-400 font-bold">{currency.symbol}</span>
                           <input
                             type="number"
                             min="0"
@@ -2000,7 +2001,7 @@ function PosTerminalInner() {
                         </select>
                         {Number(ch.tax_rate) > 0 && Number(ch.amount) > 0 && (
                           <span className="shrink-0 text-[10px] font-bold text-emerald-600 whitespace-nowrap">
-                            +₹{(Number(ch.amount) * Number(ch.tax_rate) / 100).toFixed(2)}
+                            +{currency.symbol}{(Number(ch.amount) * Number(ch.tax_rate) / 100).toFixed(2)}
                           </span>
                         )}
                         <button
@@ -2231,9 +2232,9 @@ function PosTerminalInner() {
                 </div>
               </div>
               <div className="mb-6">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Discount Amount (₹)</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Discount Amount ({currency.symbol})</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{currency.symbol}</span>
                   <input
                     type="number"
                     value={discountInput}
@@ -2269,9 +2270,9 @@ function PosTerminalInner() {
               </div>
 
               <div className="mb-6">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cash Tendered (₹)</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cash Tendered ({currency.symbol})</label>
                 <div className="relative mb-3">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{currency.symbol}</span>
                   <input
                     type="number"
                     value={cashTendered}
@@ -2347,7 +2348,7 @@ function PosTerminalInner() {
 
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cash Amount</label>
                 <div className="relative mb-4">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{currency.symbol}</span>
                   <input
                     type="number"
                     value={splitCash}
@@ -2366,7 +2367,7 @@ function PosTerminalInner() {
 
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Online / UPI Amount</label>
                 <div className="relative mb-6">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{currency.symbol}</span>
                   <input
                     type="number"
                     value={splitOnline}
@@ -2406,9 +2407,9 @@ function PosTerminalInner() {
               <p className="text-sm text-slate-500 mb-6 font-medium">Please enter your starting cash float to open the shift.</p>
 
               <div className="mb-6 text-left">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Starting Cash ($)</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Starting Cash ({currency.symbol})</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{currency.symbol}</span>
                   <input
                     type="number"
                     value={startingCash}

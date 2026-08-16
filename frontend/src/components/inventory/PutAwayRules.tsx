@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type PutAwayRule, type Warehouse, type StorageLocation } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 type Condition = { field: string; op: string; value: string };
 
@@ -201,6 +202,7 @@ function RuleModal({
 }
 
 export function PutAwayRules() {
+    const { currency, formatCurrency } = useCurrency();
   const [rules, setRules] = useState<PutAwayRule[]>([]);
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);

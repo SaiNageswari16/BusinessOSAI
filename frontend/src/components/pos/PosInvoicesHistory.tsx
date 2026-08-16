@@ -20,10 +20,10 @@ import {
   X,
   MessageCircle
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
 import { posApi, invoicesApi } from "@/lib/api-client";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface LocalInvoiceRecord {
   id: string;
@@ -56,6 +56,7 @@ interface LocalInvoiceRecord {
 }
 
 export function PosInvoicesHistory() {
+    const { currency, formatCurrency } = useCurrency();
   const [invoices, setInvoices] = useState<LocalInvoiceRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -297,23 +298,23 @@ export function PosInvoicesHistory() {
       <html>
         <head>
           <title>Thermal Receipt - ${inv.invoice_number}</title>
-          <style>
-            body { font-family: 'Courier New', Courier, monospace; width: 280px; margin: 0 auto; padding: 10px; color: #000; }
-            h2 { text-align: center; margin: 0 0 4px 0; font-size: 16px; }
-            p { text-align: center; margin: 2px 0; font-size: 10px; }
-            .line { border-bottom: 1px dashed #000; margin: 8px 0; }
-            .total { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-top: 6px; }
-          </style>
-        </head>
-        <body>
-          <h2>BUSINESS OS RETAIL</h2>
-          <p>Main Branch Store · GSTIN: 37AAAAA0000A1Z5</p>
-          <p>Sales Invoice #: ${inv.invoice_number}</p>
-          <p>Date: ${inv.invoice_date} | Rep: ${inv.sales_executive}</p>
-          <div class="line"></div>
-          <div style="font-size:11px; margin-bottom:4px;"><b>Customer:</b> ${inv.customer_name} (${inv.customer_phone || "N/A"})</div>
-          <div class="line"></div>
-          ${itemsHtml}
+                  <style>
+                    body { font-family: 'Courier New', Courier, monospace; width: 280px; margin: 0 auto; padding: 10px; color: #000; }
+                    h2 { text-align: center; margin: 0 0 4px 0; font-size: 16px; }
+                    p { text-align: center; margin: 2px 0; font-size: 10px; }
+                    .line { border-bottom: 1px dashed #000; margin: 8px 0; }
+                    .total { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-top: 6px; }
+                  </style>
+                </head>
+                <body>
+                  <h2>BUSINESS OS RETAIL</h2>
+                  <p>Main Branch Store · GSTIN: 37AAAAA0000A1Z5</p>
+                  <p>Sales Invoice #: ${inv.invoice_number}</p>
+                  <p>Date: ${inv.invoice_date} | Rep: ${inv.sales_executive}</p>
+                  <div class="line"></div>
+                  <div style="font-size:11px; margin-bottom:4px;"><b>Customer:</b> ${inv.customer_name} (${inv.customer_phone || "N/A"})</div>
+                  <div class="line"></div>
+                  ${itemsHtml}
           <div class="line"></div>
           <div style="display:flex; justify-content:space-between; font-size:11px;">
             <span>Subtotal:</span><span>₹${Number(inv.subtotal || 0).toFixed(2)}</span>
@@ -324,9 +325,9 @@ export function PosInvoicesHistory() {
           <div class="total">
             <span>GRAND TOTAL:</span>
             <span>₹${Number(inv.grand_total || 0).toFixed(2)}</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:4px;">
-            <span>Payment Mode: ${inv.payment_mode}</span>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:4px;">
+                    <span>Payment Mode: ${inv.payment_mode}</span>
             <span>Paid: ₹${Number(inv.amount_received || 0).toFixed(2)}</span>
           </div>
           <div class="line"></div>
@@ -708,9 +709,9 @@ export function PosInvoicesHistory() {
                               {it.hsn_code && <span className="block text-[10px] font-mono text-slate-400">HSN: {it.hsn_code}</span>}
                             </td>
                             <td className="p-2.5 text-center font-bold text-slate-700">{qty}</td>
-                            <td className="p-2.5 text-right text-slate-600">₹{price.toFixed(2)}</td>
+                            <td className="p-2.5 text-right text-slate-600">{currency.symbol}{price.toFixed(2)}</td>
                             <td className="p-2.5 text-right font-bold text-slate-900">
-                              ₹{(qty * price).toFixed(2)}
+                              {currency.symbol}{(qty * price).toFixed(2)}
                             </td>
                           </tr>
                         );
@@ -724,21 +725,21 @@ export function PosInvoicesHistory() {
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
                 <div className="flex justify-between text-slate-600">
                   <span>Subtotal Amount:</span>
-                  <span className="font-bold text-slate-800">₹{Number(selectedInvoice.subtotal || 0).toFixed(2)}</span>
+                  <span className="font-bold text-slate-800">{currency.symbol}{Number(selectedInvoice.subtotal || 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>GST Tax Breakdown:</span>
-                  <span className="font-bold text-slate-800">+₹{Number(selectedInvoice.total_tax || 0).toFixed(2)}</span>
+                  <span className="font-bold text-slate-800">+{currency.symbol}{Number(selectedInvoice.total_tax || 0).toFixed(2)}</span>
                 </div>
                 {Number(selectedInvoice.discount_amount || 0) > 0 && (
                   <div className="flex justify-between text-purple-600 font-bold">
                     <span>Discount Applied:</span>
-                    <span>-₹{Number(selectedInvoice.discount_amount || 0).toFixed(2)}</span>
+                    <span>-{currency.symbol}{Number(selectedInvoice.discount_amount || 0).toFixed(2)}</span>
                   </div>
                 )}
                 <div className="pt-2 border-t border-slate-200 flex justify-between text-base font-black text-slate-900">
                   <span>Grand Total Amount:</span>
-                  <span className="text-blue-600">₹{Number(selectedInvoice.grand_total || 0).toFixed(2)}</span>
+                  <span className="text-blue-600">{currency.symbol}{Number(selectedInvoice.grand_total || 0).toFixed(2)}</span>
                 </div>
               </div>
             </div>

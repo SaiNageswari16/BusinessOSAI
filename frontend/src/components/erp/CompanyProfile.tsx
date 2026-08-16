@@ -5,8 +5,10 @@ import {
   Sparkles, CheckCircle2, ShieldCheck, CreditCard, Clock, Store
 } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function CompanyProfile() {
+    const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     companyName: "LazyMonkeyAI Private Limited",

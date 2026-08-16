@@ -6,6 +6,7 @@ import { inventoryApi, InventoryProduct } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ValuationItem {
   value: string;
@@ -13,6 +14,7 @@ interface ValuationItem {
 }
 
 export function StockOverview() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<{
     available: number;
     reserved: number;

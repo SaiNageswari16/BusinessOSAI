@@ -4,6 +4,7 @@ import { Plus, Download, ArrowRight, X, Save, Loader2, RefreshCw } from "lucide-
 import { toast } from "sonner";
 import { inventoryApi } from "@/lib/api-client";
 import { fmt, statusStyle } from "@/components/accounting/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -223,6 +224,7 @@ function PayBillModal({ bill, onClose, onSaved }: { bill: VendorBill; onClose: (
 
 // ─── Main Payables Component ───────────────────────────────────────────────
 export function Payables({ tab = "bills" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [bills, setBills] = useState<VendorBill[]>([]);
   const [payments, setPayments] = useState<VendorPayment[]>([]);
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);

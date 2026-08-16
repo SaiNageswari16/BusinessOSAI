@@ -6,7 +6,7 @@ import { currenciesApi, type Currency } from "@/lib/api-client";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn, AVAILABLE_CURRENCIES, getActiveCurrency, setActiveCurrency } from "@/lib/utils";
-
+import { useCurrency } from "@/hooks/use-currency";
 
 function CurrencyFormModal({ currency, onClose, onSaved }: { currency: Currency | null; onClose: () => void; onSaved: () => void }) {
   const isEdit = !!currency;
@@ -93,6 +93,7 @@ function CurrencyFormModal({ currency, onClose, onSaved }: { currency: Currency 
 }
 
 export function CurrencyManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

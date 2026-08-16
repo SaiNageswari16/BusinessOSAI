@@ -8,6 +8,7 @@ import {
 import { paidAdsApi } from "@/lib/api-client";
 import PaidCampaignBuilder from "./PaidCampaignBuilder";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 type TokenInfo = {
   connected: boolean;
@@ -21,6 +22,7 @@ type TokenInfo = {
 };
 
 function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
+    const { currency, formatCurrency } = useCurrency();
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);

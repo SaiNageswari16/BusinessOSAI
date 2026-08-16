@@ -2,8 +2,10 @@ import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ShoppingCart, Clock, Star, Tag, TrendingUp, RefreshCw, AlertCircle } from "lucide-react";
 import { crmIntelligenceApi, IntelPurchaseBehaviour } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function PurchaseBehaviour() {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelPurchaseBehaviour | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

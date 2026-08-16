@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchStorefrontUserContext, fetchWalletTransactions, topUpWallet } from "@/lib/storefront-api";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/store/wallet")({
   validateSearch: (search: Record<string, unknown>) => {

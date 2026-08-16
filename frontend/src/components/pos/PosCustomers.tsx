@@ -13,8 +13,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function PosCustomers() {
+    const { currency, formatCurrency } = useCurrency();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -135,10 +137,10 @@ export function PosCustomers() {
                     </span>
                   </td>
                   <td className="px-6 py-4 font-mono font-bold text-amber-600">
-                    ₹{Number(cust.credit_limit || 0).toLocaleString()}
+                    {currency.symbol}{Number(cust.credit_limit || 0).toLocaleString()}
                   </td>
                   <td className="px-6 py-4 font-mono font-bold text-emerald-600 text-right">
-                    ₹{Number(cust.lifetime_value || 0).toLocaleString()}
+                    {currency.symbol}{Number(cust.lifetime_value || 0).toLocaleString()}
                   </td>
                 </tr>
               ))
@@ -193,7 +195,7 @@ export function PosCustomers() {
                 <Input value={form.gst_number} onChange={e => setForm({...form, gst_number: e.target.value})} placeholder="36AAACG1234F1Z5" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-bold">Credit Limit (₹)</Label>
+                <Label className="text-xs font-bold">Credit Limit ({currency.symbol})</Label>
                 <Input type="number" value={form.credit_limit} onChange={e => setForm({...form, credit_limit: Number(e.target.value)})} placeholder="50000" />
               </div>
             </div>

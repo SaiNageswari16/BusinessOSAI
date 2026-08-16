@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import {
   crmLeadsApi, type OrganicPost, type FacebookCampaign, type FacebookAdItem
 } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 function formatNumber(n: number | string | null | undefined): string {
   if (n === null || n === undefined) return "0";
@@ -506,6 +507,7 @@ function NotConnected() {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function SocialMediaDashboard() {
+    const { currency, formatCurrency } = useCurrency();
   const [posts, setPosts] = useState<OrganicPost[]>([]);
   const [campaigns, setCampaigns] = useState<FacebookCampaign[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);

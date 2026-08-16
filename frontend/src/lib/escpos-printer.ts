@@ -5,6 +5,7 @@
  */
 
 import { getActiveReceiptTemplate } from './receipt-template-store';
+import { useCurrency } from "@/hooks/use-currency";
 
 // Standard ESC/POS Command Constants
 const ESC = 0x1b;

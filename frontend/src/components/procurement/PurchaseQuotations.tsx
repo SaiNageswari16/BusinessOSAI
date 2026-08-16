@@ -6,8 +6,10 @@ import { Plus, Network, Loader2, Eye } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { PurchaseQuotationForm } from "./PurchaseQuotationForm";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function PurchaseQuotations() {
+    const { currency, formatCurrency } = useCurrency();
   const [quotations, setQuotations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateMode, setIsCreateMode] = useState(false);
@@ -110,7 +112,7 @@ export function PurchaseQuotations() {
                 <div className="text-right">
                   <div className="text-[10px] uppercase font-bold text-primary mb-1">Quotation Value</div>
                   <div className="font-mono font-bold text-lg text-primary">
-                    ₹{rfq.total_amount?.toLocaleString("en-IN")}
+                    {currency.symbol}{rfq.total_amount?.toLocaleString("en-IN")}
                   </div>
                 </div>
               </div>

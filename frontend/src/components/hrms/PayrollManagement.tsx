@@ -4,6 +4,7 @@ import { Plus, Download, FileText, CreditCard, DollarSign, Shield, Loader2 } fro
 import { payrollApi, employeesApi, designationsApi, SalaryStructure, Payslip, Employee, PayGrade, Designation } from "../../lib/api-client";
 import { Briefcase, Settings } from "lucide-react";
 import { Button } from "../ui/button";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -14,6 +15,7 @@ const payslipStatusStyle = (s: string) => {
 };
 
 export function PayrollManagement({ tab = "salary_structure" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [structures, setStructures] = useState<SalaryStructure[]>([]);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -174,14 +176,14 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <p className="text-xs text-muted-foreground mb-4">Designation: <span className="font-semibold text-foreground">{g.designation_name || "Unassigned"}</span></p>
                   
                   <div className="grid grid-cols-3 gap-3 text-xs mb-4">
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Basic</p><p className="font-semibold text-foreground">${g.basic_salary.toLocaleString()}</p></div>
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Allowances</p><p className="font-semibold text-emerald-500">+${allowances.toLocaleString()}</p></div>
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Deductions</p><p className="font-semibold text-red-500">-${deductions.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Basic</p><p className="font-semibold text-foreground">{currency.symbol}{g.basic_salary.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Allowances</p><p className="font-semibold text-emerald-500">+{currency.symbol}{allowances.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Deductions</p><p className="font-semibold text-red-500">-{currency.symbol}{deductions.toLocaleString()}</p></div>
                   </div>
                 </div>
                 <div className="border-t pt-4 flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">Estimated Net Payout:</span>
-                  <span className="text-sm font-bold text-emerald-500">${net.toLocaleString()} / mo</span>
+                  <span className="text-sm font-bold text-emerald-500">{currency.symbol}{net.toLocaleString()} / mo</span>
                 </div>
               </motion.div>
             );
@@ -287,14 +289,14 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <p className="text-xs text-muted-foreground mb-4">Designation: <span className="font-semibold text-foreground">{g.designation_name || "Unassigned"}</span></p>
                   
                   <div className="grid grid-cols-3 gap-3 text-xs mb-4">
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Basic</p><p className="font-semibold text-foreground">${g.basic_salary.toLocaleString()}</p></div>
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Allowances</p><p className="font-semibold text-emerald-500">+${allowances.toLocaleString()}</p></div>
-                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Deductions</p><p className="font-semibold text-red-500">-${deductions.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Basic</p><p className="font-semibold text-foreground">{currency.symbol}{g.basic_salary.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Allowances</p><p className="font-semibold text-emerald-500">+{currency.symbol}{allowances.toLocaleString()}</p></div>
+                    <div className="bg-muted/40 p-2 rounded border"><p className="text-muted-foreground uppercase font-bold text-[9px]">Deductions</p><p className="font-semibold text-red-500">-{currency.symbol}{deductions.toLocaleString()}</p></div>
                   </div>
                 </div>
                 <div className="border-t pt-4 flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">Estimated Net Payout:</span>
-                  <span className="text-sm font-bold text-emerald-500">${net.toLocaleString()} / mo</span>
+                  <span className="text-sm font-bold text-emerald-500">{currency.symbol}{net.toLocaleString()} / mo</span>
                 </div>
               </motion.div>
             );
@@ -465,19 +467,19 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                     <motion.tr key={emp.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.07 }}
                       className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                       <td className="px-6 py-4 font-medium text-foreground">{emp.employee_name}</td>
-                      <td className="px-6 py-4 text-right">${emp.basic_salary.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right text-blue-500">${emp.pf_deduction.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right text-indigo-500">${emp.pf_deduction.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right font-bold text-foreground">${(emp.pf_deduction * 2).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right">{currency.symbol}{emp.basic_salary.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right text-blue-500">{currency.symbol}{emp.pf_deduction.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right text-indigo-500">{currency.symbol}{emp.pf_deduction.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right font-bold text-foreground">{currency.symbol}{(emp.pf_deduction * 2).toLocaleString()}</td>
                     </motion.tr>
                   ))}
                   {structures.length > 0 && (
                     <tr className="bg-muted/30 font-semibold border-t border-border/50">
                       <td className="px-6 py-4">Total ECR PF</td>
                       <td className="px-6 py-4 text-right"></td>
-                      <td className="px-6 py-4 text-right text-blue-500">${structures.reduce((s, e) => s + e.pf_deduction, 0).toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right text-indigo-500">${structures.reduce((s, e) => s + e.pf_deduction, 0).toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right text-foreground">${totalPF.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right text-blue-500">{currency.symbol}{structures.reduce((s, e) => s + e.pf_deduction, 0).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right text-indigo-500">{currency.symbol}{structures.reduce((s, e) => s + e.pf_deduction, 0).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right text-foreground">{currency.symbol}{totalPF.toLocaleString()}</td>
                     </tr>
                   )}
                 </tbody>
@@ -515,9 +517,9 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                     <motion.tr key={emp.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.07 }}
                       className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                       <td className="px-6 py-4 font-medium text-foreground">{emp.employee_name}</td>
-                      <td className="px-6 py-4 text-right text-orange-500">${emp.esi_deduction.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right text-amber-500">${(emp.esi_deduction * 4.3).toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right font-bold">${(emp.esi_deduction * 5.3).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right text-orange-500">{currency.symbol}{emp.esi_deduction.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right text-amber-500">{currency.symbol}{(emp.esi_deduction * 4.3).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right font-bold">{currency.symbol}{(emp.esi_deduction * 5.3).toLocaleString()}</td>
                     </motion.tr>
                   ))}
                 </tbody>
@@ -556,8 +558,8 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                       className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                       <td className="px-6 py-4 font-medium text-foreground">{emp.employee_name}</td>
                       <td className="px-6 py-4 text-muted-foreground">{emp.department || "N/A"}</td>
-                      <td className="px-6 py-4 text-right font-medium text-red-400">${emp.tds_deduction.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right font-bold">${(emp.tds_deduction * 12).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right font-medium text-red-400">{currency.symbol}{emp.tds_deduction.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right font-bold">{currency.symbol}{(emp.tds_deduction * 12).toLocaleString()}</td>
                     </motion.tr>
                   ))}
                 </tbody>
@@ -603,10 +605,10 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                         <p className="text-[10px] text-muted-foreground">{ps.employee_code}</p>
                       </td>
                       <td className="px-6 py-4 text-center font-medium text-muted-foreground">{ps.year}-{ps.month.toString().padStart(2, '0')}</td>
-                      <td className="px-6 py-4 text-right">${ps.basic_salary.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right">${ps.gross_salary.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right text-red-400">-${(ps.pf_deduction + ps.esi_deduction + ps.tds_deduction + ps.other_deductions).toLocaleString()}</td>
-                      <td className="px-6 py-4 text-right font-bold text-emerald-500">${ps.net_salary.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right">{currency.symbol}{ps.basic_salary.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right">{currency.symbol}{ps.gross_salary.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right text-red-400">-{currency.symbol}{(ps.pf_deduction + ps.esi_deduction + ps.tds_deduction + ps.other_deductions).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right font-bold text-emerald-500">{currency.symbol}{ps.net_salary.toLocaleString()}</td>
                       <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-medium ${payslipStatusStyle(ps.status)}`}>{ps.status}</span></td>
                       <td className="px-6 py-4 text-center"><a href={ps.pdf_url || "#"} className="text-primary hover:underline font-bold text-xs" download>Download PDF</a></td>
                     </motion.tr>
@@ -652,11 +654,11 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                     className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                     <td className="px-6 py-4 font-semibold text-foreground">{emp.employee_name}</td>
                     <td className="px-6 py-4"><p className="font-semibold text-foreground text-xs">{emp.designation}</p><p className="text-[10px] text-muted-foreground">{emp.department}</p></td>
-                    <td className="px-6 py-4 text-right">${emp.basic_salary.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right text-muted-foreground">${emp.hra.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right text-muted-foreground">${emp.other_allowances.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right text-red-400">-${(emp.pf_deduction + emp.esi_deduction + emp.tds_deduction + emp.other_deductions).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right font-bold text-emerald-500">${((emp.basic_salary + emp.hra + emp.other_allowances) - (emp.pf_deduction + emp.esi_deduction + emp.tds_deduction + emp.other_deductions)).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right">{currency.symbol}{emp.basic_salary.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right text-muted-foreground">{currency.symbol}{emp.hra.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right text-muted-foreground">{currency.symbol}{emp.other_allowances.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right text-red-400">-{currency.symbol}{(emp.pf_deduction + emp.esi_deduction + emp.tds_deduction + emp.other_deductions).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right font-bold text-emerald-500">{currency.symbol}{((emp.basic_salary + emp.hra + emp.other_allowances) - (emp.pf_deduction + emp.esi_deduction + emp.tds_deduction + emp.other_deductions)).toLocaleString()}</td>
                   </motion.tr>
                 ))}
               </tbody>

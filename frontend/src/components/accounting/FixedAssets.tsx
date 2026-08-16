@@ -4,6 +4,7 @@ import { Plus, Download, FolderTree, X, Save, Loader2, Search } from "lucide-rea
 import { toast } from "sonner";
 import { fixedAssetsApi, FixedAsset, FixedAssetCategory, downloadCsv } from "@/lib/api-client";
 import { fmt, statusStyle } from "@/components/accounting/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
 
@@ -203,6 +204,7 @@ function CategoryFormModal({ onClose, onSaved }: { onClose: () => void; onSaved:
 
 // ─── Main FixedAssets Component ───────────────────────────────────────────
 export function FixedAssets({ tab = "fixed_assets" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [categories, setCategories] = useState<FixedAssetCategory[]>([]);
   const [loading, setLoading] = useState(false);

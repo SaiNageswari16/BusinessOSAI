@@ -24,9 +24,9 @@ import {
   Sparkles,
   FileUp
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
 import { inventoryApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface RFQItem {
   id: string;
@@ -57,6 +57,7 @@ interface PurchaseQuotationFormProps {
 }
 
 export function PurchaseQuotationForm({ onClose, onSaved, initialData }: PurchaseQuotationFormProps) {
+    const { currency, formatCurrency } = useCurrency();
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -395,7 +396,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                 <option value="">-- Select Approved Requisition (PR) --</option>
                 {approvedPRs.map((pr) => (
                   <option key={pr.id} value={pr.id}>
-                    {pr.request_number || pr.id.slice(0, 8)} - Est. ₹{pr.total_amount || 0} ({pr.status || "Approved"})
+                    {pr.request_number || pr.id.slice(0, 8)} - Est. {currency.symbol}{pr.total_amount || 0} ({pr.status || "Approved"})
                   </option>
                 ))}
               </select>
@@ -635,7 +636,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                 <th className="px-3 py-3 w-10 text-center">Select</th>
                 <th className="px-3 py-3 min-w-[180px]">Vendor / Supplier Name</th>
                 <th className="px-3 py-3 min-w-[170px]">OCR Upload / Response</th>
-                <th className="px-3 py-3 w-32 text-right">Quoted Unit Price (₹)</th>
+                <th className="px-3 py-3 w-32 text-right">Quoted Unit Price ({currency.symbol})</th>
                 <th className="px-3 py-3 w-32 text-right">Delivery Lead Time</th>
                 <th className="px-3 py-3 w-36">Payment Terms Offered</th>
                 <th className="px-3 py-3 w-36 text-center">Award Status</th>

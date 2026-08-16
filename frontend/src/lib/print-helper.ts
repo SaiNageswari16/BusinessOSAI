@@ -1,4 +1,5 @@
 import { getActiveReceiptTemplate } from './receipt-template-store';
+import { useCurrency } from "@/hooks/use-currency";
 
 export function triggerThermalPrint(customPaperWidth?: string) {
   if (typeof window === 'undefined') return;
@@ -48,7 +49,7 @@ export function triggerThermalPrint(customPaperWidth?: string) {
         left: 0 !important;
         top: 0 !important;
         width: ${printableWidth} !important;
-        max-width: ${printableWidth} !important;
+              max-width: ${printableWidth} !important;
         padding: 1mm 2mm !important;
         margin: 0 !important;
         background: #ffffff !important;

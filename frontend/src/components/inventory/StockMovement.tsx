@@ -8,8 +8,10 @@ import {
 } from "lucide-react";
 import { inventoryApi, Warehouse, StockMovement as StockMovementType } from "../../lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function StockMovement() {
+    const { currency, formatCurrency } = useCurrency();
   const [movements, setMovements] = useState<StockMovementType[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +60,7 @@ export function StockMovement() {
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border shadow-sm">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
             <History className="size-6 text-indigo-600" /> Stock Movement Audit & Activity Ledger

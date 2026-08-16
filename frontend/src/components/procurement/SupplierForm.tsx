@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { inventoryApi } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface SupplierFormProps {
   supplierId?: string | null;
@@ -27,6 +28,7 @@ interface SupplierFormProps {
 }
 
 export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps) {
+    const { currency, formatCurrency } = useCurrency();
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -447,8 +449,8 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
 
               <div>
                 <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                  Credit Limit Amount (₹)
-                </label>
+                  Credit Limit Amount ({currency.symbol})
+                                                  </label>
                 <input
                   type="number"
                   value={creditLimit}

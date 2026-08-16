@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { crmCampaignsApi, EmailCampaign, EmailTemplate } from "@/lib/api-client";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useCurrency } from "@/hooks/use-currency";
 
 // Standard pre-designed system templates
 const standardTemplates = [
@@ -56,6 +57,7 @@ const standardTemplates = [
 ];
 
 export function EmailCampaigns() {
+    const { currency, formatCurrency } = useCurrency();
   const [activeTab, setActiveTab] = useState<"campaigns" | "templates">("campaigns");
   const [loading, setLoading] = useState(false);
   const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);

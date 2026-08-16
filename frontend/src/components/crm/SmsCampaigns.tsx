@@ -2,6 +2,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Plus, Send, MessageSquare, CheckCheck, Clock, Search, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const smsCampaigns = [
   { id: "SMS-501", name: "Flash Sale Alert", type: "Marketing", recipients: 8450, delivered: 8201, status: "Sent", date: "2026-07-01", message: "🔥 Flash Sale! Get 30% off all items for the next 4 hours..." },
@@ -12,6 +13,7 @@ const smsCampaigns = [
 ];
 
 export function SmsCampaigns() {
+    const { currency, formatCurrency } = useCurrency();
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

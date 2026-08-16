@@ -3,6 +3,7 @@ import {
   Settings, Bot, Tag, Smartphone, Coffee, ShoppingBag, Heart, 
   Home, Wrench, Gift, Package, RefreshCw
 } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 // --- STORE & SESSION ---
 export const posStore = {

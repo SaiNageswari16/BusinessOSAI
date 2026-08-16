@@ -9,7 +9,7 @@ import {
 import { inventoryApi, GoodsIssue as GoodsIssueType, Warehouse, InventoryProduct } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
 import { toast } from "sonner";
-import { formatCurrency } from "../../lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface IssueItemInput {
   product_id: string;
@@ -21,6 +21,7 @@ interface IssueItemInput {
 }
 
 export function GoodsIssue() {
+    const { currency, formatCurrency } = useCurrency();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [issues, setIssues] = useState<GoodsIssueType[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -174,7 +175,7 @@ export function GoodsIssue() {
       {viewMode === "list" ? (
         <>
           {/* List Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
                 <Send className="size-6 text-rose-600" /> Goods Issue Vouchers
@@ -301,8 +302,8 @@ export function GoodsIssue() {
                                           <th className="px-4 py-2.5">#</th>
                                           <th className="px-4 py-2.5">Product ID / Name</th>
                                           <th className="px-4 py-2.5 text-center">Qty Issued</th>
-                                          <th className="px-4 py-2.5 text-right">Unit Value (₹)</th>
-                                          <th className="px-4 py-2.5 text-right">Subtotal (₹)</th>
+                                          <th className="px-4 py-2.5 text-right">Unit Value ({currency.symbol})</th>
+                                          <th className="px-4 py-2.5 text-right">Subtotal ({currency.symbol})</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100 bg-white">
@@ -456,8 +457,8 @@ export function GoodsIssue() {
                         <th className="px-4 py-3">#</th>
                         <th className="px-4 py-3">Product Item</th>
                         <th className="px-4 py-3 text-center">Qty Issued</th>
-                        <th className="px-4 py-3 text-right">Unit Price (₹)</th>
-                        <th className="px-4 py-3 text-right">Dispatched Value (₹)</th>
+                        <th className="px-4 py-3 text-right">Unit Price ({currency.symbol})</th>
+                        <th className="px-4 py-3 text-right">Dispatched Value ({currency.symbol})</th>
                         <th className="px-3 py-3 text-center"></th>
                       </tr>
                     </thead>

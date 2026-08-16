@@ -1,8 +1,10 @@
 import { Home, Search, ShoppingBag, User, Heart } from "lucide-react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { useStoreCart } from "@/contexts/StoreCartContext";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function MobileBottomNav() {
+    const { currency, formatCurrency } = useCurrency();
   const location = useLocation();
   const { cartCount } = useStoreCart();
 

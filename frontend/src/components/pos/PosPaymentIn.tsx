@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { crmApi, invoicesApi, procurementApi, inventoryApi, crmWalletApi } from "../../lib/api-client";
-import { formatCurrency } from "../../lib/utils";
 import { 
   Search, 
   HelpCircle, 
@@ -23,10 +22,12 @@ import {
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
+import { useCurrency } from "@/hooks/use-currency";
 
 // Removed dummy PAST_PAYMENTS in favor of real backend data
 
 export function PosPaymentIn() {
+    const { currency, formatCurrency } = useCurrency();
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
   
   const [parties, setParties] = useState<any[]>([]);
@@ -717,7 +718,7 @@ export function PosPaymentIn() {
             <div className="col-span-1">
               <label className="text-xs font-bold text-slate-600 block mb-1">Amount <span className="text-rose-500">*</span></label>
               <div className="flex">
-                <span className="h-10 px-3 bg-slate-50 border border-r-0 border-slate-200 rounded-l-lg flex items-center text-slate-500 text-sm">₹</span>
+                <span className="h-10 px-3 bg-slate-50 border border-r-0 border-slate-200 rounded-l-lg flex items-center text-slate-500 text-sm">{currency.symbol}</span>
                 <input
                   type="number"
                   value={paymentAmount}
@@ -747,7 +748,7 @@ export function PosPaymentIn() {
           {/* Net Amount Box */}
           <div className="bg-indigo-50/50 border border-indigo-100 rounded-lg p-4 flex justify-between items-center mt-2">
             <span className="text-sm font-semibold text-indigo-900">Net Amount</span>
-            <span className="text-xl font-black text-indigo-600">₹ {(Number(paymentAmount) || 0).toFixed(2)}</span>
+            <span className="text-xl font-black text-indigo-600">{currency.symbol}{(Number(paymentAmount) || 0).toFixed(2)}</span>
           </div>
 
           {/* Notes */}

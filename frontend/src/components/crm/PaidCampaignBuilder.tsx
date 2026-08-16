@@ -9,6 +9,7 @@ import {
 import { paidAdsApi } from "@/lib/api-client";
 import type { CreatePaidAdRequest } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -233,6 +234,7 @@ export default function PaidCampaignBuilder({
   initialCaption?: string;
   initialCampaignName?: string;
 }) {
+    const { currency, formatCurrency } = useCurrency();
   // Step: 0 = Campaign, 1 = Creative, 2 = Budget, 3 = Review
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -704,7 +706,7 @@ export default function PaidCampaignBuilder({
                           : "bg-muted text-muted-foreground hover:bg-muted/80"}
                       `}
                     >
-                      ₹{rupees.toLocaleString("en-IN")}
+                      {currency.symbol}{rupees.toLocaleString("en-IN")}
                     </button>
                   );
                 })}
@@ -869,7 +871,7 @@ function ReviewRow({
         className={`
           text-[11px] font-semibold text-right break-all
           ${small ? "text-[10px]" : ""}
-          ${mono ? "font-mono" : ""}
+                            ${mono ? "font-mono" : ""}
         `}
       >
         {value || <span className="text-muted-foreground font-normal">—</span>}

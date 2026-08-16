@@ -4,6 +4,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Search, Plus, CalendarDays, Edit2, Trash2, Loader2, Clock, Star } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 const CALENDAR_TYPES = ["standard", "shift", "flexi"];
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -90,6 +91,7 @@ function CalendarDialog({ open, onClose, initial, onSaved }: {
 }
 
 export function CalendarsAndShifts() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<WorkCalendar[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

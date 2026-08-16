@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { companiesApi, branchesApi, taxConfigurationsApi, type Company, type Branch, type TaxConfiguration } from "@/lib/api-client";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCurrency } from "@/hooks/use-currency";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -245,6 +246,7 @@ function DeleteConfirmModal({ company, onClose, onDeleted }: { company: Company;
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function CompanyManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

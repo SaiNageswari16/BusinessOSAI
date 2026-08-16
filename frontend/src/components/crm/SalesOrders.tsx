@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface AdditionalChargeItem {
   name: string;
@@ -22,6 +23,7 @@ interface AdditionalChargeItem {
 }
 
 export function SalesOrders() {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -258,7 +260,7 @@ export function SalesOrders() {
 
                 <div className="p-3 bg-slate-50 border rounded-xl space-y-3">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-slate-700">Order Subtotal (₹)</Label>
+                    <Label className="text-xs font-bold text-slate-700">Order Subtotal ({currency.symbol})</Label>
                     <Button
                       type="button"
                       variant="outline"
@@ -284,13 +286,13 @@ export function SalesOrders() {
                     <span className="flex items-center gap-1.5">
                       <Truck className="size-4 text-emerald-600" /> Additional Charges (Transport, Freight, etc.)
                     </span>
-                    <span className="font-mono text-emerald-700">+₹{totalChargesAmount.toFixed(2)}</span>
+                    <span className="font-mono text-emerald-700">+{currency.symbol}{totalChargesAmount.toFixed(2)}</span>
                   </div>
                   {additionalCharges.map((ch, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-white border border-emerald-100 px-3 py-1.5 rounded-lg text-xs font-semibold">
                       <span className="text-slate-700">{ch.name}</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-slate-900">₹{ch.amount}</span>
+                        <span className="font-mono font-bold text-slate-900">{currency.symbol}{ch.amount}</span>
                         <button type="button" onClick={() => handleRemoveCharge(idx)} className="text-rose-500 hover:text-rose-700 p-0.5">
                           <X className="size-3.5" />
                         </button>
@@ -368,7 +370,7 @@ export function SalesOrders() {
                 <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between text-xs font-bold">
                   <div>
                     <div className="text-slate-400 font-normal">Calculated Grand Total:</div>
-                    <div className="text-xl font-bold font-mono text-emerald-400">₹{calculatedGrandTotal.toFixed(2)}</div>
+                    <div className="text-xl font-bold font-mono text-emerald-400">{currency.symbol}{calculatedGrandTotal.toFixed(2)}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-amber-400 flex items-center gap-1 justify-end">
@@ -481,7 +483,7 @@ export function SalesOrders() {
                               {o.payment_status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-right font-bold font-mono">₹{Number(o.total || 0).toFixed(2)}</td>
+                          <td className="px-6 py-4 text-right font-bold font-mono">{currency.symbol}{Number(o.total || 0).toFixed(2)}</td>
                           <td className="px-6 py-4 text-right">
                             <Button 
                               variant="outline" 
@@ -532,8 +534,8 @@ export function SalesOrders() {
                                           <th className="px-4 py-2.5">#</th>
                                           <th className="px-4 py-2.5">Product Name</th>
                                           <th className="px-4 py-2.5 text-center">Ordered Qty</th>
-                                          <th className="px-4 py-2.5 text-right">Unit Price (₹)</th>
-                                          <th className="px-4 py-2.5 text-right">Subtotal (₹)</th>
+                                          <th className="px-4 py-2.5 text-right">Unit Price ({currency.symbol})</th>
+                                          <th className="px-4 py-2.5 text-right">Subtotal ({currency.symbol})</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100 bg-white">
@@ -546,8 +548,8 @@ export function SalesOrders() {
                                                 <td className="px-4 py-2 text-xs font-mono font-bold text-slate-400">{i + 1}</td>
                                                 <td className="px-4 py-2 font-semibold text-slate-800">{it.product_name || it.name || "Sales Product"}</td>
                                                 <td className="px-4 py-2 text-center font-bold text-indigo-900">{qty} Units</td>
-                                                <td className="px-4 py-2 text-right text-slate-600">₹{price.toFixed(2)}</td>
-                                                <td className="px-4 py-2 text-right font-black text-slate-900">₹{(qty * price).toFixed(2)}</td>
+                                                <td className="px-4 py-2 text-right text-slate-600">{currency.symbol}{price.toFixed(2)}</td>
+                                                <td className="px-4 py-2 text-right font-black text-slate-900">{currency.symbol}{(qty * price).toFixed(2)}</td>
                                               </tr>
                                             );
                                           })

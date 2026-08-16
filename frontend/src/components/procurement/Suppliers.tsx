@@ -5,6 +5,7 @@ import { Search, Plus, Building2, Edit2, Trash, Star, Loader2, Store } from "luc
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { SupplierForm } from "./SupplierForm";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface SupplierItem {
   id: string;
@@ -21,6 +22,7 @@ interface SupplierItem {
 }
 
 export function Suppliers() {
+    const { currency, formatCurrency } = useCurrency();
   const [suppliers, setSuppliers] = useState<SupplierItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -178,7 +180,7 @@ export function Suppliers() {
                       </div>
                     </td>
                     <td className="py-4 px-6 font-bold">
-                      ₹{supplier.credit_limit.toLocaleString("en-IN")}
+                      {currency.symbol}{supplier.credit_limit.toLocaleString("en-IN")}
                     </td>
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-1 font-bold text-amber-500">

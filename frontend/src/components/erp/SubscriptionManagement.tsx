@@ -9,6 +9,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -36,6 +37,7 @@ interface PlatformAuditLog {
 }
 
 export function SubscriptionManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const { user, accessToken } = useAuth();
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
   const [auditLogs, setAuditLogs] = useState<PlatformAuditLog[]>([]);
@@ -376,7 +378,7 @@ export function SubscriptionManagement() {
             <div className="flex items-center gap-2 mb-2 text-primary font-bold">
               <Sparkles className="size-5" /> Enterprise Edition
             </div>
-            <h3 className="text-3xl font-black mb-1">$4,999<span className="text-sm text-muted-foreground font-medium"> / month</span></h3>
+            <h3 className="text-3xl font-black mb-1">{currency.symbol}4,999<span className="text-sm text-muted-foreground font-medium"> / month</span></h3>
             <p className="text-sm text-muted-foreground">Billed annually. Next billing date: <strong>March 1, 2027</strong></p>
           </div>
           

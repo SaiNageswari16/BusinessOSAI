@@ -3,12 +3,14 @@ import { Heart } from "lucide-react";
 import { useStoreCart } from "@/contexts/StoreCartContext";
 import { useWishlist } from "@/contexts/StoreWishlistContext";
 import { StorefrontProduct } from "@/lib/storefront-api";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ProductGridProps {
   products: StorefrontProduct[];
 }
 
 export function ProductGrid({ products }: ProductGridProps) {
+    const { currency, formatCurrency } = useCurrency();
   const { addToCart } = useStoreCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
   const navigate = useNavigate();
@@ -90,7 +92,7 @@ export function ProductGrid({ products }: ProductGridProps) {
                 <h3 className="text-base font-bold text-gray-900 line-clamp-1 flex-1 pr-2 group-hover:text-[#003d29] transition-colors">
                   {product.name}
                 </h3>
-                <span className="text-base font-bold text-gray-900 flex-shrink-0">${price}</span>
+                <span className="text-base font-bold text-gray-900 flex-shrink-0">{currency.symbol}{price}</span>
               </div>
 
               <div className="text-xs text-gray-500 mb-2 line-clamp-1">

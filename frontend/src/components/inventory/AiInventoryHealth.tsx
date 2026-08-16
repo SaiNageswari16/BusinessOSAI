@@ -2,8 +2,10 @@ import React from "react";
 import { Card } from "../ui/card";
 import { Sparkles, Activity, ShieldCheck, DollarSign, ArrowDown, ArrowUp, Skull, Zap } from "lucide-react";
 import { Button } from "../ui/button";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function AiInventoryHealth() {
+    const { currency, formatCurrency } = useCurrency();
   const kpis = [
     { title: "Inventory Health Score", value: "92/100", icon: <Activity className="size-5 text-indigo-500" />, trend: "+4 from last month" },
     { title: "Stock Accuracy", value: "99.8%", icon: <ShieldCheck className="size-5 text-emerald-500" />, trend: "Consistent" },

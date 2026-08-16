@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ExpirySummary, type ExpiryBatchItem } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 type Bucket = "expired" | "expiring_30" | "expiring_90" | null;
 
@@ -20,6 +21,7 @@ function daysColor(d: number | null): string {
 }
 
 export function ExpiryManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const [summary, setSummary] = useState<ExpirySummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [activeBucket, setActiveBucket] = useState<Bucket>(null);

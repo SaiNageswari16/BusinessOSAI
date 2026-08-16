@@ -5,6 +5,7 @@
  */
 import { useMemo } from "react";
 import { getHardwareScannableBarcode } from "./code128";
+import { useCurrency } from "@/hooks/use-currency";
 
 export interface ProductBarcodeLike {
   product_name: string;
@@ -33,6 +34,7 @@ export function RealBarcodeSvg({
   height?: number;
   unitPx?: number;
 }) {
+    const { currency, formatCurrency } = useCurrency();
   const bars = useMemo(
     () => getHardwareScannableBarcode(code || "8901234567890"),
     [code]
@@ -162,7 +164,7 @@ export function SingleBarcodeLabelCard({
                 isPrint ? "text-[10px]" : "text-xs"
               }`}
             >
-              ₹{Number(item.selling_price).toFixed(2)}
+              {currency.symbol}{Number(item.selling_price).toFixed(2)}
             </span>
           )}
           {f.showMRP && item.mrp != null && (
@@ -171,7 +173,7 @@ export function SingleBarcodeLabelCard({
                 isPrint ? "text-[7.5px]" : "text-[8.5px]"
               }`}
             >
-              MRP: ₹{Number(item.mrp).toFixed(2)}
+              MRP: {currency.symbol}{Number(item.mrp).toFixed(2)}
             </span>
           )}
         </div>

@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCurrency } from "@/hooks/use-currency";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -144,6 +145,7 @@ function MfaPolicyModal({
 }
 
 export function MfaPolicies() {
+    const { currency, formatCurrency } = useCurrency();
   const { accessToken } = useAuth();
   const [policies, setPolicies] = useState<MfaPolicy[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);

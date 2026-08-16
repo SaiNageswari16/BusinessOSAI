@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Package } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/store/orders")({
   component: OrdersPage,

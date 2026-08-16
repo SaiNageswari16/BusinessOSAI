@@ -28,8 +28,10 @@ import {
 } from '../../lib/receipt-template-store';
 import { toast } from 'sonner';
 import { triggerThermalPrint } from '../../lib/print-helper';
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ReceiptTemplates() {
+    const { currency, formatCurrency } = useCurrency();
   const [template, setTemplate] = useState<ReceiptTemplate>(DEFAULT_RECEIPT_TEMPLATE);
   const [templatesList, setTemplatesList] = useState<ReceiptTemplate[]>([]);
   const [isSaved, setIsSaved] = useState(false);
@@ -386,23 +388,23 @@ export function ReceiptTemplates() {
               <div className="border-t border-black pt-1">
                 <div className="flex justify-between text-[10px]">
                   <span>Subtotal (4 items):</span>
-                  <span>₹564.96</span>
+                  <span>{currency.symbol}564.96</span>
                 </div>
                 {template.showItemDiscount && (
                   <div className="flex justify-between text-[10px]">
                     <span>Discount Savings:</span>
-                    <span>-₹24.96</span>
+                    <span>-{currency.symbol}24.96</span>
                   </div>
                 )}
                 {template.showTaxBreakdown && (
                   <>
                     <div className="flex justify-between text-[9.5px] text-slate-600">
                       <span>CGST @9%:</span>
-                      <span>₹24.30</span>
+                      <span>{currency.symbol}24.30</span>
                     </div>
                     <div className="flex justify-between text-[9.5px] text-slate-600">
                       <span>SGST @9%:</span>
-                      <span>₹24.30</span>
+                      <span>{currency.symbol}24.30</span>
                     </div>
                   </>
                 )}
@@ -410,7 +412,7 @@ export function ReceiptTemplates() {
 
               <div className="flex justify-between font-extrabold text-sm border-y-2 border-black py-1 my-2">
                 <span>GRAND TOTAL:</span>
-                <span>₹588.60</span>
+                <span>{currency.symbol}588.60</span>
               </div>
 
               {template.showPaymentMode && (

@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Printer, Download, X, CheckCircle } from 'lucide-react';
 import { getActiveInvoicePrintTemplate } from '../../lib/receipt-template-store';
+import { useCurrency } from "@/hooks/use-currency";
 
 export interface FullInvoiceData {
   invoice_number?: string;
@@ -56,6 +57,7 @@ export function FullInvoicePrinter({
   autoPrint = false,
   customTemplate,
 }: FullInvoicePrinterProps) {
+    const { currency, formatCurrency } = useCurrency();
   const printContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -386,12 +388,12 @@ export function FullInvoicePrinter({
                           <td className="p-3">
                             <span className="font-bold text-slate-900 block">{item.product_name || 'Item'}</span>
                             {mrpPrice > unitPrice && (
-                              <span className="text-[10px] text-slate-500">MRP: ₹{mrpPrice.toFixed(2)}</span>
+                              <span className="text-[10px] text-slate-500">MRP: {currency.symbol}{mrpPrice.toFixed(2)}</span>
                             )}
                           </td>
                           {f.showHSN && <td className="p-3 text-center font-mono text-slate-600">{item.hsn_code || '9988'}</td>}
                           <td className="p-3 text-center font-extrabold text-slate-800">{qty}</td>
-                          <td className="p-3 text-right font-medium text-slate-700">₹{unitPrice.toFixed(2)}</td>
+                          <td className="p-3 text-right font-medium text-slate-700">{currency.symbol}{unitPrice.toFixed(2)}</td>
                           <td className="p-3 text-right text-emerald-600 font-semibold">
                             {disc > 0 ? `-₹${disc.toFixed(2)}` : '—'}
                           </td>
@@ -400,7 +402,7 @@ export function FullInvoicePrinter({
                               {taxRate ? `${taxRate}%` : '5%'}
                             </td>
                           )}
-                          <td className="p-3 text-right font-bold text-slate-900">₹{netAmount.toFixed(2)}</td>
+                          <td className="p-3 text-right font-bold text-slate-900">{currency.symbol}{netAmount.toFixed(2)}</td>
                         </tr>
                       );
                     })}
@@ -433,13 +435,13 @@ export function FullInvoicePrinter({
                 <div className="md:col-span-5 bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2.5 text-xs text-slate-700">
                   <div className="flex justify-between font-semibold">
                     <span>Taxable Subtotal:</span>
-                    <span className="text-slate-900">₹{Number(subtotal || 0).toFixed(2)}</span>
+                    <span className="text-slate-900">{currency.symbol}{Number(subtotal || 0).toFixed(2)}</span>
                   </div>
 
                   {totalDiscount > 0 && (
                     <div className="flex justify-between text-emerald-600 font-semibold">
                       <span>Total Savings / Discount:</span>
-                      <span>-₹{Number(totalDiscount || 0).toFixed(2)}</span>
+                      <span>-{currency.symbol}{Number(totalDiscount || 0).toFixed(2)}</span>
                     </div>
                   )}
 
@@ -447,11 +449,11 @@ export function FullInvoicePrinter({
                     <>
                       <div className="flex justify-between text-slate-500">
                         <span>CGST (2.5%):</span>
-                        <span>₹{Number(cgstAmount || 0).toFixed(2)}</span>
+                        <span>{currency.symbol}{Number(cgstAmount || 0).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>SGST (2.5%):</span>
-                        <span>₹{Number(sgstAmount || 0).toFixed(2)}</span>
+                        <span>{currency.symbol}{Number(sgstAmount || 0).toFixed(2)}</span>
                       </div>
                     </>
                   )}
@@ -460,7 +462,7 @@ export function FullInvoicePrinter({
                   {(invoice.additional_charges || []).filter(c => Number(c.amount) > 0).map((charge, idx) => (
                     <div key={idx} className="flex justify-between text-slate-600">
                       <span>{charge.name}:</span>
-                      <span>+₹{Number(charge.amount || 0).toFixed(2)}</span>
+                      <span>+{currency.symbol}{Number(charge.amount || 0).toFixed(2)}</span>
                     </div>
                   ))}
 
@@ -468,7 +470,7 @@ export function FullInvoicePrinter({
                   {invoice.round_off !== undefined && invoice.round_off !== 0 && (
                     <div className="flex justify-between text-slate-500 italic">
                       <span>Round Off:</span>
-                      <span>{Number(invoice.round_off || 0) >= 0 ? '+' : ''}₹{Number(invoice.round_off || 0).toFixed(2)}</span>
+                      <span>{Number(invoice.round_off || 0) >= 0 ? '+' : ''}{currency.symbol}{Number(invoice.round_off || 0).toFixed(2)}</span>
                     </div>
                   )}
 
@@ -478,7 +480,7 @@ export function FullInvoicePrinter({
                   >
                     <span>GRAND TOTAL:</span>
                     <span className="text-base" style={{ color: primaryColor }}>
-                      ₹{Number(grandTotal || 0).toFixed(2)}
+                      {currency.symbol}{Number(grandTotal || 0).toFixed(2)}
                     </span>
                   </div>
 
@@ -487,17 +489,17 @@ export function FullInvoicePrinter({
                     <>
                       <div className="flex justify-between text-slate-600 font-semibold pt-1">
                         <span>Amount Received:</span>
-                        <span className="text-emerald-700">₹{Number(invoice.amount_received).toFixed(2)}</span>
+                        <span className="text-emerald-700">{currency.symbol}{Number(invoice.amount_received).toFixed(2)}</span>
                       </div>
                       {Number(invoice.amount_received) >= grandTotal ? (
                         <div className="flex justify-between text-emerald-600 font-bold">
                           <span>Change Returned:</span>
-                          <span>₹{(Number(invoice.amount_received) - grandTotal).toFixed(2)}</span>
+                          <span>{currency.symbol}{(Number(invoice.amount_received) - grandTotal).toFixed(2)}</span>
                         </div>
                       ) : (
                         <div className="flex justify-between text-red-600 font-bold">
                           <span>Balance Due:</span>
-                          <span>₹{(grandTotal - Number(invoice.amount_received)).toFixed(2)}</span>
+                          <span>{currency.symbol}{(grandTotal - Number(invoice.amount_received)).toFixed(2)}</span>
                         </div>
                       )}
                     </>

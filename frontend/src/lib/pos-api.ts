@@ -1,3 +1,5 @@
+import { useCurrency } from "@/hooks/use-currency";
+
 export interface ApiError {
   status: number;
   detail: string;

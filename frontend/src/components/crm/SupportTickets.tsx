@@ -5,12 +5,14 @@ import { Plus, Search, AlertCircle, Clock, CheckCircle2, MoreHorizontal, Message
 import { crmTicketsApi, type CrmTicket } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/tenant-context";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface Props {
   tab?: string;
 }
 
 export function SupportTickets({ tab = "active_tickets" }: Props) {
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
   const [searchTerm, setSearchTerm] = useState("");

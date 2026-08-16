@@ -6,6 +6,7 @@ import { inventoryApi, CycleCount, Warehouse } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface AuditItemInput {
   product_id: string;
@@ -15,6 +16,7 @@ interface AuditItemInput {
 }
 
 export function PhysicalStockAudit() {
+    const { currency, formatCurrency } = useCurrency();
   const [audits, setAudits] = useState<CycleCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

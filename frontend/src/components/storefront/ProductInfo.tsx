@@ -4,12 +4,14 @@ import { useWishlist } from "@/contexts/StoreWishlistContext";
 import { useState } from "react";
 import { Truck, RotateCcw, Heart } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ProductInfoProps {
   product: StorefrontProduct;
 }
 
 export function ProductInfo({ product }: ProductInfoProps) {
+    const { currency, formatCurrency } = useCurrency();
   const [quantity, setQuantity] = useState(1);
   const { addToCart } = useStoreCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
@@ -78,8 +80,8 @@ export function ProductInfo({ product }: ProductInfoProps) {
       {/* Pricing */}
       <div>
         <div className="flex items-baseline space-x-2 mb-1">
-          <span className="text-2xl font-bold text-gray-900">${price}</span>
-          <span className="text-lg font-bold text-gray-900">or ${monthly}/month</span>
+          <span className="text-2xl font-bold text-gray-900">{currency.symbol}{price}</span>
+          <span className="text-lg font-bold text-gray-900">or {currency.symbol}{monthly}/month</span>
         </div>
         <p className="text-xs text-gray-500 font-medium">
           Suggested payments with 6 months special financing

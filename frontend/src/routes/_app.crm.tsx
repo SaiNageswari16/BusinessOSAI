@@ -46,6 +46,7 @@ import { ChurnPrediction } from "@/components/crm/ChurnPrediction";
 import { LifetimeValue } from "@/components/crm/LifetimeValue";
 import { RfmAnalysis } from "@/components/crm/RfmAnalysis";
 import { AiRecommendations } from "@/components/crm/AiRecommendations";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/_app/crm")({
   component: CrmModule,

@@ -1,8 +1,10 @@
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Clock, Lock, Play, DollarSign, History } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ShiftManagement() {
+    const { currency, formatCurrency } = useCurrency();
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center mb-6">
@@ -51,7 +53,7 @@ export function ShiftManagement() {
               <td className="px-6 py-4 font-bold">Ravi K.</td>
               <td className="px-6 py-4">Today, 09:00 AM</td>
               <td className="px-6 py-4">Today, 05:00 PM</td>
-              <td className="px-6 py-4 font-mono text-emerald-600 font-bold">₹15,450</td>
+              <td className="px-6 py-4 font-mono text-emerald-600 font-bold">{currency.symbol}15,450</td>
               <td className="px-6 py-4"><span className="bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded text-[10px] font-bold">Closed</span></td>
             </tr>
           </tbody>

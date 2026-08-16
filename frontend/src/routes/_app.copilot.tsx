@@ -15,6 +15,7 @@ import {
 } from "@/data/mock";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/_app/copilot")({
   component: AntigravityPage,
@@ -51,6 +52,7 @@ function pickResponse(q: string): { content: string, widget?: "sales" | "invento
 
 function AntigravityPage() {
   const { user } = useAuth();
+  const { currency } = useCurrency();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -225,7 +227,7 @@ function AntigravityPage() {
                                   <span className="font-bold text-sm">Interactive Sales Report</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
-                                  <div className="p-3 bg-background rounded-lg border"><div className="text-xs text-muted-foreground mb-1">Gross Revenue</div><div className="text-lg font-bold">$184,210</div></div>
+                                  <div className="p-3 bg-background rounded-lg border"><div className="text-xs text-muted-foreground mb-1">Gross Revenue</div><div className="text-lg font-bold">{currency.symbol}184,210</div></div>
                                   <div className="p-3 bg-background rounded-lg border"><div className="text-xs text-muted-foreground mb-1">Total Orders</div><div className="text-lg font-bold">412</div></div>
                                 </div>
                               </Card>
@@ -253,7 +255,7 @@ function AntigravityPage() {
                                   <span className="font-bold text-sm">June Payroll Summary</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
-                                  <div className="p-3 bg-background rounded-lg border"><div className="text-xs text-muted-foreground mb-1">Gross Payroll</div><div className="text-lg font-bold">$2.41M</div></div>
+                                  <div className="p-3 bg-background rounded-lg border"><div className="text-xs text-muted-foreground mb-1">Gross Payroll</div><div className="text-lg font-bold">{currency.symbol}2.41M</div></div>
                                   <div className="p-3 bg-background rounded-lg border"><div className="text-xs text-muted-foreground mb-1">Employees</div><div className="text-lg font-bold">348</div></div>
                                 </div>
                                 <Button className="w-full mt-3 h-8 text-xs gradient-brand text-white border-0 shadow-elegant hover:opacity-90">Approve Payroll Batch</Button>

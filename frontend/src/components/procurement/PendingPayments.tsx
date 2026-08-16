@@ -6,8 +6,10 @@ import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "../pos/ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function PendingPayments() {
+    const { currency, formatCurrency } = useCurrency();
   const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
@@ -133,7 +135,7 @@ export function PendingPayments() {
                   <div>
                     <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Outstanding Balance</div>
                     <div className="font-mono font-bold text-2xl text-rose-600">
-                      ₹{balance.toLocaleString("en-IN")}
+                      {currency.symbol}{balance.toLocaleString("en-IN")}
                     </div>
                   </div>
                   <div className="text-right">
@@ -174,7 +176,7 @@ export function PendingPayments() {
 
             <form onSubmit={handleSubmit} className="space-y-4 text-sm">
               <div className="space-y-1.5">
-                <label className="font-semibold text-muted-foreground">Payment Amount (₹) *</label>
+                <label className="font-semibold text-muted-foreground">Payment Amount ({currency.symbol}) *</label>
                 <input
                   type="number"
                   required

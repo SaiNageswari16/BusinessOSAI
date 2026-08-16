@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ProductQRCode } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 const QR_TYPES = ["product", "batch", "serial", "location"];
 
@@ -149,6 +150,7 @@ function QRModal({
 }
 
 export function QrCodeManagement() {
+    const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<ProductQRCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

@@ -21,9 +21,9 @@ import {
   Search,
   Send
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
 import { inventoryApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface GRNItem {
   id: string;
@@ -47,6 +47,7 @@ interface GoodsReceivedNoteFormProps {
 }
 
 export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsReceivedNoteFormProps) {
+    const { currency, formatCurrency } = useCurrency();
   const [products, setProducts] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);

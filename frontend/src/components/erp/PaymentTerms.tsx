@@ -6,6 +6,7 @@ import { paymentTermsApi, type PaymentTerm } from "@/lib/api-client";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 function PaymentTermFormModal({ term, onClose, onSaved }: { term: PaymentTerm | null; onClose: () => void; onSaved: () => void }) {
   const isEdit = !!term;
@@ -57,7 +58,7 @@ function PaymentTermFormModal({ term, onClose, onSaved }: { term: PaymentTerm | 
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1.5">Credit Limit (₹)</label>
+              <label className="block text-xs font-semibold mb-1.5">Credit Limit ({currency.symbol})</label>
               <input type="number" min="0" value={form.credit_limit} onChange={set("credit_limit")}
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="Optional" />
@@ -90,6 +91,7 @@ function PaymentTermFormModal({ term, onClose, onSaved }: { term: PaymentTerm | 
 }
 
 export function PaymentTerms() {
+    const { currency, formatCurrency } = useCurrency();
   const [terms, setTerms] = useState<PaymentTerm[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -177,7 +179,7 @@ export function PaymentTerms() {
                 {term.credit_limit !== null && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Credit Limit</span>
-                    <span className="font-mono font-semibold">₹{term.credit_limit.toLocaleString()}</span>
+                    <span className="font-mono font-semibold">{currency.symbol}{term.credit_limit.toLocaleString()}</span>
                   </div>
                 )}
                 {term.late_fee_percent !== null && (

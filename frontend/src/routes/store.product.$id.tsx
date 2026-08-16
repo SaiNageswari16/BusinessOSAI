@@ -5,6 +5,7 @@ import { mockMarketplaceProducts, MarketplaceProduct } from "../data/mockMarketp
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchStorefrontProducts, StorefrontProduct } from "@/lib/storefront-api";
+import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/store/product/$id")({
   component: ProductDetail,

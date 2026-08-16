@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface InvoiceItem {
   id: string;
@@ -59,6 +60,7 @@ interface InvoiceItem {
 }
 
 export function PosSalesInvoice() {
+    const { currency, formatCurrency } = useCurrency();
   const [showPaymentTerms, setShowPaymentTerms] = useState(false);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -914,7 +916,7 @@ export function PosSalesInvoice() {
                           <History className="w-3.5 h-3.5 text-indigo-400" /> Complete Purchase History
                         </span>
                         <span className="text-[11px] text-slate-300">
-                          Total Orders: <strong className="text-white">{customerSummary.total_invoices}</strong> | Total Spent: <strong className="text-emerald-400">₹{Number(customerSummary.total_spent || 0).toFixed(2)}</strong>
+                          Total Orders: <strong className="text-white">{customerSummary.total_invoices}</strong> | Total Spent: <strong className="text-emerald-400">{currency.symbol}{Number(customerSummary.total_spent || 0).toFixed(2)}</strong>
                         </span>
                       </div>
 
@@ -924,7 +926,7 @@ export function PosSalesInvoice() {
                           <div>
                             <div className="text-[10px] text-slate-300 font-medium">Pending Outstanding Due</div>
                             <div className={`text-sm font-extrabold ${Number(customerSummary.total_pending_due || 0) > 0 ? "text-amber-300" : "text-emerald-400"}`}>
-                              ₹{Number(customerSummary.total_pending_due || 0).toFixed(2)}
+                              {currency.symbol}{Number(customerSummary.total_pending_due || 0).toFixed(2)}
                             </div>
                           </div>
                         </div>
@@ -1110,7 +1112,7 @@ export function PosSalesInvoice() {
                       </div>
                     </div>
                     <div className="text-right font-extrabold text-blue-700 ml-3 shrink-0">
-                      ₹{Number(pricingMode === "Wholesale" ? (prod.wholesale_price || prod.selling_price || 0) : (prod.selling_price || prod.mrp || 0)).toFixed(2)}
+                      {currency.symbol}{Number(pricingMode === "Wholesale" ? (prod.wholesale_price || prod.selling_price || 0) : (prod.selling_price || prod.mrp || 0)).toFixed(2)}
                     </div>
                   </div>
                 ))}
@@ -1135,7 +1137,7 @@ export function PosSalesInvoice() {
                   <th className="px-3 py-3 w-24 text-right">Price/Item</th>
                   <th className="px-3 py-3 w-28 text-right">Discount</th>
                   <th className="px-3 py-3 w-28 text-right">GST Tax</th>
-                  <th className="px-3 py-3 w-28 text-right font-bold">Amount (₹)</th>
+                  <th className="px-3 py-3 w-28 text-right font-bold">Amount ({currency.symbol})</th>
                   <th className="px-3 py-3 w-12 text-center">Action</th>
                 </tr>
               </thead>
@@ -1347,7 +1349,7 @@ export function PosSalesInvoice() {
                               className="bg-slate-100 border border-slate-200 rounded-md px-1 py-1 text-[10px] font-bold"
                             >
                               <option value="percent">%</option>
-                              <option value="amount">₹</option>
+                              <option value="amount">{currency.symbol}</option>
                             </select>
                             <input
                               type="number"
@@ -1372,7 +1374,7 @@ export function PosSalesInvoice() {
                           </select>
                         </td>
                         <td className="px-3 py-3 text-right font-extrabold text-slate-900 text-sm">
-                          ₹{Number(lineAmount || 0).toFixed(2)}
+                          {currency.symbol}{Number(lineAmount || 0).toFixed(2)}
                         </td>
                         <td className="px-3 py-3 text-center">
                           <button
@@ -1390,7 +1392,7 @@ export function PosSalesInvoice() {
                             <div className="flex items-center gap-2 text-[11px] font-bold text-red-800">
                               <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 animate-pulse" />
                               <span>
-                                ⚠️ MRP Exceeded! Selling price ₹{sellingPriceIncl.toFixed(2)} (incl. tax) &gt; MRP ₹{mrpVal.toFixed(2)}.
+                                ⚠️ MRP Exceeded! Selling price {currency.symbol}{sellingPriceIncl.toFixed(2)} (incl. tax) &gt; MRP {currency.symbol}{mrpVal.toFixed(2)}.
                                 Please reduce the price or obtain approval before saving.
                               </span>
                             </div>
@@ -1525,20 +1527,20 @@ export function PosSalesInvoice() {
 
               <div className="flex justify-between text-xs text-slate-600">
                 <span>Gross Subtotal:</span>
-                <span className="font-semibold text-slate-900">₹{subtotal.toFixed(2)}</span>
+                <span className="font-semibold text-slate-900">{currency.symbol}{subtotal.toFixed(2)}</span>
               </div>
 
               {itemDiscountTotal > 0 && (
                 <div className="flex justify-between text-xs text-rose-500">
                   <span>Line Item Savings:</span>
-                  <span className="font-semibold">-₹{itemDiscountTotal.toFixed(2)}</span>
+                  <span className="font-semibold">-{currency.symbol}{itemDiscountTotal.toFixed(2)}</span>
                 </div>
               )}
 
               {beforeTaxDiscount > 0 && (
                 <div className="flex justify-between text-xs text-indigo-600 font-bold">
                   <span>Before-Tax Discount ({invoiceDiscountType === "percent" ? `${invoiceDiscountValue}%` : "Flat"}):</span>
-                  <span className="font-black">-₹{beforeTaxDiscount.toFixed(2)}</span>
+                  <span className="font-black">-{currency.symbol}{beforeTaxDiscount.toFixed(2)}</span>
                 </div>
               )}
 
@@ -1569,7 +1571,7 @@ export function PosSalesInvoice() {
                           className="flex-1 bg-white border border-slate-200 rounded-md px-2 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400"
                         />
                         <div className="relative w-20 shrink-0">
-                          <span className="absolute left-2 top-1 text-[10px] text-slate-400 font-bold">₹</span>
+                          <span className="absolute left-2 top-1 text-[10px] text-slate-400 font-bold">{currency.symbol}</span>
                           <input
                             type="number"
                             min="0"
@@ -1595,7 +1597,7 @@ export function PosSalesInvoice() {
                         {/* Show computed GST amount inline */}
                         {Number(charge.tax_rate) > 0 && Number(charge.amount) > 0 && (
                           <span className="shrink-0 text-[10px] font-bold text-indigo-600 whitespace-nowrap">
-                            +₹{(Number(charge.amount) * Number(charge.tax_rate) / 100).toFixed(2)}
+                            +{currency.symbol}{(Number(charge.amount) * Number(charge.tax_rate) / 100).toFixed(2)}
                           </span>
                         )}
                         <button
@@ -1614,7 +1616,7 @@ export function PosSalesInvoice() {
 
               <div className="flex justify-between text-xs text-slate-600">
                 <span>Taxable Value:</span>
-                <span className="font-semibold text-slate-900">₹{taxableValue.toFixed(2)}</span>
+                <span className="font-semibold text-slate-900">{currency.symbol}{taxableValue.toFixed(2)}</span>
               </div>
 
               {/* GST Breakdown Panel */}
@@ -1652,14 +1654,14 @@ export function PosSalesInvoice() {
                           <span className="w-2 h-2 rounded-full bg-blue-400 inline-block"></span>
                           CGST ({(items.reduce((s, it) => s + (Number(it.tax_rate) || 0), 0) / Math.max(items.length, 1) / 2).toFixed(1)}%):
                         </span>
-                        <span className="font-bold text-blue-700">₹{(totalTax / 2).toFixed(2)}</span>
+                        <span className="font-bold text-blue-700">{currency.symbol}{(totalTax / 2).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-[11px] text-slate-600">
                         <span className="flex items-center gap-1">
                           <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
                           SGST ({(items.reduce((s, it) => s + (Number(it.tax_rate) || 0), 0) / Math.max(items.length, 1) / 2).toFixed(1)}%):
                         </span>
-                        <span className="font-bold text-emerald-700">₹{(totalTax / 2).toFixed(2)}</span>
+                        <span className="font-bold text-emerald-700">{currency.symbol}{(totalTax / 2).toFixed(2)}</span>
                       </div>
                     </div>
                   ) : (
@@ -1668,13 +1670,13 @@ export function PosSalesInvoice() {
                         <span className="w-2 h-2 rounded-full bg-indigo-400 inline-block"></span>
                         IGST ({(items.reduce((s, it) => s + (Number(it.tax_rate) || 0), 0) / Math.max(items.length, 1)).toFixed(1)}%):
                       </span>
-                      <span className="font-bold text-indigo-700">₹{totalTax.toFixed(2)}</span>
+                      <span className="font-bold text-indigo-700">{currency.symbol}{totalTax.toFixed(2)}</span>
                     </div>
                   )}
 
                   <div className="flex justify-between text-[11px] font-bold text-slate-700 border-t border-slate-200 pt-1">
                     <span>Total GST:</span>
-                    <span className="text-slate-900">+₹{totalTax.toFixed(2)}</span>
+                    <span className="text-slate-900">+{currency.symbol}{totalTax.toFixed(2)}</span>
                   </div>
                 </div>
               )}
@@ -1682,14 +1684,14 @@ export function PosSalesInvoice() {
               {totalTax === 0 && (
                 <div className="flex justify-between text-xs text-slate-600">
                   <span>GST Tax Amount:</span>
-                  <span className="font-semibold text-slate-900">+₹0.00</span>
+                  <span className="font-semibold text-slate-900">+{currency.symbol}0.00</span>
                 </div>
               )}
 
               {afterTaxDiscount > 0 && (
                 <div className="flex justify-between text-xs text-purple-600 font-bold">
                   <span>After-Tax Discount ({invoiceDiscountType === "percent" ? `${invoiceDiscountValue}%` : "Flat"}):</span>
-                  <span className="font-black">-₹{afterTaxDiscount.toFixed(2)}</span>
+                  <span className="font-black">-{currency.symbol}{afterTaxDiscount.toFixed(2)}</span>
                 </div>
               )}
 
@@ -1698,7 +1700,7 @@ export function PosSalesInvoice() {
                   <span className="flex items-center gap-1">
                     <Wallet className="w-3.5 h-3.5 text-amber-600" /> Previous Outstanding Due:
                   </span>
-                  <span>+₹{previousDueAmount.toFixed(2)}</span>
+                  <span>+{currency.symbol}{previousDueAmount.toFixed(2)}</span>
                 </div>
               )}
 
@@ -1716,7 +1718,7 @@ export function PosSalesInvoice() {
 
               <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
                 <span className="text-base font-extrabold text-slate-900">Grand Total Amount:</span>
-                <span className="text-2xl font-black text-blue-600">₹{grandTotal.toFixed(2)}</span>
+                <span className="text-2xl font-black text-blue-600">{currency.symbol}{grandTotal.toFixed(2)}</span>
               </div>
             </div>
 
@@ -1759,7 +1761,7 @@ export function PosSalesInvoice() {
               {amountReceived !== "" && Number(amountReceived) >= grandTotal && (
                 <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex justify-between">
                   <span>Change / Return to Customer:</span>
-                  <span className="text-emerald-700">₹{(Number(amountReceived) - grandTotal).toFixed(2)}</span>
+                  <span className="text-emerald-700">{currency.symbol}{(Number(amountReceived) - grandTotal).toFixed(2)}</span>
                 </div>
               )}
               <div className="space-y-2">
@@ -1955,7 +1957,7 @@ export function PosSalesInvoice() {
               </div>
               <h2 className="text-xl font-black text-slate-800 mb-2">Pending Dues Alert</h2>
               <p className="text-sm text-slate-600 mb-6">
-                This customer has an outstanding balance of <span className="font-bold text-rose-600">₹{(customerSummary?.total_pending_due || 0).toFixed(2)}</span>.
+                This customer has an outstanding balance of <span className="font-bold text-rose-600">{currency.symbol}{(customerSummary?.total_pending_due || 0).toFixed(2)}</span>.
               </p>
               <div className="flex w-full gap-3">
                 <button
@@ -1996,7 +1998,7 @@ export function PosSalesInvoice() {
               <div className="bg-rose-50 border border-rose-100 p-4 rounded-xl mb-6 flex justify-between items-center">
                 <div>
                   <p className="text-xs font-bold text-rose-700 uppercase">Total Outstanding</p>
-                  <p className="text-3xl font-black text-rose-600">₹{(customerSummary?.total_pending_due || 0).toFixed(2)}</p>
+                  <p className="text-3xl font-black text-rose-600">{currency.symbol}{(customerSummary?.total_pending_due || 0).toFixed(2)}</p>
                 </div>
                 <button 
                   onClick={() => {
@@ -2025,14 +2027,14 @@ export function PosSalesInvoice() {
                     <tr className="hover:bg-slate-50">
                       <td className="px-4 py-3 text-slate-600">12 Oct 2025</td>
                       <td className="px-4 py-3 font-mono text-indigo-600 text-xs">INV-25-1002</td>
-                      <td className="px-4 py-3 text-right text-slate-600">₹12500.00</td>
-                      <td className="px-4 py-3 text-right font-bold text-rose-600">₹5000.00</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{currency.symbol}12500.00</td>
+                      <td className="px-4 py-3 text-right font-bold text-rose-600">{currency.symbol}5000.00</td>
                     </tr>
                     <tr className="hover:bg-slate-50">
                       <td className="px-4 py-3 text-slate-600">05 Nov 2025</td>
                       <td className="px-4 py-3 font-mono text-indigo-600 text-xs">INV-25-1145</td>
-                      <td className="px-4 py-3 text-right text-slate-600">₹4800.00</td>
-                      <td className="px-4 py-3 text-right font-bold text-rose-600">₹4800.00</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{currency.symbol}4800.00</td>
+                      <td className="px-4 py-3 text-right font-bold text-rose-600">{currency.symbol}4800.00</td>
                     </tr>
                   </tbody>
                 </table>

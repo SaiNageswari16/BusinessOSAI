@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { crmMembershipsApi, type MembershipPlan, type CustomerMembership } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const TIERS = ["Bronze", "Silver", "Gold", "Platinum", "VIP"];
 const BENEFITS_LIST = [
@@ -40,6 +41,7 @@ const blankPlan: Record<string, unknown> = {
 };
 
 export function MembershipPlans() {
+    const { currency, formatCurrency } = useCurrency();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
@@ -276,7 +278,7 @@ export function MembershipPlans() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Price (₹)</label>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Price ({currency.symbol})</label>
                   <input type="number" value={String(form.price)} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
                     className="w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-sm" />
                 </div>
@@ -365,7 +367,7 @@ export function MembershipPlans() {
 
                   <div className="grid grid-cols-3 gap-2 py-3 border-y border-border">
                     <div className="text-center">
-                      <p className="text-lg font-bold">₹{plan.price.toLocaleString()}</p>
+                      <p className="text-lg font-bold">{currency.symbol}{plan.price.toLocaleString()}</p>
                       <p className="text-xs text-muted-foreground">Price</p>
                     </div>
                     <div className="text-center">

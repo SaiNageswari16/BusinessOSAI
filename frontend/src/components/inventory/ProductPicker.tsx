@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Search, Package, X } from "lucide-react";
 import { inventoryApi, InventoryProduct } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ProductPickerProps {
   value: string;
@@ -15,6 +16,7 @@ interface ProductPickerProps {
  * Shows product name + SKU so users don't need to memorize UUIDs.
  */
 export function ProductPicker({ value, onChange, placeholder = "Search product…", excludeIds = [], autoFocus = false }: ProductPickerProps) {
+    const { currency, formatCurrency } = useCurrency();
   const [all, setAll] = useState<InventoryProduct[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [query, setQuery] = useState("");

@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { crmDiscountsApi, crmCustomersApi, type Discount, type DiscountUsage, type CrmCustomer } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const DISCOUNT_TYPES = ["percentage", "fixed_amount", "bogo", "bundle"] as const;
 const SCOPE_OPTIONS = ["order", "product", "category", "customer_group", "membership_tier", "bundle"] as const;
@@ -47,6 +48,7 @@ const blankDiscount: Record<string, unknown> = {
 };
 
 export function Discounts() {
+    const { currency, formatCurrency } = useCurrency();
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [total, setTotal] = useState(0);
   const [usages, setUsages] = useState<DiscountUsage[]>([]);
@@ -278,12 +280,12 @@ export function Discounts() {
                       placeholder={form.discount_type === "percentage" ? "25 = 25%" : "Amount in ₹"} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">Min Order Value (₹)</label>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Min Order Value ({currency.symbol})</label>
                     <input type="number" value={String(form.min_order_value)} onChange={(e) => setForm({ ...form, min_order_value: Number(e.target.value) })}
                       className="w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">Max Discount (₹)</label>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Max Discount ({currency.symbol})</label>
                     <input type="number" value={form.max_discount ? String(form.max_discount) : ""} onChange={(e) => setForm({ ...form, max_discount: e.target.value ? Number(e.target.value) : null })}
                       className="w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-sm" />
                   </div>
@@ -395,7 +397,7 @@ export function Discounts() {
                   {validateResult.valid ? (
                     <div>
                       <p className="font-medium">Coupon is valid!</p>
-                      {validateResult.discount_amount && <p className="mt-1">Discount amount: ₹{validateResult.discount_amount.toLocaleString()}</p>}
+                      {validateResult.discount_amount && <p className="mt-1">Discount amount: {currency.symbol}{validateResult.discount_amount.toLocaleString()}</p>}
                     </div>
                   ) : (
                     <p>{validateResult.message || "Coupon is not valid."}</p>
@@ -446,7 +448,7 @@ export function Discounts() {
                             discount.discount_type === "percentage" ? "text-primary" : "text-amber-600")}>
                             {discount.discount_type === "percentage" ? `${discount.value}%` : `₹${discount.value.toLocaleString()}`}
                           </span>
-                          {discount.max_discount && <p className="text-xs text-muted-foreground">Max ₹{discount.max_discount.toLocaleString()}</p>}
+                          {discount.max_discount && <p className="text-xs text-muted-foreground">Max {currency.symbol}{discount.max_discount.toLocaleString()}</p>}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-xs bg-purple-500/10 text-purple-600 px-2 py-1 rounded-md">{discount.applicable_scope}</span>
@@ -540,7 +542,7 @@ export function Discounts() {
                         <td className="px-4 py-3 font-medium">{u.discount_name || u.discount_id}</td>
                         <td className="px-4 py-3">{u.customer_name || u.customer_id}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{u.order_id || "—"}</td>
-                        <td className="px-4 py-3 text-emerald-600 font-medium">−₹{u.discount_amount.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-emerald-600 font-medium">−{currency.symbol}{u.discount_amount.toLocaleString()}</td>
                       </tr>
                     ))}
                     {usages.length === 0 && (

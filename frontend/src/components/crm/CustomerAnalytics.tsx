@@ -2,8 +2,10 @@ import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Users, TrendingUp, ShoppingCart, RotateCcw, ArrowUpRight, ArrowDownRight, BarChart3, RefreshCw, AlertCircle } from "lucide-react";
 import { crmIntelligenceApi, IntelAnalytics } from "@/lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function CustomerAnalytics({ tab = "analytics" }: { tab?: string }) {
+    const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<IntelAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

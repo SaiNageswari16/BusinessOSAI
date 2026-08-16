@@ -1,3 +1,5 @@
+import { useCurrency } from "@/hooks/use-currency";
+
 // --- ENTERPRISE INVENTORY MOCK DATA ---
 
 // WAREHOUSES & LOCATIONS

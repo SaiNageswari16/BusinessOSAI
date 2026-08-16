@@ -6,6 +6,7 @@ import {
   Calendar, Boxes, Package2, FlaskConical,
 } from "lucide-react";
 import { inventoryApi, type ManufacturingCohorts } from "../../lib/api-client";
+import { useCurrency } from "@/hooks/use-currency";
 
 const COHORT_META: Record<string, { label: string; desc: string; className: string; bg: string; icon: any }> = {
   lt_30d:  { label: "0–30 Days Old",    desc: "Very fresh — highest shelf quality",       className: "text-emerald-600 border-emerald-200 bg-emerald-50",  bg: "from-emerald-500/10", icon: CalendarClock },
@@ -15,6 +16,7 @@ const COHORT_META: Record<string, { label: string; desc: string; className: stri
 };
 
 export function ManufacturingDates() {
+    const { currency, formatCurrency } = useCurrency();
   const [cohorts, setCohorts] = useState<ManufacturingCohorts | null>(null);
   const [list, setList] = useState<any[]>([]);
   const [loadingCohorts, setLoadingCohorts] = useState(true);
