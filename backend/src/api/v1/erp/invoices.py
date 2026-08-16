@@ -34,13 +34,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/invoices", tags=["Invoices & AR"])
 
 
-def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate]) -> dict:
+def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstate: bool = False) -> dict:
     subtotal = 0.0
     total_cgst = 0.0
     total_sgst = 0.0
     total_igst = 0.0
     total_tds = 0.0
     discount_amt = 0.0
+    total_tax = 0.0
 
     for line in payload_lines:
         qty = line.quantity
@@ -58,14 +59,17 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate]) -> dict:
 
         subtotal += line_gross
         discount_amt += d_amt
-        total_cgst += tax / 2
-        total_sgst += tax / 2
-        total_igst += tax
+        total_tax += tax
+        if is_interstate:
+            total_igst += tax
+        else:
+            total_cgst += tax / 2
+            total_sgst += tax / 2
 
-    round_off = round(subtotal - discount_amt + total_cgst + total_sgst + total_igst) - (
-        subtotal - discount_amt + total_cgst + total_sgst + total_igst
-    )
-    total = subtotal - discount_amt + total_cgst + total_sgst + total_igst + round_off
+    taxable_net = subtotal - discount_amt
+    total_before_round = taxable_net + total_tax
+    round_off = round(total_before_round) - total_before_round
+    total = round(total_before_round + round_off, 2)
 
     return dict(
         subtotal=round(subtotal, 2),
@@ -75,8 +79,8 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate]) -> dict:
         igst_amount=round(total_igst, 2),
         tds_amount=round(total_tds, 2),
         round_off=round(round_off, 2),
-        total_amount=round(total, 2),
-        balance_due=round(total, 2),
+        total_amount=total,
+        balance_due=total,
     )
 
 

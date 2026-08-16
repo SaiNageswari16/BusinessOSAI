@@ -3191,6 +3191,8 @@ export const posApi = {
   updateProduct: (id: string, data: Record<string, unknown>) => request<POSProduct>("PATCH", `/pos/products/${id}`, data),
   deleteProduct: (id: string) => request<void>("DELETE", `/pos/products/${id}`),
   createCategory: (data: Record<string, unknown>) => request<POSCategory>("POST", "/pos/categories", data),
+  getCustomerSummary: (nameOrId?: string, phone?: string) =>
+    request<any>("GET", `/invoices/customer-summary/${nameOrId || ""}`, undefined, { phone }),
 };
 
 // --- Inventory (ERP Product Master) ------------------------------------------------

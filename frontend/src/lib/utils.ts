@@ -55,8 +55,7 @@ export function setActiveCurrency(code: string) {
 
 export function formatCurrency(val?: number | null): string {
   const currency = getActiveCurrency();
-  const rate = EXCHANGE_RATES[currency.code] || 1;
-  const amount = (val ?? 0) * rate;
+  const amount = Number(val ?? 0);
   return new Intl.NumberFormat(currency.locale, {
     style: "currency",
     currency: currency.code,

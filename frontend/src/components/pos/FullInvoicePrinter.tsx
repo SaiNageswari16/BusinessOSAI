@@ -107,13 +107,13 @@ export function FullInvoicePrinter({
   const items = invoice.items || [];
 
   // Financial calculations
-  const subtotal = Number(invoice.subtotal ?? items.reduce((acc, item) => {
+  const calculatedItemsSubtotal = items.reduce((acc, item) => {
     const qty = Number(item.quantity || 0);
     const price = Number(item.unit_price || 0);
     return acc + (qty * price);
-  }, 0));
+  }, 0);
 
-  const totalDiscount = Number(invoice.discount_amount ?? items.reduce((acc, item) => {
+  const calculatedDiscount = items.reduce((acc, item) => {
     const qty = Number(item.quantity || 0);
     const price = Number(item.unit_price || 0);
     const discVal = Number(item.discount_value || 0);
@@ -121,9 +121,9 @@ export function FullInvoicePrinter({
       ? (qty * price * discVal / 100)
       : discVal;
     return acc + disc;
-  }, 0));
+  }, 0);
 
-  const totalTax = Number(invoice.tax_amount ?? items.reduce((acc, item) => {
+  const calculatedTax = items.reduce((acc, item) => {
     const qty = Number(item.quantity || 0);
     const price = Number(item.unit_price || 0);
     const discVal = Number(item.discount_value || 0);
@@ -134,9 +134,15 @@ export function FullInvoicePrinter({
         : discVal
     );
     return acc + (itemSub * taxRate / 100);
-  }, 0));
+  }, 0);
 
-  const grandTotal = Number(invoice.grand_total ?? (subtotal - totalDiscount + totalTax));
+  const subtotal = Number(invoice.subtotal !== undefined ? invoice.subtotal : calculatedItemsSubtotal);
+  const totalDiscount = Number(invoice.discount_amount !== undefined ? invoice.discount_amount : calculatedDiscount);
+  const totalTax = Number(invoice.tax_amount !== undefined ? invoice.tax_amount : calculatedTax);
+  const grandTotal = Number(invoice.grand_total !== undefined ? invoice.grand_total : (subtotal - totalDiscount + totalTax));
+
+  const effectiveTaxRate = subtotal > 0 ? (totalTax / subtotal) * 100 : 0;
+  const halfTaxRate = (effectiveTaxRate / 2).toFixed(1).replace(/\.0$/, '');
 
   const cgstAmount = totalTax / 2;
   const sgstAmount = totalTax / 2;
@@ -445,14 +451,14 @@ export function FullInvoicePrinter({
                     </div>
                   )}
 
-                  {f.showTaxSplit && (
+                  {f.showTaxSplit && totalTax > 0 && (
                     <>
                       <div className="flex justify-between text-slate-500">
-                        <span>CGST (2.5%):</span>
+                        <span>CGST ({halfTaxRate}%):</span>
                         <span>{currency.symbol}{Number(cgstAmount || 0).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
-                        <span>SGST (2.5%):</span>
+                        <span>SGST ({halfTaxRate}%):</span>
                         <span>{currency.symbol}{Number(sgstAmount || 0).toFixed(2)}</span>
                       </div>
                     </>
@@ -485,21 +491,21 @@ export function FullInvoicePrinter({
                   </div>
 
                   {/* Amount Received & Balance */}
-                  {invoice.amount_received !== undefined && invoice.amount_received > 0 && (
+                  {invoice.amount_received !== undefined && Number(invoice.amount_received) > 0 && (
                     <>
                       <div className="flex justify-between text-slate-600 font-semibold pt-1">
                         <span>Amount Received:</span>
                         <span className="text-emerald-700">{currency.symbol}{Number(invoice.amount_received).toFixed(2)}</span>
                       </div>
-                      {Number(invoice.amount_received) >= grandTotal ? (
-                        <div className="flex justify-between text-emerald-600 font-bold">
-                          <span>Change Returned:</span>
-                          <span>{currency.symbol}{(Number(invoice.amount_received) - grandTotal).toFixed(2)}</span>
+                      {Number(invoice.amount_received) >= grandTotal - 0.05 ? (
+                        <div className="flex justify-between text-emerald-700 font-bold">
+                          <span>Payment Status:</span>
+                          <span>PAID ({invoice.payment_method || 'Cash'})</span>
                         </div>
                       ) : (
                         <div className="flex justify-between text-red-600 font-bold">
                           <span>Balance Due:</span>
-                          <span>{currency.symbol}{(grandTotal - Number(invoice.amount_received)).toFixed(2)}</span>
+                          <span>{currency.symbol}{Math.max(0, grandTotal - Number(invoice.amount_received)).toFixed(2)}</span>
                         </div>
                       )}
                     </>

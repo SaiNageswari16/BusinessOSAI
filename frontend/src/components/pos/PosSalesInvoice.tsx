@@ -35,7 +35,12 @@ import {
   Layers,
   Minus,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Clock,
+  CheckCircle2,
+  CheckCircle,
+  Zap,
+  User
 } from "lucide-react";
 import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -218,6 +223,165 @@ export function PosSalesInvoice() {
   const [batches, setBatches] = useState<any[]>([]);
   const [aiFetchingHsnId, setAiFetchingHsnId] = useState<string | null>(null);
 
+  // Unpaid Invoices & Settlement State
+  const [unpaidInvoices, setUnpaidInvoices] = useState<any[]>([]);
+  const [settlingInvoice, setSettlingInvoice] = useState<any | null>(null);
+  const [isUnpaidModalOpen, setIsUnpaidModalOpen] = useState<boolean>(false);
+  const [unpaidSearchQuery, setUnpaidSearchQuery] = useState<string>("");
+
+  const loadUnpaidInvoices = async () => {
+    try {
+      let localUnpaid: any[] = [];
+      const stored = localStorage.getItem("pos_saved_invoices");
+      if (stored) {
+        try {
+          const list = JSON.parse(stored);
+          localUnpaid = list.filter((i: any) => i.payment_status === "Unpaid" || i.payment_status === "Partial");
+        } catch {
+          localUnpaid = [];
+        }
+      }
+
+      const apiRes = await invoicesApi.listInvoices({ page_size: 50 }).catch(() => null);
+      let remoteUnpaid: any[] = [];
+      if (apiRes && apiRes.items) {
+        remoteUnpaid = apiRes.items
+          .filter((inv: any) => {
+            const st = String(inv.status || "").toLowerCase();
+            return st === "draft" || st === "posted" || st === "unpaid" || st === "partial" || st === "partially_paid" || st === "overdue";
+          })
+          .map((inv: any) => ({
+            id: inv.id,
+            invoice_number: inv.invoice_number || `INV-${inv.id.slice(0, 6).toUpperCase()}`,
+            customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
+            customer_id: inv.customer_id,
+            customer_phone: inv.customer?.phone || "",
+            grand_total: inv.total_amount || 0,
+            amount_received: Number(inv.amount_paid) || 0,
+            payment_status: "Unpaid",
+            invoice_date: inv.invoice_date,
+            items: (inv.lines || []).map((l: any) => ({
+              product_name: l.product_name || l.item_name || "Item",
+              quantity: l.quantity || 1,
+              unit_price: l.unit_price || 0,
+              mrp: l.mrp || l.unit_price || 0,
+              tax_rate: l.tax_rate || 18,
+            })),
+          }));
+      }
+
+      const map = new Map<string, any>();
+      localUnpaid.forEach((inv) => map.set(inv.invoice_number, inv));
+      
+      const storedRecords = localStorage.getItem("pos_saved_invoices");
+      let allLocalRecords: any[] = [];
+      if (storedRecords) {
+        try {
+          allLocalRecords = JSON.parse(storedRecords);
+        } catch {}
+      }
+
+      remoteUnpaid.forEach((inv) => {
+        if (!map.has(inv.invoice_number)) {
+          const match = allLocalRecords.find(
+            (x: any) => x.invoice_number === inv.invoice_number || x.id === inv.id
+          );
+          if (match && (match.payment_status === "Paid" || Number(match.amount_received) >= Number(match.grand_total))) {
+            return; // Skip: already settled!
+          }
+          map.set(inv.invoice_number, inv);
+        }
+      });
+
+      setUnpaidInvoices(Array.from(map.values()));
+    } catch (e) {
+      console.error("Error loading unpaid invoices:", e);
+    }
+  };
+
+  const handleSelectUnpaidInvoice = async (inv: any) => {
+    setSettlingInvoice(inv);
+    setIncludePreviousDueInBill(false);
+    setShowPendingDueAlert(false);
+    setInvoiceDiscountValue(0);
+    setCustomCharges([
+      { id: "1", name: "Freight / Transport", amount: 0, tax_rate: 0 },
+      { id: "2", name: "Packing Charge", amount: 0, tax_rate: 0 }
+    ]);
+
+    if (inv.customer_id) {
+      setSelectedCustomer(inv.customer_id);
+    } else if (inv.customer_name) {
+      const found = customers.find((c) => c.name?.toLowerCase() === inv.customer_name?.toLowerCase());
+      if (found) setSelectedCustomer(found.id);
+    }
+
+    // Try fetching full remote invoice for 100% exact lines if available
+    let loadedLines = inv.items || [];
+    if (inv.id && inv.id.length > 10) {
+      try {
+        const full = await invoicesApi.getInvoice(inv.id);
+        if (full && full.lines && full.lines.length > 0) {
+          loadedLines = full.lines.map((l: any) => ({
+            product_id: l.product_id || "",
+            product_name: l.item_name || l.product_name || "Item",
+            quantity: Number(l.quantity) || 1,
+            unit_price: Number(l.unit_price) || 0,
+            mrp: Number(l.mrp) || Math.ceil(Number(l.unit_price) * 1.25),
+            tax_rate: Number(l.tax_rate) || 18,
+            is_tax_inclusive: l.is_tax_inclusive === true,
+          }));
+        }
+      } catch (err) {
+        console.warn("Could not fetch remote invoice lines, using local fallback:", err);
+      }
+    }
+
+    if (loadedLines && loadedLines.length > 0) {
+      setItems(
+        loadedLines.map((it: any) => {
+          const unitP = Number(it.unit_price) || 0;
+          const taxR = Number(it.tax_rate) || 18;
+          const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : Math.ceil(unitP * (1 + taxR / 100));
+          return {
+            id: Math.random().toString(36).substr(2, 9),
+            product_id: it.product_id || "",
+            product_name: it.product_name || "Item",
+            quantity: Number(it.quantity) || 1,
+            unit_price: unitP,
+            mrp: mrpVal,
+            tax_rate: taxR,
+            is_tax_inclusive: it.is_tax_inclusive === true,
+            discount_value: 0,
+            discount_type: "percent",
+            custom_note: `Settlement item for #${inv.invoice_number}`,
+          };
+        })
+      );
+    } else {
+      setItems([
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          product_name: `Bill Settlement for #${inv.invoice_number}`,
+          quantity: 1,
+          unit_price: Number(inv.grand_total) || 0,
+          mrp: Number(inv.grand_total) || 0,
+          tax_rate: 0,
+          is_tax_inclusive: true,
+          discount_value: 0,
+          discount_type: "percent",
+        }
+      ]);
+    }
+
+    setPaymentMode(inv.payment_mode && !inv.payment_mode.toLowerCase().includes("credit") && !inv.payment_mode.toLowerCase().includes("due") ? inv.payment_mode : "Cash");
+    const dueAmount = Math.max(0, (Number(inv.grand_total) || 0) - (Number(inv.amount_received) || 0));
+    setAmountReceived(dueAmount > 0 ? dueAmount : Number(inv.grand_total) || "");
+    setNotes(`Paid settlement for original Unpaid Invoice #${inv.invoice_number}`);
+    setIsUnpaidModalOpen(false);
+    toast.success(`Loaded Unpaid Invoice #${inv.invoice_number} ready to settle!`);
+  };
+
   const handleVerifyGstin = async () => {
     const cleanGst = newPartyGST.trim().toUpperCase();
     if (!cleanGst || cleanGst.length < 15) {
@@ -335,6 +499,11 @@ export function PosSalesInvoice() {
   };
 
   useEffect(() => {
+    loadUnpaidInvoices();
+    const handleSync = () => loadUnpaidInvoices();
+    window.addEventListener("pos_invoices_updated", handleSync);
+    window.addEventListener("storage", handleSync);
+
     posApi
       .getProducts()
       .then((res: any) => setProducts(res?.items || (Array.isArray(res) ? res : [])))
@@ -357,6 +526,11 @@ export function PosSalesInvoice() {
         }
       })
       .catch(console.error);
+
+    return () => {
+      window.removeEventListener("pos_invoices_updated", handleSync);
+      window.removeEventListener("storage", handleSync);
+    };
   }, []);
 
   const getProductBatchInfo = (prod: any) => {
@@ -401,16 +575,42 @@ export function PosSalesInvoice() {
     const cust = customers.find((c: any) => c.id === selectedCustomer);
     if (!cust) return;
 
-    posApi
-      .getCustomerSummary(cust.name, cust.phone)
+    invoicesApi
+      .getCustomerSummary(cust.id || cust.name)
       .then((summary) => {
-        setCustomerSummary(summary);
-        if (summary.total_pending_due > 0) {
-          setShowPendingDueAlert(true);
+        if (summary) {
+          setCustomerSummary(summary);
+          if (summary.total_pending_due > 0) {
+            setShowPendingDueAlert(true);
+          }
         }
       })
-      .catch((err) => {
-        console.error("Failed to fetch customer summary:", err);
+      .catch(() => {
+        try {
+          const stored = localStorage.getItem("pos_saved_invoices");
+          if (stored) {
+            const list = JSON.parse(stored);
+            const custInvoices = list.filter((i: any) =>
+              (i.customer_name && cust.name && i.customer_name.toLowerCase() === cust.name.toLowerCase()) ||
+              (i.customer_phone && cust.phone && i.customer_phone === cust.phone)
+            );
+            const totalSpent = custInvoices.reduce((sum: number, i: any) => sum + (Number(i.grand_total) || 0), 0);
+            const totalPending = custInvoices
+              .filter((i: any) => i.payment_status === "Unpaid" || i.payment_status === "Partial")
+              .reduce((sum: number, i: any) => sum + Math.max(0, (Number(i.grand_total) || 0) - (Number(i.amount_received) || 0)), 0);
+            setCustomerSummary({
+              total_invoices: custInvoices.length,
+              total_spent: totalSpent,
+              total_pending_due: totalPending,
+              last_purchase_date: custInvoices[0]?.invoice_date || null
+            });
+            if (totalPending > 0) {
+              setShowPendingDueAlert(true);
+            }
+          }
+        } catch {
+          // ignore fallback error
+        }
       });
   }, [selectedCustomer, customers]);
 
@@ -685,7 +885,7 @@ export function PosSalesInvoice() {
   }
 
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
-  const previousDueAmount = (includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
+  const previousDueAmount = (!settlingInvoice && includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
   const baseRawTotal = Math.max(0, grossBillAmount - afterTaxDiscount);
   const rawTotal = baseRawTotal + previousDueAmount;
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
@@ -895,6 +1095,8 @@ export function PosSalesInvoice() {
     setNotes("");
     setInvoiceDiscountValue(0);
     setIncludePreviousDueInBill(false);
+    setSettlingInvoice(null);
+    loadUnpaidInvoices();
     const seq = Math.floor(10000 + Math.random() * 90000);
     setInvoiceNumber(`INV-${seq}`);
   };
@@ -910,30 +1112,36 @@ export function PosSalesInvoice() {
         ? "UNPAID"
         : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "PAID" : "PARTIAL");
 
+      const isValidUUID = (id: any) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+      // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
-        customer_id: customer.id,
-        customer_name: customer.name,
-        customer_phone: customer.phone || "",
-        customer_email: customer.email || "",
-        customer_gstin: customer.gst_number || "",
-        billing_address: customer.address || "",
+        customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
+        customer_name: customer?.name || "Walk-in Customer",
+        customer_phone: customer?.phone || null,
+        customer_email: customer?.email || null,
+        customer_gstin: customer?.gst_number || null,
+        billing_address: customer?.billing_address || customer?.address || null,
+        shipping_address: customer?.shipping_address || null,
         invoice_date: invoiceDate,
         due_date: dueDate,
-        payment_method: paymentMode,
+        payment_terms: isCredit ? "Credit / Due" : paymentMode,
         payment_status: calculatedPaymentStatus,
+        payment_method: paymentMode,
+        notes: notes || (settlingInvoice ? `Settlement for Invoice #${settlingInvoice.invoice_number}` : undefined),
         lines: items.map((it) => ({
-          product_id: it.product_id,
-          product_name: it.product_name || "Unknown Item",
-          quantity: it.quantity,
-          unit_price: it.unit_price,
-          mrp: it.mrp || 0,
-          batch_number: it.batch_number || null,
-          expiry_date: it.expiry_date || null,
-          mfg_date: it.mfg_date || null,
-          hsn_code: it.hsn_code || null,
-          discount_type: it.discount_type,
-          discount_value: it.discount_value,
-          tax_rate: it.tax_rate,
+          product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
+          product_name: it.product_name || "Item",
+          quantity: Math.max(1, Number(it.quantity) || 1),
+          unit_price: Math.max(0, Number(it.unit_price) || 0),
+          mrp: Number(it.mrp) > 0 ? Number(it.mrp) : null,
+          batch_number: it.batch_number ? String(it.batch_number) : null,
+          expiry_date: it.expiry_date ? String(it.expiry_date).slice(0, 10) : null,
+          mfg_date: it.mfg_date ? String(it.mfg_date).slice(0, 10) : null,
+          hsn_code: it.hsn_code ? String(it.hsn_code) : null,
+          discount_type: it.discount_type || null,
+          discount_value: Number(it.discount_value) || 0,
+          tax_rate: Math.max(0, Math.min(100, Number(it.tax_rate) || 0)),
         })),
       });
 
@@ -987,10 +1195,42 @@ export function PosSalesInvoice() {
       const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber);
       localStorage.setItem("pos_saved_invoices", JSON.stringify([newInvoiceRecord, ...cleaned]));
 
-      toast.success(`Sales Invoice ${invoiceNumber} saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
+      // If settling an existing unpaid invoice, mark the original invoice as PAID
+      if (settlingInvoice) {
+        if (settlingInvoice.id && settlingInvoice.id.length > 10) {
+          invoicesApi.recordPayment(settlingInvoice.id, {
+            amount: Number(settlingInvoice.grand_total) || grandTotal,
+            payment_date: invoiceDate,
+            payment_method: paymentMode,
+          }).catch(console.warn);
+        }
+
+        const origStored = localStorage.getItem("pos_saved_invoices");
+        const origList = origStored ? JSON.parse(origStored) : [];
+        const updatedOrigList = origList.map((rec: any) => {
+          if (rec.invoice_number === settlingInvoice.invoice_number || rec.id === settlingInvoice.id) {
+            return {
+              ...rec,
+              payment_status: "Paid",
+              payment_mode: paymentMode,
+              amount_received: rec.grand_total || grandTotal,
+            };
+          }
+          return rec;
+        });
+        localStorage.setItem("pos_saved_invoices", JSON.stringify(updatedOrigList));
+        toast.info(`Original Unpaid Invoice #${settlingInvoice.invoice_number} marked as PAID!`);
+        setSettlingInvoice(null);
+      }
+
+      // Broadcast pos_invoices_updated for instant memory refresh across tabs
+      window.dispatchEvent(new Event("pos_invoices_updated"));
+
+      toast.success(`Sales Invoice ${backendInvoiceNumber} saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
 
       if (printMode === 'a4') {
         const payload = constructFullInvoicePayload();
+        payload.invoice_number = backendInvoiceNumber;
         setFullInvoiceModalData(payload);
         setAutoPrintFullInvoice(true);
         setIsFullInvoiceOpen(true);
@@ -1083,6 +1323,21 @@ export function PosSalesInvoice() {
             </button>
           </div>
 
+          {/* Unpaid Invoices Quick Button */}
+          <button
+            type="button"
+            onClick={() => setIsUnpaidModalOpen(true)}
+            className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all shadow-xs flex items-center gap-1.5 cursor-pointer ${
+              unpaidInvoices.length > 0
+                ? "text-amber-900 bg-amber-50 border-amber-300 hover:bg-amber-100 animate-pulse"
+                : "text-slate-600 bg-white border-slate-300 hover:bg-slate-50"
+            }`}
+            title="Browse and settle unpaid / credit invoices"
+          >
+            <Clock className={`w-3.5 h-3.5 ${unpaidInvoices.length > 0 ? "text-amber-600" : "text-slate-400"}`} />
+            <span>Unpaid Bills ({unpaidInvoices.length})</span>
+          </button>
+
           {/* Inline Create Product Trigger Button */}
           <button
             onClick={() => setIsAddProductOpen(true)}
@@ -1136,7 +1391,93 @@ export function PosSalesInvoice() {
         </div>
       </div>
 
-      <div className="p-6 lg:p-8 space-y-8 w-full max-w-full">
+      <div className="p-6 lg:p-8 space-y-6 w-full max-w-full">
+        {/* Active Settlement In-Progress Banner */}
+        {settlingInvoice && (
+          <div className="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-xs">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-black text-emerald-950 flex items-center gap-2">
+                  <span>Converting Unpaid Bill #{settlingInvoice.invoice_number} to PAID</span>
+                  <span className="bg-emerald-200 text-emerald-900 text-[10px] font-black px-2 py-0.5 rounded-full">Active Settlement</span>
+                </div>
+                <div className="text-xs text-emerald-800 mt-0.5">
+                  Customer: <strong>{settlingInvoice.customer_name}</strong> | Amount to collect: <strong className="text-emerald-950">{currency.symbol}{Number(settlingInvoice.grand_total || 0).toFixed(2)}</strong>.
+                  Completing this sale will record payment and update the original bill to Paid!
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSettlingInvoice(null);
+                resetInvoiceForm();
+                toast.info("Cancelled invoice settlement");
+              }}
+              className="px-3.5 py-1.5 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0"
+            >
+              ✕ Cancel Settlement
+            </button>
+          </div>
+        )}
+
+        {/* Quick Unpaid Bills Section (if unpaid invoices exist and not currently settling) */}
+        {!settlingInvoice && unpaidInvoices.length > 0 && (
+          <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-300 rounded-2xl p-4 shadow-xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-xs">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">Unpaid Bills Awaiting Payment</h4>
+                  <span className="bg-amber-200 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full">
+                    {unpaidInvoices.length} Pending
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800 font-medium mt-0.5">
+                  Click any bill below to auto-populate the invoice and record payment immediately:
+                </p>
+              </div>
+            </div>
+
+            {/* Scrollable Quick Unpaid Invoice Chips */}
+            <div className="flex items-center gap-2 overflow-x-auto w-full lg:w-auto pb-1 lg:pb-0">
+              {unpaidInvoices.slice(0, 4).map((u) => (
+                <button
+                  key={u.id || u.invoice_number}
+                  type="button"
+                  onClick={() => handleSelectUnpaidInvoice(u)}
+                  className="shrink-0 bg-white hover:bg-amber-100/70 border border-amber-300 rounded-xl px-3 py-2 text-left transition-all shadow-2xs hover:scale-102 flex items-center gap-3 cursor-pointer group"
+                >
+                  <div>
+                    <div className="text-xs font-black text-slate-900 group-hover:text-amber-900">{u.invoice_number}</div>
+                    <div className="text-[10px] font-semibold text-slate-500 truncate max-w-[110px]">{u.customer_name}</div>
+                  </div>
+                  <div className="text-right pl-2.5 border-l border-amber-200">
+                    <div className="text-xs font-black text-amber-700">{currency.symbol}{Number(u.grand_total || 0).toFixed(2)}</div>
+                    <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                      ⚡ Settle
+                    </span>
+                  </div>
+                </button>
+              ))}
+
+              {unpaidInvoices.length > 4 && (
+                <button
+                  type="button"
+                  onClick={() => setIsUnpaidModalOpen(true)}
+                  className="shrink-0 text-xs font-bold text-amber-900 bg-amber-200/80 hover:bg-amber-300 border border-amber-300 rounded-xl px-3 py-2 transition-all shadow-2xs"
+                >
+                  +{unpaidInvoices.length - 4} more...
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         {/* Top Info Grid: Bill To & Invoice Info */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Bill To Card (7 cols) */}
@@ -1669,7 +2010,7 @@ export function PosSalesInvoice() {
                               className="w-14 bg-transparent px-2 py-1 text-right outline-none text-xs font-semibold"
                             />
                             {isMrpExceeded && (
-                              <span title={`Price ₹${priceExclTax.toFixed(2)} > MRP ₹${mrpVal.toFixed(2)}`}>
+                              <span title={`Price ${currency.symbol}${sellingPriceIncl.toFixed(2)} > MRP ${currency.symbol}${mrpVal.toFixed(2)}`}>
                                 <AlertTriangle className="w-3 h-3 text-red-500 mr-1 shrink-0" />
                               </span>
                             )}
@@ -2888,6 +3229,130 @@ export function PosSalesInvoice() {
                   Add {Object.keys(selectedProductQuantities).length} Selected to Invoice
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unpaid Invoices Directory Modal */}
+      {isUnpaidModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="p-5 bg-gradient-to-r from-amber-600 to-orange-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black">Unpaid / Pending Bills</h3>
+                  <p className="text-xs text-amber-100 font-medium">{unpaidInvoices.length} invoice{unpaidInvoices.length === 1 ? "" : "s"} waiting for payment settlement</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsUnpaidModalOpen(false)}
+                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search filter */}
+            <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
+              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                placeholder="Search by invoice number or customer name..."
+                value={unpaidSearchQuery}
+                onChange={(e) => setUnpaidSearchQuery(e.target.value)}
+                className="w-full bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
+              />
+              {unpaidSearchQuery && (
+                <button onClick={() => setUnpaidSearchQuery("")} className="text-slate-400 hover:text-slate-600 text-xs">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2.5 divide-y divide-slate-100">
+              {unpaidInvoices
+                .filter((u) => {
+                  if (!unpaidSearchQuery) return true;
+                  const q = unpaidSearchQuery.toLowerCase();
+                  return (
+                    u.invoice_number?.toLowerCase().includes(q) ||
+                    u.customer_name?.toLowerCase().includes(q) ||
+                    u.customer_phone?.includes(q)
+                  );
+                })
+                .map((u) => {
+                  const dueAmt = Math.max(0, Number(u.grand_total || 0) - Number(u.amount_received || 0));
+                  return (
+                    <div
+                      key={u.id || u.invoice_number}
+                      className="pt-2.5 first:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl hover:bg-amber-50/50 border border-transparent hover:border-amber-200 transition-all"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-900 text-sm">{u.invoice_number}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200">
+                            Unpaid
+                          </span>
+                          {u.invoice_date && (
+                            <span className="text-[10px] text-slate-400 font-medium">Date: {u.invoice_date}</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-700 font-semibold flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{u.customer_name}</span>
+                          {u.customer_phone && <span className="text-slate-400">({u.customer_phone})</span>}
+                        </div>
+                        {u.items && u.items.length > 0 && (
+                          <div className="text-[11px] text-slate-500 truncate max-w-sm">
+                            Items: {u.items.map((it: any) => `${it.quantity}x ${it.product_name || 'Item'}`).join(", ")}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 sm:gap-1.5 shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0">
+                        <div className="text-right">
+                          <div className="text-xs text-slate-400 font-medium">Balance Due</div>
+                          <div className="text-base font-black text-amber-700">
+                            {currency.symbol}{Number(dueAmt || u.grand_total || 0).toFixed(2)}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectUnpaidInvoice(u)}
+                          className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-amber-300" />
+                          <span>Load & Settle Bill</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+              {unpaidInvoices.length === 0 && (
+                <div className="py-12 text-center text-slate-400 space-y-2">
+                  <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto opacity-80" />
+                  <p className="text-sm font-bold text-slate-700">All Bills are Settled!</p>
+                  <p className="text-xs text-slate-400">No pending unpaid or credit invoices found.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsUnpaidModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

@@ -70,6 +70,13 @@ export function PosInvoicesHistory() {
   const [isFullInvoiceOpen, setIsFullInvoiceOpen] = useState<boolean>(false);
   const [autoPrintFullInvoice, setAutoPrintFullInvoice] = useState<boolean>(false);
 
+  // Settlement Modal State
+  const [isSettleModalOpen, setIsSettleModalOpen] = useState<boolean>(false);
+  const [settlingInvoice, setSettlingInvoice] = useState<LocalInvoiceRecord | null>(null);
+  const [settlePaymentMode, setSettlePaymentMode] = useState<string>("Cash");
+  const [settleAmount, setSettleAmount] = useState<number | "">("");
+  const [isSubmittingSettle, setIsSubmittingSettle] = useState<boolean>(false);
+
   // Load invoices from Backend API & localStorage sync
   const loadInvoices = async () => {
     setLoading(true);
@@ -89,44 +96,53 @@ export function PosInvoicesHistory() {
       const apiRes = await invoicesApi.listInvoices({ page_size: 50 }).catch(() => null);
       let remoteRecords: LocalInvoiceRecord[] = [];
       if (apiRes && apiRes.items && apiRes.items.length > 0) {
-        remoteRecords = apiRes.items.map((inv: any) => ({
-          id: inv.id,
-          invoice_number: inv.invoice_number || `INV-${inv.id.slice(0, 6).toUpperCase()}`,
-          customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
-          customer_phone: inv.customer?.phone || "",
-          customer_gstin: inv.customer?.tax_number || "",
-          sales_executive: inv.created_by_name || "Sales Executive",
-          sales_points_earned: Math.floor((inv.total_amount || 0) / 100),
-          invoice_date: inv.invoice_date || new Date().toISOString().slice(0, 10),
-          due_date: inv.due_date || "",
-          payment_mode: inv.payment_terms || "Cash",
-          payment_status:
-            String(inv.status).toLowerCase() === "paid"
-              ? "Paid"
-              : String(inv.status).toLowerCase() === "partial"
-                ? "Partial"
-                : "Unpaid",
-          subtotal: inv.subtotal || (inv.total_amount ? inv.total_amount * 0.85 : 0),
-          total_tax: inv.tax_amount || (inv.cgst_amount || 0) + (inv.sgst_amount || 0) || 0,
-          discount_amount: inv.discount_amount || 0,
-          grand_total: inv.total_amount || 0,
-          amount_received: Number(inv.amount_paid) || (String(inv.status).toLowerCase() === "paid" ? (inv.total_amount || 0) : 0),
-          print_status: "A4 PDF Generated",
-          items: (inv.lines || []).map((l: any) => ({
+        remoteRecords = apiRes.items.map((inv: any) => {
+          const lines = (inv.lines || []).map((l: any) => ({
             id: l.id,
             product_name: l.product_name || l.item_name || "Item",
-            quantity: l.quantity || 1,
-            unit_price: l.unit_price || 0,
-            mrp: l.mrp || l.unit_price || 0,
+            quantity: Number(l.quantity) || 1,
+            unit_price: Number(l.unit_price) || 0,
+            mrp: Number(l.mrp) || Number(l.unit_price) || 0,
             hsn_code: l.hsn_code || "",
-            tax_rate: l.tax_rate || 18,
-          })),
-        }));
+            tax_rate: Number(l.tax_rate) || 0,
+            discount_value: Number(l.discount_value) || 0,
+          }));
+
+          const linesSubtotal = lines.reduce((s: number, l: any) => s + (l.quantity * l.unit_price), 0);
+          const linesTax = lines.reduce((s: number, l: any) => s + (l.quantity * l.unit_price * (l.tax_rate / 100)), 0);
+          const calculatedGrandTotal = lines.length > 0 ? (linesSubtotal + linesTax) : Number(inv.total_amount || 0);
+
+          const finalSubtotal = linesSubtotal > 0 ? linesSubtotal : (Number(inv.subtotal) || Number(inv.total_amount) * 0.85);
+          const finalTax = linesTax > 0 ? linesTax : (Number(inv.tax_amount) || 0);
+          const finalGrandTotal = lines.length > 0 ? calculatedGrandTotal : Number(inv.total_amount || 0);
+
+          const isPaid = String(inv.status).toLowerCase() === "paid" || Number(inv.amount_paid) >= finalGrandTotal - 0.05;
+          const isPartial = String(inv.status).toLowerCase() === "partial" || (Number(inv.amount_paid) > 0 && Number(inv.amount_paid) < finalGrandTotal);
+
+          return {
+            id: inv.id,
+            invoice_number: inv.invoice_number || `INV-${inv.id.slice(0, 6).toUpperCase()}`,
+            customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
+            customer_phone: inv.customer?.phone || "",
+            customer_gstin: inv.customer?.tax_number || "",
+            sales_executive: inv.created_by_name || "Sales Executive",
+            sales_points_earned: Math.floor(finalGrandTotal / 100),
+            invoice_date: inv.invoice_date || new Date().toISOString().slice(0, 10),
+            due_date: inv.due_date || "",
+            payment_mode: inv.payment_terms || "Cash",
+            payment_status: isPaid ? "Paid" : isPartial ? "Partial" : "Unpaid",
+            subtotal: finalSubtotal,
+            total_tax: finalTax,
+            discount_amount: Number(inv.discount_amount) || 0,
+            grand_total: finalGrandTotal,
+            amount_received: isPaid ? finalGrandTotal : (Number(inv.amount_paid) || 0),
+            print_status: "A4 PDF Generated",
+            items: lines,
+          };
+        });
       }
 
       // Merge local and remote invoice records.
-      // 1) Remote records (backend UUIDs + real data) take priority.
-      // 2) Local-only records fill in only if no backend version exists.
       const mergedMap = new Map<string, LocalInvoiceRecord>();
       remoteRecords.forEach((inv) => {
         if (inv && inv.invoice_number) {
@@ -134,21 +150,45 @@ export function PosInvoicesHistory() {
         }
       });
       localRecords.forEach((inv) => {
-        if (inv && inv.invoice_number && !mergedMap.has(inv.invoice_number)) {
-          mergedMap.set(inv.invoice_number, inv);
+        if (inv && inv.invoice_number) {
+          const remote = mergedMap.get(inv.invoice_number);
+          if (remote) {
+            if (inv.items && inv.items.length > 0) {
+              remote.items = inv.items;
+              remote.subtotal = inv.subtotal;
+              remote.total_tax = inv.total_tax;
+              remote.grand_total = inv.grand_total;
+            }
+            if (inv.payment_status === "Paid") {
+              remote.payment_status = "Paid";
+              remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
+              remote.amount_received = inv.grand_total;
+            }
+          } else {
+            mergedMap.set(inv.invoice_number, inv);
+          }
         }
       });
 
-      // Also de-dup localStorage records that share the same frontend-generated
-      // number (prevents stale inv-${Date.now()} rows from lingering after the
-      // backend created a fresh record with a different number).
       const seenNumbers = new Set<string>();
       const dedupedList: LocalInvoiceRecord[] = [];
       const sorted = Array.from(mergedMap.values()).sort(
         (a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime()
       );
       for (const inv of sorted) {
-        const key = `${inv.invoice_date}_${inv.customer_name}_${inv.grand_total}`;
+        if (inv.items && inv.items.length > 0) {
+          const sub = inv.items.reduce((s: number, it: any) => s + (Number(it.quantity || 1) * Number(it.unit_price || 0)), 0);
+          const tax = inv.items.reduce((s: number, it: any) => s + (Number(it.quantity || 1) * Number(it.unit_price || 0) * (Number(it.tax_rate || 0) / 100)), 0);
+          if (sub > 0) {
+            inv.subtotal = sub;
+            inv.total_tax = tax;
+            inv.grand_total = sub + tax;
+            if (inv.payment_status === "Paid") {
+              inv.amount_received = inv.grand_total;
+            }
+          }
+        }
+        const key = `${inv.invoice_number}`;
         if (!seenNumbers.has(key)) {
           seenNumbers.add(key);
           dedupedList.push(inv);
@@ -158,56 +198,7 @@ export function PosInvoicesHistory() {
       if (dedupedList.length > 0) {
         setInvoices(dedupedList);
       } else {
-        // Fallback demo records if completely empty
-        const demoRecords: LocalInvoiceRecord[] = [
-          {
-            id: "inv-1001",
-            invoice_number: "INV-32101",
-            customer_name: "Abhilash Kumar",
-            customer_phone: "+91 98765 43210",
-            customer_gstin: "37AAAAA0000A1Z5",
-            sales_executive: "Nageswari (EMP-0001)",
-            sales_points_earned: 45,
-            invoice_date: new Date().toISOString().slice(0, 10),
-            due_date: new Date(Date.now() + 86400000 * 30).toISOString().slice(0, 10),
-            payment_mode: "UPI",
-            payment_status: "Paid",
-            subtotal: 3813.56,
-            total_tax: 686.44,
-            discount_amount: 0,
-            grand_total: 4500.0,
-            amount_received: 4500.0,
-            print_status: "Thermal Printed",
-            items: [
-              { product_name: "Mirinda Soft Drink - 250ml", quantity: 10, unit_price: 20, mrp: 20, hsn_code: "2202", tax_rate: 18 },
-              { product_name: "Premium Organic Whole Milk - 1L", quantity: 5, unit_price: 60, mrp: 65, hsn_code: "0401", tax_rate: 5 },
-              { product_name: "Basmati Extra Long Grain Rice 5kg", quantity: 2, unit_price: 1950, mrp: 2200, hsn_code: "1006", tax_rate: 5 }
-            ]
-          },
-          {
-            id: "inv-1002",
-            invoice_number: "INV-32100",
-            customer_name: "Rajesh Sharma",
-            customer_phone: "+91 91234 56789",
-            customer_gstin: "",
-            sales_executive: "Abhilash (EMP-0002)",
-            sales_points_earned: 18,
-            invoice_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
-            payment_mode: "Cash",
-            payment_status: "Paid",
-            subtotal: 1525.42,
-            total_tax: 274.58,
-            discount_amount: 0,
-            grand_total: 1800.0,
-            amount_received: 2000.0,
-            print_status: "A4 PDF Generated",
-            items: [
-              { product_name: "Fresh Whole Wheat Atta 10kg", quantity: 2, unit_price: 450, mrp: 490, hsn_code: "1101", tax_rate: 0 },
-              { product_name: "Refined Sunflower Cooking Oil 1L", quantity: 5, unit_price: 180, mrp: 210, hsn_code: "1512", tax_rate: 5 }
-            ]
-          }
-        ];
-        setInvoices(demoRecords);
+        setInvoices([]);
       }
     } catch (err) {
       console.error("Error loading invoice history:", err);
@@ -221,9 +212,13 @@ export function PosInvoicesHistory() {
 
   useEffect(() => {
     loadInvoices();
-    const handleStorage = () => loadInvoices();
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    const handleSync = () => loadInvoices();
+    window.addEventListener("pos_invoices_updated", handleSync);
+    window.addEventListener("storage", handleSync);
+    return () => {
+      window.removeEventListener("pos_invoices_updated", handleSync);
+      window.removeEventListener("storage", handleSync);
+    };
   }, []);
 
   // Update print status of an invoice locally & persist
@@ -236,23 +231,58 @@ export function PosInvoicesHistory() {
   };
 
   // Open A4 PDF Printer Modal
-  const handlePrintA4 = (inv: LocalInvoiceRecord) => {
+  const handlePrintA4 = async (inv: LocalInvoiceRecord) => {
+    let fullInvRecord = inv;
+    if (inv.id && inv.id.length > 20) {
+      try {
+        const remote = await invoicesApi.getInvoice(inv.id);
+        if (remote) {
+          fullInvRecord = {
+            ...inv,
+            customer_name: remote.customer_name || remote.customer?.name || inv.customer_name,
+            customer_phone: remote.customer_phone || remote.customer?.phone || inv.customer_phone,
+            customer_gstin: remote.customer_gstin || remote.customer?.tax_number || inv.customer_gstin,
+            subtotal: Number(remote.subtotal) || (Number(remote.total_amount) - Number(remote.tax_amount || 0)),
+            total_tax: Number(remote.tax_amount) || 0,
+            discount_amount: Number(remote.discount_amount) || 0,
+            grand_total: Number(remote.total_amount) || inv.grand_total,
+            amount_received: Number(remote.amount_paid) || (String(remote.status).toLowerCase() === "paid" ? Number(remote.total_amount) : inv.amount_received),
+            payment_status: String(remote.status).toLowerCase() === "paid" ? "Paid" : inv.payment_status,
+            items: (remote.lines && remote.lines.length > 0)
+              ? remote.lines.map((l: any) => ({
+                  id: l.id,
+                  product_name: l.product_name || l.item_name || "Item",
+                  quantity: Number(l.quantity) || 1,
+                  unit_price: Number(l.unit_price) || 0,
+                  mrp: Number(l.mrp) || Number(l.unit_price) || 0,
+                  hsn_code: l.hsn_code || "",
+                  tax_rate: Number(l.tax_rate) || 0,
+                  discount_value: Number(l.discount_value) || 0,
+                }))
+              : inv.items,
+          };
+        }
+      } catch (e) {
+        console.warn("Could not fetch remote invoice detail, using cached:", e);
+      }
+    }
+
     setFullInvoiceModalData({
-      invoice_number: inv.invoice_number,
-      customer_name: inv.customer_name,
-      customer_phone: inv.customer_phone,
-      customer_gstin: inv.customer_gstin,
-      sales_executive: inv.sales_executive,
-      invoice_date: inv.invoice_date,
-      due_date: inv.due_date,
-      payment_mode: inv.payment_mode,
-      payment_status: inv.payment_status,
-      subtotal: inv.subtotal,
-      total_tax: inv.total_tax,
-      discount_amount: inv.discount_amount,
-      grand_total: inv.grand_total,
-      amount_received: inv.amount_received,
-      items: inv.items
+      invoice_number: fullInvRecord.invoice_number,
+      customerName: fullInvRecord.customer_name,
+      customerPhone: fullInvRecord.customer_phone,
+      customerGST: fullInvRecord.customer_gstin,
+      sales_executive: fullInvRecord.sales_executive,
+      invoice_date: fullInvRecord.invoice_date,
+      due_date: fullInvRecord.due_date,
+      payment_method: fullInvRecord.payment_mode,
+      payment_status: fullInvRecord.payment_status,
+      subtotal: fullInvRecord.subtotal,
+      tax_amount: fullInvRecord.total_tax,
+      discount_amount: fullInvRecord.discount_amount,
+      grand_total: fullInvRecord.grand_total,
+      amount_received: fullInvRecord.payment_status === "Paid" ? fullInvRecord.grand_total : fullInvRecord.amount_received,
+      items: fullInvRecord.items
     });
     setAutoPrintFullInvoice(true);
     setIsFullInvoiceOpen(true);
@@ -591,6 +621,18 @@ export function PosInvoicesHistory() {
                     {/* Action Buttons */}
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
+                        {/* Collect Payment / Settle Button for Unpaid Invoices */}
+                        {inv.payment_status !== "Paid" && (
+                          <button
+                            title="Collect Payment & Mark Paid"
+                            onClick={() => handleOpenSettleModal(inv)}
+                            className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1 text-[10px] font-black cursor-pointer animate-pulse"
+                          >
+                            <CreditCard className="w-3 h-3" />
+                            <span>Collect</span>
+                          </button>
+                        )}
+
                         {/* View Details Drawer */}
                         <button
                           title="View Invoice Details"
@@ -772,6 +814,121 @@ export function PosInvoicesHistory() {
         onClose={() => setIsFullInvoiceOpen(false)}
         autoPrint={autoPrintFullInvoice}
       />
+
+      {/* Collect / Settle Payment Modal */}
+      {isSettleModalOpen && settlingInvoice && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-emerald-600 to-teal-700 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black">Collect Payment & Settle</h3>
+                  <p className="text-xs text-emerald-100 font-medium">Invoice: {settlingInvoice.invoice_number}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setIsSettleModalOpen(false);
+                  setSettlingInvoice(null);
+                }}
+                className="p-1 hover:bg-white/20 rounded-lg transition-colors text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              {/* Customer & Bill Summary Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Customer:</span>
+                  <span className="font-bold text-slate-900">{settlingInvoice.customer_name}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Total Bill Amount:</span>
+                  <span className="font-bold text-slate-900">{currency.symbol}{Number(settlingInvoice.grand_total || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Already Paid:</span>
+                  <span className="font-bold text-slate-600">{currency.symbol}{Number(settlingInvoice.amount_received || 0).toFixed(2)}</span>
+                </div>
+                <div className="pt-2 border-t border-slate-200 flex justify-between text-sm">
+                  <span className="font-black text-slate-900">Remaining Balance Due:</span>
+                  <span className="font-black text-rose-600">
+                    {currency.symbol}{Math.max(0, Number(settlingInvoice.grand_total || 0) - Number(settlingInvoice.amount_received || 0)).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Payment Mode Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Payment Method</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {["Cash", "UPI", "Card", "Bank Transfer"].map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setSettlePaymentMode(mode)}
+                      className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center ${
+                        settlePaymentMode === mode
+                          ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Amount to Settle */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Amount Collecting ({currency.symbol})</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-sm font-bold text-slate-400">{currency.symbol}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={settleAmount}
+                    onChange={(e) => setSettleAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full bg-white border border-slate-300 rounded-xl pl-7 pr-3 py-2 text-base font-black text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettleModalOpen(false);
+                  setSettlingInvoice(null);
+                }}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSettlement}
+                disabled={isSubmittingSettle}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <CheckCircle className="w-4 h-4" />
+                {isSubmittingSettle ? "Recording Payment..." : "Confirm & Mark as Paid"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
