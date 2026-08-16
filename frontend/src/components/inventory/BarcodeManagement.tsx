@@ -142,7 +142,7 @@ export function BarcodeManagement() {
       pageCss = "@page { size: 100mm 25mm portrait !important; margin: 0mm !important; }";
     } else if (layoutType === "3up") {
       pageCss = "@page { size: 114mm 25mm portrait !important; margin: 0mm !important; }";
-    } else if (layoutType === "a4") {
+    } else if (layoutType.startsWith("a4")) {
       pageCss = "@page { size: A4 portrait !important; margin: 5mm !important; }";
     }
 

@@ -15,17 +15,17 @@ import { useCurrency } from "@/hooks/use-currency";
 export interface ProductBarcodeLike {
   product_name: string;
   barcode?: string | null;
-  sku?: string;
+  sku?: string | null;
   selling_price?: number | null;
   mrp?: number | null;
-  category_name?: string;
-  format?: string;
-  batch_no?: string;
-  mfg_lic_no?: string;
-  pkd_date?: string;
-  exp_date?: string;
-  net_qty?: string;
-  usp_rate?: string;
+  category_name?: string | null;
+  format?: string | null;
+  batch_no?: string | null;
+  mfg_lic_no?: string | null;
+  pkd_date?: string | null;
+  exp_date?: string | null;
+  net_qty?: string | null;
+  usp_rate?: string | null;
 }
 
 /**
@@ -335,6 +335,7 @@ export function SingleBarcodeLabelCard({
   template: any;
   isPrint?: boolean;
 }) {
+  const { currency } = useCurrency();
   const f = template?.fields || {};
   const storeName = template?.storeName || "LAZYMONKEY AI SUPERSTORE";
 

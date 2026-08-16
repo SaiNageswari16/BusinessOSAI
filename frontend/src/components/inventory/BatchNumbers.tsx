@@ -570,7 +570,7 @@ function BatchModal({
   const onSelectProduct = (productId: string) => {
     const p = products.find((x) => x.id === productId);
     if (p) {
-      const cost = Number(p.cost_price || p.purchase_price || 0);
+      const cost = Number((p as any).cost_price || p.purchase_price || 0);
       const sell = Number(p.selling_price || 0);
       const mrpVal = Number((p as any).mrp || sell * 1.2 || 0);
       const tax = Number((p as any).tax_percent || (p as any).tax_rate || 0);
