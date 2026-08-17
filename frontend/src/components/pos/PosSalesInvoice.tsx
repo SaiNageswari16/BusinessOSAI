@@ -42,7 +42,7 @@ import {
   Zap,
   User
 } from "lucide-react";
-import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi } from "../../lib/api-client";
+import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
@@ -505,6 +505,32 @@ export function PosSalesInvoice() {
     window.addEventListener("pos_invoices_updated", handleSync);
     window.addEventListener("storage", handleSync);
 
+    // Check if user navigated from Invoice History to Collect on an unpaid invoice
+    try {
+      const storedCollect = sessionStorage.getItem("pos_collect_invoice");
+      if (storedCollect) {
+        sessionStorage.removeItem("pos_collect_invoice");
+        const parsed = JSON.parse(storedCollect);
+        setTimeout(() => {
+          handleSelectUnpaidInvoice(parsed);
+        }, 200);
+      }
+    } catch (e) {
+      console.warn("Could not parse pos_collect_invoice:", e);
+    }
+
+    const handleCollectSync = () => {
+      try {
+        const storedCollect = sessionStorage.getItem("pos_collect_invoice");
+        if (storedCollect) {
+          sessionStorage.removeItem("pos_collect_invoice");
+          const parsed = JSON.parse(storedCollect);
+          handleSelectUnpaidInvoice(parsed);
+        }
+      } catch (e) {}
+    };
+    window.addEventListener("pos_collect_invoice_trigger", handleCollectSync);
+
     posApi
       .getProducts()
       .then((res: any) => setProducts(res?.items || (Array.isArray(res) ? res : [])))
@@ -531,6 +557,7 @@ export function PosSalesInvoice() {
     return () => {
       window.removeEventListener("pos_invoices_updated", handleSync);
       window.removeEventListener("storage", handleSync);
+      window.removeEventListener("pos_collect_invoice_trigger", handleCollectSync);
     };
   }, []);
 
@@ -1204,13 +1231,21 @@ export function PosSalesInvoice() {
       const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber);
       localStorage.setItem("pos_saved_invoices", JSON.stringify([newInvoiceRecord, ...cleaned]));
 
-      // If settling an existing unpaid invoice, mark the original invoice as PAID
+      // If settling an existing unpaid/partial invoice
       if (settlingInvoice) {
+        const amountCollectedNow = Number(amountReceived !== "" ? amountReceived : grandTotal);
+        const previouslyReceived = Number(settlingInvoice.amount_received || 0);
+        const newTotalReceived = previouslyReceived + amountCollectedNow;
+        const totalOriginal = Number(settlingInvoice.grand_total || grandTotal);
+        const isFullyPaid = newTotalReceived >= totalOriginal - 0.01;
+        const targetStatus: "Paid" | "Partial" | "Unpaid" = isFullyPaid ? "Paid" : "Partial";
+
         if (settlingInvoice.id && settlingInvoice.id.length > 10) {
           invoicesApi.recordPayment(settlingInvoice.id, {
-            amount: Number(settlingInvoice.grand_total) || grandTotal,
+            amount: amountCollectedNow,
             payment_date: invoiceDate,
-            payment_method: paymentMode,
+            payment_method: paymentMode.toLowerCase(),
+            notes: `Settlement via POS Sales Invoice (${targetStatus})`,
           }).catch(console.warn);
         }
 
@@ -1220,15 +1255,20 @@ export function PosSalesInvoice() {
           if (rec.invoice_number === settlingInvoice.invoice_number || rec.id === settlingInvoice.id) {
             return {
               ...rec,
-              payment_status: "Paid",
+              payment_status: targetStatus,
               payment_mode: paymentMode,
-              amount_received: rec.grand_total || grandTotal,
+              amount_received: newTotalReceived,
             };
           }
           return rec;
         });
         localStorage.setItem("pos_saved_invoices", JSON.stringify(updatedOrigList));
-        toast.info(`Original Unpaid Invoice #${settlingInvoice.invoice_number} marked as PAID!`);
+        if (isFullyPaid) {
+          toast.info(`Invoice #${settlingInvoice.invoice_number} is now marked as FULLY PAID!`);
+        } else {
+          const remainingDue = totalOriginal - newTotalReceived;
+          toast.info(`Partial payment of ${formatCurrency(amountCollectedNow)} recorded for #${settlingInvoice.invoice_number}. Remaining Due: ${formatCurrency(remainingDue)}`);
+        }
         setSettlingInvoice(null);
       }
 
@@ -2503,6 +2543,16 @@ export function PosSalesInvoice() {
                 <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex justify-between">
                   <span>Change / Return to Customer:</span>
                   <span className="text-emerald-700">{currency.symbol}{(Number(amountReceived) - grandTotal).toFixed(2)}</span>
+                </div>
+              )}
+
+              {amountReceived !== "" && Number(amountReceived) < grandTotal && Number(amountReceived) > 0 && paymentMode !== "Credit" && (
+                <div className="p-2.5 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex justify-between items-center animate-in fade-in">
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    Partial Payment (Balance Due):
+                  </span>
+                  <span className="text-amber-900 font-black">{currency.symbol}{(grandTotal - Number(amountReceived)).toFixed(2)}</span>
                 </div>
               )}
               <div className="space-y-2">

@@ -294,11 +294,10 @@ async def create_invoice(
         inv_pay = InvoicePayment(
             tenant_id=ctx.tenant_id,
             invoice_id=invoice.id,
-            payment_number=f"PAY-{invoice_number}",
             payment_date=invoice.invoice_date,
             amount=float(totals["total_amount"]),
             payment_method="wallet",
-            reference_number=invoice_number,
+            reference_number=f"PAY-{invoice_number}",
             notes=f"Paid via Customer Wallet",
         )
         db.add(inv_pay)

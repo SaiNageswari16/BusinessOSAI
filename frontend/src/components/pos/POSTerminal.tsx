@@ -882,9 +882,9 @@ function PosTerminalInner() {
       setCashModalOpen(true);
       return;
     }
-    if (paymentMethod === 'Credit') {
-      if (!selectedCustomer || selectedCustomer.id === 'walk-in') {
-        toast.error("Please select or add a registered customer for Pay Later (Credit) sales!");
+    if (paymentMethod === 'Credit' || paymentMethod === 'Pay Later') {
+      if (!selectedCustomer || selectedCustomer.id === 'walk-in' || selectedCustomer.id === 'WALK-IN') {
+        toast.error("Please select or add a registered customer for Pay Later (Store Credit) sales!");
         setIsCustomerModalOpen(true);
         return;
       }
@@ -1037,6 +1037,22 @@ function PosTerminalInner() {
       };
 
       setCompletedCheckoutBill(billData);
+
+      // Sync Customer Wallet balance if paid via Wallet
+      const isWalletPayment = paymentsArray.some(p => p.payment_method?.toLowerCase() === 'wallet');
+      if (isWalletPayment && selectedCustomer && selectedCustomer.id !== 'walk-in' && selectedCustomer.id !== 'WALK-IN') {
+        const walletPaidAmt = paymentsArray.find(p => p.payment_method?.toLowerCase() === 'wallet')?.amount || total;
+        const newBal = Math.max(0, customerWalletBalance - walletPaidAmt);
+        setCustomerWalletBalance(newBal);
+        setSelectedCustomer((prev: any) => prev ? { ...prev, wallet: newBal } : prev);
+        crmWalletApi.getBalance(selectedCustomer.id).then((res: any) => {
+          if (res && res.balance !== undefined) {
+            setCustomerWalletBalance(Number(res.balance));
+            setSelectedCustomer((prev: any) => prev ? { ...prev, wallet: Number(res.balance) } : prev);
+          }
+        }).catch(() => {});
+        window.dispatchEvent(new Event("pos_invoices_updated"));
+      }
 
       // Clear UI state
       clearCart();
@@ -2404,41 +2420,48 @@ function PosTerminalInner() {
 
               {/* Payment Methods Grid */}
               <div className="px-4 pb-4">
-                <div className="grid grid-cols-4 gap-2.5 mb-4">
+                <div className="grid grid-cols-3 gap-2 mb-4">
                   <button
                     onClick={() => setPaymentMethod('Cash')}
-                    className={`flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Cash' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-emerald-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Cash' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-emerald-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
                     <Banknote className={`w-5 h-5 ${paymentMethod === 'Cash' ? 'text-emerald-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">Cash</span>
                   </button>
                   <button
                     onClick={() => setPaymentMethod('Card')}
-                    className={`flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Card' ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-indigo-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Card' ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-indigo-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
                     <CreditCard className={`w-5 h-5 ${paymentMethod === 'Card' ? 'text-indigo-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">Card</span>
                   </button>
                   <button
                     onClick={() => setPaymentMethod('UPI')}
-                    className={`flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'UPI' ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-purple-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'UPI' ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-purple-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
                     <QrCode className={`w-5 h-5 ${paymentMethod === 'UPI' ? 'text-purple-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">UPI</span>
                   </button>
                   <button
-                    onClick={() => setPaymentMethod('Split')}
-                    className={`flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Split' ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-orange-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
-                  >
-                    <Combine className={`w-5 h-5 ${paymentMethod === 'Split' ? 'text-orange-600' : 'text-slate-400'}`} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Split</span>
-                  </button>
-                  <button
                     onClick={() => setPaymentMethod('Wallet')}
-                    className={`flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Wallet' ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sky-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Wallet' ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sky-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
                     <Wallet className={`w-5 h-5 ${paymentMethod === 'Wallet' ? 'text-sky-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">Wallet</span>
+                  </button>
+                  <button
+                    onClick={() => setPaymentMethod('Pay Later')}
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Pay Later' ? 'border-amber-500 bg-amber-50 text-amber-800 shadow-amber-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
+                  >
+                    <Clock className={`w-5 h-5 ${paymentMethod === 'Pay Later' ? 'text-amber-600' : 'text-slate-400'}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Pay Later</span>
+                  </button>
+                  <button
+                    onClick={() => setPaymentMethod('Split')}
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Split' ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-orange-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
+                  >
+                    <Combine className={`w-5 h-5 ${paymentMethod === 'Split' ? 'text-orange-600' : 'text-slate-400'}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Split</span>
                   </button>
                 </div>
 

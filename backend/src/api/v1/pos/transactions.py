@@ -11,7 +11,16 @@ from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
-from src.models import POSTransaction, POSTransactionItem, POSPayment, Product, Customer
+from src.models import (
+    POSTransaction,
+    POSTransactionItem,
+    POSPayment,
+    POSPaymentMethod,
+    Product,
+    Customer,
+    CustomerWallet,
+    CustomerWalletTransaction,
+)
 from src.models.inventory import InventoryBatch
 from src.models.erp import Invoice, InvoiceLine, InvoicePayment
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
@@ -114,14 +123,76 @@ async def checkout(
 
     # 3. Create Payments
     for payment in payload.payments:
+        raw_m = (payment.payment_method or "").lower().strip()
+        if raw_m in ("cash", "cod"):
+            mapped_method = POSPaymentMethod.CASH
+        elif raw_m in ("card", "credit_card", "debit_card"):
+            mapped_method = POSPaymentMethod.CARD
+        elif raw_m in ("gift_card", "voucher", "points"):
+            mapped_method = POSPaymentMethod.GIFT_CARD
+        else:
+            # wallet, upi, credit, pay later, netbanking, online etc.
+            mapped_method = POSPaymentMethod.ONLINE
+
+        ref_text = payment.reference_number
+        if not ref_text and raw_m in ("wallet", "credit", "upi", "pay later", "pay_later"):
+            ref_text = f"Mode: {raw_m.upper()}"
+
         tx_payment = POSPayment(
             transaction_id=transaction.id,
             tenant_id=ctx.user.tenant_id,
-            payment_method=payment.payment_method,
+            payment_method=mapped_method,
             amount=payment.amount,
-            reference_number=payment.reference_number,
+            reference_number=ref_text,
         )
         db.add(tx_payment)
+
+        # If payment is from customer's wallet, deduct CustomerWallet, log CustomerWalletTransaction, and sync Customer.wallet_balance
+        if payload.customer_id and raw_m == "wallet":
+            try:
+                # 1. Update CustomerWallet record
+                wallet_stmt = (
+                    select(CustomerWallet).where(
+                        CustomerWallet.customer_id == payload.customer_id,
+                        CustomerWallet.tenant_id == ctx.user.tenant_id,
+                    ).with_for_update()
+                )
+                wallet = (await db.execute(wallet_stmt)).scalar_one_or_none()
+                if not wallet:
+                    wallet = CustomerWallet(
+                        tenant_id=ctx.user.tenant_id,
+                        customer_id=payload.customer_id,
+                        balance=0.0
+                    )
+                    db.add(wallet)
+                    await db.flush()
+
+                wallet.balance = max(0.0, float(wallet.balance) - float(payment.amount))
+
+                # 2. Record CustomerWalletTransaction
+                tx = CustomerWalletTransaction(
+                    tenant_id=ctx.user.tenant_id,
+                    wallet_id=wallet.id,
+                    transaction_type="payment",
+                    amount=float(payment.amount),
+                    balance_after=wallet.balance,
+                    reference_type="pos_transaction",
+                    reference_id=transaction.receipt_number,
+                    description=f"Payment for POS Bill #{transaction.receipt_number}",
+                )
+                db.add(tx)
+
+                # 3. Update Customer.wallet_balance column
+                cust_stmt = select(Customer).where(
+                    Customer.id == payload.customer_id,
+                    Customer.tenant_id == ctx.user.tenant_id,
+                ).with_for_update()
+                cust_res = await db.execute(cust_stmt)
+                cust_obj = cust_res.scalar_one_or_none()
+                if cust_obj:
+                    cust_obj.wallet_balance = wallet.balance
+            except Exception as wallet_err:
+                logger.warning(f"Wallet balance deduction note: {wallet_err}")
 
     # 4. Live notification
     msg_title = "POS Refund Processed" if transaction.status == "refunded" else "New POS Order Checked Out"
@@ -132,7 +203,7 @@ async def checkout(
 
     # 5. Create Invoice from POS transaction + auto-send via WhatsApp
     if transaction.status == "completed":
-        _create_invoice_and_send_whatsapp(db, ctx, transaction, payload)
+        await _create_invoice_and_send_whatsapp(db, ctx, transaction, payload)
 
 
     # 6. Reload and return
@@ -230,11 +301,10 @@ async def _create_invoice_and_send_whatsapp(
                     inv_pay = InvoicePayment(
                         tenant_id=ctx.user.tenant_id,
                         invoice_id=invoice.id,
-                        payment_number=f"PAY-{inv_number}",
                         payment_date=__import__("datetime").date.today(),
                         amount=float(p.amount),
                         payment_method=p.payment_method.lower(),
-                        reference_number=p.reference_number or transaction.receipt_number,
+                        reference_number=p.reference_number or f"PAY-{inv_number}",
                         notes=f"POS Upfront Payment ({p.payment_method})",
                     )
                     db.add(inv_pay)

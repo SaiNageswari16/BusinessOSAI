@@ -107,7 +107,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   return createPortal(
     <div
       id="printable-receipt-portal"
-      className="bg-white text-black p-1 font-mono text-[11px] leading-tight select-none relative"
+      className="hidden print:block bg-white text-black p-1 font-mono text-[11px] leading-tight select-none fixed left-[-9999px] top-[-9999px] print:static print:visible pointer-events-none print:pointer-events-auto"
       style={{
         width: printableWidth,
         maxWidth: printableWidth,
