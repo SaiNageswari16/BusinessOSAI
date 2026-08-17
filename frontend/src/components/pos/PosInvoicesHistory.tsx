@@ -215,8 +215,10 @@ export function PosInvoicesHistory() {
           const finalTax = linesTax > 0 ? linesTax : (Number(inv.tax_amount) || 0);
           const finalGrandTotal = lines.length > 0 ? calculatedGrandTotal : Number(inv.total_amount || 0);
 
-          const isPaid = String(inv.status).toLowerCase() === "paid" || Number(inv.amount_paid) >= finalGrandTotal - 0.05;
-          const isPartial = String(inv.status).toLowerCase() === "partial" || (Number(inv.amount_paid) > 0 && Number(inv.amount_paid) < finalGrandTotal);
+          const rawStatus = String(inv.status || "").toLowerCase();
+          const amtPaid = Number(inv.amount_paid) || 0;
+          const isPaid = rawStatus === "paid" || amtPaid >= finalGrandTotal - 0.05;
+          const isPartial = rawStatus === "partial" || rawStatus === "partially_paid" || (amtPaid > 0 && amtPaid < finalGrandTotal - 0.05);
 
           return {
             id: inv.id,
@@ -234,7 +236,7 @@ export function PosInvoicesHistory() {
             total_tax: finalTax,
             discount_amount: Number(inv.discount_amount) || 0,
             grand_total: finalGrandTotal,
-            amount_received: isPaid ? finalGrandTotal : (Number(inv.amount_paid) || 0),
+            amount_received: isPaid ? finalGrandTotal : amtPaid,
             print_status: "A4 PDF Generated",
             items: lines,
           };
@@ -262,6 +264,9 @@ export function PosInvoicesHistory() {
               remote.payment_status = "Paid";
               remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
               remote.amount_received = inv.grand_total;
+            } else if (inv.payment_status === "Partial") {
+              remote.payment_status = "Partial";
+              remote.amount_received = Number(inv.amount_received) || Number(remote.amount_received) || 0;
             }
           } else {
             mergedMap.set(inv.invoice_number, inv);
@@ -677,21 +682,31 @@ export function PosInvoicesHistory() {
 
                     {/* Payment Mode & Status */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.payment_status === "Paid"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : inv.payment_status === "Partial"
-                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              inv.payment_status === "Paid"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : inv.payment_status === "Partial"
+                                ? "bg-amber-50 text-amber-800 border border-amber-300 font-black"
                                 : "bg-rose-50 text-rose-700 border border-rose-200"
                             }`}
-                        >
-                          {inv.payment_status}
-                        </span>
-                        {inv.payment_status !== "Unpaid" && (
-                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
-                            {inv.payment_mode || "Cash"}
+                          >
+                            {inv.payment_status === "Partial" ? "Partially Paid" : inv.payment_status}
                           </span>
+                          {inv.payment_status !== "Unpaid" && (
+                            <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                              {inv.payment_mode || "Cash"}
+                            </span>
+                          )}
+                        </div>
+                        {inv.payment_status === "Partial" && (
+                          <div className="text-[10px] font-semibold flex items-center gap-1.5 whitespace-nowrap">
+                            <span className="text-emerald-700">Paid: {formatCurrency(inv.amount_received || 0)}</span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-rose-600 font-bold">Due: {formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}</span>
+                          </div>
                         )}
                       </div>
                     </td>
@@ -713,22 +728,33 @@ export function PosInvoicesHistory() {
                     </td>
 
                     {/* Grand Total */}
-                    <td className="px-4 py-3 text-right font-black text-slate-900 text-sm">
-                      {formatCurrency(inv.grand_total)}
+                    <td className="px-4 py-3 text-right">
+                      <div className="font-black text-slate-900 text-sm">
+                        {formatCurrency(inv.grand_total)}
+                      </div>
+                      {inv.payment_status === "Partial" && (
+                        <div className="text-[10px] text-rose-600 font-bold">
+                          Due: {formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))}
+                        </div>
+                      )}
                     </td>
 
                     {/* Action Buttons */}
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {/* Collect Payment / Settle Button for Unpaid Invoices */}
+                        {/* Collect Payment / Settle Button for Unpaid & Partial Invoices */}
                         {inv.payment_status !== "Paid" && (
                           <button
-                            title="Open in Sales Invoice & Collect"
+                            title={inv.payment_status === "Partial" ? `Collect Remaining Due (${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))})` : "Open in Sales Invoice & Collect"}
                             onClick={() => handleCollectInSalesInvoice(inv)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1 text-[11px] font-black cursor-pointer animate-pulse"
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs flex items-center gap-1 text-[11px] font-black cursor-pointer animate-pulse whitespace-nowrap"
                           >
                             <CreditCard className="w-3.5 h-3.5" />
-                            <span>Collect</span>
+                            <span>
+                              {inv.payment_status === "Partial"
+                                ? `Collect Due (${formatCurrency(Math.max(0, inv.grand_total - (inv.amount_received || 0)))})`
+                                : "Collect"}
+                            </span>
                           </button>
                         )}
 

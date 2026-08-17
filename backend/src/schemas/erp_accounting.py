@@ -245,6 +245,8 @@ class InvoiceCreate(BaseModel):
     is_reverse_charge: bool = False
     payment_status: str | None = None
     payment_method: str | None = None
+    amount_paid: float | None = None
+    amount_received: float | None = None
     lines: list[InvoiceLineCreate] = Field(min_length=1)
 
 

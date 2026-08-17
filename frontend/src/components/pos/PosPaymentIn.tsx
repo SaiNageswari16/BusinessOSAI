@@ -17,7 +17,10 @@ import {
   Receipt,
   FileSpreadsheet,
   CheckCircle,
-  Clock
+  Clock,
+  Eye,
+  ExternalLink,
+  DollarSign
 } from "lucide-react";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
@@ -69,6 +72,42 @@ export function PosPaymentIn() {
   const [printedPayment, setPrintedPayment] = useState<any>(null);
   const [actionMenuOpenId, setActionMenuOpenId] = useState<string | null>(null);
 
+  // Invoice Details Modal States
+  const [viewingInvoice, setViewingInvoice] = useState<any | null>(null);
+  const [isLoadingInvoice, setIsLoadingInvoice] = useState(false);
+
+  const handleOpenInvoiceDetails = async (invoiceIdOrNumber: string) => {
+    if (!invoiceIdOrNumber) return;
+    setIsLoadingInvoice(true);
+    try {
+      let inv: any = null;
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(invoiceIdOrNumber);
+      if (isUUID) {
+        inv = await invoicesApi.getInvoice(invoiceIdOrNumber);
+      } else {
+        const cleanNum = invoiceIdOrNumber.replace(/^(Invoice\s*#?|Bill\s*#?)/i, '').trim();
+        const res: any = await invoicesApi.listInvoices({ search: cleanNum, page_size: 5 });
+        const found = (res.items || res || []).find((i: any) => 
+          i.invoice_number?.toLowerCase() === cleanNum.toLowerCase() ||
+          i.id === cleanNum
+        ) || res.items?.[0];
+        if (found) {
+          inv = await invoicesApi.getInvoice(found.id);
+        }
+      }
+      if (inv) {
+        setViewingInvoice(inv);
+      } else {
+        toast.error(`Invoice "${invoiceIdOrNumber}" not found in system.`);
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch invoice details:", err);
+      toast.error("Failed to load invoice details.");
+    } finally {
+      setIsLoadingInvoice(false);
+    }
+  };
+
   const fetchPayments = async () => {
     try {
       const [invoicesRes, walletRes, vendorPaymentsRes, vendorBillsRes] = await Promise.all([
@@ -83,6 +122,8 @@ export function PosPaymentIn() {
         id: p.id,
         voucher_number: p.payment_number || `REC-${String(p.id).slice(0, 6).toUpperCase()}`,
         reference_text: p.invoice_number ? `Invoice #${p.invoice_number}` : "Invoice Settlement",
+        invoice_id: p.invoice_id,
+        invoice_number: p.invoice_number,
         party_name: p.party_name || p.customer_name || "Customer",
         party_type: 'Customer',
         party_id: p.customer_id,
@@ -497,19 +538,12 @@ export function PosPaymentIn() {
 
   const handlePrintTableThermally = () => {
     const reportData = {
-      invoice_number: `REPORT-${new Date().getTime().toString().substring(5)}`,
-      date: new Date().toISOString(),
-      customerName: "Payment In Report",
-      total: stats.totalReceived,
-      subtotal: stats.totalReceived,
-      discount: 0,
-      tax: 0,
-      payment_method: "Various",
+      title: "Passbook Ledger Report",
       items: filteredPayments.map(p => ({
-         name: `${p.party_name || 'Customer'} (${p.payment_method || 'Cash'})`,
+         name: `${p.party_name} (${p.voucher_number})`,
          quantity: 1,
-         price: p.amount,
-         subtotal: p.amount
+         price: p.credit_amount > 0 ? p.credit_amount : p.debit_amount,
+         subtotal: p.credit_amount > 0 ? p.credit_amount : p.debit_amount
       }))
     };
     setPrintedPayment(reportData);
@@ -755,9 +789,27 @@ export function PosPaymentIn() {
                           }`}>
                             {p.badge}
                           </span>
-                          {p.reference_text && (
+                          {p.invoice_number ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenInvoiceDetails(p.invoice_id || p.invoice_number)}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md transition-colors mt-1"
+                              title="Click to view full invoice & line items"
+                            >
+                              <FileText className="w-3 h-3" /> View Invoice #{p.invoice_number}
+                            </button>
+                          ) : p.reference_text && p.reference_text.toLowerCase().includes("invoice") ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenInvoiceDetails(p.reference_text)}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md transition-colors mt-1"
+                              title="Click to view full invoice & line items"
+                            >
+                              <FileText className="w-3 h-3" /> {p.reference_text}
+                            </button>
+                          ) : p.reference_text ? (
                             <span className="block text-[11px] text-slate-500 font-normal truncate max-w-[180px]">{p.reference_text}</span>
-                          )}
+                          ) : null}
                         </td>
                         <td className="py-3.5 px-4">
                           <p className="font-bold text-slate-900">{p.party_name}</p>
@@ -1079,7 +1131,17 @@ export function PosPaymentIn() {
                             </td>
                           )}
                           <td className="py-2.5 px-3">
-                            <span className="font-bold text-slate-900 block font-mono">{inv.id}</span>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-bold text-slate-900 font-mono">{inv.id}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenInvoiceDetails(inv.realId || inv.id)}
+                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                title="View full invoice details"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                             <span className="text-[10px] text-slate-400">{inv.date ? new Date(inv.date).toLocaleDateString() : ""}</span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-semibold text-rose-600">
@@ -1215,6 +1277,231 @@ export function PosPaymentIn() {
           </button>
         </div>
       </div>
+
+      {/* ACTUAL INVOICE DETAILS & PURCHASE BREAKDOWN MODAL */}
+      {viewingInvoice && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/80">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-black text-slate-900 font-mono">Invoice #{viewingInvoice.invoice_number}</h3>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                      viewingInvoice.status === "paid"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : viewingInvoice.status === "partially_paid"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-rose-100 text-rose-800"
+                    }`}>
+                      {viewingInvoice.status?.replace("_", " ")}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Issued on {viewingInvoice.invoice_date ? new Date(viewingInvoice.invoice_date).toLocaleDateString() : "N/A"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingInvoice(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-slate-800">
+              {/* Customer & Billing Info */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 border border-slate-200/80 rounded-xl text-xs">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Customer / Billed To</span>
+                  <p className="font-bold text-slate-900 text-sm">{viewingInvoice.customer_name || "Walk-in Customer"}</p>
+                  {viewingInvoice.customer_phone && (
+                    <p className="text-slate-500 font-mono mt-0.5">📞 {viewingInvoice.customer_phone}</p>
+                  )}
+                  {viewingInvoice.customer_address && (
+                    <p className="text-slate-500 mt-0.5">{viewingInvoice.customer_address}</p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Payment Status</span>
+                  <p className={`font-black text-sm ${
+                    Number(viewingInvoice.balance_due) <= 0 ? "text-emerald-600" : "text-amber-700"
+                  }`}>
+                    {Number(viewingInvoice.balance_due) <= 0 ? "Fully Paid" : `Pending Due: ${formatCurrency(Number(viewingInvoice.balance_due) || 0)}`}
+                  </p>
+                  <p className="text-slate-500 mt-0.5">Total Paid: {formatCurrency(Number(viewingInvoice.amount_paid) || 0)}</p>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div>
+                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider mb-2">Purchased Items & Breakdown</h4>
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-2.5 px-3">Item / Description</th>
+                        <th className="py-2.5 px-3 text-center">Qty</th>
+                        <th className="py-2.5 px-3 text-right">Unit Price</th>
+                        <th className="py-2.5 px-3 text-right">Tax</th>
+                        <th className="py-2.5 px-3 text-right">Line Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(!viewingInvoice.lines && !viewingInvoice.items) || (viewingInvoice.lines?.length === 0 && viewingInvoice.items?.length === 0) ? (
+                        <tr>
+                          <td colSpan={5} className="py-4 text-center text-slate-400">No itemized lines recorded for this invoice.</td>
+                        </tr>
+                      ) : (
+                        (viewingInvoice.lines || viewingInvoice.items || []).map((item: any, i: number) => (
+                          <tr key={item.id || i} className="hover:bg-slate-50/50">
+                            <td className="py-2.5 px-3 font-semibold text-slate-900">
+                              {item.item_name || item.product_name || item.description || `Item #${i + 1}`}
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-bold text-slate-700">
+                              {item.quantity}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-600">
+                              {formatCurrency(Number(item.unit_price) || 0)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-500">
+                              {Number(item.tax_rate) > 0 ? `${item.tax_rate}%` : "—"}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-black text-slate-900">
+                              {formatCurrency(Number(item.total_amount ?? item.line_total ?? item.subtotal ?? (Number(item.quantity || 1) * Number(item.unit_price || 0))) || 0)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Financial Totals */}
+              <div className="p-4 bg-slate-900 text-white rounded-xl space-y-2 text-xs">
+                <div className="flex justify-between text-slate-400">
+                  <span>Subtotal:</span>
+                  <span className="font-bold text-white">{formatCurrency(Number(viewingInvoice.subtotal) || 0)}</span>
+                </div>
+                {Number(viewingInvoice.tax_amount) > 0 && (
+                  <div className="flex justify-between text-slate-400">
+                    <span>Tax (GST/VAT):</span>
+                    <span className="font-bold text-white">+{formatCurrency(Number(viewingInvoice.tax_amount) || 0)}</span>
+                  </div>
+                )}
+                {Number(viewingInvoice.discount_amount) > 0 && (
+                  <div className="flex justify-between text-purple-300">
+                    <span>Discount:</span>
+                    <span className="font-bold">-{formatCurrency(Number(viewingInvoice.discount_amount) || 0)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-black pt-2 border-t border-slate-800">
+                  <span>Grand Total:</span>
+                  <span>{formatCurrency(Number(viewingInvoice.total_amount || viewingInvoice.grand_total) || 0)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold pt-1 border-t border-slate-800/80 text-emerald-400">
+                  <span>Amount Paid:</span>
+                  <span>{formatCurrency(Number(viewingInvoice.amount_paid) || 0)}</span>
+                </div>
+                {Number(viewingInvoice.balance_due) > 0 && (
+                  <div className="flex justify-between text-xs font-black text-amber-400">
+                    <span>Outstanding Due:</span>
+                    <span>{formatCurrency(Number(viewingInvoice.balance_due) || 0)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Invoice Payments History (if any) */}
+              {viewingInvoice.payments && viewingInvoice.payments.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider mb-2">Recorded Payments on this Invoice</h4>
+                  <div className="space-y-1.5">
+                    {viewingInvoice.payments.map((p: any, idx: number) => (
+                      <div key={p.id || idx} className="flex justify-between items-center p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="font-bold text-slate-900 capitalize">{p.payment_method || "Payment"}</span>
+                          <span className="text-[10px] text-slate-400">({p.payment_date ? new Date(p.payment_date).toLocaleDateString() : ""})</span>
+                        </div>
+                        <span className="font-black text-emerald-700">+{formatCurrency(Number(p.amount) || 0)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const billData = {
+                    invoice_number: viewingInvoice.invoice_number || `INV-${viewingInvoice.id?.substring(0, 6)}`,
+                    date: viewingInvoice.invoice_date || new Date().toISOString(),
+                    customerName: viewingInvoice.customer_name || "Customer",
+                    customerPhone: viewingInvoice.customer_phone || "",
+                    total: Number(viewingInvoice.total_amount || viewingInvoice.grand_total || 0),
+                    subtotal: Number(viewingInvoice.subtotal || 0),
+                    tax: Number(viewingInvoice.tax_amount || 0),
+                    discount: Number(viewingInvoice.discount_amount || 0),
+                    payment_method: viewingInvoice.payment_terms || "Cash",
+                    amount_received: Number(viewingInvoice.amount_paid || 0),
+                    items: (viewingInvoice.lines || viewingInvoice.items || []).map((l: any, idx: number) => ({
+                      name: l.item_name || l.product_name || l.description || `Item #${idx + 1}`,
+                      quantity: Number(l.quantity) || 1,
+                      price: Number(l.unit_price) || 0,
+                      subtotal: Number(l.total_amount || l.line_total || (Number(l.quantity || 1) * Number(l.unit_price || 0))) || 0,
+                    }))
+                  };
+                  setPrintedPayment(billData);
+                  setTimeout(() => {
+                    triggerThermalPrint();
+                  }, 100);
+                }}
+                className="py-2.5 px-4 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" /> Print Receipt
+              </button>
+              <div className="flex gap-2">
+                {Number(viewingInvoice.balance_due) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cust = parties.find(p => p.name === viewingInvoice.customer_name || p.id === viewingInvoice.customer_id);
+                      if (cust) {
+                        handleSelectParty(cust);
+                      }
+                      setPaymentAmount(Number(viewingInvoice.balance_due));
+                      setPaymentPurpose('settle_due');
+                      setIsRecordingPayment(true);
+                      setViewingInvoice(null);
+                    }}
+                    className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <DollarSign className="w-3.5 h-3.5" /> Settle Due ({formatCurrency(Number(viewingInvoice.balance_due))})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setViewingInvoice(null)}
+                  className="py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
     </div>
   );

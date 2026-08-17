@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { posSession, posStore } from "../../lib/pos-fallback";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
-import { posApi } from "../../lib/pos-api";
+import { posApi } from "../../lib/api-client";
 import { workspaceApi } from "../../lib/workspace-api";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -39,13 +39,13 @@ function PosDashboardInner() {
 
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ["pos-daily-summary"],
-    queryFn: posApi.getDailySummary,
+    queryFn: () => posApi.getDailySummary(),
     refetchInterval: 60000, // Refresh every minute
   });
 
   const { data: historyData, isLoading: historyLoading, error: historyError } = useQuery({
     queryKey: ["pos-transactions-history"],
-    queryFn: () => posApi.getTransactionHistory(6),
+    queryFn: () => posApi.getHistory({ limit: 6 }),
     refetchInterval: 30000,
   });
 

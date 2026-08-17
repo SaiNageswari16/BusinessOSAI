@@ -230,30 +230,46 @@ async def create_invoice(
     background_tasks: BackgroundTasks,
 ):
     totals = _compute_invoice_totals(payload.lines)
+    total_amt = float(totals["total_amount"])
 
     from src.utils.number_series import generate_number
     invoice_number = await generate_number(db, ctx.tenant_id, "invoice", payload.company_id)
 
-    inv_kwargs = payload.model_dump(exclude={"lines", "payment_status", "payment_method"})
+    inv_kwargs = payload.model_dump(exclude={"lines", "payment_status", "payment_method", "amount_paid", "amount_received"})
 
-    initial_status = "draft"
-    if payload.payment_status:
-        if payload.payment_status.upper() == "PAID":
-            initial_status = "paid"
-        # "unpaid" or any other value stays as draft
-    elif payload.payment_method and payload.payment_method.lower() != "credit":
+    paid_input = float(payload.amount_paid if payload.amount_paid is not None else (payload.amount_received if payload.amount_received is not None else 0.0))
+    p_status_upper = (payload.payment_status or "").upper()
+    is_credit = bool(payload.payment_method and payload.payment_method.lower() == "credit") or p_status_upper == "UNPAID"
+
+    if is_credit and paid_input <= 0:
+        initial_status = "draft"
+        actual_paid = 0.0
+        actual_due = total_amt
+    elif p_status_upper == "PAID" or paid_input >= total_amt - 0.01:
         initial_status = "paid"
+        actual_paid = total_amt
+        actual_due = 0.0
+    elif p_status_upper == "PARTIAL" or (paid_input > 0 and paid_input < total_amt):
+        initial_status = "partially_paid"
+        actual_paid = paid_input
+        actual_due = max(0.0, total_amt - paid_input)
+    elif payload.payment_method and payload.payment_method.lower() not in ["credit", "pay later"]:
+        initial_status = "paid"
+        actual_paid = total_amt
+        actual_due = 0.0
+    else:
+        initial_status = "draft"
+        actual_paid = 0.0
+        actual_due = total_amt
 
     inv_kwargs.update({
         "tenant_id": ctx.tenant_id,
         "invoice_number": invoice_number,
         "status": initial_status,
+        "amount_paid": actual_paid,
+        "balance_due": actual_due,
         **totals,
     })
-
-    if initial_status == "paid":
-        inv_kwargs["amount_paid"] = totals["total_amount"]
-        inv_kwargs["balance_due"] = 0.0
 
     invoice = Invoice(**inv_kwargs)
     db.add(invoice)
@@ -263,31 +279,31 @@ async def create_invoice(
     is_wallet_payment = bool(
         payload.payment_method and "wallet" in payload.payment_method.lower()
     )
-    if is_wallet_payment and payload.customer_id:
+    if is_wallet_payment and payload.customer_id and actual_paid > 0:
         wallet = await db.scalar(
             select(CustomerWallet).where(
                 CustomerWallet.customer_id == payload.customer_id,
                 CustomerWallet.tenant_id == ctx.tenant_id
             ).with_for_update()
         )
-        if not wallet or float(wallet.balance or 0) < float(totals["total_amount"]):
+        if not wallet or float(wallet.balance or 0) < actual_paid:
             avail = float(wallet.balance or 0) if wallet else 0.0
             raise HTTPException(
                 status_code=400,
-                detail=f"Insufficient Customer Wallet Balance (₹{avail:,.2f} available, ₹{totals['total_amount']:,.2f} required)."
+                detail=f"Insufficient Customer Wallet Balance (₹{avail:,.2f} available, ₹{actual_paid:,.2f} required)."
             )
 
-        wallet.balance = float(wallet.balance) - float(totals["total_amount"])
+        wallet.balance = float(wallet.balance) - actual_paid
 
         tx = CustomerWalletTransaction(
             tenant_id=ctx.tenant_id,
             wallet_id=wallet.id,
             transaction_type="payment",
-            amount=float(totals["total_amount"]),
+            amount=actual_paid,
             balance_after=wallet.balance,
             reference_type="invoice",
             reference_id=invoice_number,
-            description=f"Payment for Sales Invoice #{invoice_number}",
+            description=f"Payment for Sales Invoice #{invoice_number} ({initial_status})",
         )
         db.add(tx)
 
@@ -295,10 +311,22 @@ async def create_invoice(
             tenant_id=ctx.tenant_id,
             invoice_id=invoice.id,
             payment_date=invoice.invoice_date,
-            amount=float(totals["total_amount"]),
+            amount=actual_paid,
             payment_method="wallet",
             reference_number=f"PAY-{invoice_number}",
-            notes=f"Paid via Customer Wallet",
+            notes=f"Paid via Customer Wallet ({initial_status})",
+        )
+        db.add(inv_pay)
+    elif actual_paid > 0 and not is_credit:
+        # Record upfront initial payment (Cash, UPI, Card, etc.)
+        inv_pay = InvoicePayment(
+            tenant_id=ctx.tenant_id,
+            invoice_id=invoice.id,
+            payment_date=invoice.invoice_date,
+            amount=actual_paid,
+            payment_method=(payload.payment_method or "cash").lower(),
+            reference_number=f"PAY-{invoice_number}",
+            notes=f"Upfront payment for Sales Invoice #{invoice_number} ({initial_status})",
         )
         db.add(inv_pay)
 

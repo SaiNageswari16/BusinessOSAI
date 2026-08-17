@@ -63,9 +63,16 @@ async def checkout(
         driver_name=payload.driver_name,
     )
 
-    # Auto-set status to REFUNDED for refund receipts
+    # Auto-set status for refund receipts and partial/credit payments
+    has_credit_payment = any((p.payment_method or "").lower() == "credit" for p in payload.payments)
+    total_non_credit = sum(p.amount for p in payload.payments if (p.payment_method or "").lower() != "credit")
+
     if payload.total_amount < 0:
         transaction.status = "refunded"
+    elif has_credit_payment and total_non_credit > 0 and total_non_credit < payload.total_amount:
+        transaction.status = "partially_paid"
+    elif has_credit_payment and total_non_credit <= 0:
+        transaction.status = "credit"
 
     db.add(transaction)
     await db.flush()  # Get transaction.id
@@ -471,11 +478,15 @@ async def get_daily_summary(
         func.coalesce(func.sum(POSPayment.amount), 0).label("total_amount"),
     ).join(POSTransaction).where(*completed_cond).group_by(POSPayment.payment_method)
     payments_res = await db.execute(payments_stmt)
-    breakdown = {"cash": 0.0, "card": 0.0, "upi": 0.0}
+    breakdown = {"cash": 0.0, "card": 0.0, "upi": 0.0, "wallet": 0.0, "credit": 0.0, "online": 0.0}
     for row in payments_res:
-        method = (row.payment_method or "").lower()
+        method = (str(row.payment_method) if row.payment_method else "").lower()
+        if "." in method:
+            method = method.split(".")[-1]
         if method in breakdown:
             breakdown[method] = float(row.total_amount or 0)
+        else:
+            breakdown["online"] = breakdown.get("online", 0.0) + float(row.total_amount or 0)
 
     split_stmt = select(func.count()).select_from(
         select(POSPayment.transaction_id)

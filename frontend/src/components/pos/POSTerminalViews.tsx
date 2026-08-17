@@ -1020,22 +1020,54 @@ export const RecentBillsView = ({ onRefund }: { onRefund?: (id: string) => void 
       posApi.getHistory({ search: searchQuery || undefined })
         .then((data: POSTransactionHistory[]) => {
           if (Array.isArray(data)) {
-            const mapped = data.map(tx => ({
-              rawId: tx.id,
-              id: tx.receipt_number,
-              date: tx.created_at,
-              customerName: "Customer",
-              paymentMethod: tx.payments?.[0]?.payment_method || "cash",
-              total: tx.total_amount,
-              status: tx.status.charAt(0).toUpperCase() + tx.status.slice(1),
-              items: tx.items,
-              payments: tx.payments,
-              subtotal: tx.subtotal,
-              tax: tx.tax_amount,
-              discount: tx.discount_amount,
-              isRefund: tx.total_amount < 0,
-              parentTxId: tx.parent_transaction_id,
-            }));
+            const mapped = data.map(tx => {
+              const payments = tx.payments || [];
+              const totalAmount = Number(tx.total_amount) || 0;
+              const creditPayment = payments.find((p: any) => p.payment_method?.toLowerCase() === 'credit');
+              const nonCreditPayments = payments.filter((p: any) => p.payment_method?.toLowerCase() !== 'credit');
+              const totalPaid = nonCreditPayments.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+              const dueAmount = creditPayment ? Number(creditPayment.amount) : Math.max(0, totalAmount - totalPaid);
+              const isPartial = dueAmount > 0.01 && totalPaid > 0.01;
+              const isCreditOnly = dueAmount >= totalAmount - 0.01 && totalAmount > 0;
+
+              let methodDisplay = payments?.[0]?.payment_method?.toUpperCase() || "CASH";
+              if (isPartial) {
+                const upfrontMethod = nonCreditPayments[0]?.payment_method?.toUpperCase() || "CASH";
+                methodDisplay = `PARTIAL (${upfrontMethod} + CREDIT)`;
+              } else if (payments.length > 1) {
+                methodDisplay = "SPLIT";
+              } else if (isCreditOnly) {
+                methodDisplay = "CREDIT / KHATA";
+              }
+
+              let statusDisplay = tx.status ? (tx.status.charAt(0).toUpperCase() + tx.status.slice(1)) : "Completed";
+              if (isPartial) {
+                statusDisplay = "Partially Paid";
+              } else if (isCreditOnly) {
+                statusDisplay = "Pay Later / Due";
+              }
+
+              return {
+                rawId: tx.id,
+                id: tx.receipt_number,
+                date: tx.created_at,
+                customerName: (tx as any).customer_name || "Customer",
+                paymentMethod: methodDisplay,
+                total: totalAmount,
+                paidAmount: totalPaid,
+                dueAmount: dueAmount,
+                isPartial: isPartial,
+                isCreditOnly: isCreditOnly,
+                status: statusDisplay,
+                items: tx.items,
+                payments: tx.payments,
+                subtotal: tx.subtotal,
+                tax: tx.tax_amount,
+                discount: tx.discount_amount,
+                isRefund: totalAmount < 0,
+                parentTxId: tx.parent_transaction_id,
+              };
+            });
             setBills(mapped);
           }
         })
@@ -1085,7 +1117,7 @@ export const RecentBillsView = ({ onRefund }: { onRefund?: (id: string) => void 
               <th className="px-6 py-4 font-bold">Time</th>
               <th className="px-6 py-4 font-bold">Customer</th>
               <th className="px-6 py-4 font-bold">Method</th>
-              <th className="px-6 py-4 font-bold text-right">Total</th>
+              <th className="px-6 py-4 font-bold text-right">Total Amount</th>
               <th className="px-6 py-4 font-bold text-center">Status</th>
               <th className="px-6 py-4 font-bold text-right">Action</th>
             </tr>
@@ -1099,10 +1131,33 @@ export const RecentBillsView = ({ onRefund }: { onRefund?: (id: string) => void 
                 </td>
                 <td className="px-6 py-4 text-slate-500">{new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                 <td className="px-6 py-4 font-medium text-slate-900">{tx.customerName}</td>
-                <td className="px-6 py-4 text-slate-500">{tx.paymentMethod?.toUpperCase()}</td>
-                <td className={`px-6 py-4 text-right font-bold ${tx.isRefund ? 'text-rose-600' : 'text-slate-900'}`}>{formatCurrency(tx.total)}</td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${tx.isPartial ? 'bg-amber-100 text-amber-800' : 'text-slate-600 bg-slate-100'}`}>
+                    {tx.paymentMethod}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <div className={`font-bold ${tx.isRefund ? 'text-rose-600' : 'text-slate-900'}`}>
+                    {formatCurrency(tx.total)}
+                  </div>
+                  {tx.isPartial && (
+                    <div className="text-[10px] font-semibold flex items-center justify-end gap-1.5 mt-0.5">
+                      <span className="text-emerald-600">Paid: +{formatCurrency(tx.paidAmount)}</span>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-rose-600 font-bold">Due: {formatCurrency(tx.dueAmount)}</span>
+                    </div>
+                  )}
+                </td>
                 <td className="px-6 py-4 text-center">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${tx.isRefund ? 'bg-rose-100 text-rose-700' : tx.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                    tx.isRefund 
+                      ? 'bg-rose-100 text-rose-700' 
+                      : tx.isPartial
+                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                      : tx.status === 'Completed' 
+                      ? 'bg-emerald-100 text-emerald-700' 
+                      : 'bg-amber-100 text-amber-700'
+                  }`}>
                     {tx.isRefund ? 'Refunded' : tx.status}
                   </span>
                 </td>

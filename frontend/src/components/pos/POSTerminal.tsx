@@ -3,7 +3,7 @@ import {
   Search, ScanBarcode, Store, Clock, User as UserIcon,
   Trash2, X, ChevronRight, Plus, Minus, CreditCard, Banknote, QrCode, Tag, ShoppingCart,
   Info, Camera, Sparkles, Printer, Database, Boxes, LayoutGrid, List as ListIcon, Combine, ArrowRightLeft, ArrowLeft,
-  Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus
+  Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus, Percent, CheckCircle2
 } from "lucide-react";
 import { posApi, inventoryApi, crmApi, invoicesApi, crmWalletApi, procurementApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -191,6 +191,11 @@ function PosTerminalInner() {
   const [cashTendered, setCashTendered] = useState("");
   const [creditChangeToWallet, setCreditChangeToWallet] = useState(false);
   const [completedCheckoutBill, setCompletedCheckoutBill] = useState<any | null>(null);
+
+  // Partial Payment States
+  const [partialModalOpen, setPartialModalOpen] = useState(false);
+  const [partialPaidAmount, setPartialPaidAmount] = useState("");
+  const [partialPaymentMode, setPartialPaymentMode] = useState<string>("Cash");
 
   // Held Bills Modal States
   const [heldBillsModalOpen, setHeldBillsModalOpen] = useState(false);
@@ -877,6 +882,12 @@ function PosTerminalInner() {
       setSplitPaymentModalOpen(true);
       return;
     }
+    if (paymentMethod === 'Partial' || paymentMethod === 'Partial Pay') {
+      setPartialPaidAmount(total > 0 ? (total * 0.5).toFixed(2) : '');
+      setPartialPaymentMode('Cash');
+      setPartialModalOpen(true);
+      return;
+    }
     if (paymentMethod === 'Cash') {
       setCashTendered(total.toString());
       setCashModalOpen(true);
@@ -1107,16 +1118,35 @@ function PosTerminalInner() {
     }
   };
 
-  const handleSplitConfirm = () => {
-    const cashAmt = parseFloat(splitCash) || 0;
-    const onlineAmt = parseFloat(splitOnline) || 0;
-    if (Math.abs(cashAmt + onlineAmt - total) > 0.01) {
-      alert("Split amounts must equal the grand total: " + formatCurrency(total));
+  const handlePartialConfirm = async () => {
+    const paid = parseFloat(partialPaidAmount) || 0;
+    if (paid <= 0) {
+      toast.error("Please enter a valid upfront payment amount.");
       return;
     }
-    executeCheckout([
-      { payment_method: "cash", amount: cashAmt },
-      { payment_method: "online", amount: onlineAmt }
+    if (paid >= total) {
+      setPartialModalOpen(false);
+      await executeCheckout([{ payment_method: partialPaymentMode.toLowerCase(), amount: total }]);
+      return;
+    }
+
+    if (!selectedCustomer || selectedCustomer.id === 'walk-in' || selectedCustomer.id === 'WALK-IN') {
+      toast.error("Please select a registered customer to record the remaining balance due in their Khata/Ledger!");
+      setIsCustomerModalOpen(true);
+      return;
+    }
+
+    const due = Number((total - paid).toFixed(2));
+
+    if (partialPaymentMode === 'Wallet' && (customerWalletBalance || 0) < paid) {
+      toast.error(`Insufficient Customer Wallet balance (${formatCurrency(customerWalletBalance || 0)} available).`);
+      return;
+    }
+
+    setPartialModalOpen(false);
+    await executeCheckout([
+      { payment_method: partialPaymentMode.toLowerCase(), amount: paid },
+      { payment_method: "credit", amount: due }
     ]);
   };
 
@@ -2420,48 +2450,59 @@ function PosTerminalInner() {
 
               {/* Payment Methods Grid */}
               <div className="px-4 pb-4">
-                <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="grid grid-cols-4 gap-1.5 mb-4">
                   <button
                     onClick={() => setPaymentMethod('Cash')}
                     className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Cash' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-emerald-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
-                    <Banknote className={`w-5 h-5 ${paymentMethod === 'Cash' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <Banknote className={`w-4 h-4 ${paymentMethod === 'Cash' ? 'text-emerald-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">Cash</span>
                   </button>
                   <button
                     onClick={() => setPaymentMethod('Card')}
                     className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Card' ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-indigo-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
-                    <CreditCard className={`w-5 h-5 ${paymentMethod === 'Card' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    <CreditCard className={`w-4 h-4 ${paymentMethod === 'Card' ? 'text-indigo-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">Card</span>
                   </button>
                   <button
                     onClick={() => setPaymentMethod('UPI')}
                     className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'UPI' ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-purple-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
-                    <QrCode className={`w-5 h-5 ${paymentMethod === 'UPI' ? 'text-purple-600' : 'text-slate-400'}`} />
+                    <QrCode className={`w-4 h-4 ${paymentMethod === 'UPI' ? 'text-purple-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">UPI</span>
                   </button>
                   <button
                     onClick={() => setPaymentMethod('Wallet')}
                     className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Wallet' ? 'border-sky-500 bg-sky-50 text-sky-700 shadow-sky-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
-                    <Wallet className={`w-5 h-5 ${paymentMethod === 'Wallet' ? 'text-sky-600' : 'text-slate-400'}`} />
+                    <Wallet className={`w-4 h-4 ${paymentMethod === 'Wallet' ? 'text-sky-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">Wallet</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPaymentMethod('Partial Pay');
+                      setPartialPaidAmount(total > 0 ? (total * 0.5).toFixed(2) : '');
+                      setPartialModalOpen(true);
+                    }}
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Partial Pay' ? 'border-rose-500 bg-rose-50 text-rose-700 shadow-rose-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
+                  >
+                    <Percent className={`w-4 h-4 ${paymentMethod === 'Partial Pay' ? 'text-rose-600' : 'text-slate-400'}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Partial Pay</span>
                   </button>
                   <button
                     onClick={() => setPaymentMethod('Pay Later')}
                     className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Pay Later' ? 'border-amber-500 bg-amber-50 text-amber-800 shadow-amber-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
-                    <Clock className={`w-5 h-5 ${paymentMethod === 'Pay Later' ? 'text-amber-600' : 'text-slate-400'}`} />
+                    <Clock className={`w-4 h-4 ${paymentMethod === 'Pay Later' ? 'text-amber-600' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider">Pay Later</span>
                   </button>
                   <button
                     onClick={() => setPaymentMethod('Split')}
-                    className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Split' ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-orange-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
+                    className={`col-span-2 flex flex-row items-center justify-center gap-2 py-2.5 rounded-xl border-2 transition-all shadow-sm hover:-translate-y-0.5 ${paymentMethod === 'Split' ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-orange-500/20' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-500 bg-white'}`}
                   >
-                    <Combine className={`w-5 h-5 ${paymentMethod === 'Split' ? 'text-orange-600' : 'text-slate-400'}`} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Split</span>
+                    <Combine className={`w-4 h-4 ${paymentMethod === 'Split' ? 'text-orange-600' : 'text-slate-400'}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Split Payment</span>
                   </button>
                 </div>
 
@@ -2713,7 +2754,153 @@ function PosTerminalInner() {
         )}
       </AnimatePresence>
 
+      {/* PARTIAL PAYMENT WITH DUE MODAL */}
+      <AnimatePresence>
+        {partialModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPartialModalOpen(false)} className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 15 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 border border-slate-100">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
+                    <Percent className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900">Partial Payment & Due Collection</h3>
+                    <p className="text-[11px] text-slate-500 font-semibold">Collect upfront amount now & record balance due in Khata</p>
+                  </div>
+                </div>
+                <button onClick={() => setPartialModalOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"><X className="w-4 h-4" /></button>
+              </div>
 
+              {/* Grand Total Bar */}
+              <div className="p-3.5 bg-slate-900 text-white rounded-2xl flex justify-between items-center mb-4 shadow-inner">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block">Total Bill Amount</span>
+                  <span className="text-2xl font-black text-white">{formatCurrency(total)}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block">Party / Customer</span>
+                  <span className="text-xs font-bold text-emerald-400">
+                    {selectedCustomer?.id && selectedCustomer.id !== "WALK-IN" && selectedCustomer.id !== "walk-in" ? selectedCustomer.name : "⚠️ Walk-in Guest (Requires Selection)"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Upfront Payment Mode Selector */}
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">1. Select Upfront Tender Mode</label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { id: "Cash", icon: Banknote },
+                    { id: "UPI", icon: QrCode },
+                    { id: "Card", icon: CreditCard },
+                    { id: "Wallet", icon: Wallet }
+                  ].map((m) => {
+                    const Icon = m.icon;
+                    const isSelected = partialPaymentMode === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setPartialPaymentMode(m.id)}
+                        className={`flex flex-col items-center justify-center gap-1 py-2 rounded-xl border-2 transition-all font-bold text-xs ${
+                          isSelected
+                            ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm"
+                            : "border-slate-200 hover:border-slate-300 text-slate-600 bg-slate-50/50"
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        <span className="text-[10px]">{m.id}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Amount Paid Now Input + Quick Chips */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">2. Amount Paid Now ({currency.symbol})</label>
+                  <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                    {Number(partialPaidAmount) > 0 && Number(partialPaidAmount) < total ? `${((Number(partialPaidAmount) / total) * 100).toFixed(0)}% Upfront` : ""}
+                  </span>
+                </div>
+                <div className="relative mb-2">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">{currency.symbol}</span>
+                  <input
+                    type="number"
+                    value={partialPaidAmount}
+                    onChange={(e) => setPartialPaidAmount(e.target.value)}
+                    className="w-full text-2xl font-black text-slate-900 border-2 border-slate-200 rounded-2xl py-2.5 pl-10 pr-4 focus:outline-none focus:border-rose-500 transition-colors"
+                    placeholder="0.00"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Quick % Buttons */}
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: "25%", val: Number((total * 0.25).toFixed(2)) },
+                    { label: "50%", val: Number((total * 0.50).toFixed(2)) },
+                    { label: "75%", val: Number((total * 0.75).toFixed(2)) },
+                    { label: "Full (100%)", val: total }
+                  ].map(chip => (
+                    <button
+                      key={chip.label}
+                      type="button"
+                      onClick={() => setPartialPaidAmount(chip.val.toString())}
+                      className={`py-1.5 text-xs font-bold rounded-xl border transition-all ${
+                        Number(partialPaidAmount) === chip.val
+                          ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Balance Due Calculation Card */}
+              <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl mb-4">
+                <div className="flex justify-between items-center text-xs text-amber-900 font-bold mb-1">
+                  <span>Upfront Collection ({partialPaymentMode}):</span>
+                  <span className="text-emerald-700 font-black">+{formatCurrency(Number(partialPaidAmount) || 0)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm font-black text-amber-950 pt-1.5 border-t border-amber-200/60">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-4 h-4 text-amber-600" /> Remaining Balance Due (Khata):
+                  </span>
+                  <span className="text-amber-700 text-base">
+                    {formatCurrency(Math.max(0, total - (Number(partialPaidAmount) || 0)))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                {(!selectedCustomer || selectedCustomer.id === "WALK-IN" || selectedCustomer.id === "walk-in") && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomerModalOpen(true)}
+                    className="py-3 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 transition-colors flex items-center gap-1"
+                  >
+                    <UserIcon className="w-4 h-4" /> Link Customer
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handlePartialConfirm}
+                  disabled={!partialPaidAmount || Number(partialPaidAmount) <= 0}
+                  className="flex-1 py-3.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-rose-600/20 transition-all uppercase tracking-wider flex items-center justify-center gap-2"
+                >
+                  <Percent className="w-4 h-4" /> Confirm Partial Payment
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* OPEN REGISTER (SESSION) MODAL */}
       <AnimatePresence>

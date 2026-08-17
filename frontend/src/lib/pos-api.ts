@@ -1,36 +1,9 @@
-import { useCurrency } from "@/hooks/use-currency";
+import { posApi as clientPosApi, POSTransactionHistory } from "./api-client";
 
 export interface ApiError {
   status: number;
   detail: string;
 }
-
-async function fetchWithAuth(url: string, options: RequestInit = {}) {
-  let token = null;
-  try {
-    const authItem = localStorage.getItem("bos-auth");
-    if (authItem) {
-      token = JSON.parse(authItem).accessToken;
-    }
-  } catch (e) {
-    console.warn("Failed to parse bos-auth from localStorage");
-  }
-
-  const headers = new Headers(options.headers || {});
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-  
-  const response = await fetch(url, { ...options, headers });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
-    throw { status: response.status, detail: errorData.detail } as ApiError;
-  }
-  
-  return response.json();
-}
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
 export interface POSDailySummary {
   transactions_count: number;
@@ -40,6 +13,8 @@ export interface POSDailySummary {
     cash: number;
     card: number;
     upi: number;
+    wallet?: number;
+    credit?: number;
   };
   split_count: number;
   hourly_sales?: {
@@ -49,32 +24,14 @@ export interface POSDailySummary {
   }[];
 }
 
-export interface POSTransaction {
-  id: string;
-  receipt_number: string;
-  subtotal: number;
-  tax_amount: number;
-  discount_amount: number;
-  total_amount: number;
-  status: string;
-  created_at: string;
-  payments?: {
-    payment_method: string;
-    amount: number;
-  }[];
-  customer?: {
-    id: string;
-    name: string;
-    phone?: string;
-  };
-}
+export type POSTransaction = POSTransactionHistory;
 
 export const posApi = {
-  getDailySummary: async (): Promise<POSDailySummary> => {
-    return fetchWithAuth(`${API_BASE_URL}/pos/transactions/reports/daily-summary`);
+  getDailySummary: async (params?: { session_id?: string }): Promise<POSDailySummary> => {
+    return clientPosApi.getDailySummary(params);
   },
   
   getTransactionHistory: async (limit: number = 50): Promise<POSTransaction[]> => {
-    return fetchWithAuth(`${API_BASE_URL}/pos/transactions/history?limit=${limit}`);
+    return clientPosApi.getHistory({ limit });
   }
 };

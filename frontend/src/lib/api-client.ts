@@ -3176,6 +3176,8 @@ export const posApi = {
   checkout: (data: Record<string, unknown>) => request<any>("POST", "/pos/transactions/checkout", data),
   getHistory: (params?: { limit?: number; status_filter?: string; search?: string }) =>
     request<POSTransactionHistory[]>("GET", "/pos/transactions/history", undefined, params as Record<string, string | number | boolean | null | undefined>),
+  getTransactionHistory: (limit: number = 50) =>
+    request<POSTransactionHistory[]>("GET", "/pos/transactions/history", undefined, { limit } as Record<string, string | number | boolean | null | undefined>),
   getDailySummary: (params?: { session_id?: string }) =>
     request<any>("GET", "/pos/transactions/reports/daily-summary", undefined, params as Record<string, string | number | boolean | null | undefined>),
   deleteTransaction: (id: string) => request<void>("DELETE", `/pos/transactions/${id}`),

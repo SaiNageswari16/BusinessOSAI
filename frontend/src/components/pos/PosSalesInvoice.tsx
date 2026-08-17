@@ -310,11 +310,35 @@ export function PosSalesInvoice() {
       { id: "2", name: "Packing Charge", amount: 0, tax_rate: 0 }
     ]);
 
-    if (inv.customer_id) {
-      setSelectedCustomer(inv.customer_id);
-    } else if (inv.customer_name) {
-      const found = customers.find((c) => c.name?.toLowerCase() === inv.customer_name?.toLowerCase());
-      if (found) setSelectedCustomer(found.id);
+    // Ensure customer is properly selected and in dropdown
+    const custId = inv.customer_id || (inv.customer && inv.customer.id);
+    const custName = inv.customer_name || (inv.customer && inv.customer.name) || "Customer";
+    const custPhone = inv.customer_phone || (inv.customer && inv.customer.phone) || "";
+    const custGst = inv.customer_gstin || (inv.customer && inv.customer.gst_number) || "";
+
+    if (custId) {
+      setSelectedCustomer(custId);
+    }
+
+    if (custName) {
+      const found = customers.find((c) =>
+        (custId && c.id === custId) ||
+        c.name?.toLowerCase() === custName.toLowerCase()
+      );
+      if (found) {
+        setSelectedCustomer(found.id);
+      } else {
+        const syntheticId = custId || `cust-temp-${Date.now()}`;
+        const synthCustomer = {
+          id: syntheticId,
+          name: custName,
+          phone: custPhone,
+          gst_number: custGst,
+          type: "Retail",
+        };
+        setCustomers((prev) => [synthCustomer, ...prev.filter((c) => c.id !== syntheticId)]);
+        setSelectedCustomer(syntheticId);
+      }
     }
 
     // Try fetching full remote invoice for 100% exact lines if available
@@ -376,11 +400,13 @@ export function PosSalesInvoice() {
     }
 
     setPaymentMode(inv.payment_mode && !inv.payment_mode.toLowerCase().includes("credit") && !inv.payment_mode.toLowerCase().includes("due") ? inv.payment_mode : "Cash");
-    const dueAmount = Math.max(0, (Number(inv.grand_total) || 0) - (Number(inv.amount_received) || 0));
-    setAmountReceived(dueAmount > 0 ? dueAmount : Number(inv.grand_total) || "");
+    const previouslyPaid = Number(inv.amount_received || 0);
+    const invoiceGrandTotal = Number(inv.grand_total || 0);
+    const dueAmount = Math.max(0, invoiceGrandTotal - previouslyPaid);
+    setAmountReceived(dueAmount > 0 ? dueAmount : invoiceGrandTotal || "");
     setNotes(`Paid settlement for original Unpaid Invoice #${inv.invoice_number}`);
     setIsUnpaidModalOpen(false);
-    toast.success(`Loaded Unpaid Invoice #${inv.invoice_number} ready to settle!`);
+    toast.success(`Loaded Invoice #${inv.invoice_number} (Due: ${currency.symbol}${dueAmount.toFixed(2)}) ready to settle!`);
   };
 
   const handleVerifyGstin = async () => {
@@ -505,29 +531,41 @@ export function PosSalesInvoice() {
     window.addEventListener("pos_invoices_updated", handleSync);
     window.addEventListener("storage", handleSync);
 
-    // Check if user navigated from Invoice History to Collect on an unpaid invoice
-    try {
-      const storedCollect = sessionStorage.getItem("pos_collect_invoice");
-      if (storedCollect) {
-        sessionStorage.removeItem("pos_collect_invoice");
-        const parsed = JSON.parse(storedCollect);
-        setTimeout(() => {
-          handleSelectUnpaidInvoice(parsed);
-        }, 200);
-      }
-    } catch (e) {
-      console.warn("Could not parse pos_collect_invoice:", e);
-    }
-
-    const handleCollectSync = () => {
+    const processCollectTarget = async () => {
       try {
+        let parsed: any = null;
         const storedCollect = sessionStorage.getItem("pos_collect_invoice");
         if (storedCollect) {
           sessionStorage.removeItem("pos_collect_invoice");
-          const parsed = JSON.parse(storedCollect);
+          try {
+            parsed = JSON.parse(storedCollect);
+          } catch (e) {}
+        }
+
+        if (!parsed) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const collectId = urlParams.get("collect_id");
+          if (collectId) {
+            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(collectId);
+            if (isUUID) {
+              const res = await invoicesApi.getInvoice(collectId).catch(() => null);
+              if (res) parsed = res;
+            }
+          }
+        }
+
+        if (parsed) {
           handleSelectUnpaidInvoice(parsed);
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn("Could not process collect target:", e);
+      }
+    };
+
+    processCollectTarget();
+
+    const handleCollectSync = () => {
+      processCollectTarget();
     };
     window.addEventListener("pos_collect_invoice_trigger", handleCollectSync);
 
@@ -541,7 +579,18 @@ export function PosSalesInvoice() {
       .catch(() => setBatches([]));
     crmApi
       .getCustomers(1, 100)
-      .then((data: any) => setCustomers(data?.items || (Array.isArray(data) ? data : [])))
+      .then((data: any) => {
+        const custList = data?.items || (Array.isArray(data) ? data : []);
+        setCustomers((prev) => {
+          const merged = [...custList];
+          prev.forEach((p) => {
+            if (!merged.some((m) => m.id === p.id)) {
+              merged.push(p);
+            }
+          });
+          return merged;
+        });
+      })
       .catch(console.error);
     fetchSalesEmployees()
       .then((emps) => {
@@ -1150,6 +1199,9 @@ export function PosSalesInvoice() {
 
       const isValidUUID = (id: any) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
+      const numericAmountReceived = amountReceived === "" ? grandTotal : (Number(amountReceived) || 0);
+      const actualAmountPaid = isCredit ? 0 : (numericAmountReceived > 0 ? numericAmountReceived : 0);
+
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
         customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
@@ -1163,7 +1215,9 @@ export function PosSalesInvoice() {
         due_date: dueDate,
         payment_terms: isCredit ? "Credit / Due" : paymentMode,
         payment_status: calculatedPaymentStatus,
-        payment_method: paymentMode,
+        payment_method: isCredit ? "Credit" : paymentMode,
+        amount_paid: actualAmountPaid,
+        amount_received: actualAmountPaid,
         notes: notes || (settlingInvoice ? `Settlement for Invoice #${settlingInvoice.invoice_number}` : undefined),
         lines: items.map((it) => ({
           product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
@@ -1449,12 +1503,11 @@ export function PosSalesInvoice() {
               </div>
               <div>
                 <div className="text-sm font-black text-emerald-950 flex items-center gap-2">
-                  <span>Converting Unpaid Bill #{settlingInvoice.invoice_number} to PAID</span>
+                  <span>Converting Bill #{settlingInvoice.invoice_number} to Fully Paid</span>
                   <span className="bg-emerald-200 text-emerald-900 text-[10px] font-black px-2 py-0.5 rounded-full">Active Settlement</span>
                 </div>
                 <div className="text-xs text-emerald-800 mt-0.5">
-                  Customer: <strong>{settlingInvoice.customer_name}</strong> | Amount to collect: <strong className="text-emerald-950">{currency.symbol}{Number(settlingInvoice.grand_total || 0).toFixed(2)}</strong>.
-                  Completing this sale will record payment and update the original bill to Paid!
+                  Customer: <strong>{settlingInvoice.customer_name}</strong> | Total Billed: <strong>{currency.symbol}{Number(settlingInvoice.grand_total || 0).toFixed(2)}</strong> | Previously Received: <strong className="text-emerald-700">{currency.symbol}{Number(settlingInvoice.amount_received || 0).toFixed(2)}</strong> | Remaining Due: <strong className="text-emerald-950 underline">{currency.symbol}{Math.max(0, Number(settlingInvoice.grand_total || 0) - Number(settlingInvoice.amount_received || 0)).toFixed(2)}</strong>
                 </div>
               </div>
             </div>
@@ -2502,14 +2555,55 @@ export function PosSalesInvoice() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Received</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-semibold text-slate-500 block">Amount Received</label>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      amountReceived === "" || Number(amountReceived) >= grandTotal
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : Number(amountReceived) > 0
+                        ? "bg-amber-50 text-amber-700 border border-amber-200"
+                        : "bg-purple-50 text-purple-700 border border-purple-200"
+                    }`}>
+                      {amountReceived === "" || Number(amountReceived) >= grandTotal ? "Full Paid" : Number(amountReceived) > 0 ? "Partial" : "Pay Later"}
+                    </span>
+                  </div>
                   <input
                     type="number"
                     placeholder="e.g. 1000"
                     value={amountReceived}
                     onChange={(e) => setAmountReceived(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none"
+                    className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  {/* Quick % Partial Buttons */}
+                  <div className="grid grid-cols-5 gap-1 mt-1.5">
+                    {[
+                      { label: "100%", val: grandTotal },
+                      { label: "75%", val: Number((grandTotal * 0.75).toFixed(2)) },
+                      { label: "50%", val: Number((grandTotal * 0.50).toFixed(2)) },
+                      { label: "25%", val: Number((grandTotal * 0.25).toFixed(2)) },
+                      { label: "Due 0%", val: 0 },
+                    ].map((btn) => (
+                      <button
+                        key={btn.label}
+                        type="button"
+                        onClick={() => {
+                          setAmountReceived(btn.val);
+                          if (btn.val === 0) {
+                            setPaymentMode("Credit");
+                          } else if (paymentMode === "Credit") {
+                            setPaymentMode("Cash");
+                          }
+                        }}
+                        className={`py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                          Number(amountReceived) === btn.val
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                        }`}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -2546,15 +2640,57 @@ export function PosSalesInvoice() {
                 </div>
               )}
 
-              {amountReceived !== "" && Number(amountReceived) < grandTotal && Number(amountReceived) > 0 && paymentMode !== "Credit" && (
-                <div className="p-2.5 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex justify-between items-center animate-in fade-in">
-                  <span className="flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                    Partial Payment (Balance Due):
-                  </span>
-                  <span className="text-amber-900 font-black">{currency.symbol}{(grandTotal - Number(amountReceived)).toFixed(2)}</span>
-                </div>
-              )}
+              {/* Dynamic Settlement & Partial Payment Balance Display */}
+              {(() => {
+                const prevRec = Number(settlingInvoice?.amount_received || 0);
+                const targetTotal = settlingInvoice ? Number(settlingInvoice.grand_total || grandTotal) : grandTotal;
+                const numRec = amountReceived !== "" ? Number(amountReceived) : 0;
+
+                if (settlingInvoice) {
+                  const newTotalRec = prevRec + numRec;
+                  const remainingDue = Math.max(0, targetTotal - newTotalRec);
+                  const isFullySettled = newTotalRec >= targetTotal - 0.05;
+
+                  return (
+                    <div className={`p-3 rounded-xl text-xs font-bold flex justify-between items-center animate-in fade-in border ${
+                      isFullySettled 
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-900" 
+                        : "bg-amber-50 border-amber-300 text-amber-900"
+                    }`}>
+                      <span className="flex items-center gap-1.5">
+                        {isFullySettled ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        )}
+                        {isFullySettled ? "Settlement Status (Full Settlement):" : "Settlement Status (Partial Settlement):"}
+                      </span>
+                      <span className="font-black">
+                        {isFullySettled ? (
+                          <span className="text-emerald-700">Remaining Due: ₹0.00 (Fully Paid!)</span>
+                        ) : (
+                          <span className="text-amber-900">Remaining Due: {currency.symbol}{remainingDue.toFixed(2)}</span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                }
+
+                if (amountReceived !== "" && numRec < grandTotal && numRec > 0 && paymentMode !== "Credit") {
+                  return (
+                    <div className="p-2.5 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex justify-between items-center animate-in fade-in">
+                      <span className="flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        Partial Payment (Balance Due):
+                      </span>
+                      <span className="text-amber-900 font-black">{currency.symbol}{(grandTotal - numRec).toFixed(2)}</span>
+                    </div>
+                  );
+                }
+
+                return null;
+              })()}
+
               <div className="space-y-2">
                 <button
                   disabled={isSaving}
@@ -2562,7 +2698,23 @@ export function PosSalesInvoice() {
                   className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <FileText className="w-4 h-4" />
-                  {isSaving ? "Saving Invoice..." : `Submit & Download PDF Invoice (₹${grandTotal.toFixed(2)})`}
+                  {isSaving
+                    ? "Saving Invoice..."
+                    : settlingInvoice
+                    ? (() => {
+                        const prevRec = Number(settlingInvoice.amount_received || 0);
+                        const targetTotal = Number(settlingInvoice.grand_total || grandTotal);
+                        const numRec = amountReceived !== "" ? Number(amountReceived) : Math.max(0, targetTotal - prevRec);
+                        const remaining = Math.max(0, targetTotal - (prevRec + numRec));
+                        return remaining <= 0.05
+                          ? `Submit Settlement (Collect ${currency.symbol}${numRec.toFixed(2)} • Mark Paid)`
+                          : `Submit Partial Settlement (Collect ${currency.symbol}${numRec.toFixed(2)} • Due: ${currency.symbol}${remaining.toFixed(2)})`;
+                      })()
+                    : paymentMode === "Credit"
+                    ? `Submit Invoice as Credit / Due (${currency.symbol}${grandTotal.toFixed(2)})`
+                    : amountReceived !== "" && Number(amountReceived) < grandTotal && Number(amountReceived) > 0
+                    ? `Submit & Collect ${currency.symbol}${Number(amountReceived).toFixed(2)} (Due: ${currency.symbol}${(grandTotal - Number(amountReceived)).toFixed(2)})`
+                    : `Submit & Download PDF Invoice (${currency.symbol}${grandTotal.toFixed(2)})`}
                 </button>
 
                 <div className="grid grid-cols-2 gap-2">
