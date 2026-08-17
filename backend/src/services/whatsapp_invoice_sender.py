@@ -135,9 +135,11 @@ async def send_invoice_whatsapp(
 
     # 4. Generate PDF bytes using the template -----------------------------
     try:
-        file_path = save_invoice_pdf(invoice, template)
-        logger.info("Invoice PDF cached at %s", file_path)
         pdf_b64 = render_invoice_pdf_b64(invoice, template)
+        try:
+            save_invoice_pdf(invoice, template)
+        except Exception:
+            pass
     except Exception as exc:
         raise WhatsappInvoiceSendError(f"Failed to generate invoice PDF: {exc}") from exc
 

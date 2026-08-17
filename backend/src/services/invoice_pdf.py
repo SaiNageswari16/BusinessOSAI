@@ -470,15 +470,20 @@ def render_invoice_pdf(invoice: Any, template: dict) -> bytes:
 # ---------------------------------------------------------------------------
 
 def save_invoice_pdf(invoice: Any, template: dict) -> Path:
-    """Render invoice PDF with template and persist to disk."""
+    """Render invoice PDF with template and persist to disk (graceful fallback)."""
     pdf_bytes = render_invoice_pdf(invoice, template)
     safe_number = "".join(
         c if c.isalnum() or c in "-_" else "_"
         for c in (invoice.invoice_number or str(uuid.uuid4()))
     )
-    file_path = INVOICE_PDF_DIR / f"{safe_number}.pdf"
-    file_path.write_bytes(pdf_bytes)
-    return file_path
+    try:
+        INVOICE_PDF_DIR.mkdir(parents=True, exist_ok=True)
+        file_path = INVOICE_PDF_DIR / f"{safe_number}.pdf"
+        file_path.write_bytes(pdf_bytes)
+        return file_path
+    except Exception as exc:
+        logger.warning("Could not persist invoice PDF to disk (%s): %s", safe_number, exc)
+        return INVOICE_PDF_DIR / f"{safe_number}.pdf"
 
 
 def render_invoice_pdf_b64(invoice: Any, template: dict) -> str:
