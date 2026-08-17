@@ -80,6 +80,10 @@ function startClient(rawId) {
             clientId: id,
             dataPath: AUTH_DIR
         }),
+        webVersionCache: {
+            type: 'remote',
+            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+        },
         puppeteer: {
             headless: true,
             args: [
@@ -394,9 +398,16 @@ app.get('/sessions/:id/chats', async (req, res) => {
     }
 
     try {
-        const chats = await sessionObj.client.getChats();
+        let chats = [];
+        try {
+            chats = await sessionObj.client.getChats();
+        } catch (fetchErr) {
+            console.warn(`[${id}] Chats still synchronizing from phone, returning empty list temporarily...`);
+            return res.json({ success: true, chats: [] });
+        }
+
         const list = [];
-        for (const chat of chats) {
+        for (const chat of (chats || [])) {
             let lastMessageText = "";
             let lastMessageTime = chat.timestamp || 0;
             try {
@@ -439,10 +450,10 @@ app.get('/sessions/:id/chats', async (req, res) => {
         if (msg.includes('Protocol') || msg.includes('Promise was collected') || msg.includes('disconnected')) {
             console.warn(`Protocol error in /chats for ${id}: ${msg} — marking disconnected.`);
             clients[id].status = 'DISCONNECTED';
-            return res.status(400).json({ success: false, error: 'Session disconnected — please reconnect.', reason: msg });
+            return respondDisconnected(res, id, 'protocol-error');
         }
-        console.error('Failed to fetch chats:', e);
-        res.json({ success: false, chats: [], error: e.message });
+        console.error('Failed to load active chats:', e);
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
