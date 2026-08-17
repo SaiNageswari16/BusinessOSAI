@@ -107,7 +107,7 @@ async def list_products(
         .where(Product.tenant_id == ctx.user.tenant_id)
     )
     if active_only:
-        stmt = stmt.where(or_(Product.status == EntityStatus.ACTIVE, Product.status == 'active', Product.status == None))
+        stmt = stmt.where(or_(Product.status == EntityStatus.ACTIVE, Product.status == 'active', Product.status == 'ACTIVE', Product.status == 'Active', Product.status == None))
     if category_id:
         stmt = stmt.where(Product.category_id == category_id)
     if search:

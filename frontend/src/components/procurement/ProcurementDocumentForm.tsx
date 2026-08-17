@@ -649,43 +649,14 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Top Header Action Buttons */}
         <div className="flex items-center gap-2">
-          {docType === "PO" && (
-            <select
-              value={currentPoStatus}
-              onChange={(e) => setCurrentPoStatus(e.target.value)}
-              className="h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
-            >
-              <option value="Draft">Draft PO</option>
-              <option value="Sent">Sent / Issued</option>
-              <option value="Partially Received">Partially Received</option>
-              <option value="Fully Received">Fully Received</option>
-              <option value="Billed">Billed / Closed</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          )}
-
           <button
             disabled={isSaving}
             onClick={onClose}
-            className="px-4 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300"
+            className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300"
           >
             Cancel
-          </button>
-          <button
-            disabled={isSaving}
-            onClick={handleSaveDocument}
-            className="px-5 py-2.5 text-xs font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-1.5 uppercase tracking-wider disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            {isSaving
-              ? "Saving..."
-              : docType === "PR"
-              ? "Submit PR Request"
-              : docType === "PO"
-              ? (currentPoStatus === "Draft" ? "Save Draft PO" : "Save & Issue PO")
-              : "Save Purchase Invoice"}
           </button>
         </div>
       </div>
@@ -1378,6 +1349,46 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             )}
           </div>
         </div>
+      </div>
+
+      {/* Bottom Submission Action Bar */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <button
+            disabled={isSaving}
+            onClick={onClose}
+            className="px-5 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300 transition-all"
+          >
+            Cancel
+          </button>
+
+          {docType === "PO" && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-500">Status:</span>
+              <select
+                value={currentPoStatus}
+                onChange={(e) => setCurrentPoStatus(e.target.value)}
+                className="h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+              >
+                <option value="Draft">Draft PO</option>
+                <option value="Sent">Sent / Issued</option>
+                <option value="Partially Received">Partially Received</option>
+                <option value="Fully Received">Fully Received</option>
+                <option value="Billed">Billed / Closed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        <button
+          disabled={isSaving}
+          onClick={handleSaveDocument}
+          className="w-full sm:w-auto px-8 py-3 text-sm font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99]"
+        >
+          <Save className="w-4 h-4" />
+          {isSaving ? "Saving..." : "Submit"}
+        </button>
       </div>
 
       {/* Add Vendor Party Modal */}

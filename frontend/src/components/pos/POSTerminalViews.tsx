@@ -14,9 +14,10 @@ import { ESCPOSPrinter } from "../../lib/escpos-printer";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatCurrency } from "../../lib/utils";
 
 const PrintableReceipt = ({ bill, allBills }: { bill: any, allBills: any[] }) => {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency } = useCurrency();
   if (!bill) return null;
   return <ThermalReceiptPrinter bill={bill} />;
 };
@@ -459,6 +460,7 @@ export const HoldBillsView = ({ onResume }: { onResume?: (bill: any) => void }) 
   );
 };
 export const SplitBillsView = ({ totalBill, onSubmit }: { totalBill: number, onSubmit?: (payments: any[]) => void }) => {
+  const { currency } = useCurrency();
   const [cash, setCash] = React.useState<number>(0);
   const [card, setCard] = React.useState<number>(0);
   const [upi, setUpi] = React.useState<number>(0);

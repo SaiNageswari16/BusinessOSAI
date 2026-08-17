@@ -53,20 +53,35 @@ async def get_customer_wallet(
         await db.commit()
         await db.refresh(wallet)
 
+    # Compute transaction lifetime metrics from CustomerWalletTransaction
+    txs = (await db.execute(
+        select(CustomerWalletTransaction)
+        .where(
+            CustomerWalletTransaction.wallet_id == wallet.id,
+            CustomerWalletTransaction.tenant_id == ctx.tenant_id
+        )
+    )).scalars().all()
+
+    credit_types = {"topup", "refund", "cashback", "promotion", "transfer_in", "manual_credit", "adjustment"}
+    lifetime_credited = sum(float(t.amount) for t in txs if t.transaction_type in credit_types)
+    lifetime_debited = sum(float(t.amount) for t in txs if t.transaction_type not in credit_types)
+    credit_count = sum(1 for t in txs if t.transaction_type in credit_types)
+    debit_count = sum(1 for t in txs if t.transaction_type not in credit_types)
+
     return {
         "wallet_id": str(wallet.id),
         "customer_id": str(wallet.customer_id),
         "customer_name": customer.name,
-        "balance": float(wallet.balance),
-        "currency": wallet.currency,
-        "lifetime_credited": float(wallet.lifetime_credited),
-        "lifetime_debited": float(wallet.lifetime_debited),
-        "credit_count": wallet.credit_count,
-        "debit_count": wallet.debit_count,
-        "is_active": wallet.is_active,
-        "notes": wallet.notes,
-        "created_at": wallet.created_at.isoformat(),
-        "updated_at": wallet.updated_at.isoformat(),
+        "balance": float(wallet.balance or 0),
+        "currency": wallet.currency or "INR",
+        "lifetime_credited": lifetime_credited,
+        "lifetime_debited": lifetime_debited,
+        "credit_count": credit_count,
+        "debit_count": debit_count,
+        "is_active": wallet.status == "active",
+        "notes": "",
+        "created_at": wallet.created_at.isoformat() if wallet.created_at else datetime.now(timezone.utc).isoformat(),
+        "updated_at": wallet.updated_at.isoformat() if wallet.updated_at else datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -86,9 +101,7 @@ async def update_wallet(
     )
     if not wallet:
         raise HTTPException(status_code=404, detail="Wallet not found")
-    wallet.is_active = is_active
-    if notes is not None:
-        wallet.notes = notes
+    wallet.status = "active" if is_active else "inactive"
     await db.commit()
     return {"success": True}
 
@@ -172,43 +185,32 @@ async def _process_wallet_tx(db: AsyncSession, ctx: CurrentUserContext, payload:
     if not is_credit and not is_debit:
         raise HTTPException(status_code=400, detail=f"Unknown transaction type: {payload.transaction_type}")
 
-    if is_debit and wallet.balance < payload.amount:
+    if is_debit and float(wallet.balance or 0) < payload.amount:
         raise HTTPException(status_code=400, detail="Insufficient wallet balance")
 
-    balance_before = float(wallet.balance)
+    balance_before = float(wallet.balance or 0)
     balance_after = balance_before + payload.amount if is_credit else balance_before - payload.amount
 
     wallet.balance = balance_after
-    if is_credit:
-        wallet.lifetime_credited += payload.amount
-        wallet.credit_count += 1
-    else:
-        wallet.lifetime_debited += payload.amount
-        wallet.debit_count += 1
-
-    # Keep customer denormalized fields in sync
-    customer.wallet_balance = wallet.balance
-    customer.wallet_lifetime_credited = wallet.lifetime_credited
-    customer.wallet_lifetime_debited = wallet.lifetime_debited
 
     tx = CustomerWalletTransaction(
         tenant_id=ctx.tenant_id,
-        customer_id=payload.customer_id,
         wallet_id=wallet.id,
         transaction_type=payload.transaction_type,
         amount=payload.amount,
-        balance_before=balance_before,
         balance_after=balance_after,
         reference_type=payload.reference_type,
         reference_id=payload.reference_id,
         description=payload.description,
-        meta=payload.meta or {},
-        initiated_by=ctx.user.id,
     )
     db.add(tx)
     await db.flush()
     await db.commit()
-    return tx
+    
+    resp = WalletTransactionResponse.model_validate(tx)
+    resp.customer_id = customer.id
+    resp.customer_name = customer.name
+    return resp
 
 
 @router.get("/transactions/{tx_id}", response_model=WalletTransactionResponse)
@@ -217,15 +219,22 @@ async def get_transaction(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_wallet"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    tx = await db.scalar(
-        select(CustomerWalletTransaction).where(
+    row = (await db.execute(
+        select(CustomerWalletTransaction, CustomerWallet.customer_id, Customer.name)
+        .join(CustomerWallet, CustomerWalletTransaction.wallet_id == CustomerWallet.id)
+        .join(Customer, CustomerWallet.customer_id == Customer.id, isouter=True)
+        .where(
             CustomerWalletTransaction.id == tx_id,
             CustomerWalletTransaction.tenant_id == ctx.tenant_id,
         )
-    )
-    if not tx:
+    )).first()
+    if not row:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    return tx
+    tx_obj, cust_id, cust_name = row
+    resp = WalletTransactionResponse.model_validate(tx_obj)
+    resp.customer_id = cust_id
+    resp.customer_name = cust_name or "Customer"
+    return resp
 
 
 # ─── Alias endpoints matching frontend routes ────────────────────────
@@ -241,29 +250,34 @@ async def list_transactions(
 ):
     """Alias for /customers/{customer_id}/transactions — matches frontend route."""
     from uuid import UUID
-    q = select(CustomerWalletTransaction).where(CustomerWalletTransaction.tenant_id == ctx.tenant_id)
+    q = (
+        select(CustomerWalletTransaction, CustomerWallet.customer_id, Customer.name)
+        .join(CustomerWallet, CustomerWalletTransaction.wallet_id == CustomerWallet.id)
+        .join(Customer, CustomerWallet.customer_id == Customer.id, isouter=True)
+        .where(CustomerWalletTransaction.tenant_id == ctx.tenant_id)
+    )
     if customer_id:
         try:
             cid = UUID(customer_id)
-            wallet = await db.scalar(
-                select(CustomerWallet.id).where(
-                    CustomerWallet.tenant_id == ctx.tenant_id,
-                    CustomerWallet.customer_id == cid,
-                )
-            )
-            if wallet:
-                q = q.where(CustomerWalletTransaction.wallet_id == wallet.id)
+            q = q.where(CustomerWallet.customer_id == cid)
         except ValueError:
             pass
     if transaction_type:
         q = q.where(CustomerWalletTransaction.transaction_type == transaction_type)
-    total = await db.scalar(select(func.count()).select_from(q.subquery()))
+
+    count_q = select(func.count(CustomerWalletTransaction.id)).where(CustomerWalletTransaction.tenant_id == ctx.tenant_id)
+    total = await db.scalar(count_q)
     rows = await db.execute(
         q.order_by(CustomerWalletTransaction.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
-    items = [WalletTransactionResponse.model_validate(r) for r in rows.scalars().all()]
+    items = []
+    for tx_obj, cust_id, cust_name in rows.all():
+        resp = WalletTransactionResponse.model_validate(tx_obj)
+        resp.customer_id = cust_id
+        resp.customer_name = cust_name or "Customer"
+        items.append(resp)
     return paginate(items, total or 0, page, page_size)
 
 

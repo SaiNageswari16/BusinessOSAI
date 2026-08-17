@@ -786,12 +786,26 @@ async def create_product(
     if existing_prod:
         added_stock = data.get("initial_stock") or 1
         existing_prod.initial_stock = (existing_prod.initial_stock or 0) + added_stock
-        if data.get("mrp"):
+        if data.get("mrp") is not None:
             existing_prod.mrp = data["mrp"]
-        if data.get("selling_price"):
+        if data.get("selling_price") is not None:
             existing_prod.selling_price = data["selling_price"]
-        if data.get("purchase_price"):
+        if data.get("purchase_price") is not None:
             existing_prod.purchase_price = data["purchase_price"]
+        if data.get("wholesale_price") is not None:
+            existing_prod.wholesale_price = data["wholesale_price"]
+        if data.get("min_wholesale_qty") is not None:
+            existing_prod.min_wholesale_qty = data["min_wholesale_qty"]
+        if data.get("tax_percent") is not None:
+            existing_prod.tax_percent = data["tax_percent"]
+        if data.get("is_tax_inclusive") is not None:
+            existing_prod.is_tax_inclusive = data["is_tax_inclusive"]
+        if data.get("hsn_code"):
+            existing_prod.hsn_code = data["hsn_code"]
+        if data.get("specifications") is not None:
+            existing_prod.specifications = data["specifications"]
+        if data.get("supplier"):
+            existing_prod.supplier = data["supplier"]
         if brand_id:
             existing_prod.brand_id = brand_id
 
@@ -1113,10 +1127,13 @@ async def master_import_products(
             wholesale_price=item.wholesale_price or 0.0,
             min_wholesale_qty=item.min_wholesale_qty or 1,
             tax_percent=item_tax,
+            is_tax_inclusive=item.is_tax_inclusive if item.is_tax_inclusive is not None else True,
             discount_limit=item.discount_limit,
             initial_stock=item.initial_stock,
             reorder_level=item.reorder_level,
             safety_stock=item.safety_stock,
+            supplier=item.supplier,
+            specifications=item.specifications,
             status=_parse_status(item.status) if item.status else EntityStatus.ACTIVE
         )
         db.add(new_product)

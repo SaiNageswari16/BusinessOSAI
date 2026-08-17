@@ -13,7 +13,7 @@ from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
 from src.models import POSTransaction, POSTransactionItem, POSPayment, Product, Customer
 from src.models.inventory import InventoryBatch
-from src.models.erp import Invoice, InvoiceLine
+from src.models.erp import Invoice, InvoiceLine, InvoicePayment
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
 from src.services.invoice_pdf import get_active_invoice_template, render_invoice_pdf_b64, save_invoice_pdf
 from src.services.whatsapp_invoice_sender import _get_gateway_session_id, _send_via_gateway
@@ -177,8 +177,21 @@ async def _create_invoice_and_send_whatsapp(
                 cust_gstin = cust_row.gst_number
                 cust_address = cust_row.address
 
-        # Determine payment method from POS payments
+        # Determine payment method and actual cash/online paid vs credit
         pay_method = payload.payments[0].payment_method if payload.payments else "cash"
+        actual_paid = sum(float(p.amount) for p in payload.payments if p.payment_method.lower() != "credit")
+        total_amt = float(payload.total_amount)
+        bal_due = max(0.0, total_amt - actual_paid)
+
+        if bal_due <= 0.001:
+            inv_status = "paid"
+            pay_status = "paid"
+        elif actual_paid > 0.001:
+            inv_status = "partially_paid"
+            pay_status = "partially_paid"
+        else:
+            inv_status = "sent"
+            pay_status = "unpaid"
 
         # Build invoice (fields match Invoice ORM exactly)
         invoice = Invoice(
@@ -186,7 +199,7 @@ async def _create_invoice_and_send_whatsapp(
             company_id=None,
             invoice_number=inv_number,
             invoice_type="tax_invoice",
-            status="paid",
+            status=inv_status,
             customer_id=payload.customer_id,
             customer_name=cust_name,
             customer_phone=cust_phone,
@@ -201,14 +214,30 @@ async def _create_invoice_and_send_whatsapp(
             cgst_amount=0,
             sgst_amount=0,
             igst_amount=0,
-            total_amount=payload.total_amount,
-            amount_paid=payload.total_amount,
-            balance_due=0.0,
-            payment_status="paid",
+            total_amount=total_amt,
+            amount_paid=actual_paid,
+            balance_due=bal_due,
+            payment_status=pay_status,
             payment_method=pay_method,
         )
         db.add(invoice)
         await db.flush()
+
+        # If upfront partial/full payment was made, record InvoicePayment
+        if actual_paid > 0.001:
+            for p in payload.payments:
+                if p.payment_method.lower() != "credit" and float(p.amount) > 0:
+                    inv_pay = InvoicePayment(
+                        tenant_id=ctx.user.tenant_id,
+                        invoice_id=invoice.id,
+                        payment_number=f"PAY-{inv_number}",
+                        payment_date=__import__("datetime").date.today(),
+                        amount=float(p.amount),
+                        payment_method=p.payment_method.lower(),
+                        reference_number=p.reference_number or transaction.receipt_number,
+                        notes=f"POS Upfront Payment ({p.payment_method})",
+                    )
+                    db.add(inv_pay)
 
         # Load product names
         product_ids = [it.product_id for it in transaction.items]

@@ -311,6 +311,8 @@ class WalletTransactionResponse(ORMModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     wallet_id: uuid.UUID
+    customer_id: uuid.UUID | None = None
+    customer_name: str | None = None
     transaction_type: str
     amount: float
     balance_after: float

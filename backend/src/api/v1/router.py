@@ -135,6 +135,7 @@ api_router.include_router(inventory_movement_router, prefix="/inventory/movement
 api_router.include_router(inventory_adjustment_router, prefix="/inventory/adjustments", tags=["Inventory Operations - Adjustments"])
 api_router.include_router(inventory_cycle_counting_router, prefix="/inventory/cycle-counts", tags=["Inventory Operations - Cycle Counts"])
 api_router.include_router(procurement_router, prefix="/inventory")
+api_router.include_router(procurement_router, prefix="/erp")
 api_router.include_router(reports_router)
 
 # Recruitment integrations router

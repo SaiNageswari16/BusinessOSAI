@@ -32,11 +32,11 @@ export class ErrorBoundary extends React.Component<any, any> {
 }
 
 export function PosTerminal() {
-    const { currency, formatCurrency } = useCurrency();
   return <ErrorBoundary><PosTerminalInner /></ErrorBoundary>;
 }
 
 function PosTerminalInner() {
+  const { currency, formatCurrency } = useCurrency();
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
     const cb = () => setCurrencyTick(t => t + 1);
@@ -160,12 +160,52 @@ function PosTerminalInner() {
       .catch(() => {});
   }, []);
 
+  // Backend data
+  const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [batches, setBatches] = useState<any[]>([]);
+  const [customerWalletBalance, setCustomerWalletBalance] = useState<number>(0);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+
+  // Modal States
+  const [discountModalItem, setDiscountModalItem] = useState<any | null>(null);
+  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<string>("");
+  const [discountInput, setDiscountInput] = useState<string>("");
+
+  // Shift/Session States
+  const [currentSession, setCurrentSession] = useState<any | null>(null);
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
+  const [startingCash, setStartingCash] = useState<string>("0");
+
+  // View States
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  // Split Payment States
+  const [splitPaymentModalOpen, setSplitPaymentModalOpen] = useState(false);
+  const [splitCash, setSplitCash] = useState("");
+  const [splitOnline, setSplitOnline] = useState("");
+
+  // Cash Payment States
+  const [cashModalOpen, setCashModalOpen] = useState(false);
+  const [cashTendered, setCashTendered] = useState("");
+  const [creditChangeToWallet, setCreditChangeToWallet] = useState(false);
+  const [completedCheckoutBill, setCompletedCheckoutBill] = useState<any | null>(null);
+
+  // Held Bills Modal States
+  const [heldBillsModalOpen, setHeldBillsModalOpen] = useState(false);
+  const [heldBillsList, setHeldBillsList] = useState<any[]>([]);
+  const [isLoadingHeldBills, setIsLoadingHeldBills] = useState(false);
+  const [heldBillsCount, setHeldBillsCount] = useState(0);
+
   useEffect(() => {
-    if (!selectedCustomer || selectedCustomer.id === 'walk-in' || !selectedCustomer.id) {
+    if (!selectedCustomer || selectedCustomer.id === 'walk-in' || selectedCustomer.id === 'WALK-IN' || !selectedCustomer.id) {
       setCustomerSummary(null);
+      setCustomerWalletBalance(0);
       setIncludePreviousDueInBill(false);
       return;
     }
+
     invoicesApi
       .getCustomerSummary(selectedCustomer.id)
       .then((data: any) => {
@@ -173,6 +213,18 @@ function PosTerminalInner() {
       })
       .catch(() => {
         setCustomerSummary(null);
+      });
+
+    crmWalletApi
+      .getBalance(selectedCustomer.id)
+      .then((res: any) => {
+        const bal = Number(res?.balance || 0);
+        setCustomerWalletBalance(bal);
+        setSelectedCustomer((prev: any) => (prev ? { ...prev, wallet: bal } : prev));
+      })
+      .catch(() => {
+        const fallbackBal = Number(selectedCustomer.wallet || selectedCustomer.wallet_balance || 0);
+        setCustomerWalletBalance(fallbackBal);
       });
   }, [selectedCustomer?.id]);
 
@@ -287,41 +339,7 @@ function PosTerminalInner() {
     });
   };
 
-  // Backend data
-  const [products, setProducts] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
 
-  // Modal States
-  const [discountModalItem, setDiscountModalItem] = useState<any | null>(null);
-  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<string>("");
-  const [discountInput, setDiscountInput] = useState<string>("");
-
-  // Shift/Session States
-  const [currentSession, setCurrentSession] = useState<any | null>(null);
-  const [sessionModalOpen, setSessionModalOpen] = useState(false);
-  const [startingCash, setStartingCash] = useState<string>("0");
-
-  // View States
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-
-  // Split Payment States
-  const [splitPaymentModalOpen, setSplitPaymentModalOpen] = useState(false);
-  const [splitCash, setSplitCash] = useState("");
-  const [splitOnline, setSplitOnline] = useState("");
-
-  // Cash Payment States
-  const [cashModalOpen, setCashModalOpen] = useState(false);
-  const [cashTendered, setCashTendered] = useState("");
-  const [creditChangeToWallet, setCreditChangeToWallet] = useState(false);
-  const [completedCheckoutBill, setCompletedCheckoutBill] = useState<any | null>(null);
-
-  // Held Bills Modal States
-  const [heldBillsModalOpen, setHeldBillsModalOpen] = useState(false);
-  const [heldBillsList, setHeldBillsList] = useState<any[]>([]);
-  const [isLoadingHeldBills, setIsLoadingHeldBills] = useState(false);
-  const [heldBillsCount, setHeldBillsCount] = useState(0);
 
   // Load real data from backend on mount
   useEffect(() => {
@@ -353,9 +371,9 @@ function PosTerminalInner() {
           }
         }
 
-        if (Array.isArray(cats)) {
-          // Map backend categories to frontend format (add icon/color defaults)
-          const mappedCats = cats.map((c: POSCategory, i: number) => ({
+        const rawCats = Array.isArray(cats) ? cats : (cats?.items || []);
+        if (rawCats.length > 0) {
+          const mappedCats = rawCats.map((c: any, i: number) => ({
             id: c.id,
             name: c.name,
             parent_id: c.parent_id || null,
@@ -365,42 +383,47 @@ function PosTerminalInner() {
           }));
           setCategories(mappedCats);
         }
-        let fetchedProds: any[] = Array.isArray(prods) ? prods : [];
+
+        let fetchedProds: any[] = Array.isArray(prods) ? prods : (prods?.items || []);
         if (fetchedProds.length === 0) {
           try {
-            const invProdsRes = await inventoryApi.getProducts({ page_size: 300 });
-            if (invProdsRes && Array.isArray(invProdsRes.items)) {
-              fetchedProds = invProdsRes.items;
-            }
+            const invProdsRes: any = await inventoryApi.getProducts({ page_size: 300 });
+            fetchedProds = Array.isArray(invProdsRes) ? invProdsRes : (invProdsRes?.items || []);
           } catch (e) {
             console.warn("Could not fetch inventory products fallback:", e);
           }
         }
 
         if (Array.isArray(fetchedProds)) {
-          // Map backend products to frontend cart format
-          const mappedProds = fetchedProds.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            brand: p.brand?.name || p.brand || "",
-            category: p.category_id || p.category?.id || "all",
-            shortDesc: p.description || p.short_description || `${p.name}`,
-            longDesc: p.description || "",
-            barcode: p.barcode || "",
-            sku: p.sku || "",
-            sellingPrice: Number(p.selling_price || p.mrp || 0),
-            wholesalePrice: Number(p.wholesale_price || 0),
-            minWholesaleQty: Number(p.min_wholesale_qty || 1),
-            mrp: Number(p.mrp || p.selling_price || 0),
-            purchasePrice: Number(p.purchase_price || p.cost_price || 0),
-            tax: Number(p.selling_price || p.mrp || 0) * (Number(p.tax_percent || 0) / 100),
-            discount: Number(p.discount || p.discount_limit || 0),
-            stock: Number(p.stock || p.initial_stock || 0),
-            reorderLevel: Number(p.reorder_level || 10),
-            image: p.image_url ? resolveImageUrl(p.image_url) : null,
-            aiScore: Math.floor(Math.random() * 30) + 70,
-            isFastMoving: (p.stock || p.initial_stock || 0) > 50,
-          }));
+          const mappedProds = fetchedProds.map((p: any) => {
+            const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
+            const wPrice = Number(p.wholesale_price || (basePrice * 0.85));
+            const bPrice = Number(p.b2b_price || (basePrice * 0.70));
+            return {
+              id: p.id,
+              name: p.name,
+              brand: p.brand?.name || p.brand || "",
+              category: p.category_id || p.category?.id || "all",
+              category_name: p.category?.name || p.category_name || "",
+              shortDesc: p.description || p.short_description || `${p.name}`,
+              longDesc: p.description || "",
+              barcode: p.barcode || "",
+              sku: p.sku || "",
+              sellingPrice: basePrice,
+              wholesalePrice: wPrice,
+              b2bPrice: bPrice,
+              minWholesaleQty: Number(p.min_wholesale_qty || 1),
+              mrp: Number(p.mrp || basePrice || 0),
+              purchasePrice: Number(p.purchase_price || p.cost_price || 0),
+              tax: basePrice * (Number(p.tax_percent || 0) / 100),
+              discount: Number(p.discount || p.discount_limit || 0),
+              stock: Number(p.stock || p.initial_stock || 0),
+              reorderLevel: Number(p.reorder_level || 10),
+              image: p.image_url ? resolveImageUrl(p.image_url) : null,
+              aiScore: Math.floor(Math.random() * 30) + 70,
+              isFastMoving: (p.stock || p.initial_stock || 0) > 50,
+            };
+          });
           setProducts(mappedProds);
         }
       } catch (err) {
@@ -718,16 +741,50 @@ function PosTerminalInner() {
     }
   };
 
-  const [priceMode, setPriceMode] = useState<"retail" | "wholesale">("retail");
+  const [pricingMode, setPricingMode] = useState<"Retail" | "Wholesale" | "B2B">("Retail");
 
-  const getItemEffectivePrice = (item: any, qty: number = item.qty) => {
-    const isWholesaleCustomer = selectedCustomer?.tier?.toLowerCase().includes("wholesale") || selectedCustomer?.tier?.toLowerCase().includes("b2b") || selectedCustomer?.tier?.toLowerCase().includes("retailer");
-    const hasWholesalePrice = Boolean(item.wholesalePrice && item.wholesalePrice > 0);
-    const isQtyQualified = qty >= (item.minWholesaleQty || 1);
-    if (hasWholesalePrice && (priceMode === "wholesale" || isWholesaleCustomer || isQtyQualified)) {
-      return { unitPrice: item.wholesalePrice, isWholesale: true };
+  const getItemEffectivePrice = (item: any, qty: number = item.qty || 1, overrideMode?: "Retail" | "Wholesale" | "B2B") => {
+    const mode = overrideMode || pricingMode;
+    const basePrice = Number(item.sellingPrice || item.price || item.mrp || 0);
+    const wholesalePrice = Number(item.wholesalePrice || (basePrice * 0.85));
+    const b2bPrice = Number(item.b2bPrice || (basePrice * 0.70));
+    
+    let unitPrice = basePrice;
+    let isTierApplied = false;
+    let tierName = "Retail";
+
+    if (mode === "B2B") {
+      unitPrice = b2bPrice;
+      isTierApplied = true;
+      tierName = "B2B";
+    } else if (mode === "Wholesale") {
+      unitPrice = wholesalePrice;
+      isTierApplied = true;
+      tierName = "Wholesale";
+    } else {
+      const isWholesaleCustomer = selectedCustomer?.tier?.toLowerCase().includes("wholesale") || selectedCustomer?.tier?.toLowerCase().includes("b2b");
+      const isQtyQualified = qty >= (item.minWholesaleQty || 5);
+      if (isWholesaleCustomer || isQtyQualified) {
+        unitPrice = wholesalePrice;
+        isTierApplied = true;
+        tierName = "Wholesale";
+      }
     }
-    return { unitPrice: item.sellingPrice || item.mrp || 0, isWholesale: false };
+    return { unitPrice, isWholesale: isTierApplied, tierName, basePrice, wholesalePrice, b2bPrice };
+  };
+
+  const handlePricingModeChange = (mode: "Retail" | "Wholesale" | "B2B") => {
+    setPricingMode(mode);
+    setCart((prevCart) =>
+      prevCart.map((item) => {
+        const { unitPrice } = getItemEffectivePrice(item, item.qty, mode);
+        return {
+          ...item,
+          price: unitPrice,
+          subtotal: unitPrice * item.qty
+        };
+      })
+    );
   };
 
   // Dynamic Cart Discount State
@@ -1204,20 +1261,38 @@ function PosTerminalInner() {
           })}
         </div>
 
-        {/* B2B Wholesale / Retail Mode Pill Toggle */}
+        {/* Pricing Mode 3-Way Pill Toggle (Retail / Wholesale / B2B) */}
         <div className="ml-auto flex items-center gap-2">
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
             <button
-              onClick={() => setPriceMode("retail")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${priceMode === "retail" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
+              onClick={() => handlePricingModeChange("Retail")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                pricingMode === "Retail"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
             >
               🛒 Retail
             </button>
             <button
-              onClick={() => setPriceMode("wholesale")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${priceMode === "wholesale" ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20" : "text-emerald-700 hover:bg-emerald-50"}`}
+              onClick={() => handlePricingModeChange("Wholesale")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                pricingMode === "Wholesale"
+                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                  : "text-emerald-700 hover:bg-emerald-50"
+              }`}
             >
-              📦 B2B Wholesale
+              📦 Wholesale
+            </button>
+            <button
+              onClick={() => handlePricingModeChange("B2B")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                pricingMode === "B2B"
+                  ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
+                  : "text-purple-700 hover:bg-purple-50"
+              }`}
+            >
+              🏢 B2B
             </button>
           </div>
         </div>
@@ -1483,27 +1558,38 @@ function PosTerminalInner() {
                       </div>
                       <div className="mt-2 flex items-center justify-between">
                         <div>
-                          {getItemEffectivePrice(product).isWholesale ? (
-                            <div className="flex flex-col">
-                              <span className="text-[10px] text-slate-400 line-through leading-none">{formatCurrency(product.sellingPrice)}</span>
-                              <span className="font-bold text-emerald-600 leading-none mt-0.5 flex items-center gap-1">
-                                {formatCurrency(product.wholesalePrice)}
-                                <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded font-black uppercase">B2B</span>
-                              </span>
-                            </div>
-                          ) : product.wholesalePrice > 0 ? (
-                            <div className="flex flex-col">
-                              <span className="font-bold text-slate-900 leading-none">{formatCurrency(product.sellingPrice)}</span>
-                              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5">B2B: {formatCurrency(product.wholesalePrice)} ({product.minWholesaleQty || 1}+ pcs)</span>
-                            </div>
-                          ) : product.discount > 0 ? (
-                            <div className="flex flex-col">
-                              <span className="text-[10px] text-slate-400 line-through leading-none">{formatCurrency(product.mrp)}</span>
-                              <span className="font-bold text-slate-900 leading-none mt-0.5">{formatCurrency(product.sellingPrice)}</span>
-                            </div>
-                          ) : (
-                            <span className="font-bold text-slate-900">{formatCurrency(product.sellingPrice)}</span>
-                          )}
+                          {(() => {
+                            const eff = getItemEffectivePrice(product);
+                            if (eff.isWholesale) {
+                              return (
+                                <div className="flex flex-col">
+                                  <span className="text-[10px] text-slate-400 line-through leading-none">{formatCurrency(eff.basePrice)}</span>
+                                  <span className={`font-bold leading-none mt-0.5 flex items-center gap-1 ${pricingMode === 'B2B' ? 'text-purple-700' : 'text-emerald-600'}`}>
+                                    {formatCurrency(eff.unitPrice)}
+                                    <span className={`text-[8px] px-1 py-0.2 rounded font-black uppercase ${pricingMode === 'B2B' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                      {eff.tierName}
+                                    </span>
+                                  </span>
+                                </div>
+                              );
+                            }
+                            if (product.discount > 0) {
+                              return (
+                                <div className="flex flex-col">
+                                  <span className="text-[10px] text-slate-400 line-through leading-none">{formatCurrency(product.mrp)}</span>
+                                  <span className="font-bold text-slate-900 leading-none mt-0.5">{formatCurrency(eff.unitPrice)}</span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="flex flex-col">
+                                <span className="font-bold text-slate-900 leading-none">{formatCurrency(eff.unitPrice)}</span>
+                                {pricingMode === 'Retail' && (
+                                  <span className="text-[9px] text-slate-400 font-medium mt-0.5">Wholesale: {formatCurrency(eff.wholesalePrice)}</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-colors">
                           <Plus className="w-4 h-4" />
@@ -1549,14 +1635,27 @@ function PosTerminalInner() {
                         </td>
                         <td className="px-6 py-4 font-mono font-medium text-slate-500">{p.sku}</td>
                         <td className="px-6 py-4 font-bold text-slate-900">
-                          {p.discount > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <span>{formatCurrency(p.sellingPrice)}</span>
-                              <span className="text-xs text-rose-500 line-through font-normal">{formatCurrency(p.mrp)}</span>
-                            </div>
-                          ) : (
-                            formatCurrency(p.sellingPrice)
-                          )}
+                          {(() => {
+                            const eff = getItemEffectivePrice(p);
+                            if (eff.isWholesale) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className={pricingMode === 'B2B' ? 'text-purple-700' : 'text-emerald-700'}>{formatCurrency(eff.unitPrice)}</span>
+                                  <span className="text-xs text-slate-400 line-through font-normal">{formatCurrency(eff.basePrice)}</span>
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${pricingMode === 'B2B' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'}`}>{eff.tierName}</span>
+                                </div>
+                              );
+                            }
+                            if (p.discount > 0) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span>{formatCurrency(eff.unitPrice)}</span>
+                                  <span className="text-xs text-rose-500 line-through font-normal">{formatCurrency(p.mrp)}</span>
+                                </div>
+                              );
+                            }
+                            return <span>{formatCurrency(eff.unitPrice)}</span>;
+                          })()}
                         </td>
                         <td className="px-6 py-4 text-slate-500">
                           <span className={p.stock <= p.reorderLevel ? "text-rose-500 font-bold" : ""}>
@@ -1928,21 +2027,36 @@ function PosTerminalInner() {
             <div className="p-3 border-b border-slate-100 bg-slate-50/50">
               <button
                 onClick={() => setIsCustomerModalOpen(true)}
-                className="w-full bg-white border border-slate-200 hover:border-indigo-400 rounded-xl p-3 flex items-center justify-between transition-all shadow-sm hover:shadow-md group mb-2 text-left"
+                className="w-full bg-white border border-slate-200 hover:border-indigo-400 rounded-2xl p-3 flex items-center justify-between transition-all shadow-sm hover:shadow-md group mb-2 text-left"
               >
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center border border-slate-200 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                    <UserIcon className="w-5 h-5" />
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="h-10 w-10 shrink-0 rounded-full bg-indigo-50 text-indigo-700 font-black text-sm flex items-center justify-center border border-indigo-100 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                    {selectedCustomer?.name && selectedCustomer.name !== "Walk-in Customer" ? selectedCustomer.name.charAt(0).toUpperCase() : <UserIcon className="w-5 h-5" />}
                   </div>
-                  <div className="text-left">
-                    <p className="text-sm font-bold text-slate-900 leading-tight">{selectedCustomer.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">{(selectedCustomer as any).customer_type || selectedCustomer.tier || 'Retail'}</span>
-                      <span className="text-[10px] text-slate-500 font-medium">{selectedCustomer.points} Pts • {currency.symbol}{selectedCustomer.wallet} Wallet</span>
+                  <div className="text-left min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-black text-slate-900 leading-tight truncate">{selectedCustomer.name}</p>
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 uppercase">
+                        {(selectedCustomer as any).customer_type || selectedCustomer.tier || 'Retail'}
+                      </span>
                     </div>
+                    {selectedCustomer.id && selectedCustomer.id !== 'walk-in' && selectedCustomer.id !== 'WALK-IN' ? (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        <span className="text-[11px] font-black text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shadow-2xs">
+                          💰 Wallet: {formatCurrency(customerWalletBalance)}
+                        </span>
+                        <span className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
+                          ⭐ {selectedCustomer.points || (selectedCustomer as any).loyalty_points || 0} Pts
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-slate-400 font-medium mt-0.5">
+                        Guest • Click to select customer
+                      </div>
+                    )}
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 text-slate-400" />
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 transition-colors shrink-0 ml-1" />
               </button>
 
               {/* Customer Pending Dues Banner */}
@@ -2046,7 +2160,9 @@ function PosTerminalInner() {
                               <div className="text-right">
                                 <span className="font-black text-sm text-slate-900 block leading-none">{formatCurrency(unitPrice * item.qty)}</span>
                                 {isWholesale && (
-                                  <span className="text-[9px] text-emerald-600 font-bold block leading-none mt-1">B2B Wholesale Rate</span>
+                                  <span className={`text-[9px] font-bold block leading-none mt-1 ${pricingMode === 'B2B' ? 'text-purple-600' : 'text-emerald-600'}`}>
+                                    {getItemEffectivePrice(item).tierName} ({formatCurrency(unitPrice)}/ea)
+                                  </span>
                                 )}
                                 {item.discount > 0 && <span className="text-[10px] text-rose-500 font-bold block leading-none mt-1">Saved {formatCurrency(item.discount * item.qty)}</span>}
                               </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign } from "lucide-react";
+import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2 } from "lucide-react";
 
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -81,9 +81,20 @@ const esc = (v: any) => {
 const defaultFormData = () => ({
   name: "", brand: "", brand_id: "", sku: "", barcode: "", category_id: "",
   uom_id: "", warehouse: "", supplier: "",
-  purchase_price: 0, mrp: 0, selling_price: 0, wholesale_price: 0, min_wholesale_qty: 1, tax_percent: 0,
-  is_tax_inclusive: true,
+  purchase_price: 0, mrp: 0, selling_price: 0,
+  wholesale_price: 0, min_wholesale_qty: 1,
+  b2b_price: 0, min_b2b_qty: 1,
+  distributor_price: 0, min_distributor_qty: 1,
+  tax_percent: 0, is_tax_inclusive: true,
+  purchase_tax_percent: 0, is_purchase_tax_inclusive: true,
   discount_limit: 0, initial_stock: 0, reorder_level: 0, safety_stock: 0,
+  hsn_code: "",
+  sub_category: "",
+  item_code: "",
+  weighing_scale_code: "",
+  conversion_factor: "",
+  preferred_supplier: "",
+  custom_fields: [] as Array<{ key: string; value: string }>,
   image_url: "", short_description: "", long_description: "", status: "active"
 });
 
@@ -1018,11 +1029,32 @@ export function Products() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const customFieldsDict = (currentForm.custom_fields || []).reduce((acc: any, f: any) => {
+        if (f.key && f.key.trim()) acc[f.key.trim()] = f.value || "";
+        return acc;
+      }, {});
+
+      const specs = {
+        b2b_price: Number(currentForm.b2b_price) || 0,
+        min_b2b_qty: Number(currentForm.min_b2b_qty) || 1,
+        distributor_price: Number(currentForm.distributor_price) || 0,
+        min_distributor_qty: Number(currentForm.min_distributor_qty) || 1,
+        purchase_tax_percent: Number(currentForm.purchase_tax_percent) || 0,
+        is_purchase_tax_inclusive: currentForm.is_purchase_tax_inclusive !== false,
+        sub_category: currentForm.sub_category || "",
+        item_code: currentForm.item_code || "",
+        weighing_scale_code: currentForm.weighing_scale_code || "",
+        conversion_factor: currentForm.conversion_factor || "",
+        preferred_supplier: currentForm.preferred_supplier || currentForm.supplier || "",
+        custom_attributes: customFieldsDict
+      };
+
       const payload = {
         ...currentForm,
         brand_id: currentForm.brand_id || null,
         category_id: currentForm.category_id || null,
         uom_id: currentForm.uom_id || null,
+        specifications: specs
       };
       if (editingProductId) {
         await inventoryApi.updateProduct(editingProductId, payload);
@@ -1043,6 +1075,10 @@ export function Products() {
   };
 
   const handleEdit = (product: any) => {
+    const specs = (product.specifications && typeof product.specifications === 'object') ? product.specifications : {};
+    const customAttributes = specs.custom_attributes || {};
+    const customFieldsList = Object.entries(customAttributes).map(([key, value]) => ({ key, value: String(value) }));
+
     setCurrentForm({
       name: product.name,
       brand: product.brand_name || product.brand || "",
@@ -1052,18 +1088,31 @@ export function Products() {
       category_id: product.category_id || "",
       uom_id: product.uom_id || "",
       warehouse: product.warehouse || "",
-      supplier: product.supplier || "",
+      supplier: product.supplier || specs.preferred_supplier || "",
       purchase_price: product.purchase_price || 0,
       mrp: product.mrp || 0,
       selling_price: product.selling_price || 0,
-      wholesale_price: product.wholesale_price || 0,
-      min_wholesale_qty: product.min_wholesale_qty || 1,
+      wholesale_price: product.wholesale_price || specs.wholesale_price || 0,
+      min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || 1,
+      b2b_price: specs.b2b_price || 0,
+      min_b2b_qty: specs.min_b2b_qty || 1,
+      distributor_price: specs.distributor_price || 0,
+      min_distributor_qty: specs.min_distributor_qty || 1,
       tax_percent: product.tax_percent || 0,
       is_tax_inclusive: product.is_tax_inclusive !== false,
+      purchase_tax_percent: specs.purchase_tax_percent || 0,
+      is_purchase_tax_inclusive: specs.is_purchase_tax_inclusive !== false,
       discount_limit: product.discount_limit || 0,
       initial_stock: product.stock ?? product.initial_stock ?? 0,
       reorder_level: product.reorder_level || 0,
       safety_stock: product.safety_stock || 0,
+      hsn_code: product.hsn_code || specs.hsn_code || "",
+      sub_category: specs.sub_category || "",
+      item_code: specs.item_code || "",
+      weighing_scale_code: specs.weighing_scale_code || "",
+      conversion_factor: specs.conversion_factor || "",
+      preferred_supplier: specs.preferred_supplier || product.supplier || "",
+      custom_fields: customFieldsList,
       image_url: product.image_url || "",
       short_description: product.short_description || "",
       long_description: product.long_description || "",
@@ -1074,6 +1123,10 @@ export function Products() {
   };
 
   const handleDuplicate = (product: any) => {
+    const specs = (product.specifications && typeof product.specifications === 'object') ? product.specifications : {};
+    const customAttributes = specs.custom_attributes || {};
+    const customFieldsList = Object.entries(customAttributes).map(([key, value]) => ({ key, value: String(value) }));
+
     setCurrentForm({
       name: product.name + " (Copy)",
       brand: product.brand_name || product.brand || "",
@@ -1083,18 +1136,31 @@ export function Products() {
       category_id: product.category_id || "",
       uom_id: product.uom_id || "",
       warehouse: product.warehouse || "",
-      supplier: product.supplier || "",
+      supplier: product.supplier || specs.preferred_supplier || "",
       purchase_price: product.purchase_price || 0,
       mrp: product.mrp || 0,
       selling_price: product.selling_price || 0,
-      wholesale_price: product.wholesale_price || 0,
-      min_wholesale_qty: product.min_wholesale_qty || 1,
+      wholesale_price: product.wholesale_price || specs.wholesale_price || 0,
+      min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || 1,
+      b2b_price: specs.b2b_price || 0,
+      min_b2b_qty: specs.min_b2b_qty || 1,
+      distributor_price: specs.distributor_price || 0,
+      min_distributor_qty: specs.min_distributor_qty || 1,
       tax_percent: product.tax_percent || 0,
       is_tax_inclusive: product.is_tax_inclusive !== false,
+      purchase_tax_percent: specs.purchase_tax_percent || 0,
+      is_purchase_tax_inclusive: specs.is_purchase_tax_inclusive !== false,
       discount_limit: product.discount_limit || 0,
       initial_stock: product.stock ?? product.initial_stock ?? 0,
       reorder_level: product.reorder_level || 0,
       safety_stock: product.safety_stock || 0,
+      hsn_code: product.hsn_code || specs.hsn_code || "",
+      sub_category: specs.sub_category || "",
+      item_code: specs.item_code || "",
+      weighing_scale_code: specs.weighing_scale_code || "",
+      conversion_factor: specs.conversion_factor || "",
+      preferred_supplier: specs.preferred_supplier || product.supplier || "",
+      custom_fields: customFieldsList,
       image_url: product.image_url || "",
       short_description: product.short_description || "",
       long_description: product.long_description || "",
@@ -1210,6 +1276,12 @@ export function Products() {
           const isActiveRaw = findVal(["ISACTIVE", "is_active", "Active", "Status", "status"]);
           const isActive = isActiveRaw === "" ? true : (isActiveRaw.toLowerCase() === "true" || isActiveRaw === "1" || isActiveRaw.toLowerCase() === "active");
 
+          const b2bVal = parseFloat(findVal(["B2BPRICE", "B2B Price", "b2b_price", "B2B"])) || 0;
+          const minB2bVal = parseInt(findVal(["MINB2BQTY", "Min B2B Qty", "min_b2b_qty", "B2B Min Qty"]), 10) || 1;
+          const wholesaleVal = parseFloat(findVal(["WHOLESALEPRICE", "Wholesale Price", "wholesale_price", "wholesale"])) || 0;
+          const minWholesaleVal = parseInt(findVal(["MINWHOLESALEQTY", "Min Wholesale Qty", "min_wholesale_qty", "Wholesale Min Qty"]), 10) || 1;
+          const supplierVal = findVal(["PREFERREDSUPPLIER", "Preferred Supplier", "SUPPLIERNAME", "Supplier Name", "supplier", "Supplier"]);
+
           return {
             name: nameVal,
             sku: skuVal,
@@ -1218,16 +1290,29 @@ export function Products() {
             purchase_price: parseFloat(findVal(["PURCHASEPRICEAFTERTAX", "PURCHASEPRICEBEFORETAX", "Purchase Price", "purchase_price", "purchaseprice", "cost_price", "cost", "Cost Price"])) || 0,
             mrp: parseFloat(findVal(["MRP", "mrp", "retail_price", "list_price"])) || 0,
             selling_price: parseFloat(findVal(["SALESPRICEAFTERTAX", "SALESPRICEBEFORETAX", "Selling Price", "selling_price", "sellingprice", "price", "Price", "base_price"])) || 0,
+            wholesale_price: wholesaleVal,
+            min_wholesale_qty: minWholesaleVal,
             tax_percent: parseFloat(findVal(["SALESTAXPERCENT", "Tax (%)", "tax_percent", "tax", "Tax"])) || 0,
             discount_limit: parseFloat(findVal(["Discount Limit (%)", "discount_limit"])) || 0,
             initial_stock: parseInt(findVal(["STOCK", "Quantity", "quantity", "stock", "initial_stock", "Stock", "qty"]), 10) || 0,
             reorder_level: parseInt(findVal(["Reorder Level", "reorder_level"]), 10) || 10,
             status: isActive ? "active" : "inactive",
+            supplier: supplierVal,
             brand_name: findVal(["Brand", "brand", "Brand Name", "brand_name", "manufacturer"]),
             category_name: findVal(["CATEGORY", "Category", "category", "Category Name", "category_name"]),
             sub_category_name: findVal(["Sub Category", "sub_category", "sub_category_name"]),
             uom_name: findVal(["SALESMEASURINGUNIT", "PURCHASEMEASURINGUNIT", "UOM", "uom", "Unit", "unit", "Unit of Measure", "uom_name"]),
             hsn_code: findVal(["HSN", "hsn", "HSN Code", "hsn_code", "hsncode", "tax_hsn", "HSN/SAC", "hsn/sac"]),
+            specifications: {
+              b2b_price: b2bVal,
+              min_b2b_qty: minB2bVal,
+              wholesale_price: wholesaleVal,
+              min_wholesale_qty: minWholesaleVal,
+              preferred_supplier: supplierVal,
+              weighing_scale_code: findVal(["WEIGHINGSCALEITEMCODE", "Weighing Scale Item Code", "weighing_scale_code"]),
+              conversion_factor: findVal(["CONVERSIONFACTOR", "Conversion Factor", "conversion_factor"]),
+              item_code: findVal(["Item CODE", "Item Code", "item_code"])
+            }
           };
 
         });
@@ -1302,11 +1387,67 @@ export function Products() {
   };
 
   const handleDownloadSample = () => {
-    const headers = ["name", "brand", "sku", "barcode", "description", "purchase_price", "mrp", "selling_price", "tax_percent", "discount_limit", "initial_stock", "reorder_level", "status"];
-    const ws = XLSX.utils.aoa_to_sheet([headers]);
+    const headers = [
+      "ITEM NAME", "BarCode", "CATEGORY", "SUB CATEGORY", "BarCode.1", "Brand", "Item CODE", "Unit", "Stock Alert",
+      "DESCRIPTION", "DESCRIPTI ON HTML", "CONVERSION FACTOR", "WEIGHING SCALE ITEM CODE", "HSN",
+      "MRP", "B2B PRICE", "MIN B2B QTY", "WHOLESALE PRICE", "MIN WHOLESALE QTY", "SALES PRICE",
+      "Sales Tax inclusive/Exclusive", "SALES TAX NAME", "SALES PRICE AFTER TAX", "Disc1(%)", "Disc1(Rs)", "SALES MEASURING UNIT",
+      "PURCHASE PRICE ", "PURCHASE Tax inclusive/Exclusive", "PURCHASE TAX NAME", "PURCHASE TAX PERCENT", "PURCHASE PRICE AFTER TAX",
+      "PURCHASE MEASURING UNIT", "Opening Stock", "STOCK", "Manifacturing DATE", "EXPIRY DATE", "WAREHOUSE NAME",
+      "LOCATION IN WAREHOUSE", "IS ACTIVE", "HAS LABEL", "LABEL HEADINGS", "SUPPLIER NAME", "ITEM RECEIVED DATE",
+      "SUPPLIER INVOICE NUMBER", "SUPPLIER INVOICE DATE", "NEED TO PRINT BARCODE STICKER", "IS SERVICE ITEM", "NOTFORSALE",
+      "ONLY FOR PORTAL", "NOT FOR PORTAL", "HAS MANUAL BATCH", "STOCK BATCH NUMBER", "STOCK BATCH EXPIRY DATE",
+      "OPENING STOCK BATCH NUMBER", "OPENING STOCK BATCH EXPIRY DATE", "DISPLAYINDEX", "ITEMIMAGE", "CATEGORYIMAGE",
+      "UNIQUE ITEM NAME", "KEYWORDS", "ACCESSORIES KEYWORD", "PREFERRED SUPPLIER"
+    ];
+
+    const sampleRows = [
+      [
+        "CHOKINO MILKEA", "9999179361009", "Beverages", "Milk Drinks", "", "Nestle", "ITM-001", "MILLI", "10",
+        "Delicious chocolate milk drink", "", "1", "101", "04029990",
+        100, 70.00, 5, 65.00, 10, 76.27,
+        "Exclusive", "GST@18", 90, 5, 0, "Qty",
+        52.54, "Exclusive", "GST@18", "18", 62,
+        "Qty", 50, 50, "2026-01-01", "2026-12-31", "Main Warehouse",
+        "Rack A-1", "Yes", "Yes", "MRP: 100", "Global Beverages Ltd", "2026-01-10",
+        "INV-9901", "2026-01-10", "Yes", "No", "No",
+        "Yes", "No", "Yes", "BAT-2026-01", "2026-12-31",
+        "BAT-2026-01", "2026-12-31", "1", "", "",
+        "CHOKINO MILKEA 200ML", "milk, chocolate, drink", "straw", "Global Beverages Ltd"
+      ],
+      [
+        "KIT TOWEL", "9997898492653", "Home & Living", "Towels", "", "Bombay Dyeing", "ITM-002", "BAGS", "5",
+        "100% Cotton premium bath towel", "", "1", "102", "63026000",
+        60, 42.00, 10, 38.00, 20, 49,
+        "Inclusive", "GST@5", 49, 0, 0, "Qty",
+        28, "Inclusive", "GST@5", "5", 28,
+        "Qty", 100, 100, "2026-02-01", "2028-02-01", "Main Warehouse",
+        "Shelf B-2", "Yes", "Yes", "MRP: 60", "Textile Hub", "2026-02-15",
+        "INV-9902", "2026-02-15", "Yes", "No", "No",
+        "Yes", "No", "No", "", "",
+        "", "", "2", "", "",
+        "KIT TOWEL COTTON", "towel, cotton, bath", "", "Textile Hub"
+      ],
+      [
+        "GORAL Premium Toothbrush No. 616", "9992008087019", "Personal Care", "Oral Care", "", "Goral", "ITM-003", "GRAMS", "20",
+        "Ultra soft bristles for deep cleaning", "", "1", "103", "96032100",
+        100, 50.00, 12, 45.00, 24, 59,
+        "Inclusive", "GST@18", 59, 10, 0, "Qty",
+        30, "Inclusive", "GST@18", "18", 30,
+        "Qty", 200, 200, "2026-03-01", "2029-03-01", "Main Warehouse",
+        "Aisle 3", "Yes", "Yes", "MRP: 100", "Goral Health Care", "2026-03-10",
+        "INV-9903", "2026-03-10", "Yes", "No", "No",
+        "Yes", "No", "No", "", "",
+        "", "", "3", "", "",
+        "GORAL TOOTHBRUSH 616", "toothbrush, oral, hygiene", "", "Goral Health Care"
+      ]
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Sample Products");
-    XLSX.writeFile(wb, "products_import_sample.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Item Details");
+    XLSX.writeFile(wb, "Itm_Details_Sample.xlsx");
+    toast.success("Sample Excel downloaded with all 58 columns matching your catalog structure!");
   };
 
   // ── Open create modal helper ────────────────────────────────────
@@ -1412,7 +1553,10 @@ export function Products() {
   // ── Input handler for form ───────────────────────────────────────
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
-    setCurrentForm(prev => ({ ...prev, [name]: type === 'number' ? Number(value) : value }));
+    setCurrentForm(prev => ({
+      ...prev,
+      [name]: type === 'number' ? (value === "" ? "" : Number(value)) : value
+    }));
   };
 
   // ══════════════════════════════════════════════════════════════════
@@ -1427,17 +1571,17 @@ export function Products() {
     const subCategories = categories.filter(c => c.parent_id && c.parent_id === activeParentId);
 
     const tabs = [
-      { id: "basic", label: "Basic Details", desc: "Name, SKU, Category", icon: Package },
+      { id: "basic", label: "Basic Details", desc: "Name, SKU, Category, Brand", icon: Package },
+      { id: "pricing", label: "Pricing, Tax & Purchasing", desc: "Prices, GST, Wholesale, B2B", icon: DollarSign },
       { id: "inventory", label: "Inventory", desc: "Stock, Warehouse, Reorder", icon: Box },
-      { id: "pricing", label: "Pricing & Tax", desc: "Prices, Tax, HSN", icon: DollarSign },
-      { id: "purchase", label: "Purchase & Supplier", desc: "Supplier, Purchase Price", icon: Truck },
-      { id: "other", label: "Other Details", desc: "Description, Options", icon: FileText }
+      { id: "custom_fields", label: "Custom Fields", desc: "Attributes, Specs, Tags", icon: Layers },
+      { id: "other", label: "Other Details", desc: "Description, Status", icon: FileText }
     ];
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-          className="bg-card border rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+          className="bg-card border rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] max-h-[92vh] flex flex-col overflow-hidden">
           {/* Header */}
           <div className="p-6 border-b flex items-center justify-between shrink-0 bg-white">
             <h2 className="text-xl font-bold tracking-tight">{editingProductId ? "Edit Product" : "Create Product"}</h2>
@@ -1731,7 +1875,7 @@ export function Products() {
                           <input
                             type={field.type}
                             name={field.name}
-                            value={(currentForm as any)[field.name]}
+                            value={(currentForm as any)[field.name] ?? ""}
                             onChange={handleFormChange}
                             placeholder={`Enter ${field.label.toLowerCase()}`}
                             className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
@@ -1743,94 +1887,93 @@ export function Products() {
                 )}
 
                 {activeModalTab === "pricing" && (
-                  <div className="space-y-6 max-w-3xl">
+                  <div className="space-y-6 max-w-3xl pb-8">
                     <div>
-                      <h3 className="text-lg font-bold text-slate-900">Pricing & Tax</h3>
-                      <p className="text-sm text-slate-500 mb-6">Set up your retail prices and tax structures.</p>
+                      <h3 className="text-xl font-bold text-slate-900 tracking-tight">Pricing, Tax & Multi-Tier Rates</h3>
+                      <p className="text-xs text-slate-500 mt-1">Configure GST tax schedules, retail selling price, and volume-based pricing tiers (B2B, Wholesale, Distributor).</p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-6">
-                      {[
-                        { label: "Retail Selling Price", name: "selling_price", type: "number", step: "0.01" },
-                        { label: "MRP", name: "mrp", type: "number", step: "0.01" },
-                        { label: "Tax (%)", name: "tax_percent", type: "number" },
-                        { label: "Discount Limit (%)", name: "discount_limit", type: "number" },
-                      ].map((field) => (
-                        <div key={field.name}>
-                          <label className="block text-sm font-semibold text-slate-900 mb-1.5">{field.label}</label>
-                          <input
-                            type={field.type}
-                            name={field.name}
-                            step={field.step || "any"}
-                            value={(currentForm as any)[field.name]}
-                            onChange={handleFormChange}
-                            placeholder={`Enter ${field.label.toLowerCase()}`}
-                            className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                          />
+                    {/* Section 1: GST & Tax Configuration */}
+                    <div className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                        <div>
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">1. GST Tax & Pricing Mode</span>
+                          <span className="text-[11px] text-slate-500">Choose whether selling price includes tax or tax is extra.</span>
                         </div>
-                      ))}
-                    </div>
-
-                    <div className="bg-slate-50 p-4 rounded-xl border border-dashed space-y-3 mt-6">
-                      <label className="block text-sm font-semibold text-slate-900">
-                        HSN Code & GST Tax Schedule Lookup
-                      </label>
-                      <select
-                        className="w-full h-11 px-4 text-sm rounded-xl border bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                        value={(currentForm as any).hsn_code || ""}
-                        onChange={(e) => {
-                          const selectedCode = e.target.value;
-                          const match = hsnCodes.find(h => h.hsn_code === selectedCode);
-                          setCurrentForm(prev => ({
-                            ...prev,
-                            hsn_code: selectedCode,
-                            tax_percent: match ? match.gst_rate : prev.tax_percent
-                          }));
-                          if (match) {
-                            toast.success(`Selected HSN ${selectedCode} (${match.gst_rate}% GST Rate)`);
-                          }
-                        }}
-                      >
-                        <option value="">Select Official HSN Code / GST Rate...</option>
-                        {hsnCodes.map((item) => (
-                          <option key={item.hsn_code} value={item.hsn_code}>
-                            {item.hsn_code} — {item.description.slice(0, 55)}... ({item.gst_rate}% GST)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="bg-white border border-slate-200 p-4 rounded-xl space-y-4">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-sm font-bold text-slate-900">
-                          GST Tax Pricing Mode *
-                        </label>
-                        <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-lg border">
+                        <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
                           <button
                             type="button"
                             onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: true }))}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                               (currentForm as any).is_tax_inclusive !== false
-                                ? "bg-indigo-600 text-white shadow-sm"
-                                : "text-slate-600 hover:bg-slate-200"
+                                ? "bg-indigo-600 text-white shadow-xs"
+                                : "text-slate-600 hover:bg-slate-100"
                             }`}
                           >
-                            GST Inclusive (Included)
+                            GST Inclusive (MRP Mode)
                           </button>
                           <button
                             type="button"
                             onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: false }))}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                               (currentForm as any).is_tax_inclusive === false
-                                ? "bg-indigo-600 text-white shadow-sm"
-                                : "text-slate-600 hover:bg-slate-200"
+                                ? "bg-indigo-600 text-white shadow-xs"
+                                : "text-slate-600 hover:bg-slate-100"
                             }`}
                           >
-                            GST Exclusive (Extra)
+                            GST Exclusive (+Tax Extra)
                           </button>
                         </div>
                       </div>
 
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Official GST Rate *</label>
+                          <select
+                            name="tax_percent"
+                            value={(currentForm as any).tax_percent ?? 0}
+                            onChange={handleFormChange}
+                            className="w-full h-11 px-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                          >
+                            <option value="0">0% — Zero / Nil Rated / Non-GST</option>
+                            <option value="0.25">0.25% — Precious Stones & Diamonds</option>
+                            <option value="3">3% — Gold, Silver & Jewellery</option>
+                            <option value="5">5% — Essential Goods, Tea, Spices</option>
+                            <option value="12">12% — Processed Foods, Apparel, Hardware</option>
+                            <option value="18">18% — Standard FMCG, Electronics, Services</option>
+                            <option value="28">28% — Luxury, Automobiles, Aerated Drinks</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">HSN Code Lookup</label>
+                          <select
+                            className="w-full h-11 px-3 text-sm rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                            value={(currentForm as any).hsn_code || ""}
+                            onChange={(e) => {
+                              const selectedCode = e.target.value;
+                              const match = hsnCodes.find(h => h.hsn_code === selectedCode);
+                              setCurrentForm(prev => ({
+                                ...prev,
+                                hsn_code: selectedCode,
+                                tax_percent: match ? match.gst_rate : prev.tax_percent
+                              }));
+                              if (match) {
+                                toast.success(`Selected HSN ${selectedCode} (${match.gst_rate}% GST Rate)`);
+                              }
+                            }}
+                          >
+                            <option value="">Select Official HSN Code / GST Schedule...</option>
+                            {hsnCodes.map((item) => (
+                              <option key={item.hsn_code} value={item.hsn_code}>
+                                {item.hsn_code} — {item.description.slice(0, 45)}... ({item.gst_rate}% GST)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Live Price Calculator & Tax Breakdown Card */}
                       {(() => {
                         const price = Number((currentForm as any).selling_price) || 0;
                         const taxRate = Number((currentForm as any).tax_percent) || 0;
@@ -1851,53 +1994,366 @@ export function Products() {
                         }
 
                         return (
-                          <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg text-sm">
-                            <div>
-                              <span className="text-slate-500 font-medium block text-xs mb-1">Net Base Price (Excl. Tax)</span>
-                              <span className="font-bold text-slate-900">{currency.symbol}{basePrice.toFixed(2)}</span>
+                          <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2.5 shadow-2xs">
+                            <div className="flex items-center justify-between text-xs text-slate-500">
+                              <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">Real-Time Price & Tax Breakdown</span>
+                              <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold text-[10px]">
+                                {isIncl ? "GST Included in Selling Price" : "GST Extra on Base Price"}
+                              </span>
                             </div>
-                            <div>
-                              <span className="text-slate-500 font-medium block text-xs mb-1">GST Tax Amount ({taxRate}%)</span>
-                              <span className="font-bold text-indigo-700">{currency.symbol}{taxAmount.toFixed(2)}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-500 font-medium block text-xs mb-1">Final Customer Price</span>
-                              <span className="font-extrabold text-slate-900 text-base">{currency.symbol}{finalCustomerPrice.toFixed(2)}</span>
+                            <div className="grid grid-cols-3 gap-3 pt-1">
+                              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                                <span className="text-slate-500 block text-[11px] font-medium mb-0.5">Net Base (Excl. Tax)</span>
+                                <span className="font-black text-slate-900 text-sm md:text-base">{currency.symbol}{basePrice.toFixed(2)}</span>
+                                <span className="text-[10px] text-slate-400 block mt-0.5">What business retains</span>
+                              </div>
+                              <div className="bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100">
+                                <span className="text-indigo-700 block text-[11px] font-semibold mb-0.5">GST Tax ({taxRate}%)</span>
+                                <span className="font-black text-indigo-700 text-sm md:text-base">+{currency.symbol}{taxAmount.toFixed(2)}</span>
+                                <span className="text-[10px] text-indigo-400 block mt-0.5">Govt tax collected</span>
+                              </div>
+                              <div className="bg-emerald-50/50 p-2.5 rounded-lg border border-emerald-100">
+                                <span className="text-emerald-700 block text-[11px] font-semibold mb-0.5">Final Customer Price</span>
+                                <span className="font-black text-emerald-700 text-sm md:text-base">{currency.symbol}{finalCustomerPrice.toFixed(2)}</span>
+                                <span className="text-[10px] text-emerald-600 font-semibold block mt-0.5">Printed billing amount</span>
+                              </div>
                             </div>
                           </div>
                         );
                       })()}
                     </div>
+
+                    {/* Section 2: Retail & Consumer Pricing */}
+                    <div className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
+                      <div>
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">2. Retail & Consumer Pricing</span>
+                        <span className="text-[11px] text-slate-500">Standard walk-in counter sales prices and packaging MRP.</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Retail Selling Price *</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
+                            <input
+                              type="number"
+                              step="any"
+                              name="selling_price"
+                              value={(currentForm as any).selling_price ?? ""}
+                              onChange={handleFormChange}
+                              placeholder="0.00"
+                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">MRP (Max Retail Price)</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
+                            <input
+                              type="number"
+                              step="any"
+                              name="mrp"
+                              value={(currentForm as any).mrp ?? ""}
+                              onChange={handleFormChange}
+                              placeholder="0.00"
+                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Discount Limit (%)</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              name="discount_limit"
+                              value={(currentForm as any).discount_limit ?? ""}
+                              onChange={handleFormChange}
+                              placeholder="0"
+                              className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 3: Multi-Tier B2B & Wholesale Pricing */}
+                    <div className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
+                      <div>
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">3. Multi-Tier B2B, Wholesale & Distributor Pricing</span>
+                        <span className="text-[11px] text-slate-500">Tiered contract pricing automatically applied at POS & invoices based on customer type and quantity.</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Wholesale Tier */}
+                        <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 shadow-2xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-indigo-900">Wholesale Tier</span>
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">Bulk Volume Rate</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Wholesale Price</label>
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  name="wholesale_price"
+                                  value={(currentForm as any).wholesale_price ?? ""}
+                                  onChange={handleFormChange}
+                                  placeholder="0.00"
+                                  className="w-full h-9 pl-6 pr-2 text-xs rounded-lg border bg-slate-50 font-bold text-slate-800 focus:bg-white"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Min Wholesale Qty</label>
+                              <input
+                                type="number"
+                                name="min_wholesale_qty"
+                                value={(currentForm as any).min_wholesale_qty ?? ""}
+                                onChange={handleFormChange}
+                                placeholder="1"
+                                className="w-full h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* B2B Tier */}
+                        <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 shadow-2xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-indigo-900">B2B Business Tier</span>
+                            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">GST Clients</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">B2B Price</label>
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  name="b2b_price"
+                                  value={(currentForm as any).b2b_price ?? ""}
+                                  onChange={handleFormChange}
+                                  placeholder="0.00"
+                                  className="w-full h-9 pl-6 pr-2 text-xs rounded-lg border bg-slate-50 font-bold text-slate-800 focus:bg-white"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Min B2B Qty</label>
+                              <input
+                                type="number"
+                                name="min_b2b_qty"
+                                value={(currentForm as any).min_b2b_qty ?? ""}
+                                onChange={handleFormChange}
+                                placeholder="1"
+                                className="w-full h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Distributor Tier */}
+                        <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 md:col-span-2 shadow-2xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-indigo-900">Distributor / Stockist Tier</span>
+                            <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-medium">Dealer & Stockist Rate</span>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Distributor Price</label>
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  name="distributor_price"
+                                  value={(currentForm as any).distributor_price ?? ""}
+                                  onChange={handleFormChange}
+                                  placeholder="0.00"
+                                  className="w-full h-9 pl-6 pr-2 text-xs rounded-lg border bg-slate-50 font-bold text-slate-800 focus:bg-white"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Min Distributor Qty</label>
+                              <input
+                                type="number"
+                                name="min_distributor_qty"
+                                value={(currentForm as any).min_distributor_qty ?? ""}
+                                onChange={handleFormChange}
+                                placeholder="1"
+                                className="w-full h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 4: Purchase & Sourcing */}
+                    <div className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
+                      <div>
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 block">4. Purchase & Sourcing Costs</span>
+                        <span className="text-[11px] text-slate-500">Cost price paid to vendors for margin tracking and procurement.</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Purchase / Cost Price</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
+                            <input
+                              type="number"
+                              step="any"
+                              name="purchase_price"
+                              value={(currentForm as any).purchase_price ?? ""}
+                              onChange={handleFormChange}
+                              placeholder="0.00"
+                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Preferred Supplier / Vendor</label>
+                          <input
+                            type="text"
+                            name="supplier"
+                            value={(currentForm as any).supplier || ""}
+                            onChange={handleFormChange}
+                            placeholder="e.g. Global Beverages Ltd"
+                            className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {activeModalTab === "purchase" && (
+                {activeModalTab === "custom_fields" && (
                   <div className="space-y-6 max-w-3xl">
                     <div>
-                      <h3 className="text-lg font-bold text-slate-900">Purchase & Supplier</h3>
-                      <p className="text-sm text-slate-500 mb-6">Manage wholesale prices and supplier details.</p>
+                      <h3 className="text-lg font-bold text-slate-900">Custom Fields & Attributes</h3>
+                      <p className="text-sm text-slate-500 mb-6">Add specialized identifiers, catalog attributes, and custom specifications.</p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-6">
-                      {[
-                        { label: "Purchase Price", name: "purchase_price", type: "number", step: "0.01" },
-                        { label: "Wholesale Price", name: "wholesale_price", type: "number", step: "0.01" },
-                        { label: "Min Wholesale Qty", name: "min_wholesale_qty", type: "number" },
-                        { label: "Supplier", name: "supplier", type: "text" },
-                      ].map((field) => (
-                        <div key={field.name}>
-                          <label className="block text-sm font-semibold text-slate-900 mb-1.5">{field.label}</label>
+                    {/* Preset Catalog Identifiers */}
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 block">Standard Catalog Attributes</span>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-900 mb-1.5">Sub Category</label>
                           <input
-                            type={field.type}
-                            name={field.name}
-                            step={field.step || "any"}
-                            value={(currentForm as any)[field.name]}
+                            type="text"
+                            name="sub_category"
+                            value={(currentForm as any).sub_category || ""}
                             onChange={handleFormChange}
-                            placeholder={`Enter ${field.label.toLowerCase()}`}
-                            className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            placeholder="e.g. Milk Drinks, Bath Towels"
+                            className="w-full h-11 px-4 text-sm rounded-xl border bg-white"
                           />
                         </div>
-                      ))}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-900 mb-1.5">Internal Item Code</label>
+                          <input
+                            type="text"
+                            name="item_code"
+                            value={(currentForm as any).item_code || ""}
+                            onChange={handleFormChange}
+                            placeholder="e.g. ITM-001"
+                            className="w-full h-11 px-4 text-sm rounded-xl border bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-900 mb-1.5">Weighing Scale Item Code</label>
+                          <input
+                            type="text"
+                            name="weighing_scale_code"
+                            value={(currentForm as any).weighing_scale_code || ""}
+                            onChange={handleFormChange}
+                            placeholder="e.g. 101"
+                            className="w-full h-11 px-4 text-sm rounded-xl border bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-900 mb-1.5">Conversion Factor</label>
+                          <input
+                            type="text"
+                            name="conversion_factor"
+                            value={(currentForm as any).conversion_factor || ""}
+                            onChange={handleFormChange}
+                            placeholder="e.g. 1, 1000"
+                            className="w-full h-11 px-4 text-sm rounded-xl border bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dynamic Key-Value Custom Fields */}
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Dynamic Custom Attributes</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setCurrentForm(prev => ({
+                              ...prev,
+                              custom_fields: [...((prev as any).custom_fields || []), { key: "", value: "" }]
+                            }));
+                          }}
+                          className="h-8 text-xs font-bold text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100"
+                        >
+                          <Plus className="size-3.5 mr-1" /> Add Custom Field
+                        </Button>
+                      </div>
+
+                      {((currentForm as any).custom_fields || []).length === 0 ? (
+                        <div className="p-6 text-center bg-white rounded-xl border border-dashed border-slate-300 text-xs text-slate-500">
+                          No custom fields added yet. Click &quot;Add Custom Field&quot; to add specifications like Material, Color, Size, Warranty, etc.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {((currentForm as any).custom_fields || []).map((f: any, idx: number) => (
+                            <div key={idx} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200">
+                              <input
+                                type="text"
+                                placeholder="Attribute Name (e.g. Color, Size, Material)"
+                                value={f.key}
+                                onChange={(e) => {
+                                  const updated = [...(currentForm as any).custom_fields];
+                                  updated[idx].key = e.target.value;
+                                  setCurrentForm(prev => ({ ...prev, custom_fields: updated }));
+                                }}
+                                className="flex-1 h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white font-semibold"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Value (e.g. Matte Black, XL, Cotton)"
+                                value={f.value}
+                                onChange={(e) => {
+                                  const updated = [...(currentForm as any).custom_fields];
+                                  updated[idx].value = e.target.value;
+                                  setCurrentForm(prev => ({ ...prev, custom_fields: updated }));
+                                }}
+                                className="flex-1 h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = (currentForm as any).custom_fields.filter((_: any, i: number) => i !== idx);
+                                  setCurrentForm(prev => ({ ...prev, custom_fields: updated }));
+                                }}
+                                className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="size-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

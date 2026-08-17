@@ -2311,7 +2311,7 @@ export const crmMembershipsApi = {
 // ── Wallet API ───────────────────────────────────────────────────────────────
 
 export const crmWalletApi = {
-  listTransactions: (customerId: string, page = 1, pageSize = 20) =>
+  listTransactions: (customerId?: string, page = 1, pageSize = 20) =>
     request<PaginatedResponse<WalletTransaction>>("GET", `/crm/wallet/transactions`, undefined, { customer_id: customerId, page, page_size: pageSize }),
   credit: (customerId: string, amount: number, description: string, referenceId?: string) =>
     request<WalletTransaction>("POST", `/crm/wallet/credit`, { customer_id: customerId, amount, description, reference_id: referenceId }),

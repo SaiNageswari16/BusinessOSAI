@@ -169,17 +169,45 @@ async def get_customer_invoice_summary(
     }
 
 
+async def _lookup_invoice(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    invoice_id_or_number: str | uuid.UUID,
+    include_relations: bool = True
+) -> Invoice | None:
+    stmt = select(Invoice)
+    if include_relations:
+        stmt = stmt.options(selectinload(Invoice.lines), selectinload(Invoice.payments))
+
+    # Try direct UUID
+    try:
+        val_uuid = uuid.UUID(str(invoice_id_or_number))
+        inv = await db.scalar(stmt.where(Invoice.id == val_uuid, Invoice.tenant_id == tenant_id))
+        if inv:
+            return inv
+    except (ValueError, AttributeError):
+        pass
+
+    # Try invoice_number, reference_number, or order_number
+    str_val = str(invoice_id_or_number).strip()
+    inv = await db.scalar(
+        stmt.where(
+            (Invoice.invoice_number.ilike(str_val) |
+             Invoice.reference_number.ilike(str_val) |
+             Invoice.order_number.ilike(str_val)),
+            Invoice.tenant_id == tenant_id
+        )
+    )
+    return inv
+
+
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
 async def get_invoice(
-    invoice_id: uuid.UUID,
+    invoice_id: str,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    invoice = await db.scalar(
-        select(Invoice)
-        .options(selectinload(Invoice.lines), selectinload(Invoice.payments))
-        .where(Invoice.id == invoice_id, Invoice.tenant_id == ctx.tenant_id)
-    )
+    invoice = await _lookup_invoice(db, ctx.tenant_id, invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return invoice
@@ -230,6 +258,50 @@ async def create_invoice(
     invoice = Invoice(**inv_kwargs)
     db.add(invoice)
     await db.flush()
+
+    # Handle automatic Customer Wallet deduction if paid via Wallet
+    is_wallet_payment = bool(
+        payload.payment_method and "wallet" in payload.payment_method.lower()
+    )
+    if is_wallet_payment and payload.customer_id:
+        wallet = await db.scalar(
+            select(CustomerWallet).where(
+                CustomerWallet.customer_id == payload.customer_id,
+                CustomerWallet.tenant_id == ctx.tenant_id
+            ).with_for_update()
+        )
+        if not wallet or float(wallet.balance or 0) < float(totals["total_amount"]):
+            avail = float(wallet.balance or 0) if wallet else 0.0
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient Customer Wallet Balance (₹{avail:,.2f} available, ₹{totals['total_amount']:,.2f} required)."
+            )
+
+        wallet.balance = float(wallet.balance) - float(totals["total_amount"])
+
+        tx = CustomerWalletTransaction(
+            tenant_id=ctx.tenant_id,
+            wallet_id=wallet.id,
+            transaction_type="payment",
+            amount=float(totals["total_amount"]),
+            balance_after=wallet.balance,
+            reference_type="invoice",
+            reference_id=invoice_number,
+            description=f"Payment for Sales Invoice #{invoice_number}",
+        )
+        db.add(tx)
+
+        inv_pay = InvoicePayment(
+            tenant_id=ctx.tenant_id,
+            invoice_id=invoice.id,
+            payment_number=f"PAY-{invoice_number}",
+            payment_date=invoice.invoice_date,
+            amount=float(totals["total_amount"]),
+            payment_method="wallet",
+            reference_number=invoice_number,
+            notes=f"Paid via Customer Wallet",
+        )
+        db.add(inv_pay)
 
     for idx, line_payload in enumerate(payload.lines):
         line_dict = line_payload.model_dump()
@@ -446,16 +518,14 @@ async def approve_invoice(
 
 @router.post("/{invoice_id}/payments", response_model=InvoicePaymentResponse, status_code=status.HTTP_201_CREATED)
 async def add_payment(
-    invoice_id: uuid.UUID,
+    invoice_id: str,
     payload: InvoicePaymentCreate,
     background_tasks: BackgroundTasks,
     request: Request,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoice_payments"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    invoice = await db.scalar(
-        select(Invoice).where(Invoice.id == invoice_id, Invoice.tenant_id == ctx.tenant_id)
-    )
+    invoice = await _lookup_invoice(db, ctx.tenant_id, invoice_id, include_relations=False)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
@@ -463,7 +533,7 @@ async def add_payment(
     if payload.amount > remaining + 0.01:
         raise HTTPException(status_code=400, detail="Payment exceeds balance due")
 
-    payment = InvoicePayment(invoice_id=invoice_id, **payload.model_dump())
+    payment = InvoicePayment(invoice_id=invoice.id, **payload.model_dump())
     
     if payload.payment_method and payload.payment_method.lower() == "wallet":
         if not invoice.customer_id:

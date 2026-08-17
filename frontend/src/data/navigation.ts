@@ -280,10 +280,10 @@ export const nav: NavGroup[] = [
       { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/pos?tab=sales", label: "Sales", icon: Receipt },
       { to: "/pos?tab=sales_history", label: "Invoices History", icon: History },
-      { to: "/pos?tab=payment_in", label: "PAYMENT IN", icon: Wallet },
-      { 
-        to: "/pos?tab=terminal", 
-        label: "Terminal", 
+      { to: "/pos?tab=payment_in", label: "Payment In", icon: Wallet },
+      {
+        to: "/pos?tab=terminal",
+        label: "Terminal",
         icon: ShoppingCart,
         subItems: [
           { to: "/pos?tab=terminal", label: "Billing", icon: ShoppingCart },

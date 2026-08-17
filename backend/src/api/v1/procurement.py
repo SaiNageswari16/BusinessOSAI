@@ -77,9 +77,10 @@ async def create_supplier_category(
     return cat
 
 
-# ─── Suppliers CRUD ───────────────────────────────────────────────
+# ─── Suppliers / Vendors CRUD ─────────────────────────────────────
 
 @router.get("/suppliers", response_model=List[SupplierResponse])
+@router.get("/vendors", response_model=List[SupplierResponse])
 async def list_suppliers(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -126,7 +127,54 @@ async def list_suppliers(
     return response_items
 
 
+@router.get("/vendors/{vendor_id}/summary")
+@router.get("/suppliers/{vendor_id}/summary")
+async def get_vendor_summary(
+    vendor_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    supplier = None
+    try:
+        vid = uuid.UUID(vendor_id)
+        supplier = await db.get(Supplier, vid)
+    except Exception:
+        pass
+
+    if not supplier:
+        res = await db.execute(
+            select(Supplier).where(Supplier.name == vendor_id, Supplier.tenant_id == ctx.tenant_id)
+        )
+        supplier = res.scalars().first()
+
+    if not supplier:
+        return {"total_pending_due": 0.0, "total_spent": 0.0, "unpaid_bills": []}
+
+    bills_res = await db.execute(
+        select(VendorBill).where(VendorBill.supplier_id == supplier.id, VendorBill.tenant_id == ctx.tenant_id)
+    )
+    bills = bills_res.scalars().all()
+    total_spent = sum(float(b.total_amount or 0) for b in bills)
+    total_pending = sum(max(0.0, float(b.total_amount or 0) - float(b.paid_amount or 0)) for b in bills if str(b.status).lower() != "paid")
+    unpaid = [
+        {
+            "id": str(b.id),
+            "bill_number": b.bill_number,
+            "total_amount": float(b.total_amount or 0),
+            "balance_due": max(0.0, float(b.total_amount or 0) - float(b.paid_amount or 0)),
+            "due_date": str(b.due_date) if b.due_date else None
+        }
+        for b in bills if str(b.status).lower() != "paid"
+    ]
+    return {
+        "total_pending_due": total_pending,
+        "total_spent": total_spent,
+        "unpaid_bills": unpaid
+    }
+
+
 @router.post("/suppliers", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/vendors", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
 async def onboard_supplier(
     payload: SupplierCreate,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
