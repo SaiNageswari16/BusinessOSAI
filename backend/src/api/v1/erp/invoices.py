@@ -528,11 +528,23 @@ async def add_payment(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    remaining = invoice.balance_due - invoice.amount_paid
-    if payload.amount > remaining + 0.01:
-        raise HTTPException(status_code=400, detail="Payment exceeds balance due")
+    curr_total = float(invoice.total_amount or 0.0)
+    curr_paid = float(invoice.amount_paid or 0.0)
+    curr_balance_due = float(invoice.balance_due) if invoice.balance_due is not None else max(0.0, curr_total - curr_paid)
+    pay_amount = float(payload.amount)
 
-    payment = InvoicePayment(invoice_id=invoice.id, **payload.model_dump())
+    if pay_amount > curr_balance_due + 0.01:
+        raise HTTPException(status_code=400, detail=f"Payment amount ({pay_amount:.2f}) exceeds balance due ({curr_balance_due:.2f})")
+
+    payment = InvoicePayment(
+        tenant_id=ctx.tenant_id,
+        invoice_id=invoice.id,
+        payment_date=payload.payment_date or date.today(),
+        payment_method=payload.payment_method or "cash",
+        amount=pay_amount,
+        reference_number=payload.reference_number,
+        notes=payload.notes,
+    )
     
     if payload.payment_method and payload.payment_method.lower() == "wallet":
         if not invoice.customer_id:
@@ -544,32 +556,47 @@ async def add_payment(
                 CustomerWallet.tenant_id == ctx.tenant_id
             ).with_for_update()
         )
-        if not wallet or wallet.balance < payload.amount:
+        if not wallet or float(wallet.balance or 0.0) < pay_amount:
             raise HTTPException(status_code=400, detail="Insufficient wallet balance")
             
-        wallet.balance -= payload.amount
+        wallet.balance = max(0.0, float(wallet.balance) - pay_amount)
         wallet_tx = CustomerWalletTransaction(
             wallet_id=wallet.id,
             tenant_id=ctx.tenant_id,
-            transaction_type="DEBIT",
-            amount=payload.amount,
-            reference_type="INVOICE_PAYMENT",
-            reference_id=str(invoice.id),
-            notes=f"Payment for invoice {invoice.invoice_number}"
+            transaction_type="payment",
+            amount=pay_amount,
+            balance_after=wallet.balance,
+            reference_type="invoice_payment",
+            reference_id=str(invoice.invoice_number or invoice.id),
+            description=f"Payment for Invoice #{invoice.invoice_number}"
         )
         db.add(wallet_tx)
+
+        cust = await db.scalar(
+            select(Customer).where(
+                Customer.id == invoice.customer_id,
+                Customer.tenant_id == ctx.tenant_id
+            ).with_for_update()
+        )
+        if cust:
+            cust.wallet_balance = wallet.balance
         
     db.add(payment)
 
-    invoice.amount_paid = round(invoice.amount_paid + payload.amount, 2)
-    invoice.balance_due = round(invoice.balance_due - payload.amount, 2)
+    new_amount_paid = round(curr_paid + pay_amount, 2)
+    new_balance_due = round(max(0.0, curr_total - new_amount_paid), 2)
+
+    invoice.amount_paid = new_amount_paid
+    invoice.balance_due = new_balance_due
 
     if invoice.balance_due <= 0.01:
         invoice.status = "paid"
+        invoice.payment_status = "paid"
     elif invoice.amount_paid > 0:
         invoice.status = "partially_paid"
+        invoice.payment_status = "partially_paid"
 
-    if invoice.due_date < date.today() and invoice.balance_due > 0.01:
+    if invoice.due_date and invoice.due_date < date.today() and invoice.balance_due > 0.01:
         invoice.status = "overdue"
 
     await write_audit_log(
