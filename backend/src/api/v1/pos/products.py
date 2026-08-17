@@ -107,7 +107,7 @@ async def list_products(
         .where(Product.tenant_id == ctx.user.tenant_id)
     )
     if active_only:
-        stmt = stmt.where(or_(Product.status == EntityStatus.ACTIVE, Product.status == 'active', Product.status == 'ACTIVE', Product.status == 'Active', Product.status == None))
+        stmt = stmt.where(or_(Product.status == EntityStatus.ACTIVE, Product.status == None))
     if category_id:
         stmt = stmt.where(Product.category_id == category_id)
     if search:
@@ -132,7 +132,7 @@ async def list_products(
             selling_price=float(p.selling_price or p.mrp or 0.0),
             wholesale_price=float(p.wholesale_price or 0.0), min_wholesale_qty=int(p.min_wholesale_qty or 1),
             tax_percent=float(p.tax_percent or 0.0), discount=float(p.discount_limit or 0.0), stock=int(p.initial_stock or 0),
-            reorder_level=int(p.reorder_level or 0), is_active=(p.status == EntityStatus.ACTIVE),
+            reorder_level=int(p.reorder_level or 0), is_active=(p.status == EntityStatus.ACTIVE or p.status == None),
             created_at=p.created_at, updated_at=p.updated_at
         )
         out.append(d)
