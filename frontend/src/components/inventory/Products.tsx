@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2 } from "lucide-react";
+import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle } from "lucide-react";
 
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -825,9 +825,7 @@ export function Products() {
   const localBarcodes = useMemo(() => new Set(products.map(p => p.barcode).filter(Boolean)), [products]);
   const localNames = useMemo(() => new Set(products.map(p => p.name.toLowerCase())), [products]);
   const localSkus = useMemo(() => new Set(products.map(p => p.sku?.toLowerCase()).filter(Boolean) as string[]), [products]);
-  const uniqueMasterResults = masterResults.filter(m =>
-    (!m.barcode || !localBarcodes.has(m.barcode)) && !localNames.has(m.name.toLowerCase())
-  );
+  const uniqueMasterResults = masterResults;
 
   // ── Phase 2: Exact-match priority: check barcode/SKU first ───────
   const checkExactMatch = (query: string): InventoryProduct | null => {
@@ -2588,10 +2586,16 @@ export function Products() {
           }
         })}
         <td className="px-6 py-4 text-right">
-          <Button variant="default" size="sm" className="h-7 text-[11px] font-bold"
-            onClick={() => setPreviewItem(item)}>
-            <ShoppingCart className="size-3 mr-1" /> Import
-          </Button>
+          {(item.barcode && localBarcodes.has(item.barcode)) || localNames.has(item.name.toLowerCase()) ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+              <CheckCircle className="size-3" /> In Inventory
+            </span>
+          ) : (
+            <Button variant="default" size="sm" className="h-7 text-[11px] font-bold"
+              onClick={() => setPreviewItem(item)}>
+              <ShoppingCart className="size-3 mr-1" /> Import
+            </Button>
+          )}
         </td>
       </tr>
     );
