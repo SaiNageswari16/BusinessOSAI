@@ -1,8 +1,9 @@
+import logging
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -11,6 +12,7 @@ from src.database.session import get_db
 from src.models import Tenant, User, TenantStatus
 from src.schemas.erp import ORMModel, MessageResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/system", tags=["SaaS Platform Administration"])
 
 

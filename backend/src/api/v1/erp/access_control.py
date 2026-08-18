@@ -1,9 +1,10 @@
+import logging
 import secrets
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,6 +14,7 @@ from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import EntityStatus, Permission, Role, RolePermission, User, UserBranch, UserRole, UserStatus
 from src.schemas.erp import (
+    MessageResponse,
     PermissionResponse,
     RoleCreate,
     RoleResponse,
@@ -41,6 +43,7 @@ from src.utils.rbac_policy import (
 
 from src.utils.security import hash_password
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/erp", tags=["Core ERP - Access Control"])
 
 settings = get_settings()
