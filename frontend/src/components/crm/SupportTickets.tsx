@@ -223,6 +223,231 @@ function CreateTicketModal({
   );
 }
 
+// ─── Modal: View / Edit Support Ticket Details ──────────────────────────────
+function TicketDetailsModal({
+  ticket,
+  onClose,
+  onUpdated,
+  onDeleted,
+}: {
+  ticket: CrmTicket;
+  onClose: () => void;
+  onUpdated: (updated: CrmTicket) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [currentTicket, setCurrentTicket] = useState<CrmTicket>(ticket);
+
+  const handleStatusChange = async (newStatus: string) => {
+    setUpdatingStatus(true);
+    try {
+      const res = await crmTicketsApi.update(currentTicket.id, { status: newStatus });
+      setCurrentTicket(res);
+      onUpdated(res);
+      toast.success(`Ticket status updated to ${newStatus}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update status");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handlePriorityChange = async (newPriority: string) => {
+    try {
+      const res = await crmTicketsApi.update(currentTicket.id, { priority: newPriority });
+      setCurrentTicket(res);
+      onUpdated(res);
+      toast.success(`Priority updated to ${newPriority}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update priority");
+    }
+  };
+
+  const handleAiSummarize = async () => {
+    setSummarizing(true);
+    try {
+      const res = await crmTicketsApi.summarize(currentTicket.id);
+      const updated = { ...currentTicket, ai_summary: res.ai_summary };
+      setCurrentTicket(updated);
+      onUpdated(updated);
+      toast.success("AI case summary generated!");
+    } catch (err: any) {
+      toast.error(err.message || "AI Summary generation failed");
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm("Are you sure you want to delete this ticket?")) return;
+    setDeleting(true);
+    try {
+      await crmTicketsApi.delete(currentTicket.id);
+      toast.success("Ticket deleted successfully");
+      onDeleted(currentTicket.id);
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete ticket");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        className="bg-card border border-border/70 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden text-foreground flex flex-col max-h-[90vh]"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-border/50 bg-muted/30">
+          <div className="flex items-center gap-3">
+            <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+              <MessageSquare className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-lg">{currentTicket.subject}</h2>
+                <span
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                    currentTicket.priority === "High" || currentTicket.priority === "Urgent"
+                      ? "bg-red-500/10 text-red-600"
+                      : currentTicket.priority === "Medium"
+                      ? "bg-blue-500/10 text-blue-600"
+                      : "bg-slate-500/10 text-slate-600"
+                  }`}
+                >
+                  {currentTicket.priority}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground font-mono mt-0.5">ID: {currentTicket.id}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 space-y-5 overflow-y-auto text-sm">
+          {/* Metadata Badges */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/30 p-3.5 rounded-xl border border-border/50 text-xs">
+            <div>
+              <span className="text-muted-foreground block text-[10px] font-bold uppercase tracking-wider">Status</span>
+              <div className="mt-1 font-semibold flex items-center gap-1.5">
+                <span className={`size-2 rounded-full ${
+                  currentTicket.status === 'Open' ? 'bg-blue-500' :
+                  currentTicket.status === 'In Progress' ? 'bg-amber-500' :
+                  'bg-emerald-500'
+                }`} />
+                {currentTicket.status}
+              </div>
+            </div>
+            <div>
+              <span className="text-muted-foreground block text-[10px] font-bold uppercase tracking-wider">Category</span>
+              <div className="mt-1 font-semibold text-foreground">{currentTicket.category}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground block text-[10px] font-bold uppercase tracking-wider">Customer</span>
+              <div className="mt-1 font-semibold text-foreground truncate">{(currentTicket as any).customer_name || "Enterprise Customer"}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground block text-[10px] font-bold uppercase tracking-wider">Created</span>
+              <div className="mt-1 font-semibold text-foreground">
+                {new Date(currentTicket.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+              </div>
+            </div>
+          </div>
+
+          {/* AI Executive Summary Card */}
+          <div className="bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-200/70 dark:border-indigo-800/40 p-4 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-300 font-bold text-xs">
+                <Sparkles className="size-4 text-indigo-500" />
+                <span>AI Case Summary & Diagnostic</span>
+              </div>
+              <button
+                onClick={handleAiSummarize}
+                disabled={summarizing}
+                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1"
+              >
+                {summarizing ? (
+                  <><Loader2 className="size-3 animate-spin" /> Regenerating...</>
+                ) : (
+                  <><Sparkles className="size-3" /> {currentTicket.ai_summary ? "Refresh AI Summary" : "Generate Summary"}</>
+                )}
+              </button>
+            </div>
+            {currentTicket.ai_summary ? (
+              <p className="text-xs text-indigo-900 dark:text-indigo-200 leading-relaxed font-medium">
+                {currentTicket.ai_summary}
+              </p>
+            ) : (
+              <p className="text-xs text-indigo-600/80 dark:text-indigo-400/80 italic">
+                No summary generated yet. Click "Generate Summary" to produce an instant diagnostic.
+              </p>
+            )}
+          </div>
+
+          {/* Description */}
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Issue Description & Notes</h4>
+            <div className="bg-muted/20 border border-border/60 p-4 rounded-xl text-xs leading-relaxed whitespace-pre-wrap font-sans text-foreground">
+              {currentTicket.description || "No description provided."}
+            </div>
+          </div>
+
+          {/* Quick Status Control */}
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Update Ticket Status</h4>
+            <div className="flex flex-wrap gap-2">
+              {["Open", "In Progress", "Resolved", "Closed"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => void handleStatusChange(st)}
+                  disabled={updatingStatus || currentTicket.status === st}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    currentTicket.status === st
+                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                      : "bg-background border-border hover:bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-border/50 bg-muted/20 flex items-center justify-between">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+            Delete Ticket
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-semibold bg-primary text-primary-foreground rounded-xl shadow-sm hover:opacity-90 transition-opacity"
+          >
+            Done
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export function SupportTickets({ tab = "active_tickets" }: Props) {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
@@ -234,6 +459,8 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
   const [loading, setLoading] = useState(true);
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<CrmTicket | null>(null);
+  const [menuOpenTicketId, setMenuOpenTicketId] = useState<string | null>(null);
 
   const fetchTickets = async () => {
     setLoading(true);
@@ -247,6 +474,13 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
       setLoading(false);
     }
   };
+
+  // Close actions menu on global click
+  useEffect(() => {
+    const handleGlobalClick = () => setMenuOpenTicketId(null);
+    window.addEventListener("click", handleGlobalClick);
+    return () => window.removeEventListener("click", handleGlobalClick);
+  }, []);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -266,6 +500,31 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
       toast.error("AI Summary generation failed");
     } finally {
       setSummarizingId(null);
+    }
+  };
+
+  const handleUpdateStatus = async (e: React.MouseEvent, ticketId: string, status: string) => {
+    e.stopPropagation();
+    setMenuOpenTicketId(null);
+    try {
+      const res = await crmTicketsApi.update(ticketId, { status });
+      setTickets(prev => prev.map(t => t.id === ticketId ? res : t));
+      toast.success(`Ticket marked as ${status}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update status");
+    }
+  };
+
+  const handleDeleteTicket = async (e: React.MouseEvent, ticketId: string) => {
+    e.stopPropagation();
+    setMenuOpenTicketId(null);
+    if (!window.confirm("Are you sure you want to delete this ticket?")) return;
+    try {
+      await crmTicketsApi.delete(ticketId);
+      setTickets(prev => prev.filter(t => t.id !== ticketId));
+      toast.success("Ticket deleted successfully");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete ticket");
     }
   };
 
@@ -298,6 +557,23 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
           <CreateTicketModal
             onClose={() => setShowCreateModal(false)}
             onCreated={() => void fetchTickets()}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedTicket && (
+          <TicketDetailsModal
+            ticket={selectedTicket}
+            onClose={() => setSelectedTicket(null)}
+            onUpdated={(updated) => {
+              setTickets(prev => prev.map(t => t.id === updated.id ? updated : t));
+              setSelectedTicket(updated);
+            }}
+            onDeleted={(id) => {
+              setTickets(prev => prev.filter(t => t.id !== id));
+              setSelectedTicket(null);
+            }}
           />
         )}
       </AnimatePresence>
@@ -370,6 +646,7 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.03 }}
                     key={ticket.id} 
+                    onClick={() => setSelectedTicket(ticket)}
                     className="hover:bg-muted/50 transition-colors group cursor-pointer"
                   >
                     <td className="px-6 py-4 max-w-sm">
@@ -423,10 +700,71 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
                     <td className="px-6 py-4 text-muted-foreground text-xs">
                       {new Date(ticket.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors">
+                    <td className="px-6 py-4 text-right relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpenTicketId(prev => prev === ticket.id ? null : ticket.id);
+                        }}
+                        className="p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground rounded-md transition-colors"
+                      >
                         <MoreHorizontal className="size-4" />
                       </button>
+
+                      {menuOpenTicketId === ticket.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-6 top-10 w-44 bg-card border border-border rounded-xl shadow-xl z-30 py-1.5 text-left text-xs font-medium text-foreground"
+                        >
+                          <button
+                            onClick={() => {
+                              setSelectedTicket(ticket);
+                              setMenuOpenTicketId(null);
+                            }}
+                            className="w-full px-3.5 py-2 hover:bg-muted flex items-center gap-2 text-left transition-colors"
+                          >
+                            <MessageSquare className="size-3.5 text-primary" /> View Details
+                          </button>
+                          <button
+                            onClick={(e) => void runAiSummary(e, ticket.id)}
+                            className="w-full px-3.5 py-2 hover:bg-muted flex items-center gap-2 text-left transition-colors text-indigo-600 dark:text-indigo-400"
+                          >
+                            <Sparkles className="size-3.5" /> AI Summary
+                          </button>
+                          <div className="my-1 border-t border-border/50" />
+                          <button
+                            onClick={(e) => void handleUpdateStatus(e, ticket.id, "Open")}
+                            className="w-full px-3.5 py-1.5 hover:bg-muted flex items-center gap-2 text-left transition-colors"
+                          >
+                            Mark as Open
+                          </button>
+                          <button
+                            onClick={(e) => void handleUpdateStatus(e, ticket.id, "In Progress")}
+                            className="w-full px-3.5 py-1.5 hover:bg-muted flex items-center gap-2 text-left transition-colors"
+                          >
+                            Mark as In Progress
+                          </button>
+                          <button
+                            onClick={(e) => void handleUpdateStatus(e, ticket.id, "Resolved")}
+                            className="w-full px-3.5 py-1.5 hover:bg-muted flex items-center gap-2 text-left transition-colors text-emerald-600"
+                          >
+                            Mark as Resolved
+                          </button>
+                          <button
+                            onClick={(e) => void handleUpdateStatus(e, ticket.id, "Closed")}
+                            className="w-full px-3.5 py-1.5 hover:bg-muted flex items-center gap-2 text-left transition-colors text-slate-500"
+                          >
+                            Mark as Closed
+                          </button>
+                          <div className="my-1 border-t border-border/50" />
+                          <button
+                            onClick={(e) => void handleDeleteTicket(e, ticket.id)}
+                            className="w-full px-3.5 py-2 hover:bg-red-500/10 text-red-600 flex items-center gap-2 text-left transition-colors"
+                          >
+                            <Trash2 className="size-3.5" /> Delete Ticket
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </motion.tr>
                 ))}

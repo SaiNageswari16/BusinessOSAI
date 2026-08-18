@@ -2878,6 +2878,8 @@ export interface CrmTicket {
 export const crmTicketsApi = {
   list: (category?: string, status?: string) => request<CrmTicket[]>("GET", "/crm/tickets", undefined, { category, status }),
   create: (data: Record<string, unknown>) => request<CrmTicket>("POST", "/crm/tickets", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmTicket>("PATCH", `/crm/tickets/${id}`, data),
+  delete: (id: string) => request<{ message: string; id: string }>("DELETE", `/crm/tickets/${id}`),
   summarize: (id: string) => request<{ id: string; ai_summary: string }>("POST", `/crm/tickets/${id}/summarize-ai`),
 };
 

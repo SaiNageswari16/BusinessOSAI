@@ -1324,6 +1324,66 @@ async def summarize_support_ticket(
     return {"id": ticket.id, "ai_summary": summary}
 
 
+class TicketUpdate(BaseModel):
+    subject: str | None = None
+    description: str | None = None
+    priority: str | None = None
+    status: str | None = None
+    category: str | None = None
+
+
+@router.patch("/tickets/{ticket_id}")
+async def update_support_ticket(
+    ticket_id: uuid.UUID,
+    payload: TicketUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    ticket = await db.scalar(
+        select(CRMSupportTicket).where(
+            CRMSupportTicket.id == ticket_id,
+            CRMSupportTicket.tenant_id == ctx.tenant_id
+        )
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    if payload.subject is not None:
+        ticket.subject = payload.subject
+    if payload.description is not None:
+        ticket.description = payload.description
+    if payload.priority is not None:
+        ticket.priority = payload.priority
+    if payload.status is not None:
+        ticket.status = payload.status
+    if payload.category is not None:
+        ticket.category = payload.category
+
+    await db.commit()
+    await db.refresh(ticket)
+    return ticket
+
+
+@router.delete("/tickets/{ticket_id}")
+async def delete_support_ticket(
+    ticket_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    ticket = await db.scalar(
+        select(CRMSupportTicket).where(
+            CRMSupportTicket.id == ticket_id,
+            CRMSupportTicket.tenant_id == ctx.tenant_id
+        )
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    await db.delete(ticket)
+    await db.commit()
+    return {"message": "Ticket deleted successfully", "id": str(ticket_id)}
+
+
 # ─── CRM Quotations ──────────────────────────────────────────────
 
 class QuotationCreate(BaseModel):
