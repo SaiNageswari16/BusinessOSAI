@@ -93,7 +93,8 @@ async def init_database() -> None:
         UPDATE erp_inventory_batches
         SET cost_price = 65.00, selling_price = 95.00, mrp = 120.00
         WHERE (cost_price IS NULL OR cost_price = 0) AND (mrp IS NULL OR mrp = 0);
-        """
+        """,
+        "UPDATE ar_invoices SET balance_due = 0.0 WHERE lower(status) IN ('paid', 'completed', 'voided', 'cancelled') OR (amount_paid IS NOT NULL AND total_amount IS NOT NULL AND amount_paid >= total_amount - 0.05);"
     ]
 
     for stmt in migration_statements:

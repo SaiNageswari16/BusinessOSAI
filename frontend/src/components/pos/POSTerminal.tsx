@@ -215,7 +215,19 @@ function PosTerminalInner() {
     invoicesApi
       .getCustomerSummary(selectedCustomer.id)
       .then((data: any) => {
-        if (data) setCustomerSummary(data);
+        if (data) {
+          const rawUnpaid = (data.unpaid_invoices || []).filter((inv: any) => {
+            const rawStatus = String(inv.status || "").toLowerCase();
+            const due = Number(inv.balance_due) || 0;
+            return !["paid", "voided", "cancelled", "completed"].includes(rawStatus) && due > 0.05;
+          });
+          const totalPending = rawUnpaid.reduce((sum: number, inv: any) => sum + Number(inv.balance_due || 0), 0);
+          setCustomerSummary({
+            ...data,
+            total_pending_due: totalPending,
+            unpaid_invoices: rawUnpaid
+          });
+        }
       })
       .catch(() => {
         setCustomerSummary(null);

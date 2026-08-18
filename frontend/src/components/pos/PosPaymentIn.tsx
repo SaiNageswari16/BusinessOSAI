@@ -26,11 +26,16 @@ import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 // Removed dummy PAST_PAYMENTS in favor of real backend data
 
 export function PosPaymentIn() {
   const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentTenantId = tenant?.id || "default";
+  const posStorageKey = `pos_saved_invoices_${currentTenantId}`;
+
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
   
   const [parties, setParties] = useState<any[]>([]);
@@ -253,23 +258,74 @@ export function PosPaymentIn() {
           crmWalletApi.getBalance(party.id).catch(() => ({ balance: 0 }))
         ]);
         setWalletBalance(walletRes?.balance || 0);
-        if (data) {
-          setPartySummary(data);
-          if (data.unpaid_invoices && data.unpaid_invoices.length > 0) {
-            setPendingInvoices(
-              data.unpaid_invoices.map((inv: any) => ({
-                id: inv.invoice_number,
-                realId: inv.id,
-                date: inv.invoice_date,
-                total: inv.total_amount,
-                pending: inv.balance_due
-              }))
-            );
-            setPaymentPurpose('settle_due');
-          } else {
-            setPendingInvoices([]);
-            setPaymentPurpose('wallet_topup');
+
+        // Check local storage saved invoices for this customer
+        let localInvoices: any[] = [];
+        try {
+          const stored = localStorage.getItem(posStorageKey) || localStorage.getItem("pos_saved_invoices");
+          if (stored) {
+            localInvoices = JSON.parse(stored);
           }
+        } catch (e) {}
+
+        const backendUnpaid = (data?.unpaid_invoices || []).filter((inv: any) => {
+          const rawStatus = String(inv.status || "").toLowerCase();
+          const due = Number(inv.balance_due) || 0;
+          return !["paid", "voided", "cancelled", "completed"].includes(rawStatus) && due > 0.05;
+        });
+
+        // Also check if any local invoice for this customer is Unpaid or Partial
+        const localUnpaidForCustomer = localInvoices
+          .filter((inv: any) => {
+            const isMatch = (inv.customer_id && inv.customer_id === party.id) ||
+              (inv.customer_name && inv.customer_name.toLowerCase() === party.name.toLowerCase()) ||
+              (inv.customer_phone && party.phone && inv.customer_phone === party.phone);
+            if (!isMatch) return false;
+
+            const isPaid = inv.payment_status === "Paid" || (Number(inv.amount_received || 0) >= Number(inv.grand_total || 0) - 0.05);
+            return !isPaid;
+          })
+          .map((inv: any) => ({
+            id: inv.invoice_number,
+            realId: inv.id,
+            date: inv.invoice_date,
+            total: Number(inv.grand_total || 0),
+            pending: Math.max(0, Number(inv.grand_total || 0) - Number(inv.amount_received || 0)),
+          }))
+          .filter((inv: any) => inv.pending > 0.05);
+
+        // Deduplicate between backend and local
+        const mergedMap = new Map<string, any>();
+        backendUnpaid.forEach((inv: any) => {
+          mergedMap.set(inv.invoice_number || inv.id, {
+            id: inv.invoice_number,
+            realId: inv.id,
+            date: inv.invoice_date,
+            total: Number(inv.total_amount || 0),
+            pending: Number(inv.balance_due || 0),
+          });
+        });
+        localUnpaidForCustomer.forEach((inv: any) => {
+          if (!mergedMap.has(inv.id)) {
+            mergedMap.set(inv.id, inv);
+          }
+        });
+
+        const finalPendingInvoices = Array.from(mergedMap.values()).filter((inv: any) => inv.pending > 0.05);
+        const totalPendingDue = finalPendingInvoices.reduce((sum, inv) => sum + inv.pending, 0);
+
+        setPartySummary({
+          total_pending_due: totalPendingDue,
+          total_invoices: data?.total_invoices || localInvoices.length,
+          total_spent: data?.total_spent || 0,
+        });
+
+        if (finalPendingInvoices.length > 0) {
+          setPendingInvoices(finalPendingInvoices);
+          setPaymentPurpose('settle_due');
+        } else {
+          setPendingInvoices([]);
+          setPaymentPurpose('wallet_topup');
         }
       } else {
         // Vendor logic
@@ -444,29 +500,33 @@ export function PosPaymentIn() {
         
         // Sync settled amounts with pos_saved_invoices in localStorage
         try {
-          const storedInvs = localStorage.getItem("pos_saved_invoices");
-          if (storedInvs) {
-            const parsedInvs = JSON.parse(storedInvs);
-            const updatedInvs = parsedInvs.map((rec: any) => {
-              const matchedAlloc = allocations.find(
-                (a) => (a.realId && a.realId === rec.id) || (a.invoice_number && a.invoice_number === rec.invoice_number)
-              );
-              if (matchedAlloc && matchedAlloc.allocated > 0) {
-                const prevRec = Number(rec.amount_received || 0);
-                const newRec = prevRec + matchedAlloc.allocated;
-                const totalG = Number(rec.grand_total || 0);
-                const isPaid = newRec >= totalG - 0.05;
-                return {
-                  ...rec,
-                  amount_received: newRec,
-                  payment_status: isPaid ? "Paid" : "Partial",
-                  payment_mode: paymentMode,
-                };
-              }
-              return rec;
-            });
-            localStorage.setItem("pos_saved_invoices", JSON.stringify(updatedInvs));
-          }
+          const syncStorage = (key: string) => {
+            const storedInvs = localStorage.getItem(key);
+            if (storedInvs) {
+              const parsedInvs = JSON.parse(storedInvs);
+              const updatedInvs = parsedInvs.map((rec: any) => {
+                const matchedAlloc = allocations.find(
+                  (a) => (a.realId && a.realId === rec.id) || (a.invoice_number && a.invoice_number === rec.invoice_number)
+                );
+                if (matchedAlloc && matchedAlloc.allocated > 0) {
+                  const prevRec = Number(rec.amount_received || 0);
+                  const newRec = prevRec + matchedAlloc.allocated;
+                  const totalG = Number(rec.grand_total || 0);
+                  const isPaid = newRec >= totalG - 0.05;
+                  return {
+                    ...rec,
+                    amount_received: newRec,
+                    payment_status: isPaid ? "Paid" : "Partial",
+                    payment_mode: paymentMode,
+                  };
+                }
+                return rec;
+              });
+              localStorage.setItem(key, JSON.stringify(updatedInvs));
+            }
+          };
+          syncStorage(posStorageKey);
+          if (posStorageKey !== "pos_saved_invoices") syncStorage("pos_saved_invoices");
         } catch (e) {
           console.warn("Could not sync pos_saved_invoices:", e);
         }
