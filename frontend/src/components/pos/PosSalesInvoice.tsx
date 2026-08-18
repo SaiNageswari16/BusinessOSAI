@@ -463,9 +463,10 @@ export function PosSalesInvoice() {
         if (!item.product_id) return item;
         const prod = products.find((p) => p.id === item.product_id);
         if (!prod) return item;
+        const specs = typeof prod.specifications === "string" ? JSON.parse(prod.specifications || "{}") : (prod.specifications || {});
         const basePrice = Number(prod.selling_price || prod.price || prod.mrp || item.unit_price || 0);
-        const wholesalePrice = Number(prod.wholesale_price || (basePrice * 0.85));
-        const b2bPrice = Number(prod.b2b_price || (basePrice * 0.70));
+        const wholesalePrice = Number(prod.wholesale_price && Number(prod.wholesale_price) > 0 ? prod.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : basePrice));
+        const b2bPrice = Number(prod.b2b_price && Number(prod.b2b_price) > 0 ? prod.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wholesalePrice > 0 ? wholesalePrice : basePrice)));
         const newPrice = newMode === "B2B" ? b2bPrice : newMode === "Wholesale" ? wholesalePrice : basePrice;
         return {
           ...item,
@@ -617,9 +618,10 @@ export function PosSalesInvoice() {
 
   const getProductBatchInfo = (prod: any) => {
     if (!prod) return { batch_number: "", expiry_date: "", mrp: 0, unit_price: 0 };
+    const specs = typeof prod.specifications === "string" ? JSON.parse(prod.specifications || "{}") : (prod.specifications || {});
     const basePrice = Number(prod.selling_price || prod.price || prod.mrp || 0);
-    const wholesalePrice = Number(prod.wholesale_price || (basePrice * 0.85));
-    const b2bPrice = Number(prod.b2b_price || (basePrice * 0.70));
+    const wholesalePrice = Number(prod.wholesale_price && Number(prod.wholesale_price) > 0 ? prod.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : basePrice));
+    const b2bPrice = Number(prod.b2b_price && Number(prod.b2b_price) > 0 ? prod.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wholesalePrice > 0 ? wholesalePrice : basePrice)));
     const targetPrice =
       pricingMode === "B2B"
         ? b2bPrice
@@ -1178,7 +1180,21 @@ export function PosSalesInvoice() {
   };
 
   const resetInvoiceForm = () => {
-    setItems([]);
+    setItems([{
+      id: `item-${Date.now()}-1`,
+      product_id: "",
+      product_name: "",
+      quantity: 1,
+      unit_price: 0,
+      mrp: 0,
+      batch_number: "",
+      expiry_date: "",
+      hsn_code: "",
+      tax_rate: 18,
+      is_tax_inclusive: true,
+      discount_type: "%",
+      discount_value: 0,
+    }]);
     setSelectedCustomer("");
     setCustomerSummary(null);
     setAmountReceived("");
@@ -1186,6 +1202,11 @@ export function PosSalesInvoice() {
     setInvoiceDiscountValue(0);
     setIncludePreviousDueInBill(false);
     setSettlingInvoice(null);
+    setCustomCharges([]);
+    setGstType("cgst_sgst");
+    setPaymentMode("Cash");
+    setPricingMode("Retail");
+    setBarcodeScanInput("");
     loadUnpaidInvoices();
     const seq = Math.floor(10000 + Math.random() * 90000);
     setInvoiceNumber(`INV-${seq}`);
@@ -2463,14 +2484,14 @@ export function PosSalesInvoice() {
                       <div className="flex justify-between text-[11px] text-slate-600">
                         <span className="flex items-center gap-1">
                           <span className="w-2 h-2 rounded-full bg-blue-400 inline-block"></span>
-                          CGST ({(items.reduce((s, it) => s + (Number(it.tax_rate) || 0), 0) / Math.max(items.length, 1) / 2).toFixed(1)}%):
+                          CGST:
                         </span>
                         <span className="font-bold text-blue-700">{currency.symbol}{(totalTax / 2).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-[11px] text-slate-600">
                         <span className="flex items-center gap-1">
                           <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
-                          SGST ({(items.reduce((s, it) => s + (Number(it.tax_rate) || 0), 0) / Math.max(items.length, 1) / 2).toFixed(1)}%):
+                          SGST:
                         </span>
                         <span className="font-bold text-emerald-700">{currency.symbol}{(totalTax / 2).toFixed(2)}</span>
                       </div>
@@ -2479,7 +2500,7 @@ export function PosSalesInvoice() {
                     <div className="flex justify-between text-[11px] text-slate-600">
                       <span className="flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full bg-indigo-400 inline-block"></span>
-                        IGST ({(items.reduce((s, it) => s + (Number(it.tax_rate) || 0), 0) / Math.max(items.length, 1)).toFixed(1)}%):
+                        IGST:
                       </span>
                       <span className="font-bold text-indigo-700">{currency.symbol}{totalTax.toFixed(2)}</span>
                     </div>

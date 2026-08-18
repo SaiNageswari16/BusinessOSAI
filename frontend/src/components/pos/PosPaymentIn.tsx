@@ -442,11 +442,38 @@ export function PosPaymentIn() {
           toast.success(`Overpayment of ${formatCurrency(remainingAdvance)} credited to Customer Wallet.`);
         }
         
-        if (selectedParty.type === 'customer' && totalApplied > 0) {
-          toast.success(`Payment In of ${formatCurrency(totalApplied)} settled across invoices!`);
-        } else if (selectedParty.type === 'vendor' && totalApplied > 0) {
-          toast.success(`Vendor Payout of ${formatCurrency(totalApplied)} recorded!`);
+        // Sync settled amounts with pos_saved_invoices in localStorage
+        try {
+          const storedInvs = localStorage.getItem("pos_saved_invoices");
+          if (storedInvs) {
+            const parsedInvs = JSON.parse(storedInvs);
+            const updatedInvs = parsedInvs.map((rec: any) => {
+              const matchedAlloc = allocations.find(
+                (a) => (a.realId && a.realId === rec.id) || (a.invoice_number && a.invoice_number === rec.invoice_number)
+              );
+              if (matchedAlloc && matchedAlloc.allocated > 0) {
+                const prevRec = Number(rec.amount_received || 0);
+                const newRec = prevRec + matchedAlloc.allocated;
+                const totalG = Number(rec.grand_total || 0);
+                const isPaid = newRec >= totalG - 0.05;
+                return {
+                  ...rec,
+                  amount_received: newRec,
+                  payment_status: isPaid ? "Paid" : "Partial",
+                  payment_mode: paymentMode,
+                };
+              }
+              return rec;
+            });
+            localStorage.setItem("pos_saved_invoices", JSON.stringify(updatedInvs));
+          }
+        } catch (e) {
+          console.warn("Could not sync pos_saved_invoices:", e);
         }
+
+        // Broadcast pos_invoices_updated to immediately refresh Invoices History tab
+        window.dispatchEvent(new Event("pos_invoices_updated"));
+        window.dispatchEvent(new Event("storage"));
       }
       
       fetchPayments();

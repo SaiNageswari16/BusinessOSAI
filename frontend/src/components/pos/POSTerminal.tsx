@@ -401,9 +401,11 @@ function PosTerminalInner() {
 
         if (Array.isArray(fetchedProds)) {
           const mappedProds = fetchedProds.map((p: any) => {
+            const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
             const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
-            const wPrice = Number(p.wholesale_price || (basePrice * 0.85));
-            const bPrice = Number(p.b2b_price || (basePrice * 0.70));
+            const wPrice = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : (basePrice > 0 ? basePrice : 0)));
+            const bPrice = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wPrice > 0 ? wPrice : basePrice)));
+            const taxPct = Number(p.tax_percent != null ? p.tax_percent : (p.tax_rate != null ? p.tax_rate : 18));
             return {
               id: p.id,
               name: p.name,
@@ -414,13 +416,16 @@ function PosTerminalInner() {
               longDesc: p.description || "",
               barcode: p.barcode || "",
               sku: p.sku || "",
+              hsn_code: p.hsn_code || "1905",
               sellingPrice: basePrice,
               wholesalePrice: wPrice,
               b2bPrice: bPrice,
               minWholesaleQty: Number(p.min_wholesale_qty || 1),
               mrp: Number(p.mrp || basePrice || 0),
               purchasePrice: Number(p.purchase_price || p.cost_price || 0),
-              tax: basePrice * (Number(p.tax_percent || 0) / 100),
+              tax_percent: taxPct,
+              tax: taxPct,
+              is_tax_inclusive: p.is_tax_inclusive !== false,
               discount: Number(p.discount || p.discount_limit || 0),
               stock: Number(p.stock || p.initial_stock || 0),
               reorderLevel: Number(p.reorder_level || 10),
@@ -750,9 +755,9 @@ function PosTerminalInner() {
 
   const getItemEffectivePrice = (item: any, qty: number = item.qty || 1, overrideMode?: "Retail" | "Wholesale" | "B2B") => {
     const mode = overrideMode || pricingMode;
-    const basePrice = Number(item.sellingPrice || item.price || item.mrp || 0);
-    const wholesalePrice = Number(item.wholesalePrice || (basePrice * 0.85));
-    const b2bPrice = Number(item.b2bPrice || (basePrice * 0.70));
+    const basePrice = Number(item.sellingPrice || item.selling_price || item.price || item.mrp || 0);
+    const wholesalePrice = Number(item.wholesalePrice || item.wholesale_price || basePrice);
+    const b2bPrice = Number(item.b2bPrice || item.b2b_price || (wholesalePrice > 0 ? wholesalePrice : basePrice));
     
     let unitPrice = basePrice;
     let isTierApplied = false;
@@ -768,7 +773,7 @@ function PosTerminalInner() {
       tierName = "Wholesale";
     } else {
       const isWholesaleCustomer = selectedCustomer?.tier?.toLowerCase().includes("wholesale") || selectedCustomer?.tier?.toLowerCase().includes("b2b");
-      const isQtyQualified = qty >= (item.minWholesaleQty || 5);
+      const isQtyQualified = qty >= (item.minWholesaleQty || 5) && Number(item.minWholesaleQty || 0) > 1;
       if (isWholesaleCustomer || isQtyQualified) {
         unitPrice = wholesalePrice;
         isTierApplied = true;

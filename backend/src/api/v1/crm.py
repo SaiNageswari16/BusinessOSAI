@@ -1057,8 +1057,8 @@ def call_ai_image(
                 else:
                     raise Exception(f"Imagen API error {res.status_code}: {res.text}")
             except Exception as e:
-                logger.error(f"Gemini Imagen failed: {e}")
-                errors.append(f"Gemini Imagen failed: {str(e)}")
+                logger.warning(f"Gemini Imagen endpoint not available on this API key tier ({e}). Automatically trying next provider...")
+                errors.append(f"Gemini Imagen: {str(e)}")
 
         elif prov == "openai":
             if not settings.openai_api_key:

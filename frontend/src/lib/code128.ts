@@ -273,12 +273,12 @@ export function encodeEAN13Structured(digits: string): EAN13Structured {
 
   const parity = PARITY_PATTERNS[firstDigitNum] || PARITY_PATTERNS[0];
 
-  // Left 6 Digits (isGuard = false)
+  // Left 6 Digits (isGuard = false) - L & G patterns start with Space (idx 0), then Bar (idx 1)
   for (let i = 0; i < 6; i++) {
     const d = parseInt(leftDigits[i], 10);
     const pattern = parity[i] === 1 ? G_PATTERNS[d] : L_PATTERNS[d];
     pattern.forEach((w, idx) => {
-      allBars.push({ width: w, isBlack: idx % 2 === 0, isGuard: false });
+      allBars.push({ width: w, isBlack: idx % 2 === 1, isGuard: false });
     });
   }
 
@@ -289,12 +289,12 @@ export function encodeEAN13Structured(digits: string): EAN13Structured {
   allBars.push({ width: 1, isBlack: true, isGuard: true });
   allBars.push({ width: 1, isBlack: false, isGuard: true });
 
-  // Right 6 Digits (isGuard = false)
+  // Right 6 Digits (isGuard = false) - R patterns start with Bar (idx 0), then Space (idx 1)
   for (let i = 0; i < 6; i++) {
     const d = parseInt(rightDigits[i], 10);
     const pattern = R_PATTERNS[d];
     pattern.forEach((w, idx) => {
-      allBars.push({ width: w, isBlack: idx % 2 === 1, isGuard: false });
+      allBars.push({ width: w, isBlack: idx % 2 === 0, isGuard: false });
     });
   }
 
