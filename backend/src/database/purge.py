@@ -16,10 +16,12 @@ logger = logging.getLogger(__name__)
 
 async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
     """
-    Permanently purge an entire Tenant workspace and 100% of its data:
+    Permanently purge an entire Tenant workspace and 100% of its data across all database tables:
     Products, Batches, Invoices, POS, Accounting, CRM, Procurement, HRMS, Users, Org Structure, and Tenant record.
     """
     logger.info("Starting complete cascade purge for Tenant %s", tenant_id)
+    # Clear all ORM identity map tracking so session doesn't try to synchronize/nullify foreign keys
+    db.expunge_all()
     purged_counts: dict[str, int] = {}
 
     async def _safe_delete(model_or_table: Any, condition: Any, name: str) -> None:
@@ -44,11 +46,52 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
     except Exception as e:
         logger.debug("POS models purge note: %s", e)
 
-    # 2. ERP Invoices, Lines, Payments, Custom Charges
+    # 2. ERP Invoices, Lines, Payments, Custom Charges, Returns, Delivery Challans
     try:
-        from src.models.erp import InvoiceLine, InvoicePayment, Invoice, CustomCharge
+        from src.models.erp import (
+            InvoiceLine, InvoicePayment, InvoiceReturnLine, InvoiceReturn,
+            DeliveryChallanItem, DeliveryChallan, Invoice, CustomCharge
+        )
+        # Child lines first
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    delete(InvoiceLine).where(
+                        InvoiceLine.invoice_id.in_(
+                            select(Invoice.id).where(Invoice.tenant_id == tenant_id)
+                        )
+                    )
+                )
+        except Exception as e:
+            logger.debug("InvoiceLine purge note: %s", e)
+
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    delete(InvoiceReturnLine).where(
+                        InvoiceReturnLine.return_id.in_(
+                            select(InvoiceReturn.id).where(InvoiceReturn.tenant_id == tenant_id)
+                        )
+                    )
+                )
+        except Exception as e:
+            logger.debug("InvoiceReturnLine purge note: %s", e)
+
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    delete(DeliveryChallanItem).where(
+                        DeliveryChallanItem.challan_id.in_(
+                            select(DeliveryChallan.id).where(DeliveryChallan.tenant_id == tenant_id)
+                        )
+                    )
+                )
+        except Exception as e:
+            logger.debug("DeliveryChallanItem purge note: %s", e)
+
         await _safe_delete(InvoicePayment, InvoicePayment.tenant_id == tenant_id, "invoice_payments")
-        await _safe_delete(InvoiceLine, InvoiceLine.tenant_id == tenant_id, "invoice_lines")
+        await _safe_delete(InvoiceReturn, InvoiceReturn.tenant_id == tenant_id, "invoice_returns")
+        await _safe_delete(DeliveryChallan, DeliveryChallan.tenant_id == tenant_id, "delivery_challans")
         await _safe_delete(CustomCharge, CustomCharge.tenant_id == tenant_id, "custom_charges")
         await _safe_delete(Invoice, Invoice.tenant_id == tenant_id, "invoices")
     except Exception as e:
@@ -57,21 +100,83 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
     # 3. Accounting & Financials
     try:
         from src.models.erp import (
-            JournalEntryLine, JournalEntry, BankTransaction, BankReconciliation,
-            BankAccount, FixedAsset, PaymentVoucher, ExpenseClaim, Budget,
-            TaxReturn, Account, FiscalYear, Currency, TaxConfiguration, PaymentTerm, CostCenter
+            JournalEntryLine, JournalEntry, ChartOfAccount, AccountBalance,
+            BankTransaction, BankReconciliation, BankReconciliationItem,
+            BankAccount, FixedAsset, FixedAssetCategory, FixedAssetDepreciation,
+            PaymentVoucher, PaymentVoucherLine, ExpenseClaim, ExpenseClaimLine, Budget,
+            TaxCode, TaxReturn, TaxPayment, FiscalYear, Currency, TaxConfiguration, PaymentTerm, CostCenter
         )
-        await _safe_delete(JournalEntryLine, JournalEntryLine.tenant_id == tenant_id, "journal_lines")
+        # Delete Journal entry lines referencing chart of accounts or journal entries of this tenant
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    delete(JournalEntryLine).where(
+                        JournalEntryLine.account_id.in_(
+                            select(ChartOfAccount.id).where(ChartOfAccount.tenant_id == tenant_id)
+                        )
+                    )
+                )
+                await db.execute(
+                    delete(JournalEntryLine).where(
+                        JournalEntryLine.entry_id.in_(
+                            select(JournalEntry.id).where(JournalEntry.tenant_id == tenant_id)
+                        )
+                    )
+                )
+        except Exception as e:
+            logger.debug("JournalEntryLine purge note: %s", e)
+
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    delete(BankReconciliationItem).where(
+                        BankReconciliationItem.reconciliation_id.in_(
+                            select(BankReconciliation.id).where(BankReconciliation.tenant_id == tenant_id)
+                        )
+                    )
+                )
+        except Exception as e:
+            logger.debug("BankReconciliationItem purge note: %s", e)
+
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    delete(PaymentVoucherLine).where(
+                        PaymentVoucherLine.voucher_id.in_(
+                            select(PaymentVoucher.id).where(PaymentVoucher.tenant_id == tenant_id)
+                        )
+                    )
+                )
+        except Exception as e:
+            logger.debug("PaymentVoucherLine purge note: %s", e)
+
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    delete(ExpenseClaimLine).where(
+                        ExpenseClaimLine.claim_id.in_(
+                            select(ExpenseClaim.id).where(ExpenseClaim.tenant_id == tenant_id)
+                        )
+                    )
+                )
+        except Exception as e:
+            logger.debug("ExpenseClaimLine purge note: %s", e)
+
+        await _safe_delete(AccountBalance, AccountBalance.tenant_id == tenant_id, "account_balances")
         await _safe_delete(JournalEntry, JournalEntry.tenant_id == tenant_id, "journal_entries")
         await _safe_delete(BankTransaction, BankTransaction.tenant_id == tenant_id, "bank_transactions")
         await _safe_delete(BankReconciliation, BankReconciliation.tenant_id == tenant_id, "bank_reconciliations")
         await _safe_delete(BankAccount, BankAccount.tenant_id == tenant_id, "bank_accounts")
+        await _safe_delete(FixedAssetDepreciation, FixedAssetDepreciation.tenant_id == tenant_id, "asset_depreciations")
         await _safe_delete(FixedAsset, FixedAsset.tenant_id == tenant_id, "fixed_assets")
+        await _safe_delete(FixedAssetCategory, FixedAssetCategory.tenant_id == tenant_id, "fixed_asset_categories")
         await _safe_delete(PaymentVoucher, PaymentVoucher.tenant_id == tenant_id, "payment_vouchers")
         await _safe_delete(ExpenseClaim, ExpenseClaim.tenant_id == tenant_id, "expense_claims")
         await _safe_delete(Budget, Budget.tenant_id == tenant_id, "budgets")
+        await _safe_delete(TaxPayment, TaxPayment.tenant_id == tenant_id, "tax_payments")
         await _safe_delete(TaxReturn, TaxReturn.tenant_id == tenant_id, "tax_returns")
-        await _safe_delete(Account, Account.tenant_id == tenant_id, "chart_of_accounts")
+        await _safe_delete(TaxCode, TaxCode.tenant_id == tenant_id, "tax_codes")
+        await _safe_delete(ChartOfAccount, ChartOfAccount.tenant_id == tenant_id, "chart_of_accounts")
         await _safe_delete(FiscalYear, FiscalYear.tenant_id == tenant_id, "fiscal_years")
         await _safe_delete(TaxConfiguration, TaxConfiguration.tenant_id == tenant_id, "tax_configurations")
         await _safe_delete(PaymentTerm, PaymentTerm.tenant_id == tenant_id, "payment_terms")
@@ -106,18 +211,17 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
     # 5. CRM Leads, Deals, Quotations, Sales Orders, Customers
     try:
         from src.models import (
-            LeadActivity, Lead, Deal, Customer, SupportTicket, Campaign,
-            SalesQuotationItem, SalesQuotation, SalesOrderItem, SalesOrder,
+            LeadActivity, Lead, CRMDeal, Customer, CRMSupportTicket, Campaign,
+            CRMQuotation, CRMSalesOrder, CRMOpportunity,
             WhatsAppMessage, WhatsAppSession
         )
-        await _safe_delete(SalesOrderItem, SalesOrderItem.tenant_id == tenant_id, "sales_order_items")
-        await _safe_delete(SalesOrder, SalesOrder.tenant_id == tenant_id, "sales_orders")
-        await _safe_delete(SalesQuotationItem, SalesQuotationItem.tenant_id == tenant_id, "quotation_items")
-        await _safe_delete(SalesQuotation, SalesQuotation.tenant_id == tenant_id, "quotations")
+        await _safe_delete(CRMSalesOrder, CRMSalesOrder.tenant_id == tenant_id, "sales_orders")
+        await _safe_delete(CRMQuotation, CRMQuotation.tenant_id == tenant_id, "quotations")
+        await _safe_delete(CRMOpportunity, CRMOpportunity.tenant_id == tenant_id, "opportunities")
         await _safe_delete(LeadActivity, LeadActivity.tenant_id == tenant_id, "lead_activities")
-        await _safe_delete(Deal, Deal.tenant_id == tenant_id, "deals")
+        await _safe_delete(CRMDeal, CRMDeal.tenant_id == tenant_id, "deals")
         await _safe_delete(Lead, Lead.tenant_id == tenant_id, "leads")
-        await _safe_delete(SupportTicket, SupportTicket.tenant_id == tenant_id, "support_tickets")
+        await _safe_delete(CRMSupportTicket, CRMSupportTicket.tenant_id == tenant_id, "support_tickets")
         await _safe_delete(Campaign, Campaign.tenant_id == tenant_id, "campaigns")
         await _safe_delete(WhatsAppMessage, WhatsAppMessage.tenant_id == tenant_id, "whatsapp_messages")
         await _safe_delete(WhatsAppSession, WhatsAppSession.tenant_id == tenant_id, "whatsapp_sessions")
@@ -125,22 +229,7 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
     except Exception as e:
         logger.debug("CRM models purge note: %s", e)
 
-    # 6. Procurement Vendors, Purchase Orders, Bills
-    try:
-        from src.models.erp import (
-            PurchaseOrderItem, PurchaseOrder, VendorBillLine, VendorBill,
-            VendorPayment, Vendor
-        )
-        await _safe_delete(PurchaseOrderItem, PurchaseOrderItem.tenant_id == tenant_id, "po_items")
-        await _safe_delete(PurchaseOrder, PurchaseOrder.tenant_id == tenant_id, "purchase_orders")
-        await _safe_delete(VendorBillLine, VendorBillLine.tenant_id == tenant_id, "vendor_bill_lines")
-        await _safe_delete(VendorBill, VendorBill.tenant_id == tenant_id, "vendor_bills")
-        await _safe_delete(VendorPayment, VendorPayment.tenant_id == tenant_id, "vendor_payments")
-        await _safe_delete(Vendor, Vendor.tenant_id == tenant_id, "vendors")
-    except Exception as e:
-        logger.debug("Procurement models purge note: %s", e)
-
-    # 7. HRMS Employees, Attendance, Leaves, Payroll, Structure
+    # 6. HRMS Employees, Attendance, Leaves, Payroll, Structure
     try:
         from src.models.hrms import (
             Employee, AttendanceLog, AttendanceCorrection, LeaveRequest,
@@ -166,7 +255,7 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
     except Exception as e:
         logger.debug("HRMS models purge note: %s", e)
 
-    # 8. Notifications, Workflows, Webhooks, Templates, System Logs
+    # 7. Notifications, Workflows, Webhooks, Templates, System Logs
     try:
         from src.models import (
             Notification, LiveNotification, AuditLog, ActivityLog,
@@ -188,7 +277,7 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
     except Exception as e:
         logger.debug("System models purge note: %s", e)
 
-    # 9. Organization Hierarchy (Branches, Companies, Workspaces, Business Units)
+    # 8. Organization Hierarchy (Branches, Companies, Workspaces, Business Units)
     try:
         from src.models import (
             UserRole, UserBranch, RefreshToken, Workspace,
@@ -207,15 +296,12 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
     except Exception as e:
         logger.debug("Org models purge note: %s", e)
 
-    # 10. Users & Tenant
+    # 9. Users & Tenant
     try:
         from src.models import User, Tenant
         await _safe_delete(User, User.tenant_id == tenant_id, "users")
-        # Only delete tenant if it's not the root platform "system" tenant
-        tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
-        if tenant_obj and tenant_obj.slug != "system":
-            await db.delete(tenant_obj)
-            purged_counts["tenant"] = 1
+        # Direct SQL delete of tenant row without ORM nullification
+        await _safe_delete(Tenant, (Tenant.id == tenant_id) & (Tenant.slug != "system"), "tenant")
     except Exception as e:
         logger.debug("Tenant user purge note: %s", e)
 
@@ -253,13 +339,17 @@ async def purge_user_complete(
     # If the user is the workspace owner or the only user in the tenant, and it's not the root "system" tenant:
     tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
     is_system_tenant = tenant_obj and tenant_obj.slug == "system"
+    tenant_name = tenant_obj.name if tenant_obj else "Workspace"
+
+    # Expunge all ORM tracked objects so SQLAlchemy session doesn't try to synchronize/nullify foreign keys
+    db.expunge_all()
 
     if purge_entire_tenant_if_owner and (is_owner or (total_tenant_users and total_tenant_users <= 1)) and not is_system_tenant:
         counts = await purge_tenant_data(db, tenant_id)
         return {
             "success": True,
             "purged_type": "full_tenant_workspace",
-            "message": f"User {user_email} and their entire organization workspace ({tenant_obj.name if tenant_obj else 'Workspace'}), products, invoices, and activities have been completely purged from the system.",
+            "message": f"User {user_email} and their entire organization workspace ({tenant_name}), products, invoices, and activities have been completely purged from the system.",
             "details": counts
         }
 
@@ -276,14 +366,39 @@ async def purge_user_complete(
 
         # 2. Reassign / nullify foreign keys
         fallback_id = actor_user_id if (actor_user_id and actor_user_id != user_id) else None
-        await db.execute(update(AuditLog).where(AuditLog.user_id == user_id).values(user_id=None))
-        await db.execute(update(LeadActivity).where(LeadActivity.user_id == user_id).values(user_id=None))
-        await db.execute(update(Lead).where(Lead.owner_user_id == user_id).values(owner_user_id=None))
-        await db.execute(update(POSTransaction).where(POSTransaction.cashier_id == user_id).values(cashier_id=fallback_id))
-        await db.execute(update(POSSession).where(POSSession.user_id == user_id).values(user_id=fallback_id))
+        
+        try:
+            async with db.begin_nested():
+                await db.execute(update(POSTransaction).where(POSTransaction.cashier_id == user_id).values(cashier_id=fallback_id))
+        except Exception as e:
+            logger.debug("POSTransaction cashier reassign note: %s", e)
 
-        # 3. Delete user
-        await db.delete(user)
+        try:
+            async with db.begin_nested():
+                await db.execute(update(POSSession).where(POSSession.user_id == user_id).values(user_id=fallback_id))
+        except Exception as e:
+            logger.debug("POSSession user reassign note: %s", e)
+
+        try:
+            async with db.begin_nested():
+                await db.execute(update(AuditLog).where(AuditLog.user_id == user_id).values(user_id=None))
+        except Exception as e:
+            logger.debug("AuditLog nullify note: %s", e)
+
+        try:
+            async with db.begin_nested():
+                await db.execute(update(LeadActivity).where(LeadActivity.created_by_user_id == user_id).values(created_by_user_id=None))
+        except Exception as e:
+            logger.debug("LeadActivity nullify note: %s", e)
+
+        try:
+            async with db.begin_nested():
+                await db.execute(update(Lead).where(Lead.owner_user_id == user_id).values(owner_user_id=None))
+        except Exception as e:
+            logger.debug("Lead owner nullify note: %s", e)
+
+        # 3. Direct SQL delete user
+        await db.execute(delete(User).where(User.id == user_id))
         await db.commit()
 
         return {

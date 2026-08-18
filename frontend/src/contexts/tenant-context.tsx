@@ -191,7 +191,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         raw: b,
       }));
 
-      setCompaniesList(mappedCompanies.length > 0 ? mappedCompanies : mockCompanies);
+      setCompaniesList(mappedCompanies);
       setBranchesList(mappedBranches);
 
       // Auto-select first real company if the current selected one is mock/invalid
@@ -207,8 +207,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error("Failed to load tenant workspace list:", err);
-      // Fallback
-      setCompaniesList(mockCompanies);
+      setCompaniesList([]);
     } finally {
       setLoading(false);
     }
@@ -217,12 +216,16 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void loadData();
 
-    // Listen for auth storage changes (login/logout)
+    // Listen for auth storage changes (login/logout) and workspace deletions
     const handleStorageChange = () => {
       void loadData();
     };
     window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    window.addEventListener("bos-tenant-changed", handleStorageChange);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("bos-tenant-changed", handleStorageChange);
+    };
   }, [loadData]);
 
   return (

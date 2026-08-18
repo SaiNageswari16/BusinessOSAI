@@ -56,7 +56,41 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     if (permission === "manage:system_admin") {
       return Boolean(user.isPlatformAdmin || user.email === "venaticfungus@gmail.com");
     }
-    // Tenant owners see everything in their own workspace
+
+    // Module-level entitlement check for client workspaces (Platform Admin bypasses this)
+    if (!user.isPlatformAdmin && user.enabledModules && user.enabledModules.length > 0) {
+      const isPermInModule = (mod: string, perm: string): boolean => {
+        if (mod === "inventory") return perm.includes("inventory") || perm.includes("product") || perm.includes("catalog") || perm.includes("warehouse");
+        if (mod === "pos") return perm.includes("pos") || perm.includes("terminal") || perm.includes("cashier");
+        if (mod === "accounting") return perm.includes("accounting") || perm.includes("finance") || perm.includes("invoice") || perm.includes("journal") || perm.includes("bank") || perm.includes("voucher") || perm.includes("tax");
+        if (mod === "crm") return perm.includes("crm") || perm.includes("lead") || perm.includes("deal") || perm.includes("quotation") || perm.includes("ticket");
+        if (mod === "procurement") return perm.includes("procurement") || perm.includes("purchase") || perm.includes("vendor") || perm.includes("grn");
+        if (mod === "hrms") return perm.includes("hrms") || perm.includes("employee") || perm.includes("payroll") || perm.includes("attendance") || perm.includes("leave");
+        if (mod === "iot") return perm.includes("iot") || perm.includes("telemetry") || perm.includes("device");
+        if (mod === "marketplace") return perm.includes("marketplace") || perm.includes("appstore");
+        if (mod === "core" || mod === "erp") return perm.includes("erp") || perm.includes("company") || perm.includes("branch") || perm.includes("role") || perm.includes("user");
+        return true;
+      };
+
+      // If checking a known module root permission, ensure module is enabled
+      const moduleMap: Record<string, string> = {
+        "view:hrms": "hrms",
+        "view:crm": "crm",
+        "view:pos": "pos",
+        "view:inventory": "inventory",
+        "view:procurement": "procurement",
+        "view:accounting": "accounting",
+        "view:iot": "iot",
+        "view:marketplace": "marketplace",
+      };
+
+      const requiredMod = moduleMap[permission];
+      if (requiredMod && !user.enabledModules.includes(requiredMod)) {
+        return false;
+      }
+    }
+
+    // Tenant owners see everything permitted in their own subscribed workspace modules
     if (user.isTenantOwner) return true;
     // Direct match
     if (user.permissions.includes(permission)) return true;

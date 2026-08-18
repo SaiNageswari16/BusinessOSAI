@@ -48,6 +48,7 @@ import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 export const INDIAN_STATES = [
   { code: "01", name: "Jammu and Kashmir" },
@@ -112,6 +113,10 @@ interface InvoiceItem {
 
 export function PosSalesInvoice() {
   const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentTenantId = tenant?.id || "default";
+  const posStorageKey = `pos_saved_invoices_${currentTenantId}`;
+
   const [showPaymentTerms, setShowPaymentTerms] = useState(false);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -233,7 +238,7 @@ export function PosSalesInvoice() {
   const loadUnpaidInvoices = async () => {
     try {
       let localUnpaid: any[] = [];
-      const stored = localStorage.getItem("pos_saved_invoices");
+      const stored = localStorage.getItem(posStorageKey);
       if (stored) {
         try {
           const list = JSON.parse(stored);
@@ -274,7 +279,7 @@ export function PosSalesInvoice() {
       const map = new Map<string, any>();
       localUnpaid.forEach((inv) => map.set(inv.invoice_number, inv));
 
-      const storedRecords = localStorage.getItem("pos_saved_invoices");
+      const storedRecords = localStorage.getItem(posStorageKey);
       let allLocalRecords: any[] = [];
       if (storedRecords) {
         try {
@@ -672,7 +677,7 @@ export function PosSalesInvoice() {
       })
       .catch(() => {
         try {
-          const stored = localStorage.getItem("pos_saved_invoices");
+          const stored = localStorage.getItem(posStorageKey);
           if (stored) {
             const list = JSON.parse(stored);
             const custInvoices = list.filter((i: any) =>
@@ -1280,10 +1285,10 @@ export function PosSalesInvoice() {
 
       // Remove any stale record that shares the same frontend-generated invoiceNumber
       // so we don't end up with duplicates after the backend overwrites it
-      const stored = localStorage.getItem("pos_saved_invoices");
+      const stored = localStorage.getItem(posStorageKey);
       const list = stored ? JSON.parse(stored) : [];
       const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber);
-      localStorage.setItem("pos_saved_invoices", JSON.stringify([newInvoiceRecord, ...cleaned]));
+      localStorage.setItem(posStorageKey, JSON.stringify([newInvoiceRecord, ...cleaned]));
 
       // If settling an existing unpaid/partial invoice
       if (settlingInvoice) {
@@ -1303,7 +1308,7 @@ export function PosSalesInvoice() {
           }).catch(console.warn);
         }
 
-        const origStored = localStorage.getItem("pos_saved_invoices");
+        const origStored = localStorage.getItem(posStorageKey);
         const origList = origStored ? JSON.parse(origStored) : [];
         const updatedOrigList = origList.map((rec: any) => {
           if (rec.invoice_number === settlingInvoice.invoice_number || rec.id === settlingInvoice.id) {
@@ -1316,7 +1321,7 @@ export function PosSalesInvoice() {
           }
           return rec;
         });
-        localStorage.setItem("pos_saved_invoices", JSON.stringify(updatedOrigList));
+        localStorage.setItem(posStorageKey, JSON.stringify(updatedOrigList));
         if (isFullyPaid) {
           toast.info(`Invoice #${settlingInvoice.invoice_number} is now marked as FULLY PAID!`);
         } else {

@@ -56,9 +56,21 @@ class Tenant(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     max_branches: Mapped[int] = mapped_column(Integer, default=10)
     settings: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
-    companies: Mapped[list["Company"]] = relationship(back_populates="tenant")
-    users: Mapped[list["User"]] = relationship(back_populates="tenant")
-    roles: Mapped[list["Role"]] = relationship(back_populates="tenant")
+    companies: Mapped[list["Company"]] = relationship(
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    users: Mapped[list["User"]] = relationship(
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    roles: Mapped[list["Role"]] = relationship(
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Permission(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -233,16 +245,16 @@ class Company(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
         default=EntityStatus.ACTIVE,
     )
 
-    tenant: Mapped["Tenant"] = relationship(back_populates="companies")
-    branches: Mapped[list["Branch"]] = relationship(back_populates="company")
-    business_units: Mapped[list["BusinessUnit"]] = relationship(back_populates="company")
-    regions: Mapped[list["Region"]] = relationship(back_populates="company")
-    departments: Mapped[list["Department"]] = relationship(back_populates="company")
-    designations: Mapped[list["Designation"]] = relationship(back_populates="company")
-    fiscal_years: Mapped[list["FiscalYear"]] = relationship(back_populates="company")
-    tax_configurations: Mapped[list["TaxConfiguration"]] = relationship(back_populates="company")
-    number_series: Mapped[list["NumberSeries"]] = relationship(back_populates="company")
-    workspaces: Mapped[list["Workspace"]] = relationship(back_populates="company")
+    tenant: Mapped["Tenant"] = relationship(back_populates="companies", passive_deletes=True)
+    branches: Mapped[list["Branch"]] = relationship(back_populates="company", cascade="all, delete-orphan", passive_deletes=True)
+    business_units: Mapped[list["BusinessUnit"]] = relationship(back_populates="company", cascade="all, delete-orphan", passive_deletes=True)
+    regions: Mapped[list["Region"]] = relationship(back_populates="company", cascade="all, delete-orphan", passive_deletes=True)
+    departments: Mapped[list["Department"]] = relationship(back_populates="company", cascade="all, delete-orphan", passive_deletes=True)
+    designations: Mapped[list["Designation"]] = relationship(back_populates="company", cascade="all, delete-orphan", passive_deletes=True)
+    fiscal_years: Mapped[list["FiscalYear"]] = relationship(back_populates="company", cascade="all, delete-orphan", passive_deletes=True)
+    tax_configurations: Mapped[list["TaxConfiguration"]] = relationship(back_populates="company", cascade="all, delete-orphan", passive_deletes=True)
+    number_series: Mapped[list["NumberSeries"]] = relationship(back_populates="company", cascade="all, delete-orphan", passive_deletes=True)
+    workspaces: Mapped[list["Workspace"]] = relationship(back_populates="company", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class BusinessUnit(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):

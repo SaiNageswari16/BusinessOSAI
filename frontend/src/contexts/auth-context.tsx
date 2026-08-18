@@ -19,6 +19,7 @@ export interface AppUser {
   status: "Active" | "Inactive";
   tenantId: string | null;
   tenantSlug: string | null;
+  tenantName?: string | null;
   isTenantOwner: boolean;
   isPlatformAdmin: boolean;
   permissions: string[];
@@ -27,6 +28,7 @@ export interface AppUser {
   defaultRole: string;
   activeRoleId: string | null;
   mustChangePassword: boolean;
+  enabledModules?: string[];
 }
 
 
@@ -58,7 +60,8 @@ export interface TokenResponse {
   expires_in: number;
   must_change_password?: boolean;
   requires_role_selection?: boolean;
-  active_role_id?: string | null;
+  active_role_id?: string;
+  assigned_roles?: AuthRole[];
 }
 
 interface StoredAuth {
@@ -67,25 +70,28 @@ interface StoredAuth {
   refreshToken: string;
 }
 
-interface AuthCtx {
+interface AuthContextType {
   user: AppUser | null;
   accessToken: string | null;
-  isAuthed: boolean;
+  refreshToken: string | null;
   authReady: boolean;
-  login: (payload: LoginPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
-  register: (payload: RegisterPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
-  selectRole: (roleId: string) => Promise<{ user: AppUser; token: TokenResponse }>;
-  changePassword: (payload: ChangePasswordPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
-  applySession: (user: AppUser, accessToken: string, refreshToken: string) => void;
-  logout: () => void;
+  login: (payload: LoginPayload) => Promise<void>;
+  registerTenant: (payload: RegisterPayload) => Promise<void>;
+  changePassword: (payload: ChangePasswordPayload) => Promise<void>;
+  selectRole: (roleId: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refreshMe: () => Promise<void>;
 }
 
-const Ctx = createContext<AuthCtx | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-async function parseError(response: Response) {
-  let detail = response.statusText;
+async function parseError(response: Response): Promise<string> {
+  let detail = "Authentication request failed";
   try {
-    const json = await response.json();
+    const json = (await response.json()) as {
+      detail?: string | { msg?: string }[];
+      message?: string;
+    };
     if (typeof json.detail === "string") detail = json.detail;
     else if (Array.isArray(json.detail)) detail = json.detail.map((item: { msg?: string }) => item.msg).join(", ");
     else if (json.message) detail = json.message;
@@ -110,6 +116,7 @@ function mapUser(json: Record<string, unknown>): AppUser {
     id: String(json.id),
     tenantId: json.tenant_id ? String(json.tenant_id) : null,
     tenantSlug: json.tenant_slug ? String(json.tenant_slug) : null,
+    tenantName: json.tenant_name ? String(json.tenant_name) : null,
     name: String(json.full_name ?? ""),
     email: String(json.email ?? ""),
     avatar: String(json.avatar_initials || buildAvatar(String(json.full_name ?? json.email ?? ""))),
@@ -122,6 +129,7 @@ function mapUser(json: Record<string, unknown>): AppUser {
     defaultRole: roles.find((role) => role.is_default)?.id ?? roles[0]?.id ?? "",
     activeRoleId: json.active_role_id ? String(json.active_role_id) : null,
     mustChangePassword: Boolean(json.must_change_password),
+    enabledModules: (json.enabled_modules as string[] | undefined) ?? [],
   };
 }
 

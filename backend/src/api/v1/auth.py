@@ -594,6 +594,19 @@ async def get_me(
     )
 
 
+    tenant_settings = ctx.user.tenant.settings or {} if ctx.user.tenant else {}
+    enabled_mods = tenant_settings.get("enabled_modules")
+    if not enabled_mods:
+        enabled_mods = tenant_settings.get("requested_modules") or []
+
+    # If platform admin or system tenant, grant all modules
+    if is_god or (ctx.user.tenant and ctx.user.tenant.slug == "system"):
+        enabled_mods = [
+            "core", "erp", "inventory", "warehouse", "operations", "procurement",
+            "pos", "accounting", "crm", "hrms", "marketplace", "iot",
+            "analytics", "copilot", "system_config", "system_admin"
+        ]
+
     return UserMeResponse(
         id=ctx.user.id,
         tenant_id=ctx.user.tenant_id,
@@ -607,10 +620,12 @@ async def get_me(
         must_change_password=ctx.user.must_change_password,
         active_role_id=ctx.active_role_id,
         tenant_slug=ctx.user.tenant.slug if ctx.user.tenant else None,
+        tenant_name=ctx.user.tenant.name if ctx.user.tenant else None,
         is_tenant_owner=ctx.user.is_tenant_owner,
         is_platform_admin=is_god,
         permissions=sorted(ctx.permissions),
         roles=roles,
+        enabled_modules=enabled_mods,
     )
 
 

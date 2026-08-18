@@ -69,10 +69,12 @@ class UserMeResponse(ORMModel):
     must_change_password: bool = False
     active_role_id: uuid.UUID | None = None
     tenant_slug: str | None = None
+    tenant_name: str | None = None
     is_tenant_owner: bool = False
     is_platform_admin: bool = False
     permissions: list[str]
     roles: list[RoleSummary]
+    enabled_modules: list[str] = []
 
 
 

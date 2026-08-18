@@ -295,6 +295,9 @@ export function GlobalUsers() {
         return;
       }
       toast.success(`User ${user.email} permanently deleted from platform!`);
+      // Notify tenant context and topbar to refresh immediately
+      window.dispatchEvent(new CustomEvent("bos-tenant-changed"));
+      window.dispatchEvent(new Event("storage"));
       void load();
     } catch (err: any) {
       toast.error(err.message || "Failed to delete user");

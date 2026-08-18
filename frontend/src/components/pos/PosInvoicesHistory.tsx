@@ -24,6 +24,7 @@ import { posApi, invoicesApi } from "@/lib/api-client";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 import { useNavigate } from "@tanstack/react-router";
 
 interface LocalInvoiceRecord {
@@ -52,6 +53,10 @@ interface LocalInvoiceRecord {
 
 export function PosInvoicesHistory() {
   const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentTenantId = tenant?.id || "default";
+  const storageKey = `pos_saved_invoices_${currentTenantId}`;
+
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<LocalInvoiceRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -140,7 +145,7 @@ export function PosInvoicesHistory() {
       );
 
       try {
-        const stored = localStorage.getItem("pos_saved_invoices");
+        const stored = localStorage.getItem(storageKey);
         if (stored) {
           const parsed = JSON.parse(stored);
           const updated = parsed.map((inv: any) => {
@@ -154,7 +159,7 @@ export function PosInvoicesHistory() {
             }
             return inv;
           });
-          localStorage.setItem("pos_saved_invoices", JSON.stringify(updated));
+          localStorage.setItem(storageKey, JSON.stringify(updated));
         }
       } catch (e) {}
 
@@ -182,7 +187,7 @@ export function PosInvoicesHistory() {
     let localRecords: LocalInvoiceRecord[] = [];
     try {
       // 1. Check local storage saved invoices from POS Sales Invoice page
-      const stored = localStorage.getItem("pos_saved_invoices");
+      const stored = localStorage.getItem(storageKey);
       if (stored) {
         try {
           localRecords = JSON.parse(stored);
@@ -315,6 +320,7 @@ export function PosInvoicesHistory() {
   };
 
   useEffect(() => {
+    setInvoices([]);
     loadInvoices();
     const handleSync = () => loadInvoices();
     window.addEventListener("pos_invoices_updated", handleSync);
@@ -323,13 +329,13 @@ export function PosInvoicesHistory() {
       window.removeEventListener("pos_invoices_updated", handleSync);
       window.removeEventListener("storage", handleSync);
     };
-  }, []);
+  }, [currentTenantId]);
 
   // Update print status of an invoice locally & persist
   const updateInvoicePrintStatus = (invNum: string, newStatus: "Thermal Printed" | "A4 PDF Generated") => {
     setInvoices((prev) => {
       const updated = prev.map((inv) => (inv.invoice_number === invNum ? { ...inv, print_status: newStatus } : inv));
-      localStorage.setItem("pos_saved_invoices", JSON.stringify(updated));
+      localStorage.setItem(storageKey, JSON.stringify(updated));
       return updated;
     });
   };
