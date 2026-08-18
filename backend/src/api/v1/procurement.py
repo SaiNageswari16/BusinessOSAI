@@ -1716,9 +1716,9 @@ async def get_ai_suggestions(
         return await save_suggestions_to_db(fallback_suggestions)
 
     try:
-        model = settings.gemini_model or "gemini-2.5-flash"
+        model = settings.gemini_model or "gemini-1.5-flash"
         if model == "gemini-1.5-flash":
-            model = "gemini-2.5-flash"
+            model = "gemini-1.5-flash"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
 
         instruction = f"""
@@ -2177,7 +2177,7 @@ async def extract_quotation_ocr(
     if settings.gemini_api_key and any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
         try:
             b64_image = base64.b64encode(contents).decode("utf-8")
-            model = settings.gemini_model or "gemini-2.5-flash"
+            model = settings.gemini_model or "gemini-1.5-flash"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
             
             prompt = """
@@ -2249,7 +2249,7 @@ async def extract_po_document_ocr(
         try:
             import base64, json as _json
             b64_image = base64.b64encode(contents).decode("utf-8")
-            model = settings.gemini_model or "gemini-2.5-flash"
+            model = settings.gemini_model or "gemini-1.5-flash"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
 
             prompt = """
@@ -2311,7 +2311,7 @@ async def extract_grn_document_ocr(
         try:
             import base64, json as _json
             b64_image = base64.b64encode(contents).decode("utf-8")
-            model = settings.gemini_model or "gemini-2.5-flash"
+            model = settings.gemini_model or "gemini-1.5-flash"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
 
             prompt = """
@@ -2368,7 +2368,7 @@ async def extract_pr_document_ocr(
         try:
             import base64, json as _json
             b64_image = base64.b64encode(contents).decode("utf-8")
-            model = settings.gemini_model or "gemini-2.5-flash"
+            model = settings.gemini_model or "gemini-1.5-flash"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
 
             prompt = """
@@ -2443,7 +2443,7 @@ async def extract_invoice_document_ocr(
         try:
             import base64, json as _json
             b64_image = base64.b64encode(contents).decode("utf-8")
-            model = settings.gemini_model or "gemini-2.5-flash"
+            model = settings.gemini_model or "gemini-1.5-flash"
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
 
             prompt = """

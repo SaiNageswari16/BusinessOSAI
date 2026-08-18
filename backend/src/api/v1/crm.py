@@ -917,9 +917,9 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
                 errors.append("Gemini API key not configured")
                 continue
             try:
-                model = settings.gemini_model or "gemini-2.5-flash"
+                model = settings.gemini_model or "gemini-1.5-flash"
                 if model == "gemini-1.5-flash":
-                    model = "gemini-2.5-flash"
+                    model = "gemini-1.5-flash"
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
                 
                 parts = []
