@@ -11,11 +11,11 @@ from src.database.session import get_db
 from src.api.deps import CurrentUserContext, require_permission
 from src.api.v1.crm import call_ai_text
 from src.models import (
-    ERPProduct,
+    Product,
     POSTransaction,
     CRMSupportTicket,
     Employee,
-    CRMCustomer,
+    Customer,
 )
 
 logger = logging.getLogger("LazyMonkeyAI_Copilot")
@@ -76,7 +76,7 @@ async def chat_with_copilot(
     # Fetch live real-time tenant business snapshot
     try:
         total_products = await db.scalar(
-            select(func.count(ERPProduct.id)).where(ERPProduct.tenant_id == ctx.tenant_id)
+            select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id)
         ) or 0
     except Exception:
         total_products = 0
@@ -100,7 +100,7 @@ async def chat_with_copilot(
 
     try:
         total_customers = await db.scalar(
-            select(func.count(CRMCustomer.id)).where(CRMCustomer.tenant_id == ctx.tenant_id)
+            select(func.count(Customer.id)).where(Customer.tenant_id == ctx.tenant_id)
         ) or 0
     except Exception:
         total_customers = 0
