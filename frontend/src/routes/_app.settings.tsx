@@ -31,6 +31,7 @@ import { PermissionMatrix } from "@/components/erp/PermissionMatrix";
 import { NumberSeries } from "@/components/erp/NumberSeries";
 import { TaxConfiguration } from "@/components/erp/TaxConfiguration";
 import { CurrencyManagement } from "@/components/erp/CurrencyManagement";
+import { PaymentGateways } from "@/components/erp/PaymentGateways";
 import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/_app/settings")({
@@ -87,7 +88,7 @@ const componentMap: Record<string, React.ElementType> = {
   audit_logs: AuditLogs,
   
   // Integrations & API Connections
-  payment_gateways: CurrencyManagement,
+  payment_gateways: PaymentGateways,
   recruitment_integrations: RecruitmentIntegrations,
   whatsapp_integration: NotificationTemplates,
   sms_integration: NotificationTemplates,
