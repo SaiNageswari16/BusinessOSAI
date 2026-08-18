@@ -80,27 +80,59 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import os
+from pathlib import Path
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # backend/src
 BACKEND_DIR = os.path.dirname(BASE_DIR)              # backend
+UPLOAD_IMAGES_DIR = os.path.join(BACKEND_DIR, "upload_images")
 IMAGES_DIR = os.path.join(BACKEND_DIR, "images")
 STATIC_DIR = os.path.join(BACKEND_DIR, "static")
 
-# Ensure backend/images & static folders exist with absolute pathing
+# Ensure backend/upload_images, backend/images & static folders exist
+os.makedirs(UPLOAD_IMAGES_DIR, exist_ok=True)
 os.makedirs(IMAGES_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
+
+app.mount("/upload_images", StaticFiles(directory=UPLOAD_IMAGES_DIR), name="upload_images")
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-from fastapi.responses import FileResponse
+@app.get("/upload_images/{file_path:path}")
+async def serve_upload_image_fallback(file_path: str):
+    candidate_dirs = [
+        UPLOAD_IMAGES_DIR,
+        IMAGES_DIR,
+        os.path.join(BASE_DIR, "images"),
+        STATIC_DIR,
+    ]
+    for d in candidate_dirs:
+        p = os.path.join(d, file_path)
+        if os.path.isfile(p):
+            return FileResponse(p)
+    raise HTTPException(status_code=404, detail="Image not found")
+
+@app.get("/images/{file_path:path}")
+async def serve_image_fallback(file_path: str):
+    candidate_dirs = [
+        UPLOAD_IMAGES_DIR,
+        IMAGES_DIR,
+        os.path.join(BASE_DIR, "images"),
+        STATIC_DIR,
+    ]
+    for d in candidate_dirs:
+        p = os.path.join(d, file_path)
+        if os.path.isfile(p):
+            return FileResponse(p)
+    raise HTTPException(status_code=404, detail="Image not found")
 
 @app.get("/privacy-policy", response_class=FileResponse)
 async def get_privacy_policy():
-    policy_path = os.path.join("static", "privacy_policy.html")
+    policy_path = os.path.join(STATIC_DIR, "privacy_policy.html")
     if os.path.exists(policy_path):
         return FileResponse(policy_path)
-    return FileResponse(os.path.join("..", "static", "privacy_policy.html"))
+    return FileResponse(os.path.join(BACKEND_DIR, "static", "privacy_policy.html"))
 
 @app.get("/health")
 async def health_check():

@@ -10,7 +10,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://12
 
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || url.trim() === "") return "";
-  if (url.startsWith("/images/")) {
+  if (url.startsWith("/upload_images/") || url.startsWith("/images/")) {
     const backendBase = API_BASE_URL.replace("/api/v1", "");
     return `${backendBase}${url}`;
   }

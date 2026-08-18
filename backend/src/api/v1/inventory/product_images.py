@@ -58,18 +58,25 @@ async def upload_single_product_image(
     ctx: CurrentUserContext = Depends(require_permission("manage:erp")),
     db: AsyncSession = Depends(get_db)
 ):
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    images_dir = os.path.join(base_dir, "images")
-    os.makedirs(images_dir, exist_ok=True)
+    from pathlib import Path
+    backend_dir = Path(__file__).resolve().parents[4]
+    upload_images_dir = backend_dir / "upload_images"
+    images_dir = backend_dir / "images"
+    upload_images_dir.mkdir(parents=True, exist_ok=True)
+    images_dir.mkdir(parents=True, exist_ok=True)
     
     ext = os.path.splitext(file.filename or "")[1] or ".jpg"
     filename = f"prod_{uuid.uuid4().hex}{ext}"
-    filepath = os.path.join(images_dir, filename)
+    upload_path = upload_images_dir / filename
+    images_path = images_dir / filename
 
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    content = await file.read()
+    with open(upload_path, "wb") as buffer:
+        buffer.write(content)
+    with open(images_path, "wb") as buffer:
+        buffer.write(content)
 
-    image_url = f"/images/{filename}"
+    image_url = f"/upload_images/{filename}"
 
     # Update Product
     prod_res = await db.execute(
@@ -111,9 +118,12 @@ async def bulk_upload_images_by_barcode(
     Bulk Upload Product Images matching filename to Product Barcode or SKU.
     e.g. 8901030383123.jpg or SKU-1002.png
     """
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    images_dir = os.path.join(base_dir, "images")
-    os.makedirs(images_dir, exist_ok=True)
+    from pathlib import Path
+    backend_dir = Path(__file__).resolve().parents[4]
+    upload_images_dir = backend_dir / "upload_images"
+    images_dir = backend_dir / "images"
+    upload_images_dir.mkdir(parents=True, exist_ok=True)
+    images_dir.mkdir(parents=True, exist_ok=True)
 
     results = []
     matched_count = 0
@@ -143,11 +153,16 @@ async def bulk_upload_images_by_barcode(
 
         if product:
             saved_filename = f"prod_{stem}_{uuid.uuid4().hex[:6]}{ext}"
-            filepath = os.path.join(images_dir, saved_filename)
-            with open(filepath, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            upload_path = upload_images_dir / saved_filename
+            images_path = images_dir / saved_filename
+
+            content = await file.read()
+            with open(upload_path, "wb") as buffer:
+                buffer.write(content)
+            with open(images_path, "wb") as buffer:
+                buffer.write(content)
             
-            image_url = f"/images/{saved_filename}"
+            image_url = f"/upload_images/{saved_filename}"
             product.image_url = image_url
 
             # Add to ProductImage gallery
