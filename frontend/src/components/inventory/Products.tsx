@@ -586,6 +586,7 @@ function ImportPreviewModal({
   isImporting: boolean;
   categories: InventoryCategory[];
 }) {
+  const { currency, formatCurrency } = useCurrency();
   const [initialStock, setInitialStock] = useState(item.initial_stock || 10);
   const [sellingPrice, setSellingPrice] = useState(item.sale_price || item.mrp || 0);
   const [purchasePrice, setPurchasePrice] = useState(item.cost_price || (item.mrp ? item.mrp * 0.7 : 0));
