@@ -10,18 +10,25 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://12
 
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || url.trim() === "") return "";
-  if (url.startsWith("/upload_images/") || url.startsWith("/images/")) {
-    const backendBase = API_BASE_URL.replace("/api/v1", "");
-    return `${backendBase}${url}`;
-  }
   // If it's already a full URL, return as-is
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  // If it starts with /static/, serve from backend root
-  if (url.startsWith("/static/")) {
-    const backendBase = API_BASE_URL.replace("/api/v1", "");
-    return `${backendBase}${url}`;
+
+  // Clean leading slash
+  const cleanUrl = url.startsWith("/") ? url : `/${url}`;
+
+  // If it's an uploaded image or catalog image, route through API_BASE_URL
+  // ensuring Nginx on production forwards it to the FastAPI backend
+  if (cleanUrl.startsWith("/upload_images/") || cleanUrl.startsWith("/images/")) {
+    return `${API_BASE_URL}${cleanUrl}`;
   }
-  return url;
+
+  // If it starts with /static/, serve from backend root
+  if (cleanUrl.startsWith("/static/")) {
+    const backendBase = API_BASE_URL.replace("/api/v1", "");
+    return `${backendBase}${cleanUrl}`;
+  }
+
+  return cleanUrl;
 }
 
 // Client-side CSV export. Headers + rows; triggers a browser download.

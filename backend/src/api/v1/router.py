@@ -170,3 +170,29 @@ api_router.include_router(financial_reports_router)
 # Delivery Challan Module
 from src.api.v1.erp.delivery_challan import router as delivery_challan_router
 api_router.include_router(delivery_challan_router, prefix="/erp")
+
+
+# Universal Static / Uploaded Image Serving via API Prefix
+from fastapi.responses import FileResponse
+from fastapi import HTTPException
+from pathlib import Path
+
+BACKEND_DIR = Path(__file__).resolve().parents[3]
+UPLOAD_IMAGES_DIR = BACKEND_DIR / "upload_images"
+IMAGES_DIR = BACKEND_DIR / "images"
+STATIC_DIR = BACKEND_DIR / "static"
+
+@api_router.get("/upload_images/{file_path:path}")
+@api_router.get("/images/{file_path:path}")
+async def serve_api_uploaded_image(file_path: str):
+    candidates = [
+        UPLOAD_IMAGES_DIR / file_path,
+        IMAGES_DIR / file_path,
+        STATIC_DIR / file_path,
+        BACKEND_DIR / "src" / "images" / file_path,
+    ]
+    for p in candidates:
+        if p.is_file():
+            return FileResponse(str(p))
+    raise HTTPException(status_code=404, detail=f"Image '{file_path}' not found")
+
