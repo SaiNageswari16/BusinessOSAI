@@ -420,23 +420,17 @@ async def delete_erp_user(
     if user.is_tenant_owner and not (ctx.user.is_tenant_owner or ctx.user.is_platform_admin):
         raise HTTPException(status_code=403, detail="Only workspace owners or platform admins can delete workspace owner accounts")
 
-    user_email = user.email
+    from src.database.purge import purge_user_complete
+    res = await purge_user_complete(
+        db,
+        user_id=user_id,
+        actor_user_id=ctx.user.id,
+        purge_entire_tenant_if_owner=False
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=404, detail=res.get("message", "User not found"))
 
-    # Safely clear / nullify RESTRICT foreign keys if any
-    try:
-        from src.models import POSTransaction, POSSession, AuditLog, LeadActivity, Lead
-        await db.execute(update(POSTransaction).where(POSTransaction.cashier_id == user_id).values(cashier_id=ctx.user.id))
-        await db.execute(update(POSSession).where(POSSession.user_id == user_id).values(user_id=ctx.user.id))
-        await db.execute(update(AuditLog).where(AuditLog.user_id == user_id).values(user_id=None))
-        await db.execute(update(LeadActivity).where(LeadActivity.user_id == user_id).values(user_id=None))
-        await db.execute(update(Lead).where(Lead.owner_user_id == user_id).values(owner_user_id=None))
-    except Exception as e:
-        logger.warning("FK cleanup note: %s", e)
-
-    await db.delete(user)
-    await db.commit()
-
-    return MessageResponse(message=f"User {user_email} successfully deleted")
+    return MessageResponse(message=res["message"])
 
 
 # ─── ERP Workspaces Endpoints ─────────────────────────────────────

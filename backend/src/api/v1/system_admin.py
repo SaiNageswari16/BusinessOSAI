@@ -150,157 +150,30 @@ async def update_tenant_status(
 
     return MessageResponse(message=f"Tenant '{tenant.name}' status updated to {new_status.value}")
 
-import uuid
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.api.deps import CurrentUserContext, get_current_user_context
-from src.database.session import get_db
-from src.models import Tenant, User, TenantStatus
-from src.schemas.erp import ORMModel, MessageResponse
-
-router = APIRouter(prefix="/system", tags=["SaaS Platform Administration"])
-
-
-# ─── Schemas ──────────────────────────────────────────────────────
-
-class PlatformTenantSummary(ORMModel):
-    id: uuid.UUID
-    slug: str
-    name: str
-    plan: str
-    status: str
-    created_at: str
-    owner_name: str | None = None
-    owner_email: str | None = None
-    user_count: int = 0
-
-
-class TenantStatusUpdateRequest(ORMModel):
-    status: str
-
-
-class PendingApprovalSummary(ORMModel):
-    tenant_id: uuid.UUID
-    tenant_slug: str
-    tenant_name: str
-    admin_name: str | None = None
-    admin_email: str | None = None
-    requested_modules: list[str] = []
-    enabled_modules: list[str] = []
-    status: str
-    requested_at: str
-
-
-class ApproveTenantPayload(ORMModel):
-    approved_modules: list[str]
-
-
-class UpdateTenantModulesPayload(ORMModel):
-    enabled_modules: list[str]
-
-
-
-# ─── Helpers ──────────────────────────────────────────────────────
-
-def require_platform_admin(ctx: CurrentUserContext):
-    is_platform_admin_user = bool(
-        getattr(ctx.user, "is_platform_admin", False)
-        or ctx.user.email == "venaticfungus@gmail.com"
-    )
-    if not is_platform_admin_user:
-
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only system platform administrators can access SaaS administration endpoints.",
-        )
-
-
-
-
-
-
-
-
-
-# ─── Endpoints ────────────────────────────────────────────────────
-
-@router.get("/tenants", response_model=list[PlatformTenantSummary])
-async def list_tenants(
-    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """
-    List all registered tenants on the platform with their status, registration date,
-    owner account details, and total active users.
-    """
-    require_platform_admin(ctx)
-
-    # Fetch all tenants
-    result = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
-    tenants = result.scalars().all()
-
-    items = []
-    for tenant in tenants:
-        # Fetch the owner user for this tenant
-        owner = await db.scalar(
-            select(User).where(User.tenant_id == tenant.id, User.is_tenant_owner.is_(True))
-        )
-        
-        # Count total users in this tenant
-        user_count = await db.scalar(
-            select(func.count(User.id)).where(User.tenant_id == tenant.id)
-        )
-
-        items.append(
-            PlatformTenantSummary(
-                id=tenant.id,
-                slug=tenant.slug,
-                name=tenant.name,
-                plan=tenant.plan,
-                status=tenant.status.value,
-                created_at=tenant.created_at.isoformat(),
-                owner_name=owner.full_name if owner else "Unknown",
-                owner_email=owner.email if owner else "Unknown",
-                user_count=user_count or 0,
-            )
-        )
-
-    return items
-
-
-@router.patch("/tenants/{tenant_id}/status", response_model=MessageResponse)
-async def update_tenant_status(
+@router.delete("/tenants/{tenant_id}", response_model=MessageResponse)
+async def delete_platform_tenant(
     tenant_id: uuid.UUID,
-    payload: TenantStatusUpdateRequest,
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    Update a tenant's subscription status (e.g. suspend or activate).
-    Suspended tenants will be instantly blocked from logging in or executing requests.
+    Platform Super Admin: Permanently delete an entire workspace and all its products, invoices, users, and activities.
     """
     require_platform_admin(ctx)
 
     tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
     if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+        raise HTTPException(status_code=404, detail="Workspace tenant not found")
 
-    try:
-        new_status = TenantStatus(payload.status.lower())
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid tenant status. Allowed: {[s.value for s in TenantStatus]}",
-        ) from exc
+    if tenant.slug == "system":
+        raise HTTPException(status_code=400, detail="Cannot delete the root system platform tenant")
 
-    tenant.status = new_status
-    await db.flush()
+    tenant_name = tenant.name
+    from src.database.purge import purge_tenant_data
+    await purge_tenant_data(db, tenant_id)
 
-    return MessageResponse(message=f"Tenant '{tenant.name}' status updated to {new_status.value}")
+    return MessageResponse(message=f"Workspace '{tenant_name}' and all its products, invoices, inventory, and activities have been completely purged from the system.")
 
 
 class PlatformAuditLogResponse(ORMModel):
@@ -511,6 +384,9 @@ async def toggle_platform_super_admin(
     await db.refresh(user)
 
     status_str = "Global Platform Super Admin (God Mode)" if user.is_platform_admin else "Regular Workspace User"
+    return MessageResponse(message=f"User {user.email} access updated to {status_str}")
+
+
 @router.delete("/users/{user_id}", response_model=MessageResponse)
 async def delete_platform_user(
     user_id: uuid.UUID,
@@ -518,7 +394,7 @@ async def delete_platform_user(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    Platform Super Admin: Permanently delete any user across the platform and purge their activities/tokens.
+    Platform Super Admin: Permanently delete any user across the platform and purge their activities/tokens/organization.
     """
     require_platform_admin(ctx)
 
@@ -528,27 +404,17 @@ async def delete_platform_user(
             detail="Cannot delete your own platform admin account while logged in."
         )
 
-    user = await db.scalar(select(User).where(User.id == user_id))
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    from src.database.purge import purge_user_complete
+    res = await purge_user_complete(
+        db,
+        user_id=user_id,
+        actor_user_id=ctx.user.id,
+        purge_entire_tenant_if_owner=True
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=404, detail=res.get("message", "User not found"))
 
-    user_email = user.email
-
-    # Safely clear / nullify RESTRICT foreign keys if any to prevent database FK constraint violations
-    try:
-        from src.models import POSTransaction, POSSession, AuditLog, LeadActivity, Lead
-        await db.execute(update(POSTransaction).where(POSTransaction.cashier_id == user_id).values(cashier_id=ctx.user.id))
-        await db.execute(update(POSSession).where(POSSession.user_id == user_id).values(user_id=ctx.user.id))
-        await db.execute(update(AuditLog).where(AuditLog.user_id == user_id).values(user_id=None))
-        await db.execute(update(LeadActivity).where(LeadActivity.user_id == user_id).values(user_id=None))
-        await db.execute(update(Lead).where(Lead.owner_user_id == user_id).values(owner_user_id=None))
-    except Exception as e:
-        logger.warning("FK cleanup note during user deletion: %s", e)
-
-    await db.delete(user)
-    await db.commit()
-
-    return MessageResponse(message=f"User {user_email} and their associated activity records have been permanently deleted.")
+    return MessageResponse(message=res["message"])
 
 
 
