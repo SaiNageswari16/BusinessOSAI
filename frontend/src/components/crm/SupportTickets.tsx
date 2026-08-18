@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Search, AlertCircle, Clock, CheckCircle2, MoreHorizontal, MessageSquare, Sparkles, Loader2, X } from "lucide-react";
 
-import { crmTicketsApi, type CrmTicket } from "@/lib/api-client";
+import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
@@ -11,8 +11,220 @@ interface Props {
   tab?: string;
 }
 
+// ─── Modal: Create New Support Ticket ─────────────────────────────────────────
+function CreateTicketModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [customers, setCustomers] = useState<CrmCustomer[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [form, setForm] = useState({
+    customer_id: "",
+    subject: "",
+    category: "Support",
+    priority: "Medium",
+    description: "",
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    crmCustomersApi
+      .list(1, 100)
+      .then((res) => {
+        if (isMounted) {
+          setCustomers(res.items || []);
+          if (res.items && res.items.length > 0) {
+            setForm((p) => ({ ...p, customer_id: res.items[0].id }));
+          }
+        }
+      })
+      .catch(() => {
+        if (isMounted) setCustomers([]);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingCustomers(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.subject.trim()) {
+      toast.error("Please enter a ticket subject");
+      return;
+    }
+    if (!form.description.trim()) {
+      toast.error("Please enter ticket details");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await crmTicketsApi.create({
+        customer_id: form.customer_id || undefined,
+        subject: form.subject.trim(),
+        category: form.category,
+        priority: form.priority,
+        description: form.description.trim(),
+      });
+      toast.success("Support ticket created successfully!");
+      onCreated();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create support ticket");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        className="bg-card border border-border/70 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden text-foreground"
+      >
+        <div className="flex items-center justify-between p-5 border-b border-border/50 bg-muted/30">
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+              <MessageSquare className="size-4" />
+            </div>
+            <div>
+              <h2 className="font-bold text-base">Create Support Ticket</h2>
+              <p className="text-xs text-muted-foreground">Log a new customer issue or inquiry</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-sm">
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+              Customer / Account
+            </label>
+            <select
+              value={form.customer_id}
+              onChange={(e) => setForm((p) => ({ ...p, customer_id: e.target.value }))}
+              className="w-full h-10 px-3 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">-- General Inquiry / Unassigned Customer --</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} {c.phone ? `(${c.phone})` : c.email ? `(${c.email})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+              Subject / Issue Title *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Delayed shipment for Order #1042"
+              value={form.subject}
+              onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))}
+              className="w-full h-10 px-3 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                Category
+              </label>
+              <select
+                value={form.category}
+                onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
+                className="w-full h-10 px-3 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="Support">Support</option>
+                <option value="Billing">Billing & Payment</option>
+                <option value="Technical">Technical Issue</option>
+                <option value="Logistics">Shipping & Delivery</option>
+                <option value="Returns">Returns & Refunds</option>
+                <option value="General">General Inquiry</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                Priority
+              </label>
+              <select
+                value={form.priority}
+                onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}
+                className="w-full h-10 px-3 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Urgent">Urgent</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+              Description & Notes *
+            </label>
+            <textarea
+              rows={4}
+              required
+              placeholder="Describe the issue, customer request, or context..."
+              value={form.description}
+              onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+              className="w-full p-3 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-border/50">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-5 py-2 text-xs font-semibold rounded-xl gradient-brand text-white shadow-md hover:opacity-90 transition-opacity flex items-center gap-1.5"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" /> Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="size-3.5" /> Create Ticket
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
 export function SupportTickets({ tab = "active_tickets" }: Props) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -21,6 +233,7 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
   const [tickets, setTickets] = useState<CrmTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const fetchTickets = async () => {
     setLoading(true);
@@ -71,11 +284,23 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
           <p className="text-sm text-muted-foreground">Manage and resolve customer inquiries and technical issues.</p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"
+          >
             <Plus className="size-4" /> New Ticket
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showCreateModal && (
+          <CreateTicketModal
+            onClose={() => setShowCreateModal(false)}
+            onCreated={() => void fetchTickets()}
+          />
+        )}
+      </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
