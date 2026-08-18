@@ -5,10 +5,13 @@ import { bankApi, BankAccountRecord, BankTransaction, accountingApi, ChartOfAcco
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
+import { getActiveCurrency } from "@/lib/utils";
+
 interface Props { tab?: string; }
 
 function fmt(n: number) {
-  return formatCurrency(n);
+  const curr = getActiveCurrency();
+  return `${curr.symbol}${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 const STATUS_COLORS: Record<string, string> = {
