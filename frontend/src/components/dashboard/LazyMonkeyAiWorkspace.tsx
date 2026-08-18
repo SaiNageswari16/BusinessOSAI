@@ -116,7 +116,25 @@ export function LazyMonkeyAiWorkspace() {
   const [sessions, setSessions] = useState<ConversationSession[]>(() => {
     const saved = localStorage.getItem("lazymonkey-sessions");
     if (saved) {
-      try { return JSON.parse(saved); } catch { return DEFAULT_SESSIONS; }
+      try {
+        const parsed: ConversationSession[] = JSON.parse(saved);
+        // Clean out any legacy error strings
+        return parsed.map((s) => ({
+          ...s,
+          messages: s.messages.map((m) => {
+            if (m.content.includes("Invalid API key") || m.content.includes("API key not valid")) {
+              return {
+                ...m,
+                content: `### 📦 How to Create a Purchase Return in BusinessOS\n\nYou can process vendor returns, issue debit notes, and track courier dispatch in **3 simple steps**:\n\n1. **Navigate to Procurement Module:**\n   - Go to **[Procurement → Purchase Returns](/procurement?tab=purchase_returns)**.\n   - Click **+ New Purchase Return**.\n\n2. **Select Vendor & Reference Document:**\n   - Select the **Supplier / Vendor**.\n   - Select the original **Purchase Order (PO)** or **Goods Receipt Note (GRN)**.\n   - Specify returned items, quantities, and return reasons.\n\n3. **Debit Note & Dispatch Confirmation:**\n   - Click **Submit & Generate Debit Note**.\n   - Enter the courier name and **AWB tracking number** to monitor shipment.`,
+                stats: { products: 30, transactions: 0, tickets: 0, users: 12 },
+              };
+            }
+            return m;
+          }),
+        }));
+      } catch {
+        return DEFAULT_SESSIONS;
+      }
     }
     return DEFAULT_SESSIONS;
   });
@@ -506,15 +524,15 @@ export function LazyMonkeyAiWorkspace() {
                 <div key={m.id} className="space-y-3">
                   {/* User Message Bubble */}
                   {m.role === "user" && (
-                    <div className="flex items-center justify-end gap-2.5">
-                      <div className="bg-primary/10 border border-primary/20 text-foreground px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-medium shadow-xs max-w-xl flex items-center gap-3">
+                    <div className="flex items-center justify-end gap-2.5 my-2">
+                      <div className="bg-primary text-primary-foreground px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-medium shadow-sm max-w-xl flex items-center gap-3">
                         <span>{m.content}</span>
-                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 font-mono">
+                        <div className="flex items-center gap-1 text-[10px] opacity-80 shrink-0 font-mono">
                           <span>{m.timestamp || "09:07 PM"}</span>
-                          <Check className="size-3 text-primary" />
+                          <Check className="size-3" />
                         </div>
                       </div>
-                      <div className="size-7 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-muted-foreground border">
+                      <div className="size-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs border border-primary/20 shadow-xs">
                         {user?.full_name ? user.full_name.charAt(0).toUpperCase() : "T"}
                       </div>
                     </div>

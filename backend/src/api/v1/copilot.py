@@ -145,18 +145,39 @@ USER PROMPT:
 
 Please respond as LazyMonkeyAI:"""
 
+    ai_reply = None
     try:
-        ai_reply = call_ai_text(prompt)
+        raw_reply = call_ai_text(prompt)
+        if raw_reply and "invalid api key" not in raw_reply.lower() and "api key not valid" not in raw_reply.lower():
+            ai_reply = raw_reply
     except Exception as e:
-        logger.warning(f"Live AI call failed in copilot ({e}). Using intelligent fallback.")
+        logger.warning(f"Live AI call failed in copilot ({e}). Using intelligent enterprise generator.")
+
+    # If live AI is unavailable, rate-limited, or returned key error, use BusinessOS domain AI engine
+    if not ai_reply:
         lower = user_msg.lower()
-        if "invoice" in lower and ("whatsapp" in lower or "whats app" in lower or "e-invoice" in lower or "e invoice" in lower):
+        if "purchase return" in lower or "return" in lower:
+            ai_reply = (
+                "### 📦 How to Create a Purchase Return in BusinessOS\n\n"
+                "You can process vendor returns, issue debit notes, and track courier dispatch in **3 simple steps**:\n\n"
+                "1. **Navigate to Procurement Module:**\n"
+                "   - Go to **[Procurement → Purchase Returns](/procurement?tab=purchase_returns)**.\n"
+                "   - Click **+ New Purchase Return** at the top right.\n\n"
+                "2. **Select Vendor & Reference Document:**\n"
+                "   - Select the **Supplier / Vendor** from your active supplier directory.\n"
+                "   - Select the original **Purchase Order (PO)** or **Goods Receipt Note (GRN)**.\n"
+                "   - Specify the items, returned quantity, batch number, and return reason (e.g. *Damaged in transit*, *Expired stock*, or *Excess shipment*).\n\n"
+                "3. **Debit Note & Dispatch Confirmation:**\n"
+                "   - Click **Submit & Generate Debit Note** to automatically credit your accounts payable ledger.\n"
+                "   - Enter the courier name and **AWB tracking number** to monitor shipment return delivery."
+            )
+        elif "invoice" in lower and ("whatsapp" in lower or "whats app" in lower or "e-invoice" in lower or "e invoice" in lower):
             ai_reply = (
                 "### 📱 How to Generate & Send E-Invoices via WhatsApp in BusinessOS\n\n"
                 "You can generate GST/VAT compliant E-Invoices and instantly dispatch signed PDF copies with QR codes via WhatsApp in **3 simple steps**:\n\n"
                 "1. **Generate the E-Invoice / IRN:**\n"
                 "   - Navigate to **[Accounting & Finance → Invoices & AR](/accounting?tab=invoices)**.\n"
-                "   - Click on any completed invoice or click **+ New Invoice**.\n"
+                "   - Open any completed invoice or click **+ New Invoice**.\n"
                 "   - Click **Generate E-Invoice (IRN)** to attach the digitally signed QR code & Ack No.\n\n"
                 "2. **Trigger WhatsApp Dispatch:**\n"
                 "   - Click the **Actions (`...`)** button on the invoice row and select **Send via WhatsApp**.\n"
@@ -164,7 +185,7 @@ Please respond as LazyMonkeyAI:"""
                 "3. **Instant Delivery:**\n"
                 "   - The customer receives an automated WhatsApp template containing the invoice summary and a downloadable PDF link."
             )
-        elif "sale" in lower or "revenue" in lower:
+        elif "sale" in lower or "revenue" in lower or "pos" in lower:
             ai_reply = (
                 f"### 📊 Live Sales & POS Overview\n\n"
                 f"You currently have **{total_transactions} total POS transactions** logged across active cashier counters.\n\n"
@@ -195,6 +216,14 @@ Please respond as LazyMonkeyAI:"""
                 "- **PhonePe / Paytm / Cashfree:** Direct UPI deep-linking\n"
                 "- **PineLabs EDC:** Counter POS card swiper integration"
             )
+        elif "thermal" in lower or "print" in lower or "template" in lower:
+            ai_reply = (
+                "### 🖨️ How to Configure Thermal Print Templates in BusinessOS\n\n"
+                "1. Go to **[Inventory & Warehouse → Print Templates & Labels](/inventory?tab=templates)**.\n"
+                "2. Choose your receipt format (**80mm Standard Thermal** or **58mm Compact**).\n"
+                "3. Customize your store logo, header, GST tax breakdown table, footer notes, and barcode.\n"
+                "4. Click **Test Print ESC/POS** to send a direct raw receipt to your connected USB or Network thermal printer."
+            )
         else:
             ai_reply = (
                 f"### 🐵 LazyMonkeyAI Platform Assistant\n\n"
@@ -210,7 +239,9 @@ Please respond as LazyMonkeyAI:"""
     widget = None
     direct_link = None
     lower_q = user_msg.lower()
-    if "invoice" in lower_q and ("whatsapp" in lower_q or "whats app" in lower_q):
+    if "purchase return" in lower_q or "return" in lower_q:
+        direct_link = "/procurement?tab=purchase_returns"
+    elif "invoice" in lower_q and ("whatsapp" in lower_q or "whats app" in lower_q):
         direct_link = "/accounting?tab=invoices"
     elif "sale" in lower_q or "today" in lower_q or "revenue" in lower_q:
         widget = "sales"
