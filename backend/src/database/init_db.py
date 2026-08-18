@@ -48,58 +48,58 @@ async def init_database() -> None:
             await conn.run_sync(Base.metadata.create_all)
 
     # Ensure new columns on existing PostgreSQL tables always runs
-    async with engine.begin() as conn:
-        migration_statements = [
-            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS uom VARCHAR(50) DEFAULT 'Pcs';",
-            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS cost_price NUMERIC(15, 2) DEFAULT 0.0;",
-            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS mrp NUMERIC(15, 2) DEFAULT 0.0;",
-            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS selling_price NUMERIC(15, 2) DEFAULT 0.0;",
-            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS tax_percent NUMERIC(5, 2) DEFAULT 0.0;",
-            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS location VARCHAR(150);",
-            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS supplier_invoice_no VARCHAR(100);",
-            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS qc_status VARCHAR(50) DEFAULT 'Passed';",
-            "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS barcode VARCHAR(100);",
-            "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC(10, 2) DEFAULT 0;",
-            "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS b2b_price NUMERIC(10, 2) DEFAULT 0;",
-            "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT TRUE;",
-            "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS specifications JSONB DEFAULT '{}'::jsonb;",
-            "ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS specifications TEXT;",
-            "ALTER TABLE pos_transactions ALTER COLUMN status TYPE VARCHAR(50) USING status::VARCHAR(50);",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'COMPLETED';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'REFUNDED';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'ON_HOLD';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'PARTIALLY_PAID';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'CREDIT';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'PENDING';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'VOIDED';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'completed';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'refunded';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'on_hold';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'partially_paid';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'credit';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'pending';",
-            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'voided';",
-            "UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com';",
-            """
-            UPDATE erp_inventory_batches b
-            SET cost_price = CASE WHEN b.cost_price IS NULL OR b.cost_price = 0 THEN COALESCE(p.cost_price, 65.00) ELSE b.cost_price END,
-                selling_price = CASE WHEN b.selling_price IS NULL OR b.selling_price = 0 THEN COALESCE(p.selling_price, 95.00) ELSE b.selling_price END,
-                mrp = CASE WHEN b.mrp IS NULL OR b.mrp = 0 THEN COALESCE(p.mrp, p.selling_price, 120.00) ELSE b.mrp END
-            FROM erp_products p
-            WHERE (b.product_id = p.id OR lower(b.product_name) = lower(p.name));
-            """,
-            """
-            UPDATE erp_inventory_batches
-            SET cost_price = 65.00, selling_price = 95.00, mrp = 120.00
-            WHERE (cost_price IS NULL OR cost_price = 0) AND (mrp IS NULL OR mrp = 0);
-            """
-        ]
+    migration_statements = [
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS uom VARCHAR(50) DEFAULT 'Pcs';",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS cost_price NUMERIC(15, 2) DEFAULT 0.0;",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS mrp NUMERIC(15, 2) DEFAULT 0.0;",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS selling_price NUMERIC(15, 2) DEFAULT 0.0;",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS tax_percent NUMERIC(5, 2) DEFAULT 0.0;",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS location VARCHAR(150);",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS supplier_invoice_no VARCHAR(100);",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS qc_status VARCHAR(50) DEFAULT 'Passed';",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS barcode VARCHAR(100);",
+        "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC(10, 2) DEFAULT 0;",
+        "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS b2b_price NUMERIC(10, 2) DEFAULT 0;",
+        "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT TRUE;",
+        "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS specifications JSONB DEFAULT '{}'::jsonb;",
+        "ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS specifications TEXT;",
+        "ALTER TABLE pos_transactions ALTER COLUMN status TYPE VARCHAR(50) USING status::VARCHAR(50);",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'COMPLETED';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'REFUNDED';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'ON_HOLD';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'PARTIALLY_PAID';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'CREDIT';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'PENDING';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'VOIDED';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'completed';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'refunded';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'on_hold';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'partially_paid';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'credit';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'pending';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'voided';",
+        "UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com';",
+        """
+        UPDATE erp_inventory_batches b
+        SET cost_price = CASE WHEN b.cost_price IS NULL OR b.cost_price = 0 THEN COALESCE(p.cost_price, 65.00) ELSE b.cost_price END,
+            selling_price = CASE WHEN b.selling_price IS NULL OR b.selling_price = 0 THEN COALESCE(p.selling_price, 95.00) ELSE b.selling_price END,
+            mrp = CASE WHEN b.mrp IS NULL OR b.mrp = 0 THEN COALESCE(p.mrp, p.selling_price, 120.00) ELSE b.mrp END
+        FROM erp_products p
+        WHERE (b.product_id = p.id OR lower(b.product_name) = lower(p.name));
+        """,
+        """
+        UPDATE erp_inventory_batches
+        SET cost_price = 65.00, selling_price = 95.00, mrp = 120.00
+        WHERE (cost_price IS NULL OR cost_price = 0) AND (mrp IS NULL OR mrp = 0);
+        """
+    ]
 
-        for stmt in migration_statements:
-            try:
+    for stmt in migration_statements:
+        try:
+            async with engine.begin() as conn:
                 await conn.execute(text(stmt))
-            except Exception as single_err:
-                logger.debug(f"Migration note for statement: {single_err}")
+        except Exception as single_err:
+            logger.debug(f"Migration note for statement: {single_err}")
     logger.info("Database tables & schema columns ensured via SQLAlchemy.")
 
 

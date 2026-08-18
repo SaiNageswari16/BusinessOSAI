@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  crmLeadsApi, type OrganicPost, type FacebookCampaign, type FacebookAdItem
+  crmLeadsApi, type OrganicPost, type FacebookCampaign, type FacebookAdItem, resolveImageUrl
 } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -67,7 +67,7 @@ function OrganicPostCard({ post, onSelect }: { post: OrganicPost; onSelect: () =
       <div className="h-44 bg-muted relative overflow-hidden flex-shrink-0 border-b border-border">
         {post.image_url ? (
           <img
-            src={post.image_url.startsWith("/images/") ? `http://localhost:8000${post.image_url}` : post.image_url}
+            src={resolveImageUrl(post.image_url)}
             alt={post.message?.slice(0, 40) || "Post image"}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             onError={(e) => {

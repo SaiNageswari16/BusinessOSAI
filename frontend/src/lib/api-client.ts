@@ -14,14 +14,33 @@ export function resolveImageUrl(url: string | null | undefined): string {
   // If it's already a data URL or blob
   if (url.startsWith("data:") || url.startsWith("blob:")) return url;
 
-  // If it's already an absolute URL (http:// or https://)
+  // Clean leading slash
+  const cleanUrl = url.startsWith("/") ? url : `/${url}`;
+
+  // Determine backend origin
+  let backendOrigin = "";
+  if (API_BASE_URL.startsWith("http://") || API_BASE_URL.startsWith("https://")) {
+    try {
+      const parsedBase = new URL(API_BASE_URL);
+      backendOrigin = `${parsedBase.protocol}//${parsedBase.host}`;
+    } catch {
+      backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+    }
+  } else if (typeof window !== "undefined") {
+    // If API_BASE_URL is relative (e.g. /api/v1), use current window origin
+    backendOrigin = window.location.origin;
+  }
+
+  // If it's an absolute URL
   if (url.startsWith("http://") || url.startsWith("https://")) {
-    // If running in browser on a production/remote domain (not localhost),
-    // but the backend stored or returned a localhost URL, convert it to relative path
+    // If running in browser on a remote/production domain, but the URL points to localhost/127.0.0.1
     if (typeof window !== "undefined" && !window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1")) {
       try {
         const parsed = new URL(url);
         if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+          if (backendOrigin) {
+            return `${backendOrigin}${parsed.pathname}${parsed.search}`;
+          }
           return `${parsed.pathname}${parsed.search}`;
         }
       } catch {}
@@ -29,17 +48,18 @@ export function resolveImageUrl(url: string | null | undefined): string {
     return url;
   }
 
-  // Clean leading slash
-  const cleanUrl = url.startsWith("/") ? url : `/${url}`;
-
-  // If in browser on production/remote domain (e.g. lazymonkeyai.com), relative URLs work directly with the host reverse proxy
-  if (typeof window !== "undefined" && !window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1")) {
-    return cleanUrl;
+  // If backendOrigin is defined (e.g. http://15.207.227.85:8000), prefix it
+  if (backendOrigin) {
+    // If backend is on a separate port or origin, route directly to the backend
+    return `${backendOrigin}${cleanUrl}`;
   }
 
-  // In local development or node/SSR, prefix with the backend origin (e.g. http://127.0.0.1:8000)
-  const backendBase = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
-  return `${backendBase}${cleanUrl}`;
+  // Default fallback: if behind Nginx proxy, route through /api/v1
+  if (cleanUrl.startsWith("/upload_images/") || cleanUrl.startsWith("/images/")) {
+    return `/api/v1${cleanUrl}`;
+  }
+
+  return cleanUrl;
 }
 
 // Client-side CSV export. Headers + rows; triggers a browser download.
