@@ -176,6 +176,31 @@ async def delete_platform_tenant(
     return MessageResponse(message=f"Workspace '{tenant_name}' and all its products, invoices, inventory, and activities have been completely purged from the system.")
 
 
+@router.post("/tenants/purge-orphans", response_model=MessageResponse)
+async def purge_orphaned_tenants(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Purge all orphaned tenant workspaces that have 0 remaining users.
+    """
+    require_platform_admin(ctx)
+    from src.database.purge import purge_tenant_data
+
+    result = await db.execute(select(Tenant).where(Tenant.slug != "system"))
+    all_tenants = result.scalars().all()
+
+    purged_names = []
+    for t in all_tenants:
+        user_count = await db.scalar(select(func.count(User.id)).where(User.tenant_id == t.id))
+        if not user_count or user_count == 0:
+            purged_names.append(t.name)
+            await purge_tenant_data(db, t.id)
+
+    msg = f"Purged {len(purged_names)} orphaned workspaces: {', '.join(purged_names)}" if purged_names else "No orphaned workspaces found. All workspaces have active users."
+    return MessageResponse(message=msg)
+
+
 class PlatformAuditLogResponse(ORMModel):
     id: uuid.UUID
     tenant_name: str
