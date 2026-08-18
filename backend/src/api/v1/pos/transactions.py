@@ -56,7 +56,7 @@ async def checkout(
         tax_amount=payload.tax_amount,
         discount_amount=payload.discount_amount,
         total_amount=payload.total_amount,
-        status=payload.status,
+        status=(payload.status or "completed").lower(),
         parent_transaction_id=payload.parent_transaction_id,
         delivery_status=payload.delivery_status,
         delivery_address=payload.delivery_address,
