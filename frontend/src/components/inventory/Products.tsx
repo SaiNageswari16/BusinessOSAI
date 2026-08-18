@@ -1472,27 +1472,75 @@ export function Products() {
     loadData();
   };
 
+  const triggerMasterSearch = async (overrideQuery?: string) => {
+    const q = (overrideQuery !== undefined ? overrideQuery : search).trim();
+    if (q.length < 2) return;
+    setIsSearchingMaster(true);
+    setShowSuggestions(false);
+    setSearchError(null);
+    try {
+      const isBarcode = /^\d{8,}$/.test(q);
+      const res = await inventoryApi.searchMasterCatalog(q, isBarcode || true, "auto");
+      setMasterResults(res || []);
+      if (res?.length) toast.success(`Found ${res.length} result(s) in catalog`);
+      else toast.info(`No products found for "${q}"`);
+    } catch (err: any) {
+      console.error("Master search failed:", err);
+      setSearchError(err.detail || err.message || "Search failed.");
+    } finally {
+      setIsSearchingMaster(false);
+    }
+  };
+
   // ── Search bar renderer ─────────────────────────────────────────
   const renderSearchBar = () => (
-    <div className="relative flex-1 max-w-sm" ref={suggestionsRef}>
-      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-      <input
-        value={search} onChange={(e) => { setSearch(e.target.value); if (activeTab === "catalog") setShowSuggestions(true); setExactMatch(null); }}
-        onFocus={() => { if (activeTab === "catalog") setShowSuggestions(true); }}
-        placeholder={activeTab === "inventory"
-          ? "Search inventory by name, SKU, or Barcode..."
-          : "Search master catalog..."}
-        className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
-      />
+    <div className="relative flex-1 max-w-md flex items-center gap-2" ref={suggestionsRef}>
+      <div className="relative flex-1">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            if (activeTab === "catalog") setShowSuggestions(true);
+            setExactMatch(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              if (activeTab === "catalog") {
+                triggerMasterSearch();
+              }
+            }
+          }}
+          onFocus={() => { if (activeTab === "catalog") setShowSuggestions(true); }}
+          placeholder={activeTab === "inventory"
+            ? "Search inventory by name, SKU, or Barcode..."
+            : "Search master catalog / barcode (Press Enter)..."}
+          className="w-full h-10 pl-9 pr-8 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
+        />
+        {isSearchingMaster && (
+          <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 animate-spin text-indigo-600" />
+        )}
+      </div>
+      {activeTab === "catalog" && (
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => triggerMasterSearch()}
+          disabled={isSearchingMaster || search.trim().length < 2}
+          className="h-10 px-4 gradient-brand text-white border-0 font-bold"
+        >
+          {isSearchingMaster ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4 mr-1" />} Search
+        </Button>
+      )}
       {/* ── Suggestions dropdown (Only on Master Catalog tab) ── */}
       {activeTab === "catalog" && showSuggestions && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+        <div className="absolute left-0 right-0 top-12 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
           <div className="text-[10px] font-bold text-slate-400 px-3 py-1.5 bg-slate-50/50 uppercase border-b border-slate-100">
             Sourcing Suggestions
           </div>
           <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
             {suggestions.map((sug, idx) => (
-              <button key={idx} type="button" onClick={() => handleSelectSuggestion(sug)}
+              <button key={idx} type="button" onClick={() => { setSearch(sug); triggerMasterSearch(sug); }}
                 className="w-full text-left px-4 py-2.5 text-xs font-semibold hover:bg-slate-50 text-slate-700 flex items-center gap-2">
                 <Sparkles className="size-3 text-indigo-500 shrink-0" />
                 <span className="truncate">{sug}</span>
