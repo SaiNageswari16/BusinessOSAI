@@ -8,7 +8,7 @@ Handles deep, comprehensive deletion of:
 import logging
 import uuid
 from typing import Any
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -24,10 +24,11 @@ async def purge_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str,
 
     async def _safe_delete(model_or_table: Any, condition: Any, name: str) -> None:
         try:
-            stmt = delete(model_or_table).where(condition)
-            res = await db.execute(stmt)
-            count = res.rowcount if hasattr(res, "rowcount") and res.rowcount != -1 else 0
-            purged_counts[name] = count
+            async with db.begin_nested():
+                stmt = delete(model_or_table).where(condition)
+                res = await db.execute(stmt)
+                count = res.rowcount if hasattr(res, "rowcount") and res.rowcount != -1 else 0
+                purged_counts[name] = count
         except Exception as e:
             logger.debug("Purge note for %s on tenant %s: %s", name, tenant_id, e)
 
