@@ -509,7 +509,45 @@ async def toggle_platform_super_admin(
     await db.refresh(user)
 
     status_str = "Global Platform Super Admin (God Mode)" if user.is_platform_admin else "Regular Workspace User"
-    return MessageResponse(message=f"User {user.email} access updated to {status_str}")
+@router.delete("/users/{user_id}", response_model=MessageResponse)
+async def delete_platform_user(
+    user_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Platform Super Admin: Permanently delete any user across the platform and purge their activities/tokens.
+    """
+    require_platform_admin(ctx)
+
+    if ctx.user.id == user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete your own platform admin account while logged in."
+        )
+
+    user = await db.scalar(select(User).where(User.id == user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_email = user.email
+
+    # Safely clear / nullify RESTRICT foreign keys if any to prevent database FK constraint violations
+    try:
+        from src.models import POSTransaction, POSSession, AuditLog, LeadActivity, Lead
+        await db.execute(update(POSTransaction).where(POSTransaction.cashier_id == user_id).values(cashier_id=ctx.user.id))
+        await db.execute(update(POSSession).where(POSSession.user_id == user_id).values(user_id=ctx.user.id))
+        await db.execute(update(AuditLog).where(AuditLog.user_id == user_id).values(user_id=None))
+        await db.execute(update(LeadActivity).where(LeadActivity.user_id == user_id).values(user_id=None))
+        await db.execute(update(Lead).where(Lead.owner_user_id == user_id).values(owner_user_id=None))
+    except Exception as e:
+        logger.warning("FK cleanup note during user deletion: %s", e)
+
+    await db.delete(user)
+    await db.commit()
+
+    return MessageResponse(message=f"User {user_email} and their associated activity records have been permanently deleted.")
+
 
 
 

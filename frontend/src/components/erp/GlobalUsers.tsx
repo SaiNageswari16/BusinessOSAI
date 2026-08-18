@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Users, Search, ShieldCheck, RefreshCw, Key, ToggleLeft, ToggleRight,
-  ShieldAlert, Loader2, Save, X, Eye, EyeOff, AlertCircle
+  ShieldAlert, Loader2, Save, X, Eye, EyeOff, AlertCircle, Trash2
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
@@ -270,6 +270,34 @@ export function GlobalUsers() {
       void load();
     } catch (err: any) {
       toast.error(err.message);
+    }
+  };
+
+  const handleDeleteUser = async (user: PlatformUser) => {
+    if (!accessToken) return;
+    const isGod = Boolean(user.is_platform_admin || user.email === "venaticfungus@gmail.com");
+    const warning = isGod ? " (⚠️ WARNING: This user is a Platform Super Admin / God Mode user!)" : "";
+    if (!window.confirm(`Permanently delete user "${user.full_name}" (${user.email}) from workspace "${user.tenant_name}"?${warning}\n\nAll their sessions, access roles, and associated tokens will be permanently purged. This action CANNOT be undone.`)) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/users/${user.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        let msg = "Failed to delete user";
+        try {
+          const json = JSON.parse(body);
+          if (typeof json.detail === "string") msg = json.detail;
+        } catch {}
+        toast.error(msg);
+        return;
+      }
+      toast.success(`User ${user.email} permanently deleted from platform!`);
+      void load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete user");
     }
   };
 
@@ -611,6 +639,15 @@ export function GlobalUsers() {
                             <ShieldAlert className="size-3.5" /> Reset MFA
                           </Button>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteUser(u)}
+                          className="h-8 px-2.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 font-bold gap-1"
+                          title="Permanently Delete User"
+                        >
+                          <Trash2 className="size-3.5" /> Delete
+                        </Button>
                       </div>
                     </td>
                   </tr>
