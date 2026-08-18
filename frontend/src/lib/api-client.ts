@@ -4289,3 +4289,18 @@ export const deliveryChallanApi = {
   dispatchChallan: (id: string) => request<any>("POST", `/erp/delivery-challans/${id}/dispatch`),
 };
 
+export interface CopilotChatResponse {
+  reply: string;
+  widget?: "sales" | "inventory" | "payroll" | null;
+  direct_link?: string | null;
+  suggested_actions?: string[];
+}
+
+export const copilotApi = {
+  chat: (message: string, history: { role: string; content: string }[] = []) =>
+    request<CopilotChatResponse>("POST", "/copilot/chat", { message, history }),
+  getSuggestions: () =>
+    request<{ title: string; category: string }[]>("GET", "/copilot/suggestions"),
+};
+
+

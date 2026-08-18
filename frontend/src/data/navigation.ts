@@ -34,7 +34,7 @@ export const nav: NavGroup[] = [
   {
     group: "Workspace", theme: "indigo", icon: Package, items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view:dashboard" },
-      { to: "/copilot", label: "Antigravity AI", icon: Sparkles, badge: "OS", permission: "view:copilot" },
+      { to: "/copilot", label: "LazyMonkeyAI", icon: Sparkles, badge: "OS", permission: "view:copilot" },
     ]
   },
   {
@@ -929,7 +929,7 @@ export const nav: NavGroup[] = [
         label: "AI",
         icon: Sparkles,
         subItems: [
-          { to: "/settings?tab=antigravity_settings", label: "Antigravity Settings", icon: Settings },
+          { to: "/settings?tab=antigravity_settings", label: "LazyMonkeyAI Settings", icon: Settings },
           { to: "/settings?tab=ai_models", label: "AI Models", icon: BrainCircuit },
           { to: "/settings?tab=ai_credits", label: "AI Credits", icon: CreditCard },
           { to: "/settings?tab=ai_permissions", label: "AI Permissions", icon: ShieldCheck },

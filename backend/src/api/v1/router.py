@@ -171,6 +171,10 @@ api_router.include_router(financial_reports_router)
 from src.api.v1.erp.delivery_challan import router as delivery_challan_router
 api_router.include_router(delivery_challan_router, prefix="/erp")
 
+# LazyMonkeyAI Copilot
+from src.api.v1.copilot import router as copilot_router
+api_router.include_router(copilot_router)
+
 
 # Universal Static / Uploaded Image Serving via API Prefix
 from fastapi.responses import FileResponse

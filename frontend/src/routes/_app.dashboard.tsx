@@ -210,7 +210,7 @@ function Dashboard() {
               </Button>
               <Button asChild className="gap-1.5 bg-white text-blue-700 hover:bg-white/90 shadow-sm border-0 transition-colors">
                 <Link to="/copilot">
-                  <Sparkles className="size-4" /> {language === "ar" ? "اسأل الذكاء الاصطناعي" : "Ask Antigravity AI"}
+                  <Sparkles className="size-4" /> {language === "ar" ? "اسأل الذكاء الاصطناعي" : "Ask LazyMonkeyAI"}
                 </Link>
               </Button>
             </div>
