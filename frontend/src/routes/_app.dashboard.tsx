@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -26,6 +26,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { KpiTile } from "@/components/dashboard/kpi-tile";
 import { AiInsightsPanel } from "@/components/dashboard/ai-insights-panel";
 import { Section } from "@/components/dashboard/section";
+import { LazyMonkeyAiWorkspace } from "@/components/dashboard/LazyMonkeyAiWorkspace";
 import { kpis, healthBreakdown } from "@/data/mock";
 import { 
   revenueData as mockRevenueData, 
@@ -104,6 +105,14 @@ const qaTranslationMap: Record<string, string> = {
 };
 
 function Dashboard() {
+  const routerState = useRouterState();
+  const searchParams = new URLSearchParams(routerState.location.searchStr);
+  const activeTab = searchParams.get("tab") || "overview";
+
+  if (activeTab === "lazymonkey_ai" || activeTab === "copilot" || activeTab === "ai") {
+    return <LazyMonkeyAiWorkspace />;
+  }
+
   const { user } = useAuth();
   const { tenant: company } = useTenant();
   const { language, t } = useI18n();
@@ -209,7 +218,7 @@ function Dashboard() {
                 <FileText className="size-4" /> {language === "ar" ? "تصدير التقرير" : "Export brief"}
               </Button>
               <Button asChild className="gap-1.5 bg-white text-blue-700 hover:bg-white/90 shadow-sm border-0 transition-colors">
-                <Link to="/copilot">
+                <Link to="/dashboard" search={{ tab: "lazymonkey_ai" }}>
                   <Sparkles className="size-4" /> {language === "ar" ? "اسأل الذكاء الاصطناعي" : "Ask LazyMonkeyAI"}
                 </Link>
               </Button>

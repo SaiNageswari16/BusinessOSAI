@@ -866,15 +866,43 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
     logger = logging.getLogger("CRM_AI_Helper")
 
     primary = prefer_provider or settings.ai_provider or "gemini"
-    if primary not in ("gemini", "openai"):
+    if primary not in ("gemini", "openai", "claude"):
         primary = "gemini"
-    secondary = "openai" if primary == "gemini" else "gemini"
-
-    providers_to_try = [primary, secondary]
+    
+    providers_to_try = [primary, "gemini", "claude", "openai"]
+    # Deduplicate while preserving order
+    seen = set()
+    providers_to_try = [p for p in providers_to_try if not (p in seen or seen.add(p))]
     errors = []
 
     for prov in providers_to_try:
-        if prov == "openai":
+        if prov == "claude":
+            if not settings.anthropic_api_key:
+                errors.append("Anthropic Claude API key not configured")
+                continue
+            try:
+                base_url = (settings.anthropic_base_url or "https://api.anthropic.com").rstrip("/")
+                url = f"{base_url}/v1/messages"
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-api-key": settings.anthropic_api_key,
+                    "anthropic-version": "2023-06-01",
+                }
+                body = {
+                    "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
+                    "max_tokens": 1024,
+                    "messages": [{"role": "user", "content": instruction}],
+                }
+                res = requests.post(url, json=body, headers=headers, timeout=20)
+                res.raise_for_status()
+                data = res.json()
+                if "content" in data and len(data["content"]) > 0:
+                    return data["content"][0]["text"]
+            except Exception as e:
+                logger.warning(f"Claude call failed: {e}")
+                errors.append(f"Claude failed: {str(e)}")
+
+        elif prov == "openai":
             if not settings.openai_api_key:
                 errors.append("OpenAI API key not configured")
                 continue
@@ -918,7 +946,7 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
                 continue
             try:
                 model = settings.gemini_model or "gemini-1.5-flash"
-                if model == "gemini-1.5-flash":
+                if "2.5" in model:
                     model = "gemini-1.5-flash"
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
                 

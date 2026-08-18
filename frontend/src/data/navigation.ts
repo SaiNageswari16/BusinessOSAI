@@ -34,7 +34,7 @@ export const nav: NavGroup[] = [
   {
     group: "Workspace", theme: "indigo", icon: Package, items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view:dashboard" },
-      { to: "/copilot", label: "LazyMonkeyAI", icon: Sparkles, badge: "OS", permission: "view:copilot" },
+      { to: "/dashboard?tab=lazymonkey_ai", label: "LazyMonkey AI", icon: Sparkles, badge: "OS", permission: "view:dashboard" },
     ]
   },
   {
