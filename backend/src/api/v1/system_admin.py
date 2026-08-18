@@ -386,11 +386,18 @@ async def reset_platform_user_mfa(
     return MessageResponse(message="MFA lock removed for user.")
 
 
+class ToggleSuperAdminPayload(BaseModel):
+    is_platform_admin: bool | None = None
+
+
+@router.patch("/users/{user_id}/super-admin")
+@router.post("/users/{user_id}/super-admin")
 @router.post("/users/{user_id}/toggle-super-admin")
 async def toggle_platform_super_admin(
     user_id: uuid.UUID,
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    payload: ToggleSuperAdminPayload | None = None,
 ):
     """
     Promote or revoke Global Super Admin (is_platform_admin & God Mode) access for any user on the platform.
@@ -401,7 +408,11 @@ async def toggle_platform_super_admin(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user.is_platform_admin = not bool(user.is_platform_admin)
+    if payload and payload.is_platform_admin is not None:
+        user.is_platform_admin = payload.is_platform_admin
+    else:
+        user.is_platform_admin = not bool(user.is_platform_admin)
+
     if user.is_platform_admin:
         user.is_tenant_owner = True
 
