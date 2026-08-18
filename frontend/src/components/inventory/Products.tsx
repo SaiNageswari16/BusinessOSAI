@@ -992,7 +992,8 @@ export function Products() {
       const timer = setTimeout(async () => {
         setIsSearchingMaster(true);
         try {
-          const res = await inventoryApi.searchMasterCatalog(cleanSearch, false, "auto");
+          const isBarcode = /^\d{8,}$/.test(cleanSearch.trim());
+          const res = await inventoryApi.searchMasterCatalog(cleanSearch, isBarcode, "auto");
           setMasterResults(res || []);
         } catch (err: any) {
           console.error("Master search failed:", err);
@@ -1014,7 +1015,8 @@ export function Products() {
     setExactMatch(null);
     setMasterResults([]);
     try {
-      const res = await inventoryApi.searchMasterCatalog(sug, false, "auto");
+      const isBarcode = /^\d{8,}$/.test(sug.trim());
+      const res = await inventoryApi.searchMasterCatalog(sug, isBarcode, "auto");
       setMasterResults(res || []);
       if (res?.length) toast.success(`Found ${res.length} result(s)`);
     } catch (err: any) {

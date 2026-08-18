@@ -2022,9 +2022,15 @@ async def search_master_catalog(
     pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
     ai_paused = os.path.exists(pause_file)
 
-    if not results and search_web and not ai_paused and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):
-        ai_items = await _perform_ai_rag_web_search(clean_query, provider=effective_provider)
-        results.extend(ai_items)
+    is_barcode_query = clean_query.isdigit() and len(clean_query) >= 8
+    should_search_web = search_web or is_barcode_query
+
+    if not results and should_search_web and not ai_paused and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):
+        try:
+            ai_items = await _perform_ai_rag_web_search(clean_query, provider=effective_provider)
+            results.extend(ai_items)
+        except Exception as e:
+            logger.error("AI web search error for %s: %s", clean_query, e)
         
     # Prepend request base URL to static image paths so they load on localhost/production
     base_url = str(request.base_url).rstrip("/")
