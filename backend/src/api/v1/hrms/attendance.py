@@ -151,15 +151,18 @@ async def clock_in(
     # Find employee associated
     emp_id = payload.employee_id
     if emp_id:
-        emp = await db.get(Employee, emp_id)
+        emp = await db.scalar(
+            select(Employee).where(Employee.id == emp_id, Employee.tenant_id == ctx.tenant_id)
+        )
     else:
         emp = await db.scalar(
-            select(Employee).where(Employee.user_id == ctx.user.id, Employee.tenant_id == ctx.tenant_id)
+            select(Employee).where(
+                (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+                Employee.tenant_id == ctx.tenant_id
+            )
         )
-        if not emp:
-            emp = await db.scalar(select(Employee).where(Employee.tenant_id == ctx.tenant_id))
     if not emp:
-        raise HTTPException(status_code=400, detail="No Employee record linked or found")
+        raise HTTPException(status_code=400, detail="No Employee profile linked to your user account")
 
     today = date.today()
     existing = await db.scalar(
@@ -208,15 +211,18 @@ async def clock_out(
     # Find employee associated
     emp_id = payload.employee_id
     if emp_id:
-        emp = await db.get(Employee, emp_id)
+        emp = await db.scalar(
+            select(Employee).where(Employee.id == emp_id, Employee.tenant_id == ctx.tenant_id)
+        )
     else:
         emp = await db.scalar(
-            select(Employee).where(Employee.user_id == ctx.user.id, Employee.tenant_id == ctx.tenant_id)
+            select(Employee).where(
+                (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+                Employee.tenant_id == ctx.tenant_id
+            )
         )
-        if not emp:
-            emp = await db.scalar(select(Employee).where(Employee.tenant_id == ctx.tenant_id))
     if not emp:
-        raise HTTPException(status_code=400, detail="No Employee record linked or found")
+        raise HTTPException(status_code=400, detail="No Employee profile linked to your user account")
 
     today = date.today()
     att = await db.scalar(
@@ -374,35 +380,6 @@ async def list_face_recognition_logs(
             )
         )
         
-    # Auto-seed mock face logs if empty
-    if not logs:
-        emp = await db.scalar(select(Employee).where(Employee.tenant_id == ctx.tenant_id))
-        seeded = [
-            FaceRecognitionLog(tenant_id=ctx.tenant_id, employee_id=emp.id if emp else None, confidence=98.2, location="Main Entrance", action="Check-In", status="Verified"),
-            FaceRecognitionLog(tenant_id=ctx.tenant_id, employee_id=None, confidence=42.0, location="Back Office", action="Check-In", status="Failed"),
-        ]
-        for l in seeded:
-            db.add(l)
-        await db.commit()
-        
-        result = await db.execute(query)
-        logs = []
-        for log, emp in result.all():
-            logs.append(
-                FaceRecognitionLogResponse(
-                    id=log.id,
-                    tenant_id=log.tenant_id,
-                    employee_id=log.employee_id,
-                    employee_name=emp.full_name if emp else "Unknown Face",
-                    timestamp=log.timestamp,
-                    confidence=float(log.confidence),
-                    location=log.location,
-                    action=log.action,
-                    status=log.status,
-                    created_at=log.created_at,
-                )
-            )
-            
     return logs
 
 
@@ -454,12 +431,13 @@ async def create_correction_request(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     emp = await db.scalar(
-        select(Employee).where(Employee.user_id == ctx.user.id, Employee.tenant_id == ctx.tenant_id)
+        select(Employee).where(
+            (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+            Employee.tenant_id == ctx.tenant_id
+        )
     )
     if not emp:
-        emp = await db.scalar(select(Employee).where(Employee.tenant_id == ctx.tenant_id))
-        if not emp:
-            raise HTTPException(status_code=400, detail="No Employee record linked to your user account")
+        raise HTTPException(status_code=400, detail="No Employee record linked to your user account")
 
     corr = AttendanceCorrection(
         tenant_id=ctx.tenant_id,

@@ -47,12 +47,32 @@ async def get_my_employee_profile(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     emp = await db.scalar(
-        select(Employee).where(Employee.user_id == ctx.user.id, Employee.tenant_id == ctx.tenant_id)
+        select(Employee).where(
+            (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+            Employee.tenant_id == ctx.tenant_id
+        )
     )
     if not emp:
-        emp = await db.scalar(select(Employee).where(Employee.tenant_id == ctx.tenant_id))
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee profile not found for this user account")
+        # Auto-create linked Employee profile for current authenticated user in this workspace
+        count = await db.scalar(
+            select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
+        ) or 0
+        seq = str(count + 1).zfill(4)
+        emp = Employee(
+            tenant_id=ctx.tenant_id,
+            user_id=ctx.user.id,
+            employee_code=f"EMP-{seq}",
+            full_name=ctx.user.full_name or ctx.user.email.split("@")[0].capitalize(),
+            email=ctx.user.email,
+            phone=ctx.user.phone,
+            date_of_joining=date.today(),
+            employment_type="Full-Time",
+            status="Active",
+            sales_points=0.0,
+        )
+        db.add(emp)
+        await db.commit()
+        await db.refresh(emp)
     return emp
 
 @router.get("/employees", response_model=PaginatedResponse[EmployeeResponse])
@@ -67,35 +87,16 @@ async def list_employees(
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = None,
 ):
-    # Auto-seed initial employees for new tenants if count is 0
-    tenant_emp_count = await db.scalar(
-        select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
-    )
-    if not tenant_emp_count:
-        defaults = [
-            ("EMP-0001", "Nageswari", "nageswari@company.com"),
-            ("EMP-0002", "Abhilash", "abhilash@company.com"),
-            ("EMP-0003", "Rajesh Kumar", "rajesh@company.com"),
-            ("EMP-0004", "Priya Sharma", "priya@company.com"),
-        ]
-        for code, name, email in defaults:
-            db.add(Employee(
-                tenant_id=ctx.tenant_id,
-                employee_code=code,
-                full_name=name,
-                email=email,
-                date_of_joining=date.today(),
-                employment_type="Full-Time",
-                status="Active",
-                sales_points=0.0,
-            ))
-        await db.commit()
-
-    # Auto-link any workspace User who doesn't have an Employee profile yet
+    # Auto-link any workspace User belonging to this tenant who doesn't have an Employee profile yet
     users_without_emp = await db.scalars(
         select(User).where(
             User.tenant_id == ctx.tenant_id,
-            ~User.id.in_(select(Employee.user_id).where(Employee.user_id.is_not(None)))
+            ~User.id.in_(
+                select(Employee.user_id).where(
+                    Employee.user_id.is_not(None),
+                    Employee.tenant_id == ctx.tenant_id
+                )
+            )
         )
     )
     unlinked_users = users_without_emp.all()
@@ -111,6 +112,7 @@ async def list_employees(
                 employee_code=f"EMP-{seq}",
                 full_name=u.full_name or u.email.split('@')[0].capitalize(),
                 email=u.email,
+                phone=u.phone,
                 date_of_joining=date.today(),
                 employment_type="Full-Time",
                 status="Active",
@@ -161,25 +163,48 @@ async def create_employee(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms_employees"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    # 1. Auto-generate employee code if none is provided or matches "AUTO" / is empty
-    if not payload.employee_code or payload.employee_code.strip() in ("", "AUTO"):
+    # 1. Normalize fields
+    payload.email = payload.email.strip().lower()
+    if payload.employee_code:
+        payload.employee_code = payload.employee_code.strip()
+
+    # 2. Auto-generate employee code if none is provided or matches "AUTO" / is empty
+    if not payload.employee_code or payload.employee_code in ("", "AUTO", "auto"):
         count = await db.scalar(
             select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
-        )
-        payload.employee_code = f"EMP-{(count or 0) + 1:04d}"
+        ) or 0
+        candidate_num = count + 1
+        while True:
+            candidate = f"EMP-{candidate_num:04d}"
+            exists = await db.scalar(
+                select(Employee.id).where(
+                    Employee.tenant_id == ctx.tenant_id,
+                    Employee.employee_code == candidate
+                )
+            )
+            if not exists:
+                payload.employee_code = candidate
+                break
+            candidate_num += 1
 
-    # 2. Check for existing code or email in tenant
+    # 3. Check for existing code or email in tenant
     code_exists = await db.scalar(
-        select(Employee).where(Employee.tenant_id == ctx.tenant_id, Employee.employee_code == payload.employee_code)
+        select(Employee).where(
+            Employee.tenant_id == ctx.tenant_id,
+            func.lower(Employee.employee_code) == payload.employee_code.lower()
+        )
     )
     if code_exists:
-        raise HTTPException(status_code=400, detail="Employee code already exists for this workspace")
+        raise HTTPException(status_code=400, detail=f"Employee code '{payload.employee_code}' already exists in this workspace.")
 
     email_exists = await db.scalar(
-        select(Employee).where(Employee.tenant_id == ctx.tenant_id, Employee.email == payload.email)
+        select(Employee).where(
+            Employee.tenant_id == ctx.tenant_id,
+            func.lower(Employee.email) == payload.email
+        )
     )
     if email_exists:
-        raise HTTPException(status_code=400, detail="Employee email already exists for this workspace")
+        raise HTTPException(status_code=400, detail=f"Employee with email '{payload.email}' already exists in this workspace.")
 
     # Generate temporary password for the employee user
     temp_pass = f"Welcome@{payload.employee_code.replace('-', '')}"
