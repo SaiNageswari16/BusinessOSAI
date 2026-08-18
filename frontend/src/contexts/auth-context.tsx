@@ -70,20 +70,20 @@ interface StoredAuth {
   refreshToken: string;
 }
 
-interface AuthContextType {
+interface AuthCtx {
   user: AppUser | null;
   accessToken: string | null;
-  refreshToken: string | null;
+  isAuthed: boolean;
   authReady: boolean;
-  login: (payload: LoginPayload) => Promise<void>;
-  registerTenant: (payload: RegisterPayload) => Promise<void>;
-  changePassword: (payload: ChangePasswordPayload) => Promise<void>;
-  selectRole: (roleId: string) => Promise<void>;
-  logout: () => Promise<void>;
-  refreshMe: () => Promise<void>;
+  login: (payload: LoginPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  register: (payload: RegisterPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  selectRole: (roleId: string) => Promise<{ user: AppUser; token: TokenResponse }>;
+  changePassword: (payload: ChangePasswordPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  applySession: (user: AppUser, accessToken: string, refreshToken: string) => void;
+  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const Ctx = createContext<AuthCtx | null>(null);
 
 async function parseError(response: Response): Promise<string> {
   let detail = "Authentication request failed";
