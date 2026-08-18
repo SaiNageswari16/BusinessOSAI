@@ -11,6 +11,7 @@ import { companiesApi, branchesApi, taxConfigurationsApi, type Company, type Bra
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -207,6 +208,8 @@ function DeleteConfirmModal({ company, onClose, onDeleted }: { company: Company;
     try {
       await companiesApi.delete(company.id);
       toast.success(`${company.name} deleted`);
+      window.dispatchEvent(new CustomEvent("bos-tenant-changed"));
+      window.dispatchEvent(new Event("storage"));
       onDeleted();
       onClose();
     } catch (err) {
@@ -246,7 +249,8 @@ function DeleteConfirmModal({ company, onClose, onDeleted }: { company: Company;
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function CompanyManagement() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -269,36 +273,20 @@ export function CompanyManagement() {
     setLoading(true);
     try {
       const res = await companiesApi.list(1, 50, search || undefined);
-      if (res.items.length === 0 && !search) {
-        // Fallback to mock data for UI analysis when DB is empty
-        const mockData = [
-          {
-            id: "comp-1", tenant_id: "t-1", name: "Nimbus Retail Group", legal_name: "Nimbus Retail Group Pvt. Ltd.",
-            company_type: "Private Limited", industry: "Retail", gst_number: "29AABCU9603R1ZX", pan_number: "AABCU9603R",
-            email: "contact@nimbusretail.com", phone: "+91 98765 43210", website: "https://nimbusretail.com",
-            country: "India", state: "Karnataka", city: "Bengaluru", address: "123 Innovation Drive, Tech Park",
-            default_currency_code: "INR", timezone: "Asia/Kolkata", language: "en", status: "active",
-            created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-          },
-          {
-            id: "comp-2", tenant_id: "t-1", name: "Apex Manufacturing", legal_name: "Apex Manufacturing Ltd.",
-            company_type: "Public Limited", industry: "Manufacturing", gst_number: "27AADCA3410G1Z2", pan_number: "AADCA3410G",
-            email: "info@apexmanufacturing.com", phone: "+91 22 4567 8900", website: "https://apexmanufacturing.com",
-            country: "India", state: "Maharashtra", city: "Mumbai", address: "45 Industrial Estate, Andheri East",
-            default_currency_code: "INR", timezone: "Asia/Kolkata", language: "en", status: "active",
-            created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-          }
-        ];
-        setCompanies(mockData as any);
-        setTotal(mockData.length);
-        if (!activeCompanyId) setActiveCompanyId(mockData[0].id);
+      setCompanies(res.items);
+      setTotal(res.total);
+      if (res.items.length > 0) {
+        if (!activeCompanyId || !res.items.some(c => c.id === activeCompanyId)) {
+          setActiveCompanyId(res.items[0].id);
+        }
       } else {
-        setCompanies(res.items);
-        setTotal(res.total);
-        if (!activeCompanyId && res.items.length > 0) setActiveCompanyId(res.items[0].id);
+        setActiveCompanyId(null);
       }
     } catch (err) {
       console.error(err instanceof Error ? err.message : "Failed to load");
+      setCompanies([]);
+      setTotal(0);
+      setActiveCompanyId(null);
     } finally {
       setLoading(false);
     }
@@ -307,9 +295,9 @@ export function CompanyManagement() {
   useEffect(() => {
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, tenant?.id]);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [tenant?.id]);
 
   // Fetch sub-tab data whenever activeCompanyId or activeTab changes
   useEffect(() => {
