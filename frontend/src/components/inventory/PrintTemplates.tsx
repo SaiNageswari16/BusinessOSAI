@@ -1979,6 +1979,7 @@ function TemplatePreviewModal({
    ========================================================================= */
 
 function LiveTemplateRender({ template }: { template: PrintTemplate }) {
+  const { currency } = useCurrency();
   const f = template.fields;
   const theme = template.themeName || "stylish";
 

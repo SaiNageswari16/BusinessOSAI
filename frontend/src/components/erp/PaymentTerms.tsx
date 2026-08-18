@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
 
 function PaymentTermFormModal({ term, onClose, onSaved }: { term: PaymentTerm | null; onClose: () => void; onSaved: () => void }) {
+  const { currency } = useCurrency();
   const isEdit = !!term;
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
