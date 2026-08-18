@@ -58,6 +58,9 @@ export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseRe
   const [linkedPoId, setLinkedPoId] = useState<string>("");
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [returnReason, setReturnReason] = useState<string>("Defective / Damaged Stock Received");
+  const [resolutionAction, setResolutionAction] = useState<string>("Debit Note Issued");
+  const [dispatchLocation, setDispatchLocation] = useState<string>("Main Warehouse (BR-100)");
+  const [courierAwbNo, setCourierAwbNo] = useState<string>("");
   const [notes, setNotes] = useState<string>(
     "1. Stock items returned to vendor for replacement or credit adjustment.\n2. Automated debit note issued."
   );
