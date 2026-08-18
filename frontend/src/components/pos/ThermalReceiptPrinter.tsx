@@ -107,38 +107,42 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   return createPortal(
     <div
       id="printable-receipt-portal"
-      className="hidden print:block bg-white text-black p-1 font-mono text-[11px] leading-tight select-none fixed left-[-9999px] top-[-9999px] print:static print:visible pointer-events-none print:pointer-events-auto"
+      className="hidden print:block bg-white text-black p-1 text-[12px] font-semibold leading-tight select-none fixed left-[-9999px] top-[-9999px] print:static print:visible pointer-events-none print:pointer-events-auto"
       style={{
         width: printableWidth,
         maxWidth: printableWidth,
         margin: '0 auto',
-        fontFamily: "'Courier New', Courier, monospace"
+        fontFamily: '"Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", Arial, "Consolas", monospace',
+        color: '#000000',
+        WebkitPrintColorAdjust: 'exact',
+        printColorAdjust: 'exact',
+        textRendering: 'geometricPrecision',
       }}
     >
       {/* Header */}
-      <div className="text-center border-b border-dashed border-black pb-2">
+      <div className="text-center border-b-[1.5px] border-dashed border-black pb-2">
         {f.showLogo && (
-          <div className="mx-auto h-7 w-7 bg-black text-white font-bold flex items-center justify-center text-xs rounded mb-1">
+          <div className="mx-auto h-7 w-7 bg-black text-white font-extrabold flex items-center justify-center text-xs rounded mb-1">
             IS
           </div>
         )}
-        <h2 className="font-bold text-sm tracking-widest uppercase">{storeName}</h2>
+        <h2 className="font-extrabold text-[15px] tracking-wide uppercase">{storeName}</h2>
         {f.showStoreAddress && storeAddress && (
-          <p className="text-[10px] mt-0.5 whitespace-pre-line">{storeAddress}</p>
+          <p className="text-[11px] font-semibold mt-0.5 whitespace-pre-line">{storeAddress}</p>
         )}
-        {storePhone && <p className="text-[10px]">{storePhone}</p>}
+        {storePhone && <p className="text-[11px] font-semibold">{storePhone}</p>}
         {gstin && (
-          <p className="text-[10px] font-bold mt-0.5">GSTIN: {gstin}</p>
+          <p className="text-[11px] font-extrabold mt-0.5">GSTIN: {gstin}</p>
         )}
-        <h3 className="font-bold border border-black inline-block px-2 py-0.5 mt-2 text-[10px] uppercase">
+        <h3 className="font-extrabold border-[1.5px] border-black inline-block px-2.5 py-0.5 mt-2 text-[11px] uppercase tracking-wider">
           {headerTitle}
         </h3>
       </div>
 
       {/* Transaction Meta */}
-      <div className="text-[10px] border-b border-dashed border-black py-1.5 space-y-0.5">
+      <div className="text-[11px] font-semibold border-b-[1.5px] border-dashed border-black py-1.5 space-y-0.5">
         <div className="flex justify-between">
-          <span>Bill No: {invoiceNum}</span>
+          <span className="font-bold">Bill No: {invoiceNum}</span>
           <span>Date: {dateStr}</span>
         </div>
         {f.showTime && (
@@ -148,25 +152,25 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
           </div>
         )}
         {f.showCustomerDetails && (
-          <div className="text-[9px] text-slate-800 mt-1 border-t border-dashed border-black/30 pt-1">
+          <div className="text-[10.5px] font-semibold text-black mt-1 border-t border-dashed border-black pt-1">
             <span>Customer: {customerName}</span>
             {f.showPartyBalance && (
-              <span className="block text-red-700 font-bold mt-0.5">O/S Balance: {currency.symbol}14,200.00</span>
+              <span className="block text-black font-extrabold mt-0.5">O/S Balance: {currency.symbol}14,200.00</span>
             )}
           </div>
         )}
       </div>
 
       {/* Item Table */}
-      <table className="w-full text-left text-[10px] my-1">
+      <table className="w-full text-left text-[11px] my-1 font-semibold">
         <thead>
-          <tr className="border-b border-black">
-            <th className="pb-1">ITEM</th>
-            <th className="pb-1 text-center">QTY</th>
-            <th className="pb-1 text-right">PRICE</th>
+          <tr className="border-b-[1.5px] border-black text-[11.5px] font-extrabold">
+            <th className="pb-1 text-black">ITEM</th>
+            <th className="pb-1 text-center text-black">QTY</th>
+            <th className="pb-1 text-right text-black">PRICE</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-dashed divide-black/40">
+        <tbody className="divide-y divide-dashed divide-black">
           {items.map((item, idx) => {
             const name = item.name || item.product_name || `Item ${idx + 1}`;
             const qty = item.quantity || 1;
@@ -174,14 +178,14 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
             const lineAmt = item.subtotal || (qty * rate) - (item.discount || 0);
 
             return (
-              <tr key={idx}>
-                <td className="py-1 pr-1">
+              <tr key={idx} className="text-black">
+                <td className="py-1 pr-1 font-bold">
                   {name}
-                  {f.showSKU && item.sku && <span className="block text-[8px] text-slate-600">SKU: {item.sku}</span>}
-                  {f.showHSN && item.hsn_code && <span className="block text-[8px] text-slate-600">HSN: {item.hsn_code}</span>}
+                  {f.showSKU && item.sku && <span className="block text-[9.5px] font-semibold text-black">SKU: {item.sku}</span>}
+                  {f.showHSN && item.hsn_code && <span className="block text-[9.5px] font-semibold text-black">HSN: {item.hsn_code}</span>}
                 </td>
-                <td className="py-1 text-center font-bold align-top">{qty}</td>
-                <td className="py-1 text-right font-bold align-top">{Number(lineAmt || 0).toFixed(2)}</td>
+                <td className="py-1 text-center font-extrabold align-top">{qty}</td>
+                <td className="py-1 text-right font-extrabold align-top">{Number(lineAmt || 0).toFixed(2)}</td>
               </tr>
             );
           })}
@@ -189,18 +193,18 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
       </table>
 
       {/* Totals */}
-      <div className="border-t border-dashed border-black pt-1.5 space-y-0.5 text-[11px]">
+      <div className="border-t-[1.5px] border-dashed border-black pt-1.5 space-y-0.5 text-[12px] font-semibold">
         <div className="flex justify-between">
           <span>Subtotal:</span>
-          <span>{Number(rawSubtotal || 0).toFixed(2)}</span>
+          <span className="font-bold">{Number(rawSubtotal || 0).toFixed(2)}</span>
         </div>
         {f.showTaxSplit && (
-          <div className="flex justify-between text-[9px] text-slate-700">
+          <div className="flex justify-between text-[10.5px] font-semibold text-black">
             <span>CGST 2.5% + SGST 2.5%:</span>
             <span>{Number(rawTax || 0).toFixed(2)}</span>
           </div>
         )}
-        <div className="flex justify-between font-bold text-sm border-t border-black pt-1 mt-1">
+        <div className="flex justify-between font-extrabold text-[14px] border-t-[2px] border-black pt-1 mt-1 text-black">
           <span>TOTAL AMOUNT:</span>
           <span>{currency.symbol}{Number(grandTotal || 0).toFixed(2)}</span>
         </div>
@@ -208,7 +212,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
 
       {/* Payment Mode */}
       {bill.payment_method && (
-        <div className="flex justify-between text-[9.5px] font-bold mt-1.5 border-t border-dashed border-black pt-1">
+        <div className="flex justify-between text-[10.5px] font-extrabold mt-1.5 border-t border-dashed border-black pt-1 text-black">
           <span>PAYMENT MODE:</span>
           <span className="uppercase">{bill.payment_method} ({bill.payment_status || 'PAID'})</span>
         </div>
@@ -216,7 +220,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
 
       {/* Savings Banner */}
       {rawDiscount > 0 && (
-        <div className="text-center font-bold text-[9.5px] border border-dashed border-black py-0.5 my-1.5 uppercase">
+        <div className="text-center font-extrabold text-[10.5px] border-[1.5px] border-dashed border-black py-0.5 my-1.5 uppercase text-black">
           ★ YOU SAVED ₹{Number(rawDiscount).toFixed(2)} ON THIS ORDER ★
         </div>
       )}
@@ -225,15 +229,16 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
       {f.showPaymentQR && (
         <div className="flex flex-col items-center justify-center pt-1.5 my-1 border-t border-dashed border-black text-center">
           <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=0&data=${encodeURIComponent(
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=0&data=${encodeURIComponent(
               `upi://pay?pa=${fallbackStore.upiId || 'merchant@upi'}&pn=${encodeURIComponent(
                 storeName
               )}&am=${Number(grandTotal || 0).toFixed(2)}&cu=INR`
             )}`}
             alt="UPI QR Code"
-            className="w-16 h-16 object-contain border border-black p-0.5 rounded my-1"
+            style={{ imageRendering: 'pixelated' }}
+            className="w-20 h-20 object-contain border-[1.5px] border-black p-0.5 my-1"
           />
-          <span className="text-[8px] font-bold block uppercase tracking-wider">
+          <span className="text-[9.5px] font-extrabold block uppercase tracking-wider text-black">
             Scan & Pay via UPI / QR
           </span>
         </div>
@@ -241,12 +246,12 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
 
       {/* Terms & Footer */}
       {termsText && (
-        <div className="text-[8px] border-t border-dashed border-black pt-1 mt-1 text-center text-slate-700 leading-tight">
+        <div className="text-[9.5px] font-semibold border-t border-dashed border-black pt-1 mt-1 text-center text-black leading-tight">
           {termsText}
         </div>
       )}
       {footerText && (
-        <div className="text-[8.5px] font-bold border-t border-dashed border-black pt-1 mt-1 text-center whitespace-pre-line leading-tight">
+        <div className="text-[10px] font-extrabold border-t border-dashed border-black pt-1 mt-1 text-center whitespace-pre-line leading-tight text-black">
           {footerText}
         </div>
       )}

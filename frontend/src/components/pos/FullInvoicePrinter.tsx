@@ -148,7 +148,18 @@ export function FullInvoicePrinter({
   const sgstAmount = totalTax / 2;
 
   const handlePrint = () => {
-    window.print();
+    document.body.classList.add('printing-a4-invoice');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try {
+          window.print();
+        } finally {
+          setTimeout(() => {
+            document.body.classList.remove('printing-a4-invoice');
+          }, 1500);
+        }
+      });
+    });
   };
 
   const modalJSX = (
@@ -156,32 +167,67 @@ export function FullInvoicePrinter({
       {/* Dynamic Print Styles for A4 Full Page Invoice */}
       <style>{`
         @media print {
-          body * {
+          @page {
+            size: A4 portrait !important;
+            margin: 8mm 8mm 8mm 8mm !important;
+          }
+          html, body {
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body > *:not(#a4-invoice-portal),
+          #root,
+          header, nav, footer, .no-print, [data-no-print] {
+            display: none !important;
             visibility: hidden !important;
           }
-          #a4-invoice-printable-area, #a4-invoice-printable-area * {
+          #a4-invoice-portal {
+            display: block !important;
             visibility: visible !important;
+            position: static !important;
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            overflow: visible !important;
+            z-index: 999999 !important;
+          }
+          #a4-invoice-portal * {
+            visibility: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           #a4-invoice-printable-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            display: block !important;
+            visibility: visible !important;
+            position: static !important;
             width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
             margin: 0 !important;
-            padding: 10mm !important;
-            background: white !important;
+            padding: 0 !important;
+            background: #ffffff !important;
             box-shadow: none !important;
-            border: none !important;
-          }
-          @page {
-            size: A4 portrait;
-            margin: 8mm;
+            border-radius: 0 !important;
+            overflow: visible !important;
           }
         }
       `}</style>
 
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto print:p-0 print:bg-transparent">
-        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
+      <div
+        id="a4-invoice-portal"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:w-full print:h-auto print:overflow-visible print:bg-white print:backdrop-blur-none"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:static print:w-full print:max-w-none print:max-h-none print:h-auto print:overflow-visible print:shadow-none print:border-none print:rounded-none print:m-0 print:p-0 print:bg-white">
           
           {/* Header Bar (Hidden during print) */}
           <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
@@ -198,13 +244,13 @@ export function FullInvoicePrinter({
             <div className="flex items-center gap-3">
               <button
                 onClick={handlePrint}
-                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-600/30 flex items-center gap-2 transition-all"
+                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-600/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
               >
                 <Printer className="w-4 h-4" /> Save as PDF / Print A4 Invoice
               </button>
               <button
                 onClick={onClose}
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all"
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -212,11 +258,11 @@ export function FullInvoicePrinter({
           </div>
 
           {/* Printable Invoice Container */}
-          <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-slate-100 print:bg-white print:p-0">
+          <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-slate-100 print:static print:w-full print:h-auto print:overflow-visible print:bg-white print:p-0 print:m-0">
             <div
               id="a4-invoice-printable-area"
               ref={printContainerRef}
-              className={`mx-auto bg-white p-8 md:p-12 shadow-md rounded-xl max-w-3xl text-slate-900 text-xs space-y-6 print:shadow-none print:rounded-none print:max-w-none ${
+              className={`mx-auto bg-white p-8 md:p-12 shadow-md rounded-xl max-w-3xl text-slate-900 text-xs space-y-6 print:static print:w-full print:max-w-none print:shadow-none print:rounded-none print:border-none print:p-0 print:m-0 ${
                 isTally ? 'border-2 border-double border-slate-900' : 'border border-slate-200'
               }`}
               style={{

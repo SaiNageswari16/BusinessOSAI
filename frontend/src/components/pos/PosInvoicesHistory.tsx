@@ -265,13 +265,17 @@ export function PosInvoicesHistory() {
               remote.total_tax = inv.total_tax;
               remote.grand_total = inv.grand_total;
             }
-            if (inv.payment_status === "Paid") {
+            const maxPaid = Math.max(Number(inv.amount_received || 0), Number(remote.amount_received || 0));
+            if (maxPaid >= remote.grand_total - 0.05 && remote.grand_total > 0) {
               remote.payment_status = "Paid";
               remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
-              remote.amount_received = inv.grand_total;
-            } else if (inv.payment_status === "Partial") {
+              remote.amount_received = remote.grand_total;
+            } else if (maxPaid > 0) {
               remote.payment_status = "Partial";
-              remote.amount_received = Number(inv.amount_received) || Number(remote.amount_received) || 0;
+              remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
+              remote.amount_received = maxPaid;
+            } else {
+              remote.payment_status = remote.payment_status || inv.payment_status || "Unpaid";
             }
           } else {
             mergedMap.set(inv.invoice_number, inv);

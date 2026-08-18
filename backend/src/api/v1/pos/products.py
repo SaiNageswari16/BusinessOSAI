@@ -121,18 +121,25 @@ async def list_products(
     result = await db.execute(stmt)
     products = result.scalars().all()
 
-    # Enrich with category name
+    # Enrich with category name and tier specifications
     out = []
     for p in products:
+        specs = p.specifications if isinstance(p.specifications, dict) else {}
+        b2b_p = float(specs.get("b2b_price") or 0.0)
         d = POSProductResponse.model_construct(
             id=p.id, tenant_id=p.tenant_id, name=p.name, brand=p.brand.name if p.brand else None,
-            sku=p.sku, barcode=p.barcode, description=p.short_description, image_url=p.image_url,
+            sku=p.sku, barcode=p.barcode, hsn_code=p.hsn_code, description=p.short_description, image_url=p.image_url,
             category_id=p.category_id, category_name=p.category.name if p.category else None,
             purchase_price=float(p.purchase_price or 0.0), mrp=float(p.mrp or 0.0),
             selling_price=float(p.selling_price or p.mrp or 0.0),
-            wholesale_price=float(p.wholesale_price or 0.0), min_wholesale_qty=int(p.min_wholesale_qty or 1),
-            tax_percent=float(p.tax_percent or 0.0), discount=float(p.discount_limit or 0.0), stock=int(p.initial_stock or 0),
+            wholesale_price=float(p.wholesale_price or 0.0),
+            b2b_price=b2b_p,
+            min_wholesale_qty=int(p.min_wholesale_qty or 1),
+            tax_percent=float(p.tax_percent or 0.0),
+            is_tax_inclusive=bool(p.is_tax_inclusive if p.is_tax_inclusive is not None else True),
+            discount=float(p.discount_limit or 0.0), stock=int(p.initial_stock or 0),
             reorder_level=int(p.reorder_level or 0), is_active=(p.status == EntityStatus.ACTIVE or p.status == None),
+            specifications=specs,
             created_at=p.created_at, updated_at=p.updated_at
         )
         out.append(d)
@@ -286,15 +293,22 @@ async def get_product(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found.")
 
+    specs = product.specifications if isinstance(product.specifications, dict) else {}
+    b2b_p = float(specs.get("b2b_price") or 0.0)
     res = POSProductResponse.model_construct(
         id=product.id, tenant_id=product.tenant_id, name=product.name, brand=product.brand.name if product.brand else None,
-        sku=product.sku, barcode=product.barcode, description=product.short_description, image_url=product.image_url,
+        sku=product.sku, barcode=product.barcode, hsn_code=product.hsn_code, description=product.short_description, image_url=product.image_url,
         category_id=product.category_id, category_name=product.category.name if product.category else None,
         purchase_price=float(product.purchase_price or 0.0), mrp=float(product.mrp or 0.0),
         selling_price=float(product.selling_price or product.mrp or 0.0),
-        wholesale_price=float(product.wholesale_price or 0.0), min_wholesale_qty=int(product.min_wholesale_qty or 1),
-        tax_percent=float(product.tax_percent or 0.0), discount=float(product.discount_limit or 0.0), stock=int(product.initial_stock or 0),
+        wholesale_price=float(product.wholesale_price or 0.0),
+        b2b_price=b2b_p,
+        min_wholesale_qty=int(product.min_wholesale_qty or 1),
+        tax_percent=float(product.tax_percent or 0.0),
+        is_tax_inclusive=bool(product.is_tax_inclusive if product.is_tax_inclusive is not None else True),
+        discount=float(product.discount_limit or 0.0), stock=int(product.initial_stock or 0),
         reorder_level=int(product.reorder_level or 0), is_active=(product.status == "active" or product.status == EntityStatus.ACTIVE),
+        specifications=specs,
         created_at=product.created_at, updated_at=product.updated_at
     )
     return res

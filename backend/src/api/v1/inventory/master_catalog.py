@@ -1756,55 +1756,29 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
         identity = consensus["identity"]
 
         if not identity:
-            # 1. Primary: Gemini provider
-            if active_provider == "gemini":
+            # 1. Always prioritize Gemini with Live Google Search Grounding for barcode lookups
+            if _is_valid_key(settings.gemini_api_key):
                 try:
                     legacy_results = await _deprecated_perform_ai_rag_web_search(query, provider="gemini")
                     if legacy_results:
                         logger.info("Resolved barcode %s through Gemini Google Search grounding", query)
                         return legacy_results
                 except Exception as g_ex:
-                    logger.warning("[RAG Fallback] Gemini grounding failed for %s: %s — trying Gemini scraper then Claude", query, g_ex)
+                    logger.warning("[RAG Fallback] Gemini grounding failed for %s: %s", query, g_ex)
 
-                try:
-                    identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
-                except Exception as ex:
-                    logger.warning("[RAG Fallback] Gemini web search error for %s: %s", query, ex)
-
-                # Seamless Fallback to Claude if Gemini fails or hits 429 quota
-                if not identity and _is_valid_key(settings.anthropic_api_key):
-                    logger.info("[RAG Fallback] Gemini returned no identity or 429 rate limit for %s — falling back to Claude", query)
-                    try:
-                        identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
-                    except Exception as c_ex:
-                        logger.warning("[RAG Fallback] Claude fallback failed for %s: %s", query, c_ex)
-
-            # 2. Primary: Claude provider
-            elif active_provider == "claude":
+            # 2. Fallback: Claude web search
+            if not identity and _is_valid_key(settings.anthropic_api_key):
                 try:
                     identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
                 except Exception as c_ex:
                     logger.warning("[RAG Fallback] Claude search error for %s: %s", query, c_ex)
 
-                # Seamless Fallback to Gemini if Claude fails
-                if not identity and _is_valid_key(settings.gemini_api_key):
-                    logger.info("[RAG Fallback] Claude returned no identity for %s — falling back to Gemini", query)
-                    try:
-                        identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
-                    except Exception as g_ex:
-                        logger.warning("[RAG Fallback] Gemini fallback failed for %s: %s", query, g_ex)
-
-            # 3. Default multi-provider chain: Gemini -> Claude
-            else:
+            # 3. Fallback: Gemini direct scraper
+            if not identity and _is_valid_key(settings.gemini_api_key):
                 try:
                     identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
-                except Exception:
-                    pass
-                if not identity and _is_valid_key(settings.anthropic_api_key):
-                    try:
-                        identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
-                    except Exception:
-                        pass
+                except Exception as ex:
+                    logger.warning("[RAG Fallback] Gemini web search error for %s: %s", query, ex)
 
 
             if identity:
@@ -2013,8 +1987,72 @@ async def search_master_catalog(
             rag_error=p.rag_error
         ))
 
-    # 2. Trigger AI Web RAG Search only if:
-    # - Local DB search returned NO matches
+    # 2. Fast Dedicated Barcode Lookup (Go-UPC, Google Instant, Open Food Facts, UPCitemdb)
+    is_barcode_query = clean_query.isdigit() and len(clean_query) >= 4
+    if not results and is_barcode_query:
+        try:
+            from src.api.v1.inventory.barcode_scanner import _fast_fetch_external_barcode
+            ext_data = await _fast_fetch_external_barcode(clean_query)
+            if ext_data and ext_data.get("name"):
+                prod_name = ext_data["name"]
+                brand_name = ext_data.get("brand", "")
+                cat_name = ext_data.get("category", "General")
+                mrp_val = float(ext_data.get("mrp", 0.0))
+                sp_val = float(ext_data.get("selling_price", 0.0)) or mrp_val
+                img_url = ext_data.get("image") or "/static/uploads/products/default_product.jpg"
+
+                item_id = uuid.uuid4()
+                try:
+                    new_item = MasterCatalogProduct(
+                        id=item_id,
+                        tenant_id=ctx.tenant_id if hasattr(ctx, "tenant_id") else None,
+                        name=prod_name,
+                        brand=brand_name,
+                        barcode=clean_query,
+                        sku_code=f"SKU-{clean_query}",
+                        product_code=clean_query,
+                        category=cat_name,
+                        cost_price=0.0,
+                        mrp=mrp_val,
+                        sale_price=sp_val,
+                        wholesale_price=round(sp_val * 0.90, 2) if sp_val > 0 else 0.0,
+                        tax=0.0,
+                        image_url=img_url,
+                        source=ext_data.get("source", "FAST_BARCODE_LOOKUP"),
+                        ai_search_done=True,
+                        rag_status="completed"
+                    )
+                    db.add(new_item)
+                    await db.commit()
+                    await db.refresh(new_item)
+                    item_id = new_item.id
+                except Exception as save_err:
+                    await db.rollback()
+                    logger.debug(f"Could not persist fast barcode item to master catalog: {save_err}")
+
+                results.append(MasterCatalogItem(
+                    id=item_id,
+                    name=prod_name,
+                    brand=brand_name,
+                    barcode=clean_query,
+                    sku_code=f"SKU-{clean_query}",
+                    product_code=clean_query,
+                    category=cat_name,
+                    cost_price=0.0,
+                    mrp=mrp_val,
+                    sale_price=sp_val,
+                    wholesale_price=round(sp_val * 0.90, 2) if sp_val > 0 else 0.0,
+                    tax=0.0,
+                    image_url=img_url,
+                    source=ext_data.get("source", "FAST_BARCODE_LOOKUP"),
+                    ai_search_done=True,
+                    rag_status="completed"
+                ))
+        except Exception as fast_err:
+            logger.debug(f"Fast external barcode fetch error: {fast_err}")
+
+    # 3. Trigger AI Web RAG Search only if:
+    # - Local DB search and fast barcode lookup returned NO matches
     # - AND search_web is requested and active AI key is configured
     # - AND global AI enrichment is NOT paused
     import os
@@ -2022,7 +2060,6 @@ async def search_master_catalog(
     pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
     ai_paused = os.path.exists(pause_file)
 
-    is_barcode_query = clean_query.isdigit() and len(clean_query) >= 8
     should_search_web = search_web or is_barcode_query
 
     if not results and should_search_web and not ai_paused and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):

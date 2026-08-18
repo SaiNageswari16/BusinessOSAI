@@ -1086,6 +1086,10 @@ class POSTransactionStatus(str, enum.Enum):
     COMPLETED = "completed"
     REFUNDED = "refunded"
     ON_HOLD = "on_hold"
+    PARTIALLY_PAID = "partially_paid"
+    CREDIT = "credit"
+    PENDING = "pending"
+    VOIDED = "voided"
 
 class POSTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "pos_transactions"
@@ -1095,7 +1099,7 @@ class POSTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     
     receipt_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
-    status: Mapped[POSTransactionStatus] = mapped_column(Enum(POSTransactionStatus, name="pos_transaction_status"), default=POSTransactionStatus.COMPLETED)
+    status: Mapped[str] = mapped_column(String(50), default="completed", index=True)
     
     parent_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_transactions.id", ondelete="SET NULL"))
     delivery_status: Mapped[str | None] = mapped_column(String(50))

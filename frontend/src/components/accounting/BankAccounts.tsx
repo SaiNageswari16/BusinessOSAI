@@ -6,10 +6,13 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { formatCurrency } from "@/lib/utils";
 
+import { getActiveCurrency } from "@/lib/utils";
+
 interface Props { tab?: string; }
 
 function fmt(n: number) {
-  return formatCurrency(n);
+  const curr = getActiveCurrency();
+  return `${curr.symbol}${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 const STATUS_COLORS: Record<string, string> = {

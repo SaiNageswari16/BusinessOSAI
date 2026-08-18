@@ -1636,6 +1636,7 @@ class POSProductResponse(BaseModel):
     brand: str | None
     sku: str | None
     barcode: str | None
+    hsn_code: str | None = None
     description: str | None
     image_url: str | None
     category_id: uuid.UUID | None
@@ -1644,12 +1645,15 @@ class POSProductResponse(BaseModel):
     mrp: float
     selling_price: float
     wholesale_price: float = 0.0
+    b2b_price: float = 0.0
     min_wholesale_qty: int = 1
     tax_percent: float
+    is_tax_inclusive: bool = True
     discount: float
     stock: int
     reorder_level: int
     is_active: bool
+    specifications: dict | list | None = None
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Search, Plus, Edit2, Archive, X, Download, Filter, Columns, ChevronLeft, ChevronRight, MoreVertical, RotateCcw } from "lucide-react";
-import { inventoryApi, InventoryBrand } from "../../lib/api-client";
+import { inventoryApi, InventoryBrand, resolveImageUrl } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -154,12 +154,7 @@ export function Brands() {
     setIsModalOpen(true);
   };
 
-  // Helper to resolve images
-  const resolveImageUrl = (url: string | undefined | null) => {
-    if (!url) return "";
-    if (url.startsWith('http')) return url;
-    return `http://localhost:8000${url}`;
-  };
+
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);

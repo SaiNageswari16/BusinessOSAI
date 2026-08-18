@@ -71,51 +71,6 @@ async def list_leave_requests(
             )
         )
 
-    # Auto-seed mock leave requests & balances if table is completely empty
-    if not items and page == 1:
-        emp = await db.scalar(select(Employee).where(Employee.tenant_id == ctx.tenant_id))
-        if emp:
-            balances = [
-                LeaveBalance(tenant_id=ctx.tenant_id, employee_id=emp.id, leave_type="Annual", total_days=18, used_days=4, balance=14),
-                LeaveBalance(tenant_id=ctx.tenant_id, employee_id=emp.id, leave_type="Sick", total_days=12, used_days=1, balance=11),
-                LeaveBalance(tenant_id=ctx.tenant_id, employee_id=emp.id, leave_type="Casual", total_days=6, used_days=2, balance=4),
-            ]
-            for bal in balances:
-                db.add(bal)
-            
-            requests = [
-                LeaveRequest(tenant_id=ctx.tenant_id, employee_id=emp.id, leave_type="Annual", from_date=date(2026, 7, 1), to_date=date(2026, 7, 5), days_requested=4, reason="Family trip", status="Approved", approved_by=ctx.user.id, approved_at=datetime.now(timezone.utc)),
-                LeaveRequest(tenant_id=ctx.tenant_id, employee_id=emp.id, leave_type="Sick", from_date=date(2026, 7, 10), to_date=date(2026, 7, 10), days_requested=1, reason="Fever recovery", status="Approved", approved_by=ctx.user.id, approved_at=datetime.now(timezone.utc)),
-                LeaveRequest(tenant_id=ctx.tenant_id, employee_id=emp.id, leave_type="Casual", from_date=date(2026, 7, 24), to_date=date(2026, 7, 25), days_requested=2, reason="Personal emergency", status="Pending"),
-            ]
-            for req in requests:
-                db.add(req)
-            await db.commit()
-
-            result = await db.execute(query.order_by(LeaveRequest.from_date.desc(), Employee.full_name.asc()))
-            items = []
-            for leave, emp, dept in result.all():
-                items.append(
-                    LeaveRequestResponse(
-                        id=leave.id,
-                        tenant_id=leave.tenant_id,
-                        employee_id=leave.employee_id,
-                        employee_name=emp.full_name,
-                        department=dept.name if dept else "N/A",
-                        leave_type=leave.leave_type,
-                        from_date=leave.from_date,
-                        to_date=leave.to_date,
-                        days_requested=leave.days_requested,
-                        reason=leave.reason,
-                        status=leave.status,
-                        approved_by=leave.approved_by,
-                        approved_at=leave.approved_at,
-                        created_at=leave.created_at,
-                        updated_at=leave.updated_at,
-                    )
-                )
-            total = len(items)
-
     return paginate(items, total or 0, page, page_size)
 
 
@@ -160,12 +115,13 @@ async def apply_leave(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     emp = await db.scalar(
-        select(Employee).where(Employee.user_id == ctx.user.id, Employee.tenant_id == ctx.tenant_id)
+        select(Employee).where(
+            (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+            Employee.tenant_id == ctx.tenant_id
+        )
     )
     if not emp:
-        emp = await db.scalar(select(Employee).where(Employee.tenant_id == ctx.tenant_id))
-        if not emp:
-            raise HTTPException(status_code=400, detail="No Employee profile linked to your user account")
+        raise HTTPException(status_code=400, detail="No Employee profile linked to your user account")
 
     bal = await db.scalar(
         select(LeaveBalance).where(

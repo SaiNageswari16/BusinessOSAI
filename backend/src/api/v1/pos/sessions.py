@@ -22,9 +22,9 @@ async def open_session(
     stmt = select(POSSession).where(
         POSSession.user_id == ctx.user.id,
         POSSession.status == POSSessionStatus.OPEN
-    )
+    ).order_by(POSSession.created_at.desc())
     result = await db.execute(stmt)
-    existing = result.scalar_one_or_none()
+    existing = result.scalars().first()
     if existing:
         raise HTTPException(status_code=400, detail="A session is already open for this user.")
 
@@ -52,7 +52,7 @@ async def close_session(
         POSSession.user_id == ctx.user.id
     )
     result = await db.execute(stmt)
-    session = result.scalar_one_or_none()
+    session = result.scalars().first()
     
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
@@ -79,9 +79,9 @@ async def get_current_session(
     stmt = select(POSSession).where(
         POSSession.user_id == ctx.user.id,
         POSSession.status == POSSessionStatus.OPEN
-    )
+    ).order_by(POSSession.created_at.desc())
     result = await db.execute(stmt)
-    session = result.scalar_one_or_none()
+    session = result.scalars().first()
     if not session:
-        raise HTTPException(status_code=404, detail="No open session found.")
+        raise HTTPException(status_code=404, detail="No active session found.")
     return session

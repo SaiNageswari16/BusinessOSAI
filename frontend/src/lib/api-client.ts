@@ -10,22 +10,53 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://12
 
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || url.trim() === "") return "";
-  // If it's already a full URL, return as-is
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  
+  // If it's already a data URL or blob
+  if (url.startsWith("data:") || url.startsWith("blob:")) return url;
 
   // Clean leading slash
   const cleanUrl = url.startsWith("/") ? url : `/${url}`;
 
-  // If it's an uploaded image or catalog image, route through API_BASE_URL
-  // ensuring Nginx on production forwards it to the FastAPI backend
-  if (cleanUrl.startsWith("/upload_images/") || cleanUrl.startsWith("/images/")) {
-    return `${API_BASE_URL}${cleanUrl}`;
+  // Determine backend origin
+  let backendOrigin = "";
+  if (API_BASE_URL.startsWith("http://") || API_BASE_URL.startsWith("https://")) {
+    try {
+      const parsedBase = new URL(API_BASE_URL);
+      backendOrigin = `${parsedBase.protocol}//${parsedBase.host}`;
+    } catch {
+      backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+    }
+  } else if (typeof window !== "undefined") {
+    // If API_BASE_URL is relative (e.g. /api/v1), use current window origin
+    backendOrigin = window.location.origin;
   }
 
-  // If it starts with /static/, serve from backend root
-  if (cleanUrl.startsWith("/static/")) {
-    const backendBase = API_BASE_URL.replace("/api/v1", "");
-    return `${backendBase}${cleanUrl}`;
+  // If it's an absolute URL
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    // If running in browser on a remote/production domain, but the URL points to localhost/127.0.0.1
+    if (typeof window !== "undefined" && !window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1")) {
+      try {
+        const parsed = new URL(url);
+        if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+          if (backendOrigin) {
+            return `${backendOrigin}${parsed.pathname}${parsed.search}`;
+          }
+          return `${parsed.pathname}${parsed.search}`;
+        }
+      } catch {}
+    }
+    return url;
+  }
+
+  // If backendOrigin is defined (e.g. http://15.207.227.85:8000), prefix it
+  if (backendOrigin) {
+    // If backend is on a separate port or origin, route directly to the backend
+    return `${backendOrigin}${cleanUrl}`;
+  }
+
+  // Default fallback: if behind Nginx proxy, route through /api/v1
+  if (cleanUrl.startsWith("/upload_images/") || cleanUrl.startsWith("/images/")) {
+    return `/api/v1${cleanUrl}`;
   }
 
   return cleanUrl;

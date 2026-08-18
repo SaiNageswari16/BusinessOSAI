@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2 } from "lucide-react";
+import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle } from "lucide-react";
 
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -48,6 +48,7 @@ const LOCAL_COLUMNS = [
   { id: "mrp", label: "MRP" },
   { id: "selling_price", label: "Retail Selling Price" },
   { id: "wholesale_price", label: "Wholesale Price" },
+  { id: "b2b_price", label: "B2B Price" },
   { id: "min_wholesale_qty", label: "Min Wholesale Qty" },
   { id: "tax_percent", label: "Tax (%)" },
   { id: "initial_stock", label: "Stock" },
@@ -67,6 +68,7 @@ const MASTER_COLUMNS = [
   { id: "mrp", label: "MRP" },
   { id: "selling_price", label: "Retail Price" },
   { id: "wholesale_price", label: "Wholesale Price" },
+  { id: "b2b_price", label: "B2B Price" },
   { id: "specifications", label: "Specifications" },
   { id: "source", label: "Source" },
 ];
@@ -100,7 +102,7 @@ const defaultFormData = () => ({
 
 
 
-const localVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "selling_price", "wholesale_price", "min_wholesale_qty", "initial_stock", "status"];
+const localVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "selling_price", "wholesale_price", "b2b_price", "min_wholesale_qty", "initial_stock", "status"];
 const masterVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "selling_price", "source"];
 
 // ── Column menu sub-component ───────────────────────────────────────
@@ -269,13 +271,13 @@ function BarcodePrintDrawer({
       document.head.appendChild(styleEl);
     }
 
-    let pageCss = "@page { size: 50mm 25mm portrait !important; margin: 0mm !important; }";
+    let pageCss = "@page { size: 50mm 25mm; margin: 0mm !important; }";
     if (layout === "2up") {
-      pageCss = "@page { size: 100mm 25mm portrait !important; margin: 0mm !important; }";
+      pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
     } else if (layout === "3up") {
-      pageCss = "@page { size: 114mm 25mm portrait !important; margin: 0mm !important; }";
+      pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
     } else if (layout === "a4") {
-      pageCss = "@page { size: A4 portrait !important; margin: 5mm !important; }";
+      pageCss = "@page { size: A4 portrait; margin: 4mm !important; }";
     }
 
     styleEl.innerHTML = `
@@ -286,6 +288,8 @@ function BarcodePrintDrawer({
           padding: 0 !important;
           background: #ffffff !important;
           width: 100% !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
         body > *:not(#printable-barcode-portal) {
           display: none !important;
@@ -303,6 +307,10 @@ function BarcodePrintDrawer({
         }
         #printable-barcode-portal * {
           visibility: visible !important;
+        }
+        .barcode-print-cell {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
         }
       }
     `;
@@ -435,9 +443,9 @@ function BarcodePrintDrawer({
       {/* Printable Portal */}
       {typeof document !== "undefined" && createPortal(
         <div id="printable-barcode-portal" className="hidden print:block text-black bg-white p-0">
-          <div className={`grid ${gridClass} gap-2 w-full p-2`}>
+          <div className={`grid ${gridClass} gap-1.5 w-full p-0.5 box-border`}>
             {printItems.map((item, idx) => (
-              <div key={idx} className="h-[24mm]">
+              <div key={idx} className="barcode-print-cell h-[24mm] max-h-[24mm] box-border overflow-hidden">
                 <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
               </div>
             ))}
@@ -825,9 +833,7 @@ export function Products() {
   const localBarcodes = useMemo(() => new Set(products.map(p => p.barcode).filter(Boolean)), [products]);
   const localNames = useMemo(() => new Set(products.map(p => p.name.toLowerCase())), [products]);
   const localSkus = useMemo(() => new Set(products.map(p => p.sku?.toLowerCase()).filter(Boolean) as string[]), [products]);
-  const uniqueMasterResults = masterResults.filter(m =>
-    (!m.barcode || !localBarcodes.has(m.barcode)) && !localNames.has(m.name.toLowerCase())
-  );
+  const uniqueMasterResults = masterResults;
 
   // ── Phase 2: Exact-match priority: check barcode/SKU first ───────
   const checkExactMatch = (query: string): InventoryProduct | null => {
@@ -959,6 +965,18 @@ export function Products() {
     loadData(search);
   }, [tenant?.id, currentPage, pageSize, sortBy, sortOrder]);
 
+  useEffect(() => {
+    const handleInventoryChange = () => {
+      loadData(search);
+    };
+    window.addEventListener("inventory_updated", handleInventoryChange);
+    window.addEventListener("pos_invoices_updated", handleInventoryChange);
+    return () => {
+      window.removeEventListener("inventory_updated", handleInventoryChange);
+      window.removeEventListener("pos_invoices_updated", handleInventoryChange);
+    };
+  }, [search, currentPage, pageSize, sortBy, sortOrder]);
+
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -992,7 +1010,32 @@ export function Products() {
       const timer = setTimeout(async () => {
         setIsSearchingMaster(true);
         try {
-          const isBarcode = /^\d{8,}$/.test(cleanSearch.trim());
+          const isBarcode = /^\d{4,}$/.test(cleanSearch);
+          if (isBarcode) {
+            try {
+              const fastRes = await inventoryApi.lookupProductByBarcode(cleanSearch);
+              if (fastRes?.success && fastRes?.product?.name) {
+                const p = fastRes.product;
+                setMasterResults([{
+                  id: p.id,
+                  name: p.name,
+                  barcode: p.barcode || cleanSearch,
+                  sku_code: p.sku || `SKU-${cleanSearch}`,
+                  brand_name: p.brand || "",
+                  category_name: p.category || "General",
+                  mrp: p.mrp || 0,
+                  sale_price: p.selling_price || 0,
+                  wholesale_price: (p as any).wholesale_price || 0,
+                  b2b_price: (p as any).b2b_price || 0,
+                  image_url: p.image || "/static/uploads/products/default_product.jpg",
+                  source: p.source || "DATABASE"
+                }]);
+                return;
+              }
+            } catch (fastErr) {
+              console.debug("Debounced barcode lookup fallback:", fastErr);
+            }
+          }
           const res = await inventoryApi.searchMasterCatalog(cleanSearch, isBarcode, "auto");
           setMasterResults(res || []);
         } catch (err: any) {
@@ -1010,21 +1053,7 @@ export function Products() {
   const handleSelectSuggestion = async (sug: string) => {
     setSearch(sug);
     setShowSuggestions(false);
-    setIsSearchingMaster(true);
-    setSearchError(null);
-    setExactMatch(null);
-    setMasterResults([]);
-    try {
-      const isBarcode = /^\d{8,}$/.test(sug.trim());
-      const res = await inventoryApi.searchMasterCatalog(sug, isBarcode, "auto");
-      setMasterResults(res || []);
-      if (res?.length) toast.success(`Found ${res.length} result(s)`);
-    } catch (err: any) {
-      console.error("Search failed:", err);
-      setSearchError(err.detail || err.message || "Search failed.");
-    } finally {
-      setIsSearchingMaster(false);
-    }
+    triggerMasterSearch(sug);
   };
 
   // ── Product CRUD ─────────────────────────────────────────────────
@@ -1097,7 +1126,7 @@ export function Products() {
       selling_price: product.selling_price || 0,
       wholesale_price: product.wholesale_price || specs.wholesale_price || 0,
       min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || 1,
-      b2b_price: specs.b2b_price || 0,
+      b2b_price: product.b2b_price || specs.b2b_price || 0,
       min_b2b_qty: specs.min_b2b_qty || 1,
       distributor_price: specs.distributor_price || 0,
       min_distributor_qty: specs.min_distributor_qty || 1,
@@ -1145,7 +1174,7 @@ export function Products() {
       selling_price: product.selling_price || 0,
       wholesale_price: product.wholesale_price || specs.wholesale_price || 0,
       min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || 1,
-      b2b_price: specs.b2b_price || 0,
+      b2b_price: product.b2b_price || specs.b2b_price || 0,
       min_b2b_qty: specs.min_b2b_qty || 1,
       distributor_price: specs.distributor_price || 0,
       min_distributor_qty: specs.min_distributor_qty || 1,
@@ -1474,27 +1503,105 @@ export function Products() {
     loadData();
   };
 
+  const triggerMasterSearch = async (overrideQuery?: string) => {
+    const q = (overrideQuery !== undefined ? overrideQuery : search).trim();
+    if (q.length < 2) return;
+    setIsSearchingMaster(true);
+    setShowSuggestions(false);
+    setSearchError(null);
+    try {
+      const isBarcode = /^\d{4,}$/.test(q);
+
+      // If typed query is a barcode, first call fast dedicated barcode lookup endpoint (identical to scanner)
+      if (isBarcode) {
+        try {
+          const fastRes = await inventoryApi.lookupProductByBarcode(q);
+          if (fastRes?.success && fastRes?.product?.name) {
+            const p = fastRes.product;
+            setMasterResults([{
+              id: p.id,
+              name: p.name,
+              barcode: p.barcode || q,
+              sku_code: p.sku || `SKU-${q}`,
+              brand_name: p.brand || "",
+              category_name: p.category || "General",
+              mrp: p.mrp || 0,
+              sale_price: p.selling_price || 0,
+              wholesale_price: (p as any).wholesale_price || 0,
+              b2b_price: (p as any).b2b_price || 0,
+              image_url: p.image || "/static/uploads/products/default_product.jpg",
+              source: p.source || "DATABASE"
+            }]);
+            setIsSearchingMaster(false);
+            toast.success(`Found product: ${p.name}`);
+            return;
+          }
+        } catch (fastErr) {
+          console.debug("Fast barcode lookup fallback:", fastErr);
+        }
+      }
+
+      const res = await inventoryApi.searchMasterCatalog(q, isBarcode || true, "auto");
+      setMasterResults(res || []);
+      if (res?.length) toast.success(`Found ${res.length} result(s) in catalog`);
+      else toast.info(`No products found for "${q}"`);
+    } catch (err: any) {
+      console.error("Master search failed:", err);
+      setSearchError(err.detail || err.message || "Search failed.");
+    } finally {
+      setIsSearchingMaster(false);
+    }
+  };
+
   // ── Search bar renderer ─────────────────────────────────────────
   const renderSearchBar = () => (
-    <div className="relative flex-1 max-w-sm" ref={suggestionsRef}>
-      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-      <input
-        value={search} onChange={(e) => { setSearch(e.target.value); if (activeTab === "catalog") setShowSuggestions(true); setExactMatch(null); }}
-        onFocus={() => { if (activeTab === "catalog") setShowSuggestions(true); }}
-        placeholder={activeTab === "inventory"
-          ? "Search inventory by name, SKU, or Barcode..."
-          : "Search master catalog..."}
-        className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
-      />
+    <div className="relative flex-1 max-w-md flex items-center gap-2" ref={suggestionsRef}>
+      <div className="relative flex-1">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            if (activeTab === "catalog") setShowSuggestions(true);
+            setExactMatch(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              if (activeTab === "catalog") {
+                triggerMasterSearch();
+              }
+            }
+          }}
+          onFocus={() => { if (activeTab === "catalog") setShowSuggestions(true); }}
+          placeholder={activeTab === "inventory"
+            ? "Search inventory by name, SKU, or Barcode..."
+            : "Search master catalog / barcode (Press Enter)..."}
+          className="w-full h-10 pl-9 pr-8 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
+        />
+        {isSearchingMaster && (
+          <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 animate-spin text-indigo-600" />
+        )}
+      </div>
+      {activeTab === "catalog" && (
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => triggerMasterSearch()}
+          disabled={isSearchingMaster || search.trim().length < 2}
+          className="h-10 px-4 gradient-brand text-white border-0 font-bold"
+        >
+          {isSearchingMaster ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4 mr-1" />} Search
+        </Button>
+      )}
       {/* ── Suggestions dropdown (Only on Master Catalog tab) ── */}
       {activeTab === "catalog" && showSuggestions && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+        <div className="absolute left-0 right-0 top-12 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
           <div className="text-[10px] font-bold text-slate-400 px-3 py-1.5 bg-slate-50/50 uppercase border-b border-slate-100">
             Sourcing Suggestions
           </div>
           <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
             {suggestions.map((sug, idx) => (
-              <button key={idx} type="button" onClick={() => handleSelectSuggestion(sug)}
+              <button key={idx} type="button" onClick={() => { setSearch(sug); triggerMasterSearch(sug); }}
                 className="w-full text-left px-4 py-2.5 text-xs font-semibold hover:bg-slate-50 text-slate-700 flex items-center gap-2">
                 <Sparkles className="size-3 text-indigo-500 shrink-0" />
                 <span className="truncate">{sug}</span>
@@ -2480,6 +2587,10 @@ export function Products() {
             return <td key="selling_price" className="px-6 py-4">{formatCurrency(product.selling_price)}</td>;
           case "wholesale_price":
             return <td key="wholesale_price" className="px-6 py-4 text-emerald-700 font-semibold">{formatCurrency((product as any).wholesale_price || 0)}</td>;
+          case "b2b_price": {
+            const bVal = (product as any).b2b_price ?? (product as any).specifications?.b2b_price ?? 0;
+            return <td key="b2b_price" className="px-6 py-4 text-indigo-700 font-semibold">{formatCurrency(bVal)}</td>;
+          }
           case "min_wholesale_qty":
             return <td key="min_wholesale_qty" className="px-6 py-4 text-xs font-mono">{(product as any).min_wholesale_qty || 1} pcs</td>;
           case "tax_percent":
@@ -2573,6 +2684,10 @@ export function Products() {
               return <td key="selling_price" className="px-6 py-4 text-indigo-800">{formatCurrency(item.sale_price)}</td>;
             case "wholesale_price":
               return <td key="wholesale_price" className="px-6 py-4 text-indigo-800">{formatCurrency(item.wholesale_price || 0)}</td>;
+            case "b2b_price": {
+              const bVal = (item as any).b2b_price ?? (item as any).specifications?.b2b_price ?? 0;
+              return <td key="b2b_price" className="px-6 py-4 text-indigo-800 font-semibold">{formatCurrency(bVal)}</td>;
+            }
             case "specifications":
               return <td key="specifications" className="px-6 py-4 text-xs text-indigo-800 max-w-xs truncate">{item.specifications || '-'}</td>;
             case "source":
@@ -2588,10 +2703,16 @@ export function Products() {
           }
         })}
         <td className="px-6 py-4 text-right">
-          <Button variant="default" size="sm" className="h-7 text-[11px] font-bold"
-            onClick={() => setPreviewItem(item)}>
-            <ShoppingCart className="size-3 mr-1" /> Import
-          </Button>
+          {(item.barcode && localBarcodes.has(item.barcode)) || localNames.has(item.name.toLowerCase()) ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+              <CheckCircle className="size-3" /> In Inventory
+            </span>
+          ) : (
+            <Button variant="default" size="sm" className="h-7 text-[11px] font-bold"
+              onClick={() => setPreviewItem(item)}>
+              <ShoppingCart className="size-3 mr-1" /> Import
+            </Button>
+          )}
         </td>
       </tr>
     );

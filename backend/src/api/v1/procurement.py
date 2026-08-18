@@ -1040,6 +1040,11 @@ async def create_goods_received_note(
         await db.flush()
         
         prod = await db.get(Product, it.product_id)
+        if prod:
+            add_qty = float(it.quantity_accepted if it.quantity_accepted is not None else it.quantity_received)
+            curr_stock = prod.initial_stock if prod.initial_stock is not None else 0
+            prod.initial_stock = int(curr_stock + add_qty)
+
         from src.schemas.procurement import GoodsReceivedNoteItemResponse
         created_items.append(
             GoodsReceivedNoteItemResponse(
@@ -1151,6 +1156,11 @@ async def create_purchase_return(
         await db.flush()
         
         prod = await db.get(Product, it.product_id)
+        if prod:
+            ret_qty = float(it.quantity_returned or 0)
+            curr_stock = prod.initial_stock if prod.initial_stock is not None else 0
+            prod.initial_stock = int(curr_stock - ret_qty)
+
         from src.schemas.procurement import PurchaseReturnItemResponse
         created_items.append(
             PurchaseReturnItemResponse(

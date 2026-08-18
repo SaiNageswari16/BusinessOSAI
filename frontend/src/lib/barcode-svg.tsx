@@ -32,10 +32,14 @@ export interface ProductBarcodeLike {
  * Gs1Ean13Svg — Genuine GS1 EAN-13 Barcode with extending guard bars and dual-grouped digits.
  * Matches physical FMCG packaging standard (e.g. 8 904358 601259).
  */
+/**
+ * Gs1Ean13Svg — Genuine GS1 EAN-13 Barcode with extending guard bars and dual-grouped digits.
+ * Strict ISO/IEC 15420 geometry: zero text overlap, proper quiet zones, crisp high contrast.
+ */
 export function Gs1Ean13Svg({
   code,
-  height = 54,
-  unitPx = 2,
+  height = 52,
+  unitPx = 1.8,
 }: {
   code: string;
   height?: number;
@@ -45,9 +49,9 @@ export function Gs1Ean13Svg({
     return encodeEAN13Structured(code || "8904358601259");
   }, [code]);
 
-  const unit = Math.max(1.8, unitPx);
-  const leftQuietWidth = 14 * unit; // 11 modules quiet zone + 1st digit room
-  const rightQuietWidth = 10 * unit; // 7 modules quiet zone
+  const unit = Math.max(1.5, unitPx);
+  const leftQuietWidth = Math.round(11 * unit); // 11 modules quiet zone
+  const rightQuietWidth = Math.round(8 * unit);  // 7 modules quiet zone
 
   let totalBarModules = 0;
   structured.allBars.forEach((b) => (totalBarModules += b.width));
@@ -55,8 +59,12 @@ export function Gs1Ean13Svg({
   const barsWidth = totalBarModules * unit;
   const svgWidth = Math.round(leftQuietWidth + barsWidth + rightQuietWidth);
 
-  const barHeight = Math.max(28, height - 16);
-  const guardHeight = barHeight + 5; // Guard bars extend 5px lower past digit baseline
+  // Exact vertical zone distribution to prevent ANY bar-text collision
+  const fontSize = Math.max(7.5, Math.min(10, Math.round(height * 0.20)));
+  const textBaseline = height - 1.5;
+  const barTop = 1;
+  const dataBarHeight = Math.max(16, Math.round(height - fontSize - 5));
+  const guardBarHeight = Math.min(height - 2, dataBarHeight + Math.round(fontSize * 0.35));
 
   return (
     <div className="flex flex-col items-center justify-center bg-white p-0 rounded overflow-hidden select-none">
@@ -66,15 +74,15 @@ export function Gs1Ean13Svg({
         shapeRendering="crispEdges"
         style={{ display: "block", background: "#ffffff" }}
       >
-        {/* Crisp White Background */}
+        {/* Crisp Pure White Background */}
         <rect width={svgWidth} height={height} fill="#ffffff" />
 
-        {/* 1st Leading Digit (outside left guard) */}
+        {/* 1st Leading Digit (rendered outside left guard in the quiet zone) */}
         <text
-          x={leftQuietWidth - 4 * unit}
-          y={height - 2}
+          x={Math.max(2, leftQuietWidth - 4 * unit)}
+          y={textBaseline}
           textAnchor="middle"
-          fontSize="11"
+          fontSize={fontSize}
           fontFamily="'OCR-B', 'Courier New', monospace"
           fontWeight="bold"
           fill="#000000"
@@ -86,19 +94,20 @@ export function Gs1Ean13Svg({
         {(() => {
           let xModules = 0;
           return structured.allBars.map((b, i) => {
-            const xPx = leftQuietWidth + xModules * unit;
-            const wPx = b.width * unit;
+            const x1 = Math.round(leftQuietWidth + xModules * unit);
+            const x2 = Math.round(leftQuietWidth + (xModules + b.width) * unit);
+            const wPx = Math.max(1, x2 - x1);
             xModules += b.width;
 
             if (!b.isBlack) return null;
 
-            const h = b.isGuard ? guardHeight : barHeight;
+            const h = b.isGuard ? guardBarHeight : dataBarHeight;
             return (
               <rect
                 key={i}
-                x={Math.round(xPx)}
-                y={2}
-                width={Math.max(1, Math.round(wPx))}
+                x={x1}
+                y={barTop}
+                width={wPx}
                 height={h}
                 fill="#000000"
               />
@@ -106,40 +115,40 @@ export function Gs1Ean13Svg({
           });
         })()}
 
-        {/* Left 6 Digits (centered under left half) */}
+        {/* Left 6 Digits (centered strictly in the quiet gap under left half) */}
         <text
-          x={leftQuietWidth + 24 * unit}
-          y={height - 2}
+          x={Math.round(leftQuietWidth + 24 * unit)}
+          y={textBaseline}
           textAnchor="middle"
-          fontSize="11"
+          fontSize={fontSize}
           fontFamily="'OCR-B', 'Courier New', monospace"
           fontWeight="bold"
-          letterSpacing="1px"
+          letterSpacing="0.8px"
           fill="#000000"
         >
           {structured.leftDigits}
         </text>
 
-        {/* Right 6 Digits (centered under right half) */}
+        {/* Right 6 Digits (centered strictly in the quiet gap under right half) */}
         <text
-          x={leftQuietWidth + 72 * unit}
-          y={height - 2}
+          x={Math.round(leftQuietWidth + 71 * unit)}
+          y={textBaseline}
           textAnchor="middle"
-          fontSize="11"
+          fontSize={fontSize}
           fontFamily="'OCR-B', 'Courier New', monospace"
           fontWeight="bold"
-          letterSpacing="1px"
+          letterSpacing="0.8px"
           fill="#000000"
         >
           {structured.rightDigits}
         </text>
 
-        {/* Right Quiet Zone Mark (">") */}
+        {/* Right Quiet Zone Indicator (">") */}
         <text
-          x={svgWidth - 4}
-          y={height - 2}
+          x={svgWidth - 3}
+          y={textBaseline}
           textAnchor="middle"
-          fontSize="9"
+          fontSize={Math.max(6.5, fontSize - 1.5)}
           fontFamily="monospace"
           fontWeight="bold"
           fill="#666666"
@@ -153,12 +162,13 @@ export function Gs1Ean13Svg({
 
 /**
  * Code128Svg — Hardware-Scannable ISO/IEC 15417 Code 128
+ * Guaranteed clear margin above text baseline for flawless laser gun recognition.
  */
 export function Code128Svg({
   code,
-  width = 220,
+  width = 200,
   height = 50,
-  unitPx = 2,
+  unitPx = 1.8,
 }: {
   code: string;
   width?: number;
@@ -166,15 +176,19 @@ export function Code128Svg({
   unitPx?: number;
 }) {
   const bars = useMemo(() => encodeCode128(code || "SN-2026-0001"), [code]);
-  const unit = Math.max(1.8, unitPx);
-  const quietZone = 16;
+  const unit = Math.max(1.5, unitPx);
+  const quietZone = Math.round(12 * unit);
 
   let totalModules = 0;
   bars.forEach((b) => (totalModules += b.width));
 
   const contentWidth = totalModules * unit;
   const svgWidth = Math.max(width, Math.round(contentWidth + quietZone * 2));
-  const barHeight = Math.max(26, height - 15);
+
+  const fontSize = Math.max(7.5, Math.min(9.5, Math.round(height * 0.18)));
+  const textBaseline = height - 1.5;
+  const barTop = 1;
+  const barHeight = Math.max(16, Math.round(height - fontSize - 4));
 
   return (
     <div className="flex flex-col items-center justify-center bg-white p-0 rounded overflow-hidden select-none">
@@ -188,16 +202,17 @@ export function Code128Svg({
         {(() => {
           let xModules = 0;
           return bars.map((b, i) => {
-            const xPx = quietZone + xModules * unit;
-            const wPx = b.width * unit;
+            const x1 = Math.round(quietZone + xModules * unit);
+            const x2 = Math.round(quietZone + (xModules + b.width) * unit);
+            const wPx = Math.max(1, x2 - x1);
             xModules += b.width;
             if (!b.isBlack) return null;
             return (
               <rect
                 key={i}
-                x={Math.round(xPx)}
-                y={2}
-                width={Math.max(1, Math.round(wPx))}
+                x={x1}
+                y={barTop}
+                width={wPx}
                 height={barHeight}
                 fill="#000000"
               />
@@ -205,16 +220,16 @@ export function Code128Svg({
           });
         })()}
         <text
-          x={svgWidth / 2}
-          y={height - 2}
+          x={Math.round(svgWidth / 2)}
+          y={textBaseline}
           textAnchor="middle"
-          fontSize="10"
+          fontSize={fontSize}
           fontFamily="'Courier New', monospace"
           fontWeight="bold"
-          letterSpacing="1px"
+          letterSpacing="0.8px"
           fill="#000000"
         >
-          *{code}*
+          {code}
         </text>
       </svg>
     </div>
@@ -226,9 +241,9 @@ export function Code128Svg({
  */
 export function RealBarcodeSvg({
   code,
-  width = 220,
-  height = 54,
-  unitPx = 2,
+  width = 200,
+  height = 50,
+  unitPx = 1.8,
 }: {
   code: string;
   format?: string;
@@ -342,7 +357,7 @@ export function SingleBarcodeLabelCard({
   return (
     <div
       className={`bg-white text-black border border-slate-300 rounded ${
-        isPrint ? "p-1.5 h-[24mm]" : "p-2.5 min-h-[210px]"
+        isPrint ? "p-1 h-[24mm] max-h-[24mm] w-full" : "p-2.5 min-h-[190px]"
       } flex flex-col justify-between font-sans shadow-sm select-none overflow-hidden box-border`}
     >
       {/* Company Header */}
@@ -369,10 +384,10 @@ export function SingleBarcodeLabelCard({
       )}
 
       {/* Product Name & Pricing */}
-      <div>
+      <div className="min-w-0">
         {f.showProductName && (
           <h4
-            className={`font-extrabold leading-tight text-slate-900 line-clamp-1 ${
+            className={`font-extrabold leading-tight text-slate-900 line-clamp-1 truncate ${
               isPrint ? "text-[8.5px]" : "text-[11px]"
             }`}
           >
@@ -414,12 +429,12 @@ export function SingleBarcodeLabelCard({
 
       {/* Barcode Graphic (Hardware Scannable EAN-13 / Code-128) */}
       {f.showBarcodeGraphic && item.barcode && (
-        <div className="mt-0.5 flex justify-center">
+        <div className="mt-auto pt-0.5 flex justify-center w-full overflow-hidden">
           <RealBarcodeSvg
             code={item.barcode}
-            width={isPrint ? 170 : 220}
-            height={isPrint ? 36 : 52}
-            unitPx={isPrint ? 1.8 : 2}
+            width={200}
+            height={isPrint ? 48 : 52}
+            unitPx={1.8}
           />
         </div>
       )}
