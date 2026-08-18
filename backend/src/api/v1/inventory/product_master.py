@@ -794,6 +794,8 @@ async def create_product(
             existing_prod.purchase_price = data["purchase_price"]
         if data.get("wholesale_price") is not None:
             existing_prod.wholesale_price = data["wholesale_price"]
+        if data.get("b2b_price") is not None:
+            existing_prod.b2b_price = data["b2b_price"]
         if data.get("min_wholesale_qty") is not None:
             existing_prod.min_wholesale_qty = data["min_wholesale_qty"]
         if data.get("tax_percent") is not None:
@@ -1125,6 +1127,7 @@ async def master_import_products(
             mrp=item.mrp,
             selling_price=item.selling_price,
             wholesale_price=item.wholesale_price or 0.0,
+            b2b_price=item.b2b_price or 0.0,
             min_wholesale_qty=item.min_wholesale_qty or 1,
             tax_percent=item_tax,
             is_tax_inclusive=item.is_tax_inclusive if item.is_tax_inclusive is not None else True,

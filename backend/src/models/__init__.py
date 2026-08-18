@@ -1086,6 +1086,10 @@ class POSTransactionStatus(str, enum.Enum):
     COMPLETED = "completed"
     REFUNDED = "refunded"
     ON_HOLD = "on_hold"
+    PARTIALLY_PAID = "partially_paid"
+    CREDIT = "credit"
+    PENDING = "pending"
+    VOIDED = "voided"
 
 class POSTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "pos_transactions"

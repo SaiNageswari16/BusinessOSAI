@@ -432,9 +432,9 @@ export function SingleBarcodeLabelCard({
         <div className="mt-auto pt-0.5 flex justify-center w-full overflow-hidden">
           <RealBarcodeSvg
             code={item.barcode}
-            width={isPrint ? 160 : 200}
-            height={isPrint ? 40 : 52}
-            unitPx={isPrint ? 1.5 : 1.8}
+            width={200}
+            height={isPrint ? 48 : 52}
+            unitPx={1.8}
           />
         </div>
       )}

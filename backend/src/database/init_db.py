@@ -60,9 +60,14 @@ async def init_database() -> None:
             "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS qc_status VARCHAR(50) DEFAULT 'Passed';",
             "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS barcode VARCHAR(100);",
             "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC(10, 2) DEFAULT 0;",
+            "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS b2b_price NUMERIC(10, 2) DEFAULT 0;",
             "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT TRUE;",
             "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS specifications JSONB DEFAULT '{}'::jsonb;",
             "ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS specifications TEXT;",
+            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'partially_paid';",
+            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'credit';",
+            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'pending';",
+            "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'voided';",
             "UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com';",
             """
             UPDATE erp_inventory_batches b

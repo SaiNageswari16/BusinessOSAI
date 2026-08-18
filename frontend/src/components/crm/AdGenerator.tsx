@@ -6,7 +6,7 @@ import {
   RefreshCw, Unlink, ExternalLink, ChevronRight, AlertTriangle, Shield,
   ThumbsUp, ThumbsDown, Megaphone, Layers, TrendingUp
 } from "lucide-react";
-import { crmCampaignsApi, crmLeadsApi, paidAdsApi, assetLibraryApi } from "@/lib/api-client";
+import { crmCampaignsApi, crmLeadsApi, paidAdsApi, assetLibraryApi, resolveImageUrl } from "@/lib/api-client";
 import PaidCampaignBuilder from "./PaidCampaignBuilder";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -165,14 +165,14 @@ export function AdGenerator() {
   };
 
   // App config
-  const [fbAppForm, setFbAppForm] = useState({ app_id: "", app_secret: "", redirect_uri: "http://localhost:8000/api/v1/crm/facebook/oauth-callback" });
+  const [fbAppForm, setFbAppForm] = useState({ app_id: "", app_secret: "", redirect_uri: typeof window !== "undefined" ? `${window.location.origin}/api/v1/crm/facebook/oauth-callback` : "http://localhost:8000/api/v1/crm/facebook/oauth-callback" });
   const loadFbAppConfig = async () => {
     try {
       const config = await crmLeadsApi.getFbAppConfig();
       setFbAppForm({
         app_id: config.app_id || "",
         app_secret: "",
-        redirect_uri: config.redirect_uri || "http://localhost:8000/api/v1/crm/facebook/oauth-callback",
+        redirect_uri: config.redirect_uri || (typeof window !== "undefined" ? `${window.location.origin}/api/v1/crm/facebook/oauth-callback` : "http://localhost:8000/api/v1/crm/facebook/oauth-callback"),
       });
     } catch { /* silent */ }
   };
@@ -197,7 +197,7 @@ export function AdGenerator() {
     try {
       await crmLeadsApi.deleteFbAppConfig();
       await refreshFbStatus();
-      setFbAppForm({ app_id: "", app_secret: "", redirect_uri: "http://localhost:8000/api/v1/crm/facebook/oauth-callback" });
+      setFbAppForm({ app_id: "", app_secret: "", redirect_uri: typeof window !== "undefined" ? `${window.location.origin}/api/v1/crm/facebook/oauth-callback` : "http://localhost:8000/api/v1/crm/facebook/oauth-callback" });
       toast.success("Meta App credentials removed.");
     } catch { toast.error("Failed to delete credentials."); }
   };
@@ -258,6 +258,13 @@ export function AdGenerator() {
     toast.success(`Loaded "${asset.filename}". You can now republish or relaunch.`);
   };
 
+  const getDefaultRedirectUri = () => {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/api/v1/crm/facebook/oauth-callback`;
+    }
+    return "http://localhost:8000/api/v1/crm/facebook/oauth-callback";
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -265,27 +272,6 @@ export function AdGenerator() {
     const reader = new FileReader();
     reader.onloadend = () => setRefImageBase64(reader.result as string);
     reader.readAsDataURL(file);
-  };
-
-  // ── Helper: Resolve image URL to point to the correct backend origin ──────────
-  const resolveImageUrl = (url: string): string => {
-    if (!url) return url;
-    // Get backend base URL from env (e.g. http://localhost:8001/api/v1)
-    const apiBase = import.meta.env.VITE_API_BASE_URL as string || "http://localhost:8001/api/v1";
-    const backendOrigin = apiBase.replace(/\/api\/v1.*$/, ""); // e.g. http://localhost:8001
-    // If it's a relative /images/... path, prefix with backend origin
-    if (url.startsWith("/images/")) {
-      return `${backendOrigin}${url}`;
-    }
-    // If it has a wrong port (e.g. :8000), replace with the correct origin
-    if (url.includes("localhost:") || url.includes("127.0.0.1:")) {
-      const urlObj = new URL(url);
-      const correctUrl = new URL(backendOrigin);
-      urlObj.hostname = correctUrl.hostname;
-      urlObj.port = correctUrl.port;
-      return urlObj.toString();
-    }
-    return url;
   };
 
   // ── STEP 1a: Optimize Prompt ────────────────────────────────────────────────

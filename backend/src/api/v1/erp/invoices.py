@@ -360,17 +360,46 @@ async def create_invoice(
         db.add(line)
 
         # Real-time stock & batch deduction across inventory
-        item_id = line_dict.get("item_id")
-        if item_id:
+        target_product_id = line_dict.get("product_id") or line_dict.get("item_id")
+        prod = None
+        if target_product_id:
             try:
+                # Convert string to UUID if possible
+                valid_uid = uuid.UUID(str(target_product_id)) if isinstance(target_product_id, str) else target_product_id
                 prod_res = await db.execute(
-                    select(Product).where(Product.id == item_id, Product.tenant_id == ctx.tenant_id).with_for_update()
+                    select(Product).where(Product.id == valid_uid, Product.tenant_id == ctx.tenant_id).with_for_update()
                 )
                 prod = prod_res.scalar_one_or_none()
-                if prod:
-                    if prod.initial_stock is None:
-                        prod.initial_stock = 0
-                    prod.initial_stock = max(0, prod.initial_stock - int(qty))
+            except Exception as e:
+                logger.debug(f"Direct product ID lookup failed: {e}")
+
+        # Fallback: lookup by barcode/SKU or product name if ID didn't resolve
+        if not prod:
+            sku_or_barcode = line_dict.get("product_sku") or line_dict.get("sku") or line_dict.get("barcode")
+            prod_name = line_dict.get("product_name")
+            if sku_or_barcode:
+                prod_res = await db.execute(
+                    select(Product).where(
+                        (Product.barcode == str(sku_or_barcode)) | (Product.sku == str(sku_or_barcode)),
+                        Product.tenant_id == ctx.tenant_id
+                    ).with_for_update()
+                )
+                prod = prod_res.scalar_one_or_none()
+            if not prod and prod_name:
+                prod_res = await db.execute(
+                    select(Product).where(
+                        Product.name.ilike(prod_name.strip()),
+                        Product.tenant_id == ctx.tenant_id
+                    ).with_for_update()
+                )
+                prod = prod_res.scalar_one_or_none()
+
+        if prod:
+            try:
+                line.product_id = prod.id
+                current_stk = prod.initial_stock if prod.initial_stock is not None else 0
+                # Directly reduce stock (allowing negative count for backorder tracking / supplier purchase replenishment)
+                prod.initial_stock = int(current_stk - qty)
 
                 # Real-time Batch stock deduction
                 batch_no = line_dict.get("batch_number")
@@ -381,7 +410,7 @@ async def create_invoice(
                     ).with_for_update()
                 else:
                     b_stmt = select(InventoryBatch).where(
-                        InventoryBatch.product_id == item_id,
+                        InventoryBatch.product_id == prod.id,
                         InventoryBatch.tenant_id == ctx.tenant_id,
                         InventoryBatch.remaining_quantity > 0
                     ).order_by(InventoryBatch.expiry_date.asc().nullslast()).with_for_update()
@@ -389,7 +418,8 @@ async def create_invoice(
                 b_res = await db.execute(b_stmt)
                 b_match = b_res.scalars().first()
                 if b_match:
-                    b_match.remaining_quantity = max(0, b_match.remaining_quantity - int(qty))
+                    curr_batch_stk = b_match.remaining_quantity if b_match.remaining_quantity is not None else 0
+                    b_match.remaining_quantity = int(curr_batch_stk - qty)
             except Exception as st_err:
                 logger.warning(f"Invoice stock deduction note: {st_err}")
 

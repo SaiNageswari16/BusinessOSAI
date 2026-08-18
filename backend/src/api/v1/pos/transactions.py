@@ -103,30 +103,31 @@ async def checkout(
 
         # Deduct stock (skip for ON_HOLD)
         if payload.status != "on_hold" and item.product_id:
-            prod_stmt = select(Product).where(
-                Product.id == item.product_id,
-                Product.tenant_id == ctx.user.tenant_id
-            ).with_for_update()
-            prod_res = await db.execute(prod_stmt)
-            product = prod_res.scalar_one_or_none()
-            if product:
-                if product.initial_stock is None:
-                    product.initial_stock = 0
-                product.initial_stock = max(0, product.initial_stock - item.quantity)
-
-            # Deduct from active FEFO batch in erp_inventory_batches
             try:
+                target_pid = uuid.UUID(str(item.product_id)) if isinstance(item.product_id, str) else item.product_id
+                prod_stmt = select(Product).where(
+                    Product.id == target_pid,
+                    Product.tenant_id == ctx.user.tenant_id
+                ).with_for_update()
+                prod_res = await db.execute(prod_stmt)
+                product = prod_res.scalar_one_or_none()
+                if product:
+                    current_stk = product.initial_stock if product.initial_stock is not None else 0
+                    product.initial_stock = int(current_stk - item.quantity)
+
+                # Deduct from active FEFO batch in erp_inventory_batches
                 batch_stmt = select(InventoryBatch).where(
-                    InventoryBatch.product_id == item.product_id,
+                    InventoryBatch.product_id == target_pid,
                     InventoryBatch.tenant_id == ctx.user.tenant_id,
                     InventoryBatch.remaining_quantity > 0
                 ).order_by(InventoryBatch.expiry_date.asc().nullslast()).with_for_update()
                 batch_res = await db.execute(batch_stmt)
                 active_batch = batch_res.scalars().first()
                 if active_batch:
-                    active_batch.remaining_quantity = max(0, active_batch.remaining_quantity - int(item.quantity))
+                    curr_b_stk = active_batch.remaining_quantity if active_batch.remaining_quantity is not None else 0
+                    active_batch.remaining_quantity = int(curr_b_stk - item.quantity)
             except Exception as batch_deduct_err:
-                logger.warning(f"Batch stock deduction note: {batch_deduct_err}")
+                logger.warning(f"POS checkout stock deduction note: {batch_deduct_err}")
 
     # 3. Create Payments
     for payment in payload.payments:
@@ -209,7 +210,7 @@ async def checkout(
     await db.commit()
 
     # 5. Create Invoice from POS transaction + auto-send via WhatsApp
-    if transaction.status == "completed":
+    if transaction.status in ("completed", "partially_paid", "credit"):
         await _create_invoice_and_send_whatsapp(db, ctx, transaction, payload)
 
 
@@ -455,7 +456,7 @@ async def get_daily_summary(
     if session_id:
         date_cond = (*date_cond, POSTransaction.session_id == session_id)
 
-    completed_cond = (*date_cond, POSTransaction.status == "completed")
+    completed_cond = (*date_cond, POSTransaction.status.in_(["completed", "partially_paid", "credit"]))
     refunded_cond = (*date_cond, POSTransaction.status == "refunded")
 
     summary_stmt = select(

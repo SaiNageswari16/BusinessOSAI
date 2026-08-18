@@ -20,7 +20,7 @@ import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { formatCurrency } from "../../lib/utils";
-import { INDIAN_STATES } from "./PosSalesInvoice";
+import { INDIAN_STATES } from "@/data/indian-states";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -111,13 +111,14 @@ function PosTerminalInner() {
           setNewCustPincode(res.pincode);
           if (isCustShippingSameAsBilling) setNewCustShipPincode(res.pincode);
         }
-        if (res.address?.city) {
-          setNewCustCity(res.address.city);
-          if (isCustShippingSameAsBilling) setNewCustShipCity(res.address.city);
+        const addrObj = typeof res.address === 'object' && res.address !== null ? res.address : null;
+        if (addrObj?.city) {
+          setNewCustCity(addrObj.city);
+          if (isCustShippingSameAsBilling) setNewCustShipCity(addrObj.city);
         }
-        if (res.address?.street) {
-          setNewCustStreet(res.address.street);
-          if (isCustShippingSameAsBilling) setNewCustShipStreet(res.address.street);
+        if (addrObj?.street) {
+          setNewCustStreet(addrObj.street);
+          if (isCustShippingSameAsBilling) setNewCustShipStreet(addrObj.street);
         }
         if (res.phone && !newCustPhone) setNewCustPhone(res.phone);
         if (res.email && !newCustEmail) setNewCustEmail(res.email);
@@ -228,7 +229,7 @@ function PosTerminalInner() {
         setSelectedCustomer((prev: any) => (prev ? { ...prev, wallet: bal } : prev));
       })
       .catch(() => {
-        const fallbackBal = Number(selectedCustomer.wallet || selectedCustomer.wallet_balance || 0);
+        const fallbackBal = Number((selectedCustomer as any)?.wallet || (selectedCustomer as any)?.wallet_balance || 0);
         setCustomerWalletBalance(fallbackBal);
       });
   }, [selectedCustomer?.id]);
@@ -248,11 +249,10 @@ function PosTerminalInner() {
         phone: newCustPhone.trim() || undefined,
         email: newCustEmail.trim() || undefined,
         company_name: newCustCompany.trim() || undefined,
-        customer_type: newCustType || "Retail",
-        gst_number: newCustGST.trim().toUpperCase() || undefined,
-        address: fullBilling || undefined,
-        billing_address: fullBilling || undefined,
-        shipping_address: fullShipping || undefined,
+        customer_type: newCustType,
+        gst_number: newCustGST.trim() || undefined,
+        billing_address: fullBilling ? { street: newCustStreet, city: newCustCity, state: newCustState, postal_code: newCustPincode, country: "India" } : undefined,
+        shipping_address: fullShipping ? { street: isCustShippingSameAsBilling ? newCustStreet : newCustShipStreet, city: isCustShippingSameAsBilling ? newCustCity : newCustShipCity, state: isCustShippingSameAsBilling ? newCustState : newCustShipState, postal_code: isCustShippingSameAsBilling ? newCustPincode : newCustShipPincode, country: "India" } : undefined,
       });
 
       const customerObj = created.data || created;
@@ -262,13 +262,12 @@ function PosTerminalInner() {
         phone: customerObj.phone || "",
         email: customerObj.email || "",
         company: customerObj.company_name || "",
-        customer_type: customerObj.customer_type || "Retail",
+        customer_type: customerObj.customer_type || newCustType,
         gstin: customerObj.gst_number || "",
-        address: fullBilling,
-        state: newCustState,
-        points: 100,
-        tier: newCustTier,
-        wallet: 0,
+        address: fullBilling || "",
+        points: customerObj.loyalty_points || 150,
+        tier: customerObj.tier || newCustTier,
+        wallet: customerObj.wallet_balance || 0,
         totalSpent: "₹0.00",
         lastVisit: "Just Now"
       };
@@ -293,6 +292,7 @@ function PosTerminalInner() {
       setNewCustType("Retail");
       toast.success(`Customer "${formatted.name}" created and selected!`);
     } catch {
+      const fullBilling = [newCustStreet, newCustCity, newCustState, newCustPincode].filter(Boolean).join(", ");
       const newCust = {
         id: `CUST${Date.now().toString().slice(-4)}`,
         name: newCustName.trim(),
@@ -301,7 +301,7 @@ function PosTerminalInner() {
         company: newCustCompany.trim(),
         customer_type: newCustType,
         gstin: newCustGST.trim(),
-        address: newCustAddress.trim(),
+        address: fullBilling,
         points: 100,
         tier: newCustTier,
         wallet: 0,
@@ -316,10 +316,13 @@ function PosTerminalInner() {
       setNewCustEmail("");
       setNewCustCompany("");
       setNewCustGST("");
-      setNewCustAddress("");
+      setNewCustStreet("");
+      setNewCustCity("");
+      setNewCustState("Andhra Pradesh");
+      setNewCustPincode("");
       setNewCustType("Retail");
       toast.success(`Customer "${newCust.name}" created and selected!`);
-    }
+    };
   };
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [isEditingProduct, setIsEditingProduct] = useState(false);
@@ -376,7 +379,7 @@ function PosTerminalInner() {
           }
         }
 
-        const rawCats = Array.isArray(cats) ? cats : (cats?.items || []);
+        const rawCats = Array.isArray(cats) ? cats : ((cats as any)?.items || []);
         if (rawCats.length > 0) {
           const mappedCats = rawCats.map((c: any, i: number) => ({
             id: c.id,
@@ -389,7 +392,7 @@ function PosTerminalInner() {
           setCategories(mappedCats);
         }
 
-        let fetchedProds: any[] = Array.isArray(prods) ? prods : (prods?.items || []);
+        let fetchedProds: any[] = Array.isArray(prods) ? prods : ((prods as any)?.items || []);
         if (fetchedProds.length === 0) {
           try {
             const invProdsRes: any = await inventoryApi.getProducts({ page_size: 300 });
@@ -403,8 +406,10 @@ function PosTerminalInner() {
           const mappedProds = fetchedProds.map((p: any) => {
             const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
             const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
-            const wPrice = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : (basePrice > 0 ? basePrice : 0)));
-            const bPrice = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wPrice > 0 ? wPrice : basePrice)));
+            const rawWholesale = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : 0));
+            const rawB2B = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
+            const wPrice = rawWholesale > 0 ? rawWholesale : (basePrice > 0 ? Math.round(basePrice * 0.90 * 100) / 100 : 0);
+            const bPrice = rawB2B > 0 ? rawB2B : (rawWholesale > 0 ? Math.round(rawWholesale * 0.95 * 100) / 100 : (basePrice > 0 ? Math.round(basePrice * 0.85 * 100) / 100 : 0));
             const taxPct = Number(p.tax_percent != null ? p.tax_percent : (p.tax_rate != null ? p.tax_rate : 18));
             return {
               id: p.id,
@@ -494,10 +499,10 @@ function PosTerminalInner() {
       } else if (e.key === "Escape") {
         setDiscountModalItem(null);
         setCheckoutModalOpen(false);
-        setSplitPaymentModalOpen(false);
+        setPartialModalOpen(false);
         setCashModalOpen(false);
         setHeldBillsModalOpen(false);
-        setCustomerModalOpen(false);
+        setIsCustomerModalOpen(false);
         setSessionModalOpen(false);
       }
     };
@@ -756,8 +761,10 @@ function PosTerminalInner() {
   const getItemEffectivePrice = (item: any, qty: number = item.qty || 1, overrideMode?: "Retail" | "Wholesale" | "B2B") => {
     const mode = overrideMode || pricingMode;
     const basePrice = Number(item.sellingPrice || item.selling_price || item.price || item.mrp || 0);
-    const wholesalePrice = Number(item.wholesalePrice || item.wholesale_price || basePrice);
-    const b2bPrice = Number(item.b2bPrice || item.b2b_price || (wholesalePrice > 0 ? wholesalePrice : basePrice));
+    const rawWholesale = Number(item.wholesalePrice || item.wholesale_price || 0);
+    const rawB2B = Number(item.b2bPrice || item.b2b_price || 0);
+    const wholesalePrice = rawWholesale > 0 ? rawWholesale : (basePrice > 0 ? Math.round(basePrice * 0.90 * 100) / 100 : basePrice);
+    const b2bPrice = rawB2B > 0 ? rawB2B : (rawWholesale > 0 ? Math.round(rawWholesale * 0.95 * 100) / 100 : (basePrice > 0 ? Math.round(basePrice * 0.85 * 100) / 100 : basePrice));
     
     let unitPrice = basePrice;
     let isTierApplied = false;
@@ -1067,8 +1074,11 @@ function PosTerminalInner() {
             setSelectedCustomer((prev: any) => prev ? { ...prev, wallet: Number(res.balance) } : prev);
           }
         }).catch(() => {});
-        window.dispatchEvent(new Event("pos_invoices_updated"));
       }
+
+      // Broadcast global updates for stock & ledger refresh
+      window.dispatchEvent(new Event("pos_invoices_updated"));
+      window.dispatchEvent(new Event("inventory_updated"));
 
       // Clear UI state
       clearCart();

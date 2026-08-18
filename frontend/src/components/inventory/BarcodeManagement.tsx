@@ -137,11 +137,11 @@ export function BarcodeManagement() {
       document.head.appendChild(styleEl);
     }
 
-    let pageCss = "@page { size: 50mm 25mm portrait !important; margin: 0mm !important; }";
+    let pageCss = "@page { size: 50mm 25mm !important; margin: 0mm !important; }";
     if (layoutType === "2up") {
-      pageCss = "@page { size: 100mm 25mm portrait !important; margin: 0mm !important; }";
+      pageCss = "@page { size: 100mm 25mm !important; margin: 0mm !important; }";
     } else if (layoutType === "3up") {
-      pageCss = "@page { size: 114mm 25mm portrait !important; margin: 0mm !important; }";
+      pageCss = "@page { size: 114mm 25mm !important; margin: 0mm !important; }";
     } else if (layoutType.startsWith("a4")) {
       pageCss = "@page { size: A4 portrait !important; margin: 5mm !important; }";
     }

@@ -76,6 +76,7 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     mrp: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     selling_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     wholesale_price: Mapped[float | None] = mapped_column(Numeric(10, 2), default=0)
+    b2b_price: Mapped[float | None] = mapped_column(Numeric(10, 2), default=0)
     min_wholesale_qty: Mapped[int | None] = mapped_column(Integer, default=1)
     tax_percent: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
     is_tax_inclusive: Mapped[bool] = mapped_column(Boolean, default=True)

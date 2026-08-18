@@ -1025,16 +1025,47 @@ def call_ai_image(
         except Exception as e:
             logger.warning(f"Prompt enhancement failed: {e}. Using raw prompt.")
 
-    primary = prefer_provider or settings.ai_provider or "gemini"
-    if primary not in ("gemini", "openai"):
-        primary = "gemini"
-    secondary = "openai" if primary == "gemini" else "gemini"
-
-    providers_to_try = [primary, secondary]
+    if settings.openai_api_key:
+        providers_to_try = ["openai", "gemini"]
+    else:
+        primary = prefer_provider or settings.ai_provider or "gemini"
+        if primary not in ("gemini", "openai"):
+            primary = "gemini"
+        secondary = "openai" if primary == "gemini" else "gemini"
+        providers_to_try = [primary, secondary]
     errors = []
 
     for prov in providers_to_try:
-        if prov == "gemini":
+        if prov == "openai":
+            if not settings.openai_api_key:
+                errors.append("OpenAI API key not configured")
+                continue
+            try:
+                url = "https://api.openai.com/v1/images/generations"
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {settings.openai_api_key}"
+                }
+                body = {
+                    "model": "dall-e-3",
+                    "prompt": enhanced_prompt,
+                    "n": 1,
+                    "size": "1024x1024" if aspect_ratio == "1:1" else "1024x1792",
+                    "response_format": "b64_json"
+                }
+                res = requests.post(url, json=body, headers=headers, timeout=45)
+                if res.status_code == 200:
+                    image_data = res.json()
+                    image_bytes_base64 = image_data["data"][0]["b64_json"]
+                    logger.info("Successfully generated image via OpenAI DALL-E 3!")
+                    return base64.b64decode(image_bytes_base64), enhanced_prompt
+                else:
+                    raise Exception(f"DALL-E 3 error {res.status_code}: {res.text}")
+            except Exception as e:
+                logger.error(f"OpenAI DALL-E 3 failed: {e}")
+                errors.append(f"OpenAI DALL-E failed: {str(e)}")
+
+        elif prov == "gemini":
             if not settings.gemini_api_key:
                 errors.append("Gemini API key not configured")
                 continue
@@ -1060,46 +1091,18 @@ def call_ai_image(
                 logger.warning(f"Gemini Imagen endpoint not available on this API key tier ({e}). Automatically trying next provider...")
                 errors.append(f"Gemini Imagen: {str(e)}")
 
-        elif prov == "openai":
-            if not settings.openai_api_key:
-                errors.append("OpenAI API key not configured")
-                continue
-            try:
-                url = "https://api.openai.com/v1/images/generations"
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {settings.openai_api_key}"
-                }
-                body = {
-                    "model": "dall-e-3",
-                    "prompt": enhanced_prompt,
-                    "n": 1,
-                    "size": "1024x1024" if aspect_ratio == "1:1" else "1024x1792",
-                    "response_format": "b64_json"
-                }
-                res = requests.post(url, json=body, headers=headers, timeout=35)
-                if res.status_code == 200:
-                    image_data = res.json()
-                    image_bytes_base64 = image_data["data"][0]["b64_json"]
-                    return base64.b64decode(image_bytes_base64), enhanced_prompt
-                else:
-                    raise Exception(f"DALL-E 3 error {res.status_code}: {res.text}")
-            except Exception as e:
-                logger.error(f"OpenAI DALL-E 3 failed: {e}")
-                errors.append(f"OpenAI DALL-E failed: {str(e)}")
-
-    # Fallback 1: Pollinations AI (Free synchronous high-quality AI image generation)
+    # Fallback 1: Pollinations AI with FLUX (Free synchronous state-of-the-art AI image generation)
     try:
         import urllib.parse
         import random
-        clean_prompt = urllib.parse.quote(enhanced_prompt[:300])
+        clean_prompt = urllib.parse.quote(enhanced_prompt[:350])
         width, height = (1024, 1024) if aspect_ratio == "1:1" else (1024, 1792)
         seed = random.randint(1, 999999)
-        poll_url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width={width}&height={height}&nologo=true&seed={seed}"
-        logger.info(f"Attempting Pollinations AI generation: {poll_url}")
-        p_res = requests.get(poll_url, timeout=25)
+        poll_url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width={width}&height={height}&model=flux&nologo=true&seed={seed}"
+        logger.info(f"Attempting Pollinations AI (FLUX) generation: {poll_url}")
+        p_res = requests.get(poll_url, timeout=30)
         if p_res.status_code == 200 and len(p_res.content) > 3000:
-            logger.info("Successfully generated poster image via Pollinations AI!")
+            logger.info("Successfully generated poster image via Pollinations FLUX!")
             return p_res.content, enhanced_prompt
     except Exception as p_err:
         logger.warning(f"Pollinations AI fallback failed: {p_err}")

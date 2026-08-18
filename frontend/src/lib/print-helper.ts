@@ -49,18 +49,28 @@ export function triggerThermalPrint(customPaperWidth?: string) {
         left: 0 !important;
         top: 0 !important;
         width: ${printableWidth} !important;
-              max-width: ${printableWidth} !important;
+        max-width: ${printableWidth} !important;
         padding: 1mm 2mm !important;
         margin: 0 !important;
         background: #ffffff !important;
         color: #000000 !important;
         z-index: 999999 !important;
-        font-family: 'Courier New', Courier, monospace !important;
+        font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", Arial, "Consolas", monospace !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        line-height: 1.3 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        text-rendering: geometricPrecision !important;
+        -webkit-font-smoothing: antialiased !important;
         box-sizing: border-box !important;
       }
       #printable-receipt-portal * {
         visibility: visible !important;
         color: #000000 !important;
+        border-color: #000000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
         background: transparent !important;
         box-sizing: border-box !important;
       }
