@@ -1,6 +1,7 @@
 import logging
 import uuid
 from typing import Annotated
+from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, update
