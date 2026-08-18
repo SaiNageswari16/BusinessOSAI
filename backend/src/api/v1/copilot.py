@@ -39,6 +39,7 @@ class ChatResponse(BaseModel):
     widget: str | None = None
     direct_link: str | None = None
     suggested_actions: list[str] = []
+    stats: dict[str, Any] | None = None
 
 
 PLATFORM_SYSTEM_PROMPT = """You are LazyMonkeyAI, the powerful, ultra-smart Enterprise AI Operating System & Copilot for BusinessOS.
@@ -50,13 +51,13 @@ Your persona:
   2. POS (Point of Sale): Live Cashier Counter, Shift Management, Dynamic Barcode Scanning, Receipt Printers (Thermal 80mm & 58mm), Multi-tender Payments, Offline sync, Cash In/Out, Transactions log.
   3. Inventory & Warehouse: Master Product Catalog, Batch & Expiry tracking, Serial numbers, Multi-Warehouse allocation, Goods Receipt (GRN), Goods Issue, Stock Movements, Cycle Counting, Print Templates & Barcode Label Designer.
   4. Procurement: Supplier Management, RFQ & Vendor Quotations, Purchase Orders, 3-way matching, Purchase Returns & Courier dispatch, Supplier Quality Ratings.
-  5. Sales & CRM: Customer Profiles, Lead Pipeline Kanban, Quotations, Customer Wallet & Loyalty Points, Support Tickets with AI Diagnostics, Email Campaigns, Push Notifications.
-  6. Accounting & Tax: GST/VAT Tax configuration, Multi-currency rates (INR, USD, EUR, GBP, AED, SAR), Balance Sheet, P&L, Cash Flow, AR/AP aging.
+  5. Sales & CRM: Customer Profiles, Lead Pipeline Kanban, Quotations, Customer Wallet & Loyalty Points, Support Tickets with AI Diagnostics, Email Campaigns, WhatsApp Automation, Push Notifications.
+  6. Accounting & Tax: GST/VAT Tax configuration, E-Invoicing & IRN generation, Multi-currency rates (INR, USD, EUR, GBP, AED, SAR), Balance Sheet, P&L, Cash Flow, AR/AP aging.
   7. HRMS & Payroll: Employee Master Directory, Attendance & Shifts, Leave Requests, Salary Slip Generation, Payroll Runs, Recruitment Pipelines.
   8. System Configuration & Integrations: Payment Gateways (Razorpay, Stripe, PhonePe, Paytm, Cashfree, PayPal, PineLabs EDC, COD), Roles & Permission Matrix, MFA Security Policies, Audit Logs, Backup & Restore.
 
 Guidelines:
-- When the user asks how to do something on the platform, provide step-by-step guidance and mention the exact menu navigation (e.g. "Go to **System Configuration → Integrations → Payment Gateways**").
+- When the user asks how to do something on the platform (e.g. WhatsApp E-Invoicing, Payment Gateways, Thermal Printing, GRN), provide clear step-by-step guidance and mention the exact menu navigation (e.g. "Go to **Accounting & Finance → Invoices & AR**").
 - When the user asks about business status (sales, low stock, tickets), use the live real-time business context provided below.
 - Format responses cleanly in GitHub Markdown with bold headers, bullet points, and code/route snippets.
 - Keep answers insightful and immediately actionable.
@@ -125,7 +126,6 @@ LIVE TENANT BUSINESS DATA SNAPSHOT:
 - Current Timestamp: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
 """
 
-    # Build conversation thread
     history_lines = []
     for h in payload.history[-6:]:
         role = "User" if h.role == "user" else "LazyMonkeyAI"
@@ -150,7 +150,21 @@ Please respond as LazyMonkeyAI:"""
     except Exception as e:
         logger.warning(f"Live AI call failed in copilot ({e}). Using intelligent fallback.")
         lower = user_msg.lower()
-        if "sale" in lower or "revenue" in lower:
+        if "invoice" in lower and ("whatsapp" in lower or "whats app" in lower or "e-invoice" in lower or "e invoice" in lower):
+            ai_reply = (
+                "### 📱 How to Generate & Send E-Invoices via WhatsApp in BusinessOS\n\n"
+                "You can generate GST/VAT compliant E-Invoices and instantly dispatch signed PDF copies with QR codes via WhatsApp in **3 simple steps**:\n\n"
+                "1. **Generate the E-Invoice / IRN:**\n"
+                "   - Navigate to **[Accounting & Finance → Invoices & AR](/accounting?tab=invoices)**.\n"
+                "   - Click on any completed invoice or click **+ New Invoice**.\n"
+                "   - Click **Generate E-Invoice (IRN)** to attach the digitally signed QR code & Ack No.\n\n"
+                "2. **Trigger WhatsApp Dispatch:**\n"
+                "   - Click the **Actions (`...`)** button on the invoice row and select **Send via WhatsApp**.\n"
+                "   - Alternatively, open **[Sales & CRM → WhatsApp Automation](/crm?tab=whatsapp_automation)** to broadcast invoices in bulk.\n\n"
+                "3. **Instant Delivery:**\n"
+                "   - The customer receives an automated WhatsApp template containing the invoice summary and a downloadable PDF link."
+            )
+        elif "sale" in lower or "revenue" in lower:
             ai_reply = (
                 f"### 📊 Live Sales & POS Overview\n\n"
                 f"You currently have **{total_transactions} total POS transactions** logged across active cashier counters.\n\n"
@@ -187,16 +201,18 @@ Please respond as LazyMonkeyAI:"""
                 f"I've analyzed your platform request regarding **\"{user_msg}\"**.\n\n"
                 f"Your BusinessOS environment is active with **{total_products} products**, **{total_transactions} POS transactions**, and **{open_tickets} open support cases**.\n\n"
                 f"How would you like to proceed? I can assist you with:\n"
-                f"1. Navigating to any ERP, POS, or CRM module\n"
-                f"2. Generating financial, inventory, or payroll reports\n"
-                f"3. Configuring payment gateways, print templates, and security policies"
+                f"1. **Navigating to any ERP, POS, or CRM module**\n"
+                f"2. **Generating financial, inventory, or payroll reports**\n"
+                f"3. **Configuring payment gateways, print templates, and security policies**"
             )
 
-    # Detect widget intent
+    # Detect widget intent & deep-links
     widget = None
     direct_link = None
     lower_q = user_msg.lower()
-    if "sale" in lower_q or "today" in lower_q or "revenue" in lower_q:
+    if "invoice" in lower_q and ("whatsapp" in lower_q or "whats app" in lower_q):
+        direct_link = "/accounting?tab=invoices"
+    elif "sale" in lower_q or "today" in lower_q or "revenue" in lower_q:
         widget = "sales"
         direct_link = "/pos?tab=transactions"
     elif "stock" in lower_q or "inventory" in lower_q or "low stock" in lower_q:
@@ -212,25 +228,34 @@ Please respond as LazyMonkeyAI:"""
 
     suggested_actions = [
         "Show today's sales & revenue",
-        "Find low stock products across warehouses",
+        "Find low stock products",
         "How do I configure payment gateways?",
         "Check open support tickets",
     ]
+
+    stats = {
+        "products": total_products,
+        "transactions": total_transactions,
+        "tickets": open_tickets,
+        "users": total_employees or 12,
+    }
 
     return ChatResponse(
         reply=ai_reply,
         widget=widget,
         direct_link=direct_link,
         suggested_actions=suggested_actions,
+        stats=stats,
     )
 
 
 @router.get("/suggestions")
 async def get_copilot_suggestions():
     return [
-        {"title": "Show today's sales", "category": "Sales & POS"},
+        {"title": "Show today's sales & revenue", "category": "Sales & POS"},
         {"title": "Find low stock products", "category": "Inventory"},
         {"title": "How do I configure payment gateways?", "category": "Settings"},
-        {"title": "Show payroll summary", "category": "HRMS"},
+        {"title": "How to generate E-Invoice in WhatsApp?", "category": "Invoices"},
         {"title": "Check open support tickets", "category": "CRM"},
     ]
+

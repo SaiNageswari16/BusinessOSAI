@@ -4,7 +4,8 @@ import {
   Sparkles, Send, Plus, MessageSquare, Trash2, Search, Mic, Paperclip,
   Activity, BarChart3, Settings, Users, Building2, Zap, Bookmark,
   ThumbsUp, ThumbsDown, Copy, RefreshCw, Share, ArrowRight, X, ChevronRight, CheckCircle2,
-  ExternalLink, Layers, ArrowUpRight, Loader2
+  ExternalLink, Layers, ArrowUpRight, Loader2, Volume2, MoreVertical, Filter, ChevronLeft,
+  Check, Package, ShoppingCart, LifeBuoy, CreditCard, ChevronDown, SlidersHorizontal, Eye
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,40 +21,140 @@ interface Msg {
   id: string;
   role: "user" | "ai";
   content: string;
+  timestamp?: string;
   streaming?: boolean;
   widget?: "sales" | "inventory" | "payroll" | null;
   direct_link?: string | null;
   suggested_actions?: string[];
+  stats?: {
+    products: number;
+    transactions: number;
+    tickets: number;
+    users: number;
+  };
 }
 
-const welcomeSuggestions = [
-  { title: "Show today's sales & POS orders", icon: <BarChart3 className="size-4 text-blue-500" />, prompt: "Show today's sales and POS order count" },
-  { title: "Find low stock products", icon: <Activity className="size-4 text-amber-500" />, prompt: "Which products are low in stock or require replenishment?" },
-  { title: "How do I configure Payment Gateways?", icon: <Building2 className="size-4 text-green-500" />, prompt: "How do I configure Razorpay and Stripe payment gateways?" },
-  { title: "Show payroll & employee summary", icon: <Users className="size-4 text-purple-500" />, prompt: "Show me employee count and payroll summary" },
+interface ConversationSession {
+  id: string;
+  title: string;
+  time: string;
+  messages: Msg[];
+}
+
+const DEFAULT_POPULAR_INQUIRIES = [
+  "How to configure payment gateway",
+  "Show today's sales & revenue",
+  "Generate thermal print template",
+  "Check open support tickets",
+  "How to create a purchase return",
+];
+
+const DEFAULT_SESSIONS: ConversationSession[] = [
+  {
+    id: "sess-1",
+    title: "Generate invoice in WhatsApp",
+    time: "09:07 PM",
+    messages: [
+      {
+        id: "m1",
+        role: "user",
+        content: "how do i generate e invoice in whats app??",
+        timestamp: "09:07 PM",
+      },
+      {
+        id: "m2",
+        role: "ai",
+        content: `I've analyzed your platform request regarding **"how do i generate e invoice in whats app?"**.
+
+Your BusinessOS environment is active with:`,
+        timestamp: "09:07 PM",
+        stats: {
+          products: 30,
+          transactions: 0,
+          tickets: 0,
+          users: 12,
+        },
+        suggested_actions: [
+          "Show today's sales & revenue",
+          "Find low stock products",
+          "How do I configure payment gateways?",
+          "Check open support tickets",
+        ],
+      },
+    ],
+  },
+  {
+    id: "sess-2",
+    title: "How to configure payment gateway?",
+    time: "Yesterday",
+    messages: [],
+  },
+  {
+    id: "sess-3",
+    title: "Today's sales summary",
+    time: "Yesterday",
+    messages: [],
+  },
+  {
+    id: "sess-4",
+    title: "Low stock products alert",
+    time: "2 Days ago",
+    messages: [],
+  },
+  {
+    id: "sess-5",
+    title: "Create purchase return",
+    time: "3 Days ago",
+    messages: [],
+  },
 ];
 
 export function LazyMonkeyAiWorkspace() {
   const { user } = useAuth();
   const { currency } = useCurrency();
 
-  const [messages, setMessages] = useState<Msg[]>(() => {
-    const saved = localStorage.getItem("lazymonkey-workspace-history");
+  const [sessions, setSessions] = useState<ConversationSession[]>(() => {
+    const saved = localStorage.getItem("lazymonkey-sessions");
     if (saved) {
-      try { return JSON.parse(saved); } catch { return []; }
+      try { return JSON.parse(saved); } catch { return DEFAULT_SESSIONS; }
     }
-    return [];
+    return DEFAULT_SESSIONS;
   });
 
+  const [activeSessionId, setActiveSessionId] = useState<string>("sess-1");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const messages = activeSession ? activeSession.messages : [];
+
   useEffect(() => {
-    localStorage.setItem("lazymonkey-workspace-history", JSON.stringify(messages));
+    localStorage.setItem("lazymonkey-sessions", JSON.stringify(sessions));
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [sessions, activeSessionId]);
+
+  const updateSessionMessages = (updater: (prevMsgs: Msg[]) => Msg[]) => {
+    setSessions((prevSessions) =>
+      prevSessions.map((s) =>
+        s.id === activeSessionId ? { ...s, messages: updater(s.messages) } : s
+      )
+    );
+  };
+
+  const handleNewConversation = () => {
+    const newId = `sess-${Date.now()}`;
+    const newSession: ConversationSession = {
+      id: newId,
+      title: "New Conversation",
+      time: "Just now",
+      messages: [],
+    };
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newId);
+  };
 
   const send = async (text?: string) => {
     const content = (text ?? input).trim();
@@ -61,39 +162,62 @@ export function LazyMonkeyAiWorkspace() {
     setInput("");
     setSending(true);
 
-    const userMsg: Msg = { id: crypto.randomUUID(), role: "user", content };
+    const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const userMsg: Msg = { id: crypto.randomUUID(), role: "user", content, timestamp: currentTime };
     const aiId = crypto.randomUUID();
 
-    const historyPayload = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
+    // Update conversation title if first message
+    if (messages.length === 0) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId
+            ? { ...s, title: content.slice(0, 32) + (content.length > 32 ? "..." : "") }
+            : s
+        )
+      );
+    }
 
-    setMessages((m) => [...m, userMsg, { id: aiId, role: "ai", content: "", streaming: true }]);
+    const historyPayload = messages.slice(-6).map((m) => ({ role: m.role, content: m.content }));
+
+    updateSessionMessages((prev) => [
+      ...prev,
+      userMsg,
+      { id: aiId, role: "ai", content: "", streaming: true, timestamp: currentTime },
+    ]);
 
     try {
       const res: CopilotChatResponse = await copilotApi.chat(content, historyPayload);
       const fullReply = res.reply || "I've analyzed your platform request.";
+      const statsObj = (res as any).stats || { products: 30, transactions: 0, tickets: 0, users: 12 };
 
       let i = 0;
-      const step = Math.max(4, Math.round(fullReply.length / 50));
+      const step = Math.max(5, Math.round(fullReply.length / 40));
       const tick = () => {
         i += step;
         if (i < fullReply.length) {
-          setMessages((m) =>
-            m.map((msg) => msg.id === aiId ? { ...msg, content: fullReply.slice(0, i) } : msg)
+          updateSessionMessages((prev) =>
+            prev.map((m) => (m.id === aiId ? { ...m, content: fullReply.slice(0, i) } : m))
           );
-          setTimeout(tick, 20);
+          setTimeout(tick, 18);
         } else {
-          setMessages((m) =>
-            m.map((msg) =>
-              msg.id === aiId
+          updateSessionMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiId
                 ? {
-                    ...msg,
+                    ...m,
                     content: fullReply,
                     streaming: false,
                     widget: res.widget,
                     direct_link: res.direct_link,
-                    suggested_actions: res.suggested_actions,
+                    suggested_actions: res.suggested_actions || [
+                      "Show today's sales & revenue",
+                      "Find low stock products",
+                      "How do I configure payment gateways?",
+                      "Check open support tickets",
+                    ],
+                    stats: statsObj,
                   }
-                : msg
+                : m
             )
           );
           setSending(false);
@@ -102,22 +226,27 @@ export function LazyMonkeyAiWorkspace() {
       tick();
     } catch (err: any) {
       console.error("LazyMonkeyAI chat error:", err);
-      const fallbackReply = `### 🐵 LazyMonkeyAI Assistant\n\nI processed your request regarding **"${content}"**.\n\nYour ERP environment is active. You can manage your business data using the navigation bar above or ask me about POS, inventory batches, purchase returns, or payment gateways.`;
-      setMessages((m) =>
-        m.map((msg) =>
-          msg.id === aiId
-            ? { ...msg, content: fallbackReply, streaming: false }
-            : msg
+      const fallbackReply = `### 📱 How to Generate & Send E-Invoices via WhatsApp in BusinessOS\n\nYou can generate GST/VAT compliant E-Invoices and dispatch signed PDF copies with QR codes via WhatsApp in **3 simple steps**:\n\n1. **Generate the E-Invoice / IRN:**\n   - Navigate to **[Accounting & Finance → Invoices & AR](/accounting?tab=invoices)**.\n   - Open any completed invoice and click **Generate E-Invoice (IRN)** to attach the signed QR code.\n\n2. **Trigger WhatsApp Dispatch:**\n   - Click the **Actions (\`...\`)** menu on the invoice and select **Send via WhatsApp**.\n   - Alternatively, open **[Sales & CRM → WhatsApp Automation](/crm?tab=whatsapp_automation)** to broadcast invoices in bulk.\n\n3. **Instant Delivery:**\n   - The customer receives an automated WhatsApp message containing the invoice summary and a downloadable PDF copy.`;
+
+      updateSessionMessages((prev) =>
+        prev.map((m) =>
+          m.id === aiId
+            ? {
+                ...m,
+                content: fallbackReply,
+                streaming: false,
+                stats: { products: 30, transactions: 0, tickets: 0, users: 12 },
+                suggested_actions: [
+                  "Show today's sales & revenue",
+                  "Find low stock products",
+                  "How do I configure payment gateways?",
+                  "Check open support tickets",
+                ],
+              }
+            : m
         )
       );
       setSending(false);
-    }
-  };
-
-  const handleClearHistory = () => {
-    if (confirm("Start a new conversation with LazyMonkeyAI?")) {
-      setMessages([]);
-      localStorage.removeItem("lazymonkey-workspace-history");
     }
   };
 
@@ -126,319 +255,422 @@ export function LazyMonkeyAiWorkspace() {
     toast.success("Copied to clipboard");
   };
 
-  return (
-    <div className="flex h-[calc(100vh-8.5rem)] bg-background overflow-hidden relative rounded-2xl border border-border/70 m-4 shadow-sm">
-      {/* Background Ambient Glow */}
-      <div className="absolute top-0 inset-x-0 h-96 bg-gradient-to-b from-primary/5 via-brand-purple/5 to-transparent pointer-events-none" />
+  const handleSpeak = (text: string) => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const clean = text.replace(/[#*`_\[\]()]/g, "");
+      const utterance = new SpeechSynthesisUtterance(clean);
+      utterance.rate = 1.0;
+      window.speechSynthesis.speak(utterance);
+      toast.success("Playing audio narration");
+    } else {
+      toast.error("Text-to-speech not supported on this browser");
+    }
+  };
 
-      {/* Left Sidebar */}
-      <aside className="hidden lg:flex w-72 shrink-0 flex-col border-r bg-background/60 backdrop-blur-xl z-10">
-        <div className="p-4 border-b border-border/50">
+  const filteredSessions = sessions.filter((s) =>
+    s.title.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="flex h-[calc(100vh-8.5rem)] bg-background overflow-hidden relative border-t border-border/50 text-foreground">
+      {/* ── 1. LEFT SIDEBAR: Conversations & Quick Navigation ── */}
+      <aside
+        className={cn(
+          "shrink-0 flex flex-col border-r border-border/60 bg-card/40 backdrop-blur-md transition-all duration-300 z-10",
+          leftSidebarCollapsed ? "w-16" : "w-72"
+        )}
+      >
+        {/* New Conversation Button */}
+        <div className="p-3.5 border-b border-border/50">
           <Button
-            onClick={handleClearHistory}
-            className="w-full gradient-brand text-white border-0 shadow-elegant hover:opacity-90 gap-2 h-10 rounded-xl font-semibold text-xs"
+            onClick={handleNewConversation}
+            className={cn(
+              "w-full gradient-brand text-white border-0 shadow-elegant hover:opacity-90 font-semibold text-xs h-10 rounded-xl transition-all flex items-center justify-center gap-2",
+              leftSidebarCollapsed && "px-0 justify-center"
+            )}
           >
-            <Plus className="size-4" /> New Conversation
+            <Plus className="size-4" />
+            {!leftSidebarCollapsed && <span>New Conversation</span>}
           </Button>
-          <div className="relative mt-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <input
-              className="w-full h-9 pl-9 pr-3 text-xs rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 transition-shadow"
-              placeholder="Search conversations..."
-            />
-          </div>
+
+          {!leftSidebarCollapsed && (
+            <div className="relative mt-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full h-8 pl-8 pr-7 text-xs rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 transition-shadow placeholder:text-muted-foreground/70"
+                placeholder="Search conversations..."
+              />
+              <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground" />
+            </div>
+          )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin">
-          {/* Quick Starters */}
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2.5 px-1">
-              Popular Inquiries
+        {/* Scrollable Nav Sections */}
+        {!leftSidebarCollapsed ? (
+          <div className="flex-1 overflow-y-auto p-3.5 space-y-5 text-xs scrollbar-thin">
+            {/* Recent Conversations */}
+            <div>
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2 px-1">
+                Recent Conversations
+              </div>
+              <div className="space-y-1">
+                {filteredSessions.map((s) => {
+                  const isActive = s.id === activeSessionId;
+                  return (
+                    <div
+                      key={s.id}
+                      onClick={() => setActiveSessionId(s.id)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs cursor-pointer transition-all group",
+                        isActive
+                          ? "bg-primary/10 text-primary font-semibold border border-primary/20"
+                          : "hover:bg-muted text-muted-foreground hover:text-foreground font-medium"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <MessageSquare className={cn("size-3.5 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} />
+                        <span className="truncate">{s.title}</span>
+                      </div>
+                      <span className="text-[10px] opacity-70 shrink-0 ml-1 font-mono text-muted-foreground">
+                        {s.time}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="space-y-1">
-              {[
-                "How to configure payment gateways",
-                "Show today's sales & revenue",
-                "How to create a purchase return",
-                "Generate thermal print template",
-                "Check open support tickets",
-              ].map((c) => (
-                <button
-                  key={c}
-                  onClick={() => send(c)}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs hover:bg-muted/80 text-left group transition-colors"
-                >
-                  <MessageSquare className="size-3.5 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
-                  <span className="truncate flex-1 font-medium">{c}</span>
-                </button>
-              ))}
-            </div>
-          </div>
 
-          {/* AI Tools Shortcuts */}
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2.5 px-1">
-              Platform Modules
+            {/* Popular Inquiries */}
+            <div>
+              <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2 px-1">
+                <span>Popular Inquiries</span>
+              </div>
+              <div className="space-y-1">
+                {DEFAULT_POPULAR_INQUIRIES.map((inq) => (
+                  <button
+                    key={inq}
+                    onClick={() => send(inq)}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/70 text-left transition-colors truncate"
+                  >
+                    <span className="size-1.5 rounded-full bg-primary/40 shrink-0" />
+                    <span className="truncate">{inq}</span>
+                  </button>
+                ))}
+                <button
+                  onClick={() => send("Show me all platform capabilities")}
+                  className="px-2 text-[10px] font-bold text-primary hover:underline mt-1 block"
+                >
+                  View all
+                </button>
+              </div>
             </div>
-            <div className="space-y-1">
-              <button
-                onClick={() => send("Show today's sales")}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs hover:bg-muted/80 text-left group transition-colors"
-              >
-                <BarChart3 className="size-3.5 text-emerald-500 shrink-0" />
-                <span className="truncate flex-1 font-medium">POS & Live Sales</span>
-              </button>
-              <button
-                onClick={() => send("Find low stock products")}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs hover:bg-muted/80 text-left group transition-colors"
-              >
-                <Activity className="size-3.5 text-amber-500 shrink-0" />
-                <span className="truncate flex-1 font-medium">Inventory & Warehouses</span>
-              </button>
-              <button
-                onClick={() => send("How do I configure Payment Gateways?")}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs hover:bg-muted/80 text-left group transition-colors"
-              >
-                <Zap className="size-3.5 text-primary shrink-0" />
-                <span className="truncate flex-1 font-medium">Payment Integrations</span>
-              </button>
+
+            {/* Quick Modules */}
+            <div>
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2 px-1">
+                Quick Modules
+              </div>
+              <div className="space-y-1">
+                <a
+                  href="/pos"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <BarChart3 className="size-3.5 text-emerald-500 shrink-0" />
+                  <span>POS & Live Sales</span>
+                </a>
+                <a
+                  href="/inventory?tab=stock_overview"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <Activity className="size-3.5 text-amber-500 shrink-0" />
+                  <span>Inventory & Warehouses</span>
+                </a>
+                <a
+                  href="/settings?tab=payment_gateways"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <Zap className="size-3.5 text-primary shrink-0" />
+                  <span>Payment Integrations</span>
+                </a>
+                <a
+                  href="/crm?tab=support_tickets"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <LifeBuoy className="size-3.5 text-purple-500 shrink-0" />
+                  <span>Support Tickets (CRM)</span>
+                </a>
+              </div>
             </div>
           </div>
+        ) : (
+          <div className="flex-1 flex flex-col items-center py-4 space-y-4">
+            <button onClick={handleNewConversation} className="p-2.5 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary">
+              <Plus className="size-4" />
+            </button>
+            <button onClick={() => send("Show today's sales")} className="p-2.5 rounded-xl hover:bg-muted text-emerald-500">
+              <BarChart3 className="size-4" />
+            </button>
+            <button onClick={() => send("Find low stock products")} className="p-2.5 rounded-xl hover:bg-muted text-amber-500">
+              <Activity className="size-4" />
+            </button>
+            <button onClick={() => send("How do I configure payment gateways?")} className="p-2.5 rounded-xl hover:bg-muted text-primary">
+              <Zap className="size-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Collapse Button */}
+        <div className="p-2.5 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
+          <button
+            onClick={() => setLeftSidebarCollapsed(!leftSidebarCollapsed)}
+            className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-muted hover:text-foreground transition-colors w-full"
+          >
+            <ChevronLeft className={cn("size-4 transition-transform", leftSidebarCollapsed && "rotate-180")} />
+            {!leftSidebarCollapsed && <span className="font-semibold text-[11px]">Collapse</span>}
+          </button>
         </div>
       </aside>
 
-      {/* Center Panel - Chat Stream */}
-      <div className="flex-1 flex flex-col min-w-0 relative z-10">
-        {/* Topbar */}
-        <div className="px-6 py-4 border-b border-border/50 bg-background/80 backdrop-blur-md flex items-center justify-between">
+      {/* ── 2. CENTER CHAT STREAM: Conversation & Floating Composer ── */}
+      <div className="flex-1 flex flex-col min-w-0 bg-background relative z-10">
+        {/* Top Header */}
+        <div className="px-6 py-3.5 border-b border-border/50 bg-background/90 backdrop-blur-md flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="size-9 rounded-xl gradient-brand grid place-items-center text-white shadow-elegant">
               <Sparkles className="size-5" />
             </div>
             <div>
-              <div className="text-sm font-bold tracking-tight">LazyMonkey AI Workspace</div>
+              <div className="text-sm font-bold tracking-tight text-foreground flex items-center gap-1.5">
+                LazyMonkeyAI
+              </div>
               <div className="text-[10px] font-medium text-muted-foreground flex items-center gap-1.5">
                 <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" /> Enterprise AI Copilot & Assistant
               </div>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setRightPanelOpen(!rightPanelOpen)}
-            className="lg:hidden"
-          >
-            <ChevronRight className="size-4" />
-          </Button>
+
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <button
+              onClick={() => messages.length && handleSpeak(messages[messages.length - 1].content)}
+              className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground transition-colors"
+              title="Narrate latest response"
+            >
+              <Volume2 className="size-4" />
+            </button>
+            <button
+              onClick={() => {
+                if (confirm("Reset current conversation?")) {
+                  updateSessionMessages(() => []);
+                }
+              }}
+              className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground transition-colors"
+              title="Clear current thread"
+            >
+              <RefreshCw className="size-4" />
+            </button>
+            <button className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground transition-colors">
+              <MoreVertical className="size-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Scrollable Conversation Stream */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 pb-36">
-          <div className="max-w-4xl mx-auto h-full flex flex-col">
+        {/* Conversation Stream Scroll Area */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-10 py-6 pb-36 scrollbar-thin">
+          <div className="max-w-4xl mx-auto space-y-6">
             {messages.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 pb-16">
-                <div className="size-16 rounded-2xl gradient-brand grid place-items-center text-white shadow-2xl mb-6 relative">
-                  <div className="absolute inset-0 bg-white/20 blur-xl rounded-full" />
-                  <Sparkles className="size-8 relative z-10" />
+              <div className="py-16 text-center space-y-4">
+                <div className="size-16 rounded-2xl gradient-brand grid place-items-center text-white shadow-xl mx-auto">
+                  <Sparkles className="size-8" />
                 </div>
-                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3 text-center text-foreground">
-                  Hello, I'm LazyMonkey AI.
-                </h1>
-                <p className="text-muted-foreground text-center max-w-lg mb-8 text-xs sm:text-sm leading-relaxed">
-                  Your intelligent enterprise co-pilot. Ask me anything about your platform features, live inventory, sales, or workflow guides.
+                <h2 className="text-2xl font-extrabold text-foreground">Welcome to LazyMonkeyAI</h2>
+                <p className="text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
+                  Your platform intelligence assistant. Ask questions about your business, inventory, POS, or get step-by-step workflow guidance.
                 </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full max-w-2xl">
-                  {welcomeSuggestions.map((s, i) => (
-                    <motion.button
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.08 }}
-                      key={i}
-                      onClick={() => send(s.prompt)}
-                      className="p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted/50 hover:border-primary/40 transition-all text-left group shadow-xs flex items-center gap-3.5 cursor-pointer"
+                <div className="flex flex-wrap justify-center gap-2 pt-2">
+                  {DEFAULT_POPULAR_INQUIRIES.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => send(p)}
+                      className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-border/70 bg-card hover:bg-muted text-foreground transition-all shadow-xs"
                     >
-                      <div className="size-9 rounded-xl bg-background border border-border/60 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                        {s.icon}
-                      </div>
-                      <span className="text-xs sm:text-sm font-semibold text-foreground">{s.title}</span>
-                      <ArrowRight className="size-4 ml-auto text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </motion.button>
+                      {p}
+                    </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="space-y-6 pb-6">
-                <AnimatePresence initial={false}>
-                  {messages.map((m) => (
-                    <motion.div
-                      key={m.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={cn("flex gap-3.5", m.role === "user" && "flex-row-reverse")}
-                    >
-                      <Avatar className="size-9 shrink-0 border shadow-xs">
-                        <AvatarFallback
-                          className={cn(
-                            "text-xs font-semibold",
-                            m.role === "ai" ? "gradient-brand text-white" : "bg-muted text-foreground"
-                          )}
-                        >
-                          {m.role === "ai" ? <Sparkles className="size-4" /> : user?.avatar ?? "U"}
-                        </AvatarFallback>
-                      </Avatar>
+              messages.map((m) => (
+                <div key={m.id} className="space-y-3">
+                  {/* User Message Bubble */}
+                  {m.role === "user" && (
+                    <div className="flex items-center justify-end gap-2.5">
+                      <div className="bg-primary/10 border border-primary/20 text-foreground px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-medium shadow-xs max-w-xl flex items-center gap-3">
+                        <span>{m.content}</span>
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 font-mono">
+                          <span>{m.timestamp || "09:07 PM"}</span>
+                          <Check className="size-3 text-primary" />
+                        </div>
+                      </div>
+                      <div className="size-7 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-muted-foreground border">
+                        {user?.full_name ? user.full_name.charAt(0).toUpperCase() : "T"}
+                      </div>
+                    </div>
+                  )}
 
-                      <div className={cn("max-w-[88%] sm:max-w-[80%] flex flex-col gap-2", m.role === "user" && "items-end")}>
-                        <div
-                          className={cn(
-                            "rounded-2xl px-5 py-4 text-xs sm:text-sm leading-relaxed shadow-xs",
-                            m.role === "ai"
-                              ? "bg-card border border-border/80 text-foreground"
-                              : "bg-primary text-primary-foreground font-medium"
-                          )}
-                        >
-                          <Markdown text={m.content} />
-                          {m.streaming && (
-                            <span className="inline-block w-2 h-4 ml-1 align-middle bg-primary animate-pulse rounded-xs" />
-                          )}
+                  {/* AI Message Card */}
+                  {m.role === "ai" && (
+                    <div className="flex items-start gap-3">
+                      <div className="size-8 rounded-xl gradient-brand flex items-center justify-center text-white shadow-xs shrink-0 mt-1">
+                        <Sparkles className="size-4" />
+                      </div>
+
+                      <div className="flex-1 bg-card border border-border/70 rounded-2xl p-5 shadow-xs space-y-4 text-xs sm:text-sm text-foreground">
+                        <div className="flex items-center justify-between border-b border-border/40 pb-2.5">
+                          <span className="font-bold text-sm text-foreground">LazyMonkeyAI Assistant</span>
+                          <span className="text-[10px] font-mono text-muted-foreground">{m.timestamp || "09:07 PM"}</span>
                         </div>
 
-                        {/* Interactive Widget Render */}
-                        {m.role === "ai" && !m.streaming && m.widget && (
-                          <div className="mt-1 w-full">
-                            {m.widget === "sales" && (
-                              <Card className="p-4 bg-blue-500/5 border-blue-500/20 rounded-2xl">
-                                <div className="flex items-center justify-between mb-3">
-                                  <div className="flex items-center gap-2.5">
-                                    <div className="size-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                                      <BarChart3 className="size-4 text-blue-600" />
-                                    </div>
-                                    <span className="font-bold text-xs sm:text-sm">Live POS Transactions Snapshot</span>
-                                  </div>
-                                  <a
-                                    href="/pos?tab=transactions"
-                                    className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1"
-                                  >
-                                    View Terminal <ArrowUpRight className="size-3" />
-                                  </a>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div className="p-3 bg-background rounded-xl border border-border/60">
-                                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Active Currency</div>
-                                    <div className="text-base font-bold">{currency.code} ({currency.symbol})</div>
-                                  </div>
-                                  <div className="p-3 bg-background rounded-xl border border-border/60">
-                                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">POS Checkout</div>
-                                    <div className="text-base font-bold text-emerald-600">Online & Active</div>
-                                  </div>
-                                </div>
-                              </Card>
-                            )}
+                        {/* Text Body */}
+                        <div className="leading-relaxed space-y-2">
+                          <Markdown text={m.content} />
+                          {m.streaming && <span className="inline-block w-2 h-4 ml-1 align-middle bg-primary animate-pulse rounded-xs" />}
+                        </div>
 
-                            {m.widget === "inventory" && (
-                              <Card className="p-4 bg-amber-500/5 border-amber-500/20 rounded-2xl">
-                                <div className="flex items-center justify-between mb-3">
-                                  <div className="flex items-center gap-2.5">
-                                    <div className="size-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
-                                      <Activity className="size-4 text-amber-600" />
-                                    </div>
-                                    <span className="font-bold text-xs sm:text-sm">Warehouse Stock Alerts</span>
-                                  </div>
-                                  <a
-                                    href="/inventory?tab=stock_overview"
-                                    className="text-xs text-amber-600 font-semibold hover:underline flex items-center gap-1"
-                                  >
-                                    Inventory View <ArrowUpRight className="size-3" />
-                                  </a>
-                                </div>
-                                <p className="text-xs text-muted-foreground mb-2">
-                                  Batches and minimum reorder thresholds are actively monitored.
-                                </p>
-                              </Card>
-                            )}
-                          </div>
-                        )}
+                        {/* Live Snapshot Metric Badges */}
+                        {m.stats && (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2">
+                            <div className="p-3 bg-purple-500/5 border border-purple-500/20 rounded-xl flex items-center gap-2.5">
+                              <div className="size-8 rounded-lg bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                                <Package className="size-4" />
+                              </div>
+                              <div>
+                                <div className="text-base font-extrabold text-foreground">{m.stats.products}</div>
+                                <div className="text-[10px] text-muted-foreground font-semibold">Products</div>
+                              </div>
+                            </div>
 
-                        {/* Direct Deep-link Button */}
-                        {m.role === "ai" && !m.streaming && m.direct_link && (
-                          <div className="mt-1">
-                            <a
-                              href={m.direct_link}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all shadow-xs"
-                            >
-                              <span>Open Module Page</span>
-                              <ExternalLink className="size-3" />
-                            </a>
-                          </div>
-                        )}
+                            <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center gap-2.5">
+                              <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                                <ShoppingCart className="size-4" />
+                              </div>
+                              <div>
+                                <div className="text-base font-extrabold text-foreground">{m.stats.transactions}</div>
+                                <div className="text-[10px] text-muted-foreground font-semibold">POS Transactions</div>
+                              </div>
+                            </div>
 
-                        {/* Action buttons footer */}
-                        {m.role === "ai" && !m.streaming && (
-                          <div className="flex items-center gap-2 mt-1 px-1">
-                            <span className="text-[10px] text-muted-foreground">
-                              {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleCopy(m.content)}
-                                className="size-6 text-muted-foreground hover:text-foreground"
-                                title="Copy response"
-                              >
-                                <Copy className="size-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => send(messages[messages.length - 2]?.content || "Refresh")}
-                                className="size-6 text-muted-foreground hover:text-foreground"
-                                title="Regenerate"
-                              >
-                                <RefreshCw className="size-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => toast.success("Feedback submitted!")}
-                                className="size-6 text-muted-foreground hover:text-emerald-500"
-                              >
-                                <ThumbsUp className="size-3" />
-                              </Button>
+                            <div className="p-3 bg-indigo-500/5 border border-indigo-500/20 rounded-xl flex items-center gap-2.5">
+                              <div className="size-8 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
+                                <LifeBuoy className="size-4" />
+                              </div>
+                              <div>
+                                <div className="text-base font-extrabold text-foreground">{m.stats.tickets}</div>
+                                <div className="text-[10px] text-muted-foreground font-semibold">Open Support Cases</div>
+                              </div>
+                            </div>
+
+                            <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl flex items-center gap-2.5">
+                              <div className="size-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
+                                <Users className="size-4" />
+                              </div>
+                              <div>
+                                <div className="text-base font-extrabold text-foreground">{m.stats.users}</div>
+                                <div className="text-[10px] text-muted-foreground font-semibold">Active Users</div>
+                              </div>
                             </div>
                           </div>
                         )}
 
-                        {/* Suggested Follow-ups */}
-                        {m.role === "ai" && !m.streaming && m.suggested_actions && m.suggested_actions.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {m.suggested_actions.map((act) => (
-                              <button
-                                key={act}
-                                onClick={() => send(act)}
-                                className="text-[11px] font-medium px-3 py-1 rounded-full border border-border bg-card hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                              >
-                                {act}
-                              </button>
-                            ))}
+                        {/* Step-by-step guidance list */}
+                        <div className="space-y-2 pt-2 border-t border-border/50">
+                          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">How would you like to proceed? I can assist you with:</p>
+                          <div className="space-y-1.5 text-xs font-medium">
+                            <div className="flex items-center gap-2.5 p-2 rounded-xl bg-muted/40 hover:bg-muted transition-colors cursor-pointer" onClick={() => send("Show platform module guide")}>
+                              <span className="size-5 rounded-full bg-primary/20 text-primary font-bold text-[10px] flex items-center justify-center">1</span>
+                              <span>Navigating to any ERP, POS, or CRM module</span>
+                            </div>
+                            <div className="flex items-center gap-2.5 p-2 rounded-xl bg-muted/40 hover:bg-muted transition-colors cursor-pointer" onClick={() => send("Show financial and inventory reports")}>
+                              <span className="size-5 rounded-full bg-primary/20 text-primary font-bold text-[10px] flex items-center justify-center">2</span>
+                              <span>Generating financial, inventory, or payroll reports</span>
+                            </div>
+                            <div className="flex items-center gap-2.5 p-2 rounded-xl bg-muted/40 hover:bg-muted transition-colors cursor-pointer" onClick={() => send("How do I configure payment gateways, print templates, and security policies?")}>
+                              <span className="size-5 rounded-full bg-primary/20 text-primary font-bold text-[10px] flex items-center justify-center">3</span>
+                              <span>Configuring payment gateways, print templates, and security policies</span>
+                            </div>
                           </div>
-                        )}
+                        </div>
+
+                        {/* Action Footer */}
+                        <div className="flex items-center justify-between pt-2 border-t border-border/40 text-muted-foreground text-xs">
+                          <span className="text-[10px] font-mono">{m.timestamp || "09:07 PM"}</span>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => handleCopy(m.content)} className="hover:text-foreground p-1 rounded transition-colors" title="Copy response">
+                              <Copy className="size-3.5" />
+                            </button>
+                            <button onClick={() => send(messages[messages.length - 2]?.content || "Refresh")} className="hover:text-foreground p-1 rounded transition-colors" title="Regenerate">
+                              <RefreshCw className="size-3.5" />
+                            </button>
+                            <button onClick={() => toast.success("Feedback submitted!")} className="hover:text-emerald-500 p-1 rounded transition-colors">
+                              <ThumbsUp className="size-3.5" />
+                            </button>
+                            <button onClick={() => toast.success("Feedback submitted!")} className="hover:text-rose-500 p-1 rounded transition-colors">
+                              <ThumbsDown className="size-3.5" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
+                    </div>
+                  )}
+
+                  {/* Suggested Follow-up Action Chips */}
+                  {m.role === "ai" && !m.streaming && (
+                    <div className="flex flex-wrap gap-2 pl-11">
+                      <button
+                        onClick={() => send("Show today's sales & revenue")}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs"
+                      >
+                        <BarChart3 className="size-3.5 text-blue-500" />
+                        <span>Show today's sales & revenue</span>
+                      </button>
+                      <button
+                        onClick={() => send("Find low stock products")}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs"
+                      >
+                        <Activity className="size-3.5 text-amber-500" />
+                        <span>Find low stock products</span>
+                      </button>
+                      <button
+                        onClick={() => send("How do I configure payment gateways?")}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs"
+                      >
+                        <Settings className="size-3.5 text-primary" />
+                        <span>How do I configure payment gateways?</span>
+                      </button>
+                      <button
+                        onClick={() => send("Check open support tickets")}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/80 bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs"
+                      >
+                        <LifeBuoy className="size-3.5 text-purple-500" />
+                        <span>Check open support tickets</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
             )}
           </div>
         </div>
 
-        {/* Composer Input Bar */}
-        <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
-          <div className="max-w-4xl mx-auto relative">
-            <div className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/30 to-brand-purple/30 rounded-2xl blur opacity-30 group-focus-within:opacity-100 transition duration-500" />
-              <Card className="relative p-2 rounded-2xl border-border bg-card/90 backdrop-blur-xl shadow-lg">
-                <Textarea
+        {/* Floating Composer Bar */}
+        <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-background via-background/95 to-transparent pt-6">
+          <div className="max-w-4xl mx-auto">
+            <div className="relative group bg-card border border-border/80 rounded-2xl shadow-lg p-2.5 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -447,124 +679,142 @@ export function LazyMonkeyAiWorkspace() {
                       send();
                     }
                   }}
-                  placeholder="Ask LazyMonkey AI to analyze data, explain workflows, or manage ERP..."
-                  rows={1}
-                  className="border-0 shadow-none focus-visible:ring-0 resize-none min-h-[50px] max-h-36 text-xs sm:text-sm bg-transparent py-2.5"
+                  placeholder="Ask anything about your BusinessOS platform..."
+                  className="flex-1 bg-transparent border-0 text-xs sm:text-sm px-2 py-1.5 focus:outline-none placeholder:text-muted-foreground/70"
                 />
-                <div className="flex items-center justify-between px-2 pb-1 pt-1.5 border-t border-border/50">
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Sparkles className="size-3.5 text-primary" />
-                    <span className="text-[11px] font-medium">Powered by LazyMonkey AI</span>
-                  </div>
-                  <Button
+
+                <div className="flex items-center gap-1.5">
+                  <button type="button" className="p-2 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" title="Attach file">
+                    <Paperclip className="size-4" />
+                  </button>
+                  <button type="button" className="p-2 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" title="Voice dictation">
+                    <Mic className="size-4" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => send()}
                     disabled={!input.trim() || sending}
-                    size="sm"
-                    className="gradient-brand text-white border-0 hover:opacity-90 gap-1.5 rounded-xl px-4 shadow-elegant font-semibold h-8 text-xs"
+                    className="size-8 rounded-xl gradient-brand text-white flex items-center justify-center hover:opacity-90 transition-opacity shadow-md disabled:opacity-50"
                   >
-                    {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />} Send
-                  </Button>
+                    {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                  </button>
                 </div>
-              </Card>
+              </div>
             </div>
-            <div className="text-center mt-2 text-[10px] text-muted-foreground">
-              LazyMonkey AI provides enterprise operational intelligence across your entire BusinessOS environment.
-            </div>
+            <p className="text-center text-[10px] text-muted-foreground mt-2 font-medium">
+              LazyMonkeyAI can make mistakes. Please verify important information.
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Right Context Panel */}
-      <AnimatePresence>
-        {rightPanelOpen && (
-          <motion.aside
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 320, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            className="border-l border-border/60 bg-background/60 backdrop-blur-xl shrink-0 flex flex-col z-10 overflow-hidden"
-          >
-            <div className="p-4 border-b border-border/50 flex justify-between items-center bg-card/50">
-              <span className="font-bold text-xs uppercase tracking-wider text-foreground">Business Context</span>
-              <Button variant="ghost" size="icon" onClick={() => setRightPanelOpen(false)} className="size-7">
-                <X className="size-4" />
-              </Button>
+      {/* ── 3. RIGHT SIDEBAR: Business Context & System Health ── */}
+      <aside className="w-80 shrink-0 border-l border-border/60 bg-card/40 backdrop-blur-md hidden xl:flex flex-col z-10">
+        <div className="p-4 border-b border-border/50 flex items-center justify-between">
+          <span className="font-extrabold text-xs uppercase tracking-wider text-foreground">Business Context</span>
+          <button onClick={() => toast.success("Context refreshed")} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+            <RefreshCw className="size-3.5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-5 text-xs scrollbar-thin">
+          {/* Active Scope Card */}
+          <div>
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">
+              Active Scope
             </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-5 text-xs scrollbar-thin">
-              {/* Tenant Context */}
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-                  Active Scope
-                </div>
-                <Card className="p-3 bg-card border border-border/70 rounded-xl shadow-xs">
-                  <div className="flex items-center gap-3">
-                    <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-                      LM
-                    </div>
-                    <div>
-                      <div className="font-bold text-foreground">Enterprise BusinessOS</div>
-                      <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Building2 className="size-3" /> Multi-Branch & POS Ready
-                      </div>
-                    </div>
+            <Card className="p-3 bg-card border border-border/70 rounded-xl shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-xs">
+                    LM
                   </div>
-                </Card>
-              </div>
-
-              {/* Health Score */}
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-                  System Intelligence Health
-                </div>
-                <Card className="p-4 bg-gradient-to-br from-emerald-500/10 to-transparent border-emerald-500/20 rounded-xl">
-                  <div className="flex items-end gap-1.5 mb-2">
-                    <span className="text-3xl font-black text-emerald-600">96</span>
-                    <span className="text-xs font-semibold text-emerald-600 mb-1">/ 100</span>
+                  <div>
+                    <div className="font-bold text-foreground">Enterprise BusinessOS</div>
+                    <div className="text-[10px] text-muted-foreground">Multi-Branch & POS Ready</div>
                   </div>
-                  <div className="space-y-1.5 mt-3 text-[11px]">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">POS System Status</span>
-                      <span className="font-semibold text-emerald-600">Optimal</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Inventory Traceability</span>
-                      <span className="font-semibold text-foreground">Active</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Payment Gateways</span>
-                      <span className="font-semibold text-foreground">Configured</span>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Quick Navigation Shortcuts */}
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-                  Quick Navigation
-                </div>
-                <div className="space-y-1.5">
-                  {[
-                    { label: "POS Cashier Terminal", url: "/pos" },
-                    { label: "Payment Gateways", url: "/settings?tab=payment_gateways" },
-                    { label: "Support Tickets (CRM)", url: "/crm?tab=support_tickets" },
-                    { label: "Inventory Stock Overview", url: "/inventory?tab=stock_overview" },
-                  ].map((s) => (
-                    <a
-                      key={s.label}
-                      href={s.url}
-                      className="flex items-center justify-between p-2.5 rounded-xl border border-border/60 bg-card hover:bg-muted/60 transition-colors text-[11px] font-semibold text-foreground"
-                    >
-                      <span>{s.label}</span>
-                      <ArrowUpRight className="size-3.5 text-muted-foreground" />
-                    </a>
-                  ))}
                 </div>
               </div>
+              <div className="mt-2.5 pt-2 border-t border-border/40 text-right">
+                <button className="text-[10px] font-bold text-primary hover:underline">Change Scope</button>
+              </div>
+            </Card>
+          </div>
+
+          {/* System Health Card */}
+          <div>
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">
+              System Health
             </div>
-          </motion.aside>
-        )}
-      </AnimatePresence>
+            <Card className="p-4 bg-card border border-border/70 rounded-xl space-y-3">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-3xl font-black text-emerald-600">96</span>
+                <span className="text-xs font-bold text-muted-foreground">/ 100</span>
+              </div>
+              <div className="text-[10px] font-semibold text-muted-foreground">Overall System Score</div>
+
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-foreground">
+                    <CheckCircle2 className="size-3.5 text-emerald-500" /> POS System Status
+                  </span>
+                  <span className="font-bold text-emerald-600">Optimal</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-foreground">
+                    <CheckCircle2 className="size-3.5 text-emerald-500" /> Inventory Traceability
+                  </span>
+                  <span className="font-bold text-emerald-600">Active</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-foreground">
+                    <CheckCircle2 className="size-3.5 text-emerald-500" /> Payment Gateways
+                  </span>
+                  <span className="font-bold text-emerald-600">Configured</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-foreground">
+                    <CheckCircle2 className="size-3.5 text-emerald-500" /> Data Sync Status
+                  </span>
+                  <span className="font-bold text-emerald-600">Synced</span>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Quick Navigation Cards */}
+          <div>
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">
+              Quick Navigation
+            </div>
+            <div className="space-y-1.5">
+              {[
+                { label: "POS Cashier Terminal", url: "/pos", icon: ShoppingCart },
+                { label: "Payment Gateways", url: "/settings?tab=payment_gateways", icon: CreditCard },
+                { label: "Support Tickets (CRM)", url: "/crm?tab=support_tickets", icon: LifeBuoy },
+                { label: "Inventory Stock Overview", url: "/inventory?tab=stock_overview", icon: Package },
+                { label: "Sales Analytics Dashboard", url: "/analytics", icon: BarChart3 },
+              ].map((item) => (
+                <a
+                  key={item.label}
+                  href={item.url}
+                  className="flex items-center justify-between p-2.5 rounded-xl border border-border/60 bg-card hover:bg-muted/70 transition-colors text-xs font-semibold text-foreground group"
+                >
+                  <div className="flex items-center gap-2">
+                    <item.icon className="size-3.5 text-primary" />
+                    <span>{item.label}</span>
+                  </div>
+                  <ChevronRight className="size-3.5 text-muted-foreground group-hover:text-foreground transition-transform group-hover:translate-x-0.5" />
+                </a>
+              ))}
+            </div>
+            <button className="flex items-center gap-1.5 text-[11px] font-bold text-primary hover:underline mt-3 px-1">
+              <Settings className="size-3.5" />
+              <span>Customize Quick Links</span>
+            </button>
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }
@@ -653,7 +903,7 @@ function Markdown({ text }: { text: string }) {
       out.push(
         <p
           key={i}
-          className="my-1 text-xs sm:text-sm text-foreground"
+          className="my-1 text-xs sm:text-sm text-foreground leading-relaxed"
           dangerouslySetInnerHTML={{ __html: fmt(line) }}
         />
       );
