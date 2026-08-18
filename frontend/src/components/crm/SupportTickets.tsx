@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, AlertCircle, Clock, CheckCircle2, MoreHorizontal, MessageSquare, Sparkles, Loader2, X } from "lucide-react";
+import { Plus, Search, AlertCircle, Clock, CheckCircle2, MoreHorizontal, MessageSquare, Sparkles, Loader2, X, Trash2 } from "lucide-react";
 
 import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from "@/lib/api-client";
 import { toast } from "sonner";
