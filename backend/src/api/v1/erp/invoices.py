@@ -124,9 +124,9 @@ async def list_invoices(
 @router.get("/customer-summary/{customer_id}")
 async def get_customer_invoice_summary(
     customer_id: str,
-    phone: str | None = None,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    phone: str | None = None,
 ):
     query_conds = [Invoice.tenant_id == ctx.tenant_id]
     try:
