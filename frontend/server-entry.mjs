@@ -9,6 +9,9 @@ const { default: appHandler } = await import("./server.js");
 
 const CLIENT_DIR = join(process.cwd(), ".output", "client");
 const PUBLIC_DIR = join(process.cwd(), "public");
+const UPLOAD_IMAGES_DIR = join(process.cwd(), "..", "backend", "upload_images");
+const BACKEND_UPLOAD_DIR = join(process.cwd(), "backend", "upload_images");
+const BACKEND_SRC_IMAGES_DIR = join(process.cwd(), "..", "backend", "src", "images");
 
 const MIME = {
   ".js": "application/javascript",
@@ -16,6 +19,7 @@ const MIME = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
@@ -27,8 +31,27 @@ const MIME = {
 
 function serveStatic(reqUrl) {
   const url = new URL(reqUrl, "http://localhost");
-  let filePath = join(CLIENT_DIR, url.pathname);
-  if (!existsSync(filePath)) filePath = join(PUBLIC_DIR, url.pathname);
+  const pathname = decodeURIComponent(url.pathname);
+  let filePath = join(CLIENT_DIR, pathname);
+  if (!existsSync(filePath)) filePath = join(PUBLIC_DIR, pathname);
+
+  // Fallback check for uploaded images in backend directories
+  if (!existsSync(filePath) && (pathname.startsWith("/upload_images/") || pathname.startsWith("/images/"))) {
+    const filename = pathname.replace(/^\/(upload_images|images)\//, "");
+    const candidatePaths = [
+      join(UPLOAD_IMAGES_DIR, filename),
+      join(BACKEND_UPLOAD_DIR, filename),
+      join(BACKEND_SRC_IMAGES_DIR, filename),
+      join(process.cwd(), "upload_images", filename),
+    ];
+    for (const cand of candidatePaths) {
+      if (existsSync(cand)) {
+        filePath = cand;
+        break;
+      }
+    }
+  }
+
   if (!existsSync(filePath)) return null;
 
   const ext = extname(filePath).toLowerCase();
@@ -37,7 +60,7 @@ function serveStatic(reqUrl) {
   try {
     const body = readFileSync(filePath);
     return new Response(body, {
-      headers: { "content-type": contentType, "cache-control": "public, max-age=31536000, immutable" },
+      headers: { "content-type": contentType, "cache-control": "public, max-age=86400" },
     });
   } catch {
     return null;

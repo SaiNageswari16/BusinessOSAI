@@ -76,13 +76,13 @@ _DEFAULT_INVOICE_TEMPLATE: dict[str, Any] = {
     "gstin": "37AABCCH694G1Z4",
     "footerText": "Thank you for shopping at LazyMonkeyAI!",
     "termsText": "1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. will be charged if payment is not made within due date.",
-    "bankDetails": "Bank: SBI | A/C: 334455667788 | IFSC: SBIN0001234",
+    "bankDetails": "",
     "themeName": "stylish",
     "fields": {
         "showLogo": True,
         "showHSN": True,
         "showTaxSplit": True,
-        "showBankDetails": True,
+        "showBankDetails": False,
         "showSignature": True,
         "showCustomerDetails": True,
         "showProductName": True,
@@ -428,7 +428,8 @@ def render_invoice_pdf(invoice: Any, template: dict) -> bytes:
         pdf.multi_cell(pdf.w - pdf.l_margin - pdf.r_margin, 4, terms_text)
         pdf.ln(1)
 
-    if show_bank_details and bank_details:
+    is_dummy_bank = not bank_details or any(x in bank_details for x in ["334455667788", "TEST", "000405103000", "SBIN0001234", "dummy", "Dummy"])
+    if show_bank_details and bank_details and not is_dummy_bank and len(bank_details.strip()) > 5:
         pdf.set_font(font_name, "B", 8)
         pdf.set_x(pdf.l_margin)
         pdf.multi_cell(pdf.w - pdf.l_margin - pdf.r_margin, 5, "Bank Details:")
