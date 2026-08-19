@@ -866,15 +866,43 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
     logger = logging.getLogger("CRM_AI_Helper")
 
     primary = prefer_provider or settings.ai_provider or "gemini"
-    if primary not in ("gemini", "openai"):
+    if primary not in ("gemini", "openai", "claude"):
         primary = "gemini"
-    secondary = "openai" if primary == "gemini" else "gemini"
-
-    providers_to_try = [primary, secondary]
+    
+    providers_to_try = [primary, "gemini", "claude", "openai"]
+    # Deduplicate while preserving order
+    seen = set()
+    providers_to_try = [p for p in providers_to_try if not (p in seen or seen.add(p))]
     errors = []
 
     for prov in providers_to_try:
-        if prov == "openai":
+        if prov == "claude":
+            if not settings.anthropic_api_key:
+                errors.append("Anthropic Claude API key not configured")
+                continue
+            try:
+                base_url = (settings.anthropic_base_url or "https://api.anthropic.com").rstrip("/")
+                url = f"{base_url}/v1/messages"
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-api-key": settings.anthropic_api_key,
+                    "anthropic-version": "2023-06-01",
+                }
+                body = {
+                    "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
+                    "max_tokens": 1024,
+                    "messages": [{"role": "user", "content": instruction}],
+                }
+                res = requests.post(url, json=body, headers=headers, timeout=20)
+                res.raise_for_status()
+                data = res.json()
+                if "content" in data and len(data["content"]) > 0:
+                    return data["content"][0]["text"]
+            except Exception as e:
+                logger.warning(f"Claude call failed: {e}")
+                errors.append(f"Claude failed: {str(e)}")
+
+        elif prov == "openai":
             if not settings.openai_api_key:
                 errors.append("OpenAI API key not configured")
                 continue
@@ -917,9 +945,9 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
                 errors.append("Gemini API key not configured")
                 continue
             try:
-                model = settings.gemini_model or "gemini-2.5-flash"
-                if model == "gemini-1.5-flash":
-                    model = "gemini-2.5-flash"
+                model = settings.gemini_model or "gemini-1.5-flash"
+                if "2.5" in model:
+                    model = "gemini-1.5-flash"
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
                 
                 parts = []
@@ -1325,6 +1353,66 @@ async def summarize_support_ticket(
     ticket.ai_summary = summary
     await db.commit()
     return {"id": ticket.id, "ai_summary": summary}
+
+
+class TicketUpdate(BaseModel):
+    subject: str | None = None
+    description: str | None = None
+    priority: str | None = None
+    status: str | None = None
+    category: str | None = None
+
+
+@router.patch("/tickets/{ticket_id}")
+async def update_support_ticket(
+    ticket_id: uuid.UUID,
+    payload: TicketUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    ticket = await db.scalar(
+        select(CRMSupportTicket).where(
+            CRMSupportTicket.id == ticket_id,
+            CRMSupportTicket.tenant_id == ctx.tenant_id
+        )
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    if payload.subject is not None:
+        ticket.subject = payload.subject
+    if payload.description is not None:
+        ticket.description = payload.description
+    if payload.priority is not None:
+        ticket.priority = payload.priority
+    if payload.status is not None:
+        ticket.status = payload.status
+    if payload.category is not None:
+        ticket.category = payload.category
+
+    await db.commit()
+    await db.refresh(ticket)
+    return ticket
+
+
+@router.delete("/tickets/{ticket_id}")
+async def delete_support_ticket(
+    ticket_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    ticket = await db.scalar(
+        select(CRMSupportTicket).where(
+            CRMSupportTicket.id == ticket_id,
+            CRMSupportTicket.tenant_id == ctx.tenant_id
+        )
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    await db.delete(ticket)
+    await db.commit()
+    return {"message": "Ticket deleted successfully", "id": str(ticket_id)}
 
 
 # ─── CRM Quotations ──────────────────────────────────────────────

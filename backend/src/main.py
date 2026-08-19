@@ -1,4 +1,17 @@
 import logging
+import sys
+
+# Ensure standard streams handle all Unicode currency symbols (e.g. ₹, €, د.إ) safely on Windows
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # Passlib bcrypt compatibility patch for newer bcrypt versions
 try:
@@ -12,7 +25,7 @@ except ImportError:
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.v1.router import api_router

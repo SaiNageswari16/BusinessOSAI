@@ -835,7 +835,7 @@ async def generate_job_description(
             if settings.gemini_api_key:
                 try:
                     api_key = settings.gemini_api_key
-                    model = settings.gemini_model or "gemini-2.5-flash"
+                    model = settings.gemini_model or "gemini-1.5-flash"
                     gurl = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
                     gbody = {"contents": [{"parts": [{"text": instruction}]}]}
                     gresp = requests.post(gurl, json=gbody, headers={"Content-Type": "application/json"}, timeout=20)
@@ -850,9 +850,9 @@ async def generate_job_description(
     # ─── Gemini Provider execution ────────────────────────────────
     else:
         api_key = settings.gemini_api_key
-        model = settings.gemini_model or "gemini-2.5-flash"
+        model = settings.gemini_model or "gemini-1.5-flash"
         if model == "gemini-1.5-flash":
-            model = "gemini-2.5-flash"
+            model = "gemini-1.5-flash"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         headers = {"Content-Type": "application/json"}
         body = {

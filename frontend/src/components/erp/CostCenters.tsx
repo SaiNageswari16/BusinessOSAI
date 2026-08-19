@@ -11,6 +11,7 @@ import { useCurrency } from "@/hooks/use-currency";
 function CostCenterFormModal({ cc, departments, onClose, onSaved }: {
   cc: CostCenter | null; departments: Department[]; onClose: () => void; onSaved: () => void;
 }) {
+  const { currency } = useCurrency();
   const isEdit = !!cc;
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({

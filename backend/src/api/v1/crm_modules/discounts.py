@@ -321,11 +321,7 @@ async def apply_discount(
                 wallet = CustomerWallet(tenant_id=ctx.tenant_id, customer_id=customer_id)
                 db.add(wallet)
                 await db.flush()
-            wallet.balance += result.discount_amount
-            wallet.lifetime_credited += result.discount_amount
-            wallet.credit_count += 1
-            customer.wallet_balance = wallet.balance
-            customer.wallet_lifetime_credited = wallet.lifetime_credited
+            wallet.balance = (wallet.balance or 0.0) + result.discount_amount
 
     await db.commit()
     return {"success": True, "discount_amount": result.discount_amount, "final_amount": result.final_amount}

@@ -616,56 +616,93 @@ export function PosSalesInvoice() {
       setCustomerSummary(null);
       setCustomerWalletBalance(0);
       setIncludePreviousDueInBill(false);
+      setShowPendingDueAlert(false);
       return;
     }
     const cust = customers.find((c: any) => c.id === selectedCustomer);
     if (!cust) return;
 
-    if (cust.id) {
-      crmWalletApi
-        .getBalance(cust.id)
-        .then((res) => setCustomerWalletBalance(Number(res?.balance) || 0))
-        .catch(() => setCustomerWalletBalance(0));
-    }
+    const fetchSummary = async () => {
+      try {
+        const [summary, walletRes] = await Promise.all([
+          invoicesApi.getCustomerSummary(cust.id || cust.name).catch(() => null),
+          cust.id ? crmWalletApi.getBalance(cust.id).catch(() => null) : null
+        ]);
 
-    invoicesApi
-      .getCustomerSummary(cust.id || cust.name)
-      .then((summary) => {
-        if (summary) {
-          setCustomerSummary(summary);
-          if (summary.total_pending_due > 0) {
-            setShowPendingDueAlert(true);
-          }
+        if (walletRes) {
+          setCustomerWalletBalance(Number(walletRes?.balance) || 0);
         }
-      })
-      .catch(() => {
+
+        let localInvoices: any[] = [];
         try {
-          const stored = localStorage.getItem(posStorageKey);
+          const stored = localStorage.getItem(posStorageKey) || localStorage.getItem("pos_saved_invoices");
           if (stored) {
-            const list = JSON.parse(stored);
-            const custInvoices = list.filter((i: any) =>
-              (i.customer_name && cust.name && i.customer_name.toLowerCase() === cust.name.toLowerCase()) ||
-              (i.customer_phone && cust.phone && i.customer_phone === cust.phone)
-            );
-            const totalSpent = custInvoices.reduce((sum: number, i: any) => sum + (Number(i.grand_total) || 0), 0);
-            const totalPending = custInvoices
-              .filter((i: any) => i.payment_status === "Unpaid" || i.payment_status === "Partial")
-              .reduce((sum: number, i: any) => sum + Math.max(0, (Number(i.grand_total) || 0) - (Number(i.amount_received) || 0)), 0);
-            setCustomerSummary({
-              total_invoices: custInvoices.length,
-              total_spent: totalSpent,
-              total_pending_due: totalPending,
-              last_purchase_date: custInvoices[0]?.invoice_date || null
-            });
-            if (totalPending > 0) {
-              setShowPendingDueAlert(true);
-            }
+            localInvoices = JSON.parse(stored);
           }
-        } catch {
-          // ignore fallback error
+        } catch (e) {}
+
+        const backendUnpaid = (summary?.unpaid_invoices || []).filter((inv: any) => {
+          const rawStatus = String(inv.status || "").toLowerCase();
+          const due = Number(inv.balance_due) || 0;
+          return !["paid", "voided", "cancelled", "completed"].includes(rawStatus) && due > 0.05;
+        });
+
+        const localUnpaidForCust = localInvoices
+          .filter((inv: any) => {
+            const isMatch = (inv.customer_id && cust.id && inv.customer_id === cust.id) ||
+              (inv.customer_name && cust.name && inv.customer_name.toLowerCase() === cust.name.toLowerCase()) ||
+              (inv.customer_phone && cust.phone && inv.customer_phone === cust.phone);
+            if (!isMatch) return false;
+
+            const isPaid = inv.payment_status === "Paid" || (Number(inv.amount_received || 0) >= Number(inv.grand_total || 0) - 0.05);
+            return !isPaid;
+          })
+          .map((inv: any) => ({
+            id: inv.invoice_number || inv.id,
+            realId: inv.id,
+            invoice_date: inv.invoice_date,
+            total_amount: Number(inv.grand_total || 0),
+            balance_due: Math.max(0, Number(inv.grand_total || 0) - Number(inv.amount_received || 0)),
+            status: inv.payment_status || "Unpaid"
+          }))
+          .filter((inv: any) => inv.balance_due > 0.05);
+
+        const mergedMap = new Map<string, any>();
+        backendUnpaid.forEach((inv: any) => {
+          mergedMap.set(inv.invoice_number || inv.id, inv);
+        });
+        localUnpaidForCust.forEach((inv: any) => {
+          if (!mergedMap.has(inv.id)) {
+            mergedMap.set(inv.id, inv);
+          }
+        });
+
+        const finalUnpaid = Array.from(mergedMap.values()).filter((inv: any) => Number(inv.balance_due) > 0.05);
+        const totalPending = finalUnpaid.reduce((sum, inv) => sum + Number(inv.balance_due || 0), 0);
+
+        setCustomerSummary({
+          total_invoices: summary?.total_invoices || localInvoices.length,
+          total_spent: summary?.total_spent || 0,
+          total_pending_due: totalPending,
+          last_purchase_date: summary?.last_purchase_date || null,
+          unpaid_invoices: finalUnpaid
+        });
+
+        if (totalPending > 0.05) {
+          setShowPendingDueAlert(true);
+        } else {
+          setShowPendingDueAlert(false);
+          setIncludePreviousDueInBill(false);
         }
-      });
-  }, [selectedCustomer, customers]);
+      } catch (err) {
+        setCustomerSummary(null);
+        setShowPendingDueAlert(false);
+        setIncludePreviousDueInBill(false);
+      }
+    };
+
+    fetchSummary();
+  }, [selectedCustomer, customers, posStorageKey]);
 
   const handlePricingModeChange = (mode: "Retail" | "Wholesale") => {
     setPricingMode(mode);

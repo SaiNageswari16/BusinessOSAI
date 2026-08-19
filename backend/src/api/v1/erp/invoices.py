@@ -155,21 +155,26 @@ async def get_customer_invoice_summary(
     total_pending_due = 0.0
 
     for inv in invoices:
-        st = str(inv.status or "").lower().strip()
+        raw_status = str(inv.status or "").lower().strip()
         pay_st = str(inv.payment_status or "").lower().strip()
-        
-        # If invoice or payment status is marked paid/voided/cancelled, it is settled
-        if st in ("paid", "voided", "cancelled") or pay_st in ("paid", "voided", "cancelled"):
+        tot = float(inv.total_amount or 0)
+        paid = float(inv.amount_paid or 0)
+
+        # Ignore invoices that are fully settled, paid, or voided
+        if raw_status in ("paid", "voided", "cancelled", "completed") or pay_st in ("paid", "voided", "cancelled", "completed") or (tot > 0 and paid >= tot - 0.05):
             continue
-            
-        bal = float(inv.balance_due) if inv.balance_due is not None else float(inv.total_amount or 0)
-        
-        # Ignore negligible fractions (< 0.05) from rounding/paisa differences
-        if bal <= 0.05:
-            continue
-            
-        unpaid_invoices.append(inv)
-        total_pending_due += bal
+
+        due = float(inv.balance_due) if (inv.balance_due is not None and float(inv.balance_due) > 0) else max(0.0, tot - paid)
+        if due > 0.05:
+            total_pending_due += due
+            unpaid_invoices.append({
+                "id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+                "total_amount": round(tot, 2),
+                "balance_due": round(due, 2),
+                "status": str(inv.status),
+            })
 
     last_purchase_date = invoices[0].invoice_date.isoformat() if (invoices and invoices[0].invoice_date) else None
 
@@ -179,17 +184,7 @@ async def get_customer_invoice_summary(
         "total_spent": round(total_spent, 2),
         "total_pending_due": round(total_pending_due, 2),
         "last_purchase_date": last_purchase_date,
-        "unpaid_invoices": [
-            {
-                "id": str(inv.id),
-                "invoice_number": inv.invoice_number,
-                "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
-                "total_amount": round(float(inv.total_amount or 0), 2),
-                "balance_due": round(float(inv.balance_due) if inv.balance_due is not None else float(inv.total_amount or 0), 2),
-                "status": str(inv.status),
-            }
-            for inv in unpaid_invoices
-        ]
+        "unpaid_invoices": unpaid_invoices,
     }
 
 
@@ -289,10 +284,10 @@ async def create_invoice(
     inv_kwargs.update({
         "tenant_id": ctx.tenant_id,
         "invoice_number": invoice_number,
+        **totals,
         "status": initial_status,
         "amount_paid": actual_paid,
         "balance_due": actual_due,
-        **totals,
     })
 
     invoice = Invoice(**inv_kwargs)

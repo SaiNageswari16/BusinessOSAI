@@ -2909,6 +2909,8 @@ export interface CrmTicket {
 export const crmTicketsApi = {
   list: (category?: string, status?: string) => request<CrmTicket[]>("GET", "/crm/tickets", undefined, { category, status }),
   create: (data: Record<string, unknown>) => request<CrmTicket>("POST", "/crm/tickets", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmTicket>("PATCH", `/crm/tickets/${id}`, data),
+  delete: (id: string) => request<{ message: string; id: string }>("DELETE", `/crm/tickets/${id}`),
   summarize: (id: string) => request<{ id: string; ai_summary: string }>("POST", `/crm/tickets/${id}/summarize-ai`),
 };
 
@@ -4317,4 +4319,19 @@ export const deliveryChallanApi = {
   createChallan: (data: any) => request<any>("POST", "/erp/delivery-challans", data),
   dispatchChallan: (id: string) => request<any>("POST", `/erp/delivery-challans/${id}/dispatch`),
 };
+
+export interface CopilotChatResponse {
+  reply: string;
+  widget?: "sales" | "inventory" | "payroll" | null;
+  direct_link?: string | null;
+  suggested_actions?: string[];
+}
+
+export const copilotApi = {
+  chat: (message: string, history: { role: string; content: string }[] = []) =>
+    request<CopilotChatResponse>("POST", "/copilot/chat", { message, history }),
+  getSuggestions: () =>
+    request<{ title: string; category: string }[]>("GET", "/copilot/suggestions"),
+};
+
 

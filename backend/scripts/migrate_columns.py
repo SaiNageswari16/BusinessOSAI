@@ -33,6 +33,7 @@ async def run_migrations():
         "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT TRUE;",
         "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS specifications JSONB DEFAULT '{}'::jsonb;",
         "ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS specifications TEXT;",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS sales_points NUMERIC(12, 2) DEFAULT 0.0;",
         "UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com';",
     ]
 

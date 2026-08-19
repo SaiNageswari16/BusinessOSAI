@@ -4,6 +4,7 @@ import { Plus, Search, RefreshCw, Loader2, AlertCircle, Building2, CreditCard, A
 import { bankApi, BankAccountRecord, BankTransaction, accountingApi, ChartOfAccount } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { formatCurrency } from "@/lib/utils";
 
 import { getActiveCurrency } from "@/lib/utils";
 
