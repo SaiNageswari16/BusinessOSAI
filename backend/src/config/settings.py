@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     facebook_ad_account_id: str | None = Field(default=None, alias="FB_AD_ACCOUNT_ID")
 
 
+    # GST / Tax Lookup
+    gstin_check_api_key: str | None = Field(default=None, alias="GSTIN_CHECK_API_KEY")
+    gst_api_key: str | None = Field(default=None, alias="GST_API_KEY")
+
     # LiveKit / Telephony
     livekit_url: str | None = Field(default=None, alias="LIVEKIT_URL")
     livekit_api_key: str | None = Field(default=None, alias="LIVEKIT_API_KEY")

@@ -91,8 +91,8 @@ export function Customers() {
       setForm((prev) => ({
         ...prev,
         gst_number: res.gstin || cleanGst,
-        name: res.trade_name || res.legal_name,
-        company_name: res.legal_name || res.trade_name,
+        name: res.trade_name || res.legal_name || prev.name,
+        company_name: res.legal_name || res.trade_name || prev.company_name,
         contact_person: prev.contact_person || res.contact_person || "",
         email: prev.email || res.email || "",
         phone: prev.phone || res.phone || "",
@@ -104,7 +104,11 @@ export function Customers() {
         customer_type: "Corporate",
         status: "Active",
       }));
-      toast.success(`GSTIN Verified: ${res.trade_name || res.legal_name} (${res.state})`);
+      toast.success(
+        res.is_fallback
+          ? `GST State & PAN Verified: ${res.state} (PAN: ${res.pan})`
+          : `GSTIN Verified: ${res.trade_name || res.legal_name} (${res.state})`
+      );
     } catch (e: any) {
       toast.error(e?.detail || "GSTIN lookup failed");
     } finally {

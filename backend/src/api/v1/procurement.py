@@ -300,90 +300,81 @@ async def verify_gstin(
 
     # Attempt live GST API lookup
     import httpx
+    import os
+    from src.config import get_settings
+
+    settings = get_settings()
+    api_key = settings.gstin_check_api_key or settings.gst_api_key or os.getenv("GSTIN_CHECK_API_KEY") or os.getenv("GST_API_KEY")
+
+    # List of endpoints to try
+    lookup_urls = []
+    if api_key:
+        lookup_urls.append(f"https://sheet.gstincheck.co.in/check/{api_key}/{gstin_input}")
+    lookup_urls.append(f"https://sheet.gstincheck.co.in/api/v1/check/{gstin_input}")
+
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(f"https://sheet.gstincheck.co.in/api/v1/check/{gstin_input}")
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("flag") and data.get("data"):
-                    gst_data = data["data"]
-                    addr = gst_data.get("pradr", {}).get("addr", {})
-                    trade_name = gst_data.get("tradeNam") or gst_data.get("lgnm") or f"Enterprise {pan}"
-                    legal_name = gst_data.get("lgnm") or trade_name
-                    addr_line = f"{addr.get('bno', '')} {addr.get('st', '')} {addr.get('loc', '')} {addr.get('dst', city_name)}".strip()
-                    return {
-                        "valid": True,
-                        "is_fallback": False,
-                        "gstin": gstin_input,
-                        "legal_name": legal_name,
-                        "trade_name": trade_name,
-                        "pan": pan,
-                        "state": state_name,
-                        "state_code": state_code,
-                        "taxpayer_type": gst_data.get("dty") or "Regular",
-                        "status": gst_data.get("sts") or "Active",
-                        "contact_person": gst_data.get("contact_person") or f"Authorized Signatory ({trade_name})",
-                        "email": gst_data.get("email") or f"contact@{pan.lower()}.com",
-                        "phone": gst_data.get("phone") or f"+91 98{gstin_input[2:10]}",
-                        "bank_name": "HDFC Bank Ltd",
-                        "account_number": f"50100{gstin_input[2:10]}",
-                        "ifsc_code": f"HDFC000{state_code}12",
-                        "city": addr.get("dst") or city_name,
-                        "pincode": addr.get("pn") or pincode,
-                        "address": addr_line or f"Plot No. 42/B, Commercial Phase 2, {city_name}, {state_name} - {pincode}",
-                        "business_nature": gst_data.get("nba", ["Wholesale Trade / Commercial Distribution"])[0] if isinstance(gst_data.get("nba"), list) else "Wholesale Trade / Commercial Distribution"
-                    }
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for url in lookup_urls:
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        # Check if successful response returned from gstincheck or standard API
+                        if data.get("flag") and data.get("data"):
+                            gst_data = data["data"]
+                            addr = gst_data.get("pradr", {}).get("addr", {})
+                            trade_name = gst_data.get("tradeNam") or gst_data.get("lgnm") or ""
+                            legal_name = gst_data.get("lgnm") or trade_name or ""
+                            addr_line = f"{addr.get('bno', '')} {addr.get('st', '')} {addr.get('loc', '')} {addr.get('dst', city_name)}".strip()
+                            return {
+                                "valid": True,
+                                "is_fallback": False,
+                                "gstin": gstin_input,
+                                "legal_name": legal_name,
+                                "trade_name": trade_name,
+                                "pan": pan,
+                                "state": addr.get("stcd") or state_name,
+                                "state_code": state_code,
+                                "taxpayer_type": gst_data.get("dty") or "Regular",
+                                "status": gst_data.get("sts") or "Active",
+                                "contact_person": gst_data.get("contact_person") or "",
+                                "email": gst_data.get("email") or "",
+                                "phone": gst_data.get("phone") or "",
+                                "bank_name": "",
+                                "account_number": "",
+                                "ifsc_code": "",
+                                "city": addr.get("dst") or city_name,
+                                "pincode": addr.get("pn") or pincode,
+                                "address": addr_line or f"{city_name}, {state_name} - {pincode}",
+                                "business_nature": gst_data.get("nba", [""])[0] if isinstance(gst_data.get("nba"), list) else (gst_data.get("nba") or "")
+                            }
+                except Exception as endpoint_err:
+                    continue
     except Exception as e:
         print(f"Live GST API lookup note: {e}")
 
-    # Entity classification from 4th character of PAN:
-    pan_type = pan[3] if len(pan) > 3 else "C"
-    pan_prefix = pan[:4]
-    
-    if pan_type == "C":
-        legal_name = f"{pan_prefix} COMMERCIAL ENTERPRISES PRIVATE LIMITED"
-        trade_name = f"{pan_prefix} Trading & Distribution Co."
-        contact_role = "Managing Director"
-    elif pan_type == "P":
-        legal_name = f"{pan_prefix} TRADERS & RETAIL ENTERPRISES"
-        trade_name = f"{pan_prefix} General Stores & Trade"
-        contact_role = "Proprietor"
-    elif pan_type == "F":
-        legal_name = f"{pan_prefix} & PARTNERS COMMERCIAL LLP"
-        trade_name = f"{pan_prefix} Associates & Co."
-        contact_role = "Managing Partner"
-    elif pan_type == "H":
-        legal_name = f"{pan_prefix} FAMILY COMMERCIAL ENTERPRISES (HUF)"
-        trade_name = f"{pan_prefix} Enterprise"
-        contact_role = "Karta"
-    else:
-        legal_name = f"{pan_prefix} COMMERCIAL CORPORATION"
-        trade_name = f"{pan_prefix} Enterprise Solutions"
-        contact_role = "Director"
-
-    formatted_address = f"Plot No. 42/B, Commercial Phase 2, {city_name}, {state_name} - {pincode}"
-
+    # Fallback: Derive real mathematical properties without generating fake names
     return {
         "valid": True,
         "is_fallback": True,
         "gstin": gstin_input,
-        "legal_name": legal_name,
-        "trade_name": trade_name,
+        "legal_name": "",
+        "trade_name": "",
         "pan": pan,
         "state": state_name,
         "state_code": state_code,
         "taxpayer_type": "Regular",
         "status": "Active",
-        "contact_person": f"Authorized {contact_role} ({trade_name})",
-        "email": f"accounts@{pan.lower()}.com",
-        "phone": f"+91 98{gstin_input[2:10]}",
-        "bank_name": "HDFC Bank Ltd",
-        "account_number": f"50100{gstin_input[2:10]}",
-        "ifsc_code": f"HDFC000{state_code}12",
+        "contact_person": "",
+        "email": "",
+        "phone": "",
+        "bank_name": "",
+        "account_number": "",
+        "ifsc_code": "",
         "city": city_name,
         "pincode": pincode,
-        "address": formatted_address,
-        "business_nature": "Wholesale Trade / Commercial Distribution"
+        "address": f"{city_name}, {state_name} - {pincode}",
+        "business_nature": ""
     }
 
 

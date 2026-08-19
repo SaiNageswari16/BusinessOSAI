@@ -123,13 +123,27 @@ async def list_invoices(
 
 @router.get("/customer-summary/{customer_id}")
 async def get_customer_invoice_summary(
-    customer_id: uuid.UUID,
+    customer_id: str,
+    phone: str | None = None,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    query_conds = [Invoice.tenant_id == ctx.tenant_id]
+    try:
+        c_uuid = uuid.UUID(str(customer_id))
+        if phone:
+            query_conds.append((Invoice.customer_id == c_uuid) | (Invoice.customer_phone == phone))
+        else:
+            query_conds.append(Invoice.customer_id == c_uuid)
+    except (ValueError, AttributeError):
+        if phone:
+            query_conds.append((Invoice.customer_name.ilike(f"%{customer_id}%")) | (Invoice.customer_phone == phone))
+        else:
+            query_conds.append((Invoice.customer_name.ilike(f"%{customer_id}%")) | (Invoice.customer_phone.ilike(f"%{customer_id}%")))
+
     res = await db.execute(
         select(Invoice)
-        .where(Invoice.customer_id == customer_id, Invoice.tenant_id == ctx.tenant_id)
+        .where(*query_conds)
         .order_by(Invoice.invoice_date.desc())
     )
     invoices = res.scalars().all()
@@ -137,15 +151,25 @@ async def get_customer_invoice_summary(
     total_invoices = len(invoices)
     total_spent = sum(float(inv.total_amount or 0) for inv in invoices)
 
-    unpaid_invoices = [
-        inv for inv in invoices
-        if str(inv.status).lower() not in ("paid", "voided", "cancelled") or float(inv.balance_due or 0) > 0
-    ]
+    unpaid_invoices = []
+    total_pending_due = 0.0
 
-    total_pending_due = sum(
-        float(inv.balance_due) if (inv.balance_due is not None and float(inv.balance_due) > 0) else (float(inv.total_amount or 0) if str(inv.status).lower() not in ("paid", "voided", "cancelled") else 0.0)
-        for inv in invoices
-    )
+    for inv in invoices:
+        st = str(inv.status or "").lower().strip()
+        pay_st = str(inv.payment_status or "").lower().strip()
+        
+        # If invoice or payment status is marked paid/voided/cancelled, it is settled
+        if st in ("paid", "voided", "cancelled") or pay_st in ("paid", "voided", "cancelled"):
+            continue
+            
+        bal = float(inv.balance_due) if inv.balance_due is not None else float(inv.total_amount or 0)
+        
+        # Ignore negligible fractions (< 0.05) from rounding/paisa differences
+        if bal <= 0.05:
+            continue
+            
+        unpaid_invoices.append(inv)
+        total_pending_due += bal
 
     last_purchase_date = invoices[0].invoice_date.isoformat() if (invoices and invoices[0].invoice_date) else None
 
@@ -160,8 +184,8 @@ async def get_customer_invoice_summary(
                 "id": str(inv.id),
                 "invoice_number": inv.invoice_number,
                 "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
-                "total_amount": float(inv.total_amount or 0),
-                "balance_due": float(inv.balance_due) if inv.balance_due is not None else float(inv.total_amount or 0),
+                "total_amount": round(float(inv.total_amount or 0), 2),
+                "balance_due": round(float(inv.balance_due) if inv.balance_due is not None else float(inv.total_amount or 0), 2),
                 "status": str(inv.status),
             }
             for inv in unpaid_invoices
