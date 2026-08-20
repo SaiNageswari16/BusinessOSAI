@@ -1138,6 +1138,35 @@ function PosTerminalInner() {
         }).catch(() => {});
       }
 
+      // Persist to pos_saved_invoices for Invoices History sync
+      try {
+        const terminalInvoiceRecord = {
+          id: response.id || `rec-${Date.now()}`,
+          invoice_number: response.receipt_number || billData.invoice_number,
+          customer_name: billData.customerName,
+          customer_phone: billData.customerPhone,
+          customer_gstin: (selectedCustomer as any)?.gst_number || "",
+          sales_executive: currentSession?.cashier_name || "POS Cashier",
+          sales_points_earned: Math.floor(total / 100),
+          invoice_date: new Date().toISOString().slice(0, 10),
+          due_date: new Date().toISOString().slice(0, 10),
+          payment_mode: billData.payment_method,
+          payment_status: "Paid",
+          subtotal: subtotal,
+          total_tax: tax,
+          discount_amount: totalDiscount,
+          grand_total: total,
+          amount_received: total,
+          print_status: "Thermal Printed",
+          items: billData.items,
+        };
+        const prevList = JSON.parse(localStorage.getItem("pos_saved_invoices") || "[]");
+        const mergedList = [terminalInvoiceRecord, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
+        localStorage.setItem("pos_saved_invoices", JSON.stringify(mergedList));
+      } catch (e) {
+        console.warn("Could not save POS checkout bill to localStorage:", e);
+      }
+
       // Broadcast global updates for stock & ledger refresh
       window.dispatchEvent(new Event("pos_invoices_updated"));
       window.dispatchEvent(new Event("inventory_updated"));

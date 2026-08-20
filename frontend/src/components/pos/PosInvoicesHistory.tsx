@@ -184,80 +184,156 @@ export function PosInvoicesHistory() {
     }
   };
 
-  // Load invoices from Backend API & localStorage sync
+  // Load invoices from Backend API (ERP Invoices + POS Transactions) & all localStorage keys
   const loadInvoices = async () => {
     setLoading(true);
-    let localRecords: LocalInvoiceRecord[] = [];
+    const localRecords: LocalInvoiceRecord[] = [];
+    const remoteRecords: LocalInvoiceRecord[] = [];
+
     try {
-      // 1. Check local storage saved invoices from POS Sales Invoice page
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        try {
-          localRecords = JSON.parse(stored);
-        } catch (e) {
-          localRecords = [];
+      // 1. Gather all local storage invoices across all tenant & legacy keys
+      const checkedKeys = new Set<string>();
+      const candidateKeys = [storageKey, "pos_saved_invoices", "pos_saved_invoices_default"];
+      candidateKeys.forEach((k) => checkedKeys.add(k));
+
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith("pos_saved_invoices") || key.startsWith("pos_invoices"))) {
+            checkedKeys.add(key);
+          }
         }
+      } catch (e) {}
+
+      checkedKeys.forEach((k) => {
+        try {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              list.forEach((inv) => {
+                if (inv && (inv.id || inv.invoice_number)) {
+                  localRecords.push(inv);
+                }
+              });
+            }
+          }
+        } catch (e) {}
+      });
+
+      // 2. Fetch remote ERP Invoices from Backend API
+      try {
+        const apiRes: any = await invoicesApi.listInvoices({ page_size: 100 }).catch(() => null);
+        const invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
+        if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
+          invoiceItems.forEach((inv: any) => {
+            const lines = (inv.lines || []).map((l: any) => ({
+              id: l.id,
+              product_name: l.product_name || l.item_name || "Item",
+              quantity: Number(l.quantity) || 1,
+              unit_price: Number(l.unit_price) || 0,
+              mrp: Number(l.mrp) || Number(l.unit_price) || 0,
+              hsn_code: l.hsn_code || "",
+              tax_rate: Number(l.tax_rate) || 0,
+              discount_value: Number(l.discount_value) || 0,
+            }));
+
+            const linesSubtotal = lines.reduce((s: number, l: any) => s + l.quantity * l.unit_price, 0);
+            const linesTax = lines.reduce((s: number, l: any) => s + l.quantity * l.unit_price * (l.tax_rate / 100), 0);
+            const calculatedGrandTotal = lines.length > 0 ? linesSubtotal + linesTax : Number(inv.total_amount || 0);
+
+            const finalSubtotal = linesSubtotal > 0 ? linesSubtotal : Number(inv.subtotal) || Number(inv.total_amount) * 0.85;
+            const finalTax = linesTax > 0 ? linesTax : Number(inv.tax_amount) || 0;
+            const finalGrandTotal = lines.length > 0 ? calculatedGrandTotal : Number(inv.total_amount || 0);
+
+            const rawStatus = String(inv.status || "").toLowerCase();
+            const amtPaid = Number(inv.amount_paid) || 0;
+            const isPaid = rawStatus === "paid" || amtPaid >= finalGrandTotal - 0.05;
+            const isPartial = rawStatus === "partial" || rawStatus === "partially_paid" || (amtPaid > 0 && amtPaid < finalGrandTotal - 0.05);
+
+            remoteRecords.push({
+              id: inv.id,
+              invoice_number: inv.invoice_number || `INV-${String(inv.id).slice(0, 6).toUpperCase()}`,
+              customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
+              customer_phone: inv.customer?.phone || inv.customer_phone || "",
+              customer_gstin: inv.customer?.tax_number || inv.customer_gstin || "",
+              sales_executive: inv.created_by_name || "Sales Executive",
+              sales_points_earned: Math.floor(finalGrandTotal / 100),
+              invoice_date: inv.invoice_date || new Date().toISOString().slice(0, 10),
+              due_date: inv.due_date || "",
+              payment_mode: inv.payment_terms || inv.payment_method || "Cash",
+              payment_status: isPaid ? "Paid" : isPartial ? "Partial" : "Unpaid",
+              subtotal: finalSubtotal,
+              total_tax: finalTax,
+              discount_amount: Number(inv.discount_amount) || 0,
+              grand_total: finalGrandTotal,
+              amount_received: isPaid ? finalGrandTotal : amtPaid,
+              print_status: "A4 PDF Generated",
+              items: lines,
+            });
+          });
+        }
+      } catch (e) {
+        console.warn("invoicesApi.listInvoices error:", e);
       }
 
-      // 2. Fetch remote invoices from Backend API with catch fallback
-      const apiRes = await invoicesApi.listInvoices({ page_size: 50 }).catch(() => null);
-      let remoteRecords: LocalInvoiceRecord[] = [];
-      if (apiRes && apiRes.items && apiRes.items.length > 0) {
-        remoteRecords = apiRes.items.map((inv: any) => {
-          const lines = (inv.lines || []).map((l: any) => ({
-            id: l.id,
-            product_name: l.product_name || l.item_name || "Item",
-            quantity: Number(l.quantity) || 1,
-            unit_price: Number(l.unit_price) || 0,
-            mrp: Number(l.mrp) || Number(l.unit_price) || 0,
-            hsn_code: l.hsn_code || "",
-            tax_rate: Number(l.tax_rate) || 0,
-            discount_value: Number(l.discount_value) || 0,
-          }));
+      // 3. Fetch POS transaction checkout history from Backend API
+      try {
+        const posHist: any = await posApi.getHistory({ limit: 100 }).catch(() => null);
+        const posItems = posHist?.items || posHist?.data?.items || posHist?.data || (Array.isArray(posHist) ? posHist : []);
+        if (Array.isArray(posItems) && posItems.length > 0) {
+          posItems.forEach((tx: any) => {
+            const receiptNum = tx.receipt_number || (tx.id ? `REC-${String(tx.id).slice(0, 6).toUpperCase()}` : `REC-${Date.now()}`);
+            const txLines = (tx.items || []).map((l: any) => ({
+              id: l.id,
+              product_name: l.product?.name || l.product_name || "Item",
+              quantity: Number(l.quantity) || 1,
+              unit_price: Number(l.unit_price) || 0,
+              mrp: Number(l.unit_price) || 0,
+              discount_value: Number(l.discount) || 0,
+              tax_rate: 0,
+            }));
+            const txSubtotal = Number(tx.subtotal) || Number(tx.total_amount) || 0;
+            const txTax = Number(tx.tax_amount) || 0;
+            const txGrand = Number(tx.total_amount) || txSubtotal + txTax;
+            const isRefund = tx.status === "refunded";
+            const isCredit = tx.status === "credit";
+            const isPaid = tx.status === "completed" || (!isCredit && !isRefund);
 
-          const linesSubtotal = lines.reduce((s: number, l: any) => s + (l.quantity * l.unit_price), 0);
-          const linesTax = lines.reduce((s: number, l: any) => s + (l.quantity * l.unit_price * (l.tax_rate / 100)), 0);
-          const calculatedGrandTotal = lines.length > 0 ? (linesSubtotal + linesTax) : Number(inv.total_amount || 0);
-
-          const finalSubtotal = linesSubtotal > 0 ? linesSubtotal : (Number(inv.subtotal) || Number(inv.total_amount) * 0.85);
-          const finalTax = linesTax > 0 ? linesTax : (Number(inv.tax_amount) || 0);
-          const finalGrandTotal = lines.length > 0 ? calculatedGrandTotal : Number(inv.total_amount || 0);
-
-          const rawStatus = String(inv.status || "").toLowerCase();
-          const amtPaid = Number(inv.amount_paid) || 0;
-          const isPaid = rawStatus === "paid" || amtPaid >= finalGrandTotal - 0.05;
-          const isPartial = rawStatus === "partial" || rawStatus === "partially_paid" || (amtPaid > 0 && amtPaid < finalGrandTotal - 0.05);
-
-          return {
-            id: inv.id,
-            invoice_number: inv.invoice_number || `INV-${inv.id.slice(0, 6).toUpperCase()}`,
-            customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
-            customer_phone: inv.customer?.phone || "",
-            customer_gstin: inv.customer?.tax_number || "",
-            sales_executive: inv.created_by_name || "Sales Executive",
-            sales_points_earned: Math.floor(finalGrandTotal / 100),
-            invoice_date: inv.invoice_date || new Date().toISOString().slice(0, 10),
-            due_date: inv.due_date || "",
-            payment_mode: inv.payment_terms || "Cash",
-            payment_status: isPaid ? "Paid" : isPartial ? "Partial" : "Unpaid",
-            subtotal: finalSubtotal,
-            total_tax: finalTax,
-            discount_amount: Number(inv.discount_amount) || 0,
-            grand_total: finalGrandTotal,
-            amount_received: isPaid ? finalGrandTotal : amtPaid,
-            print_status: "A4 PDF Generated",
-            items: lines,
-          };
-        });
+            remoteRecords.push({
+              id: tx.id,
+              invoice_number: receiptNum,
+              customer_name: tx.customer?.name || "Walk-in Guest",
+              customer_phone: tx.customer?.phone || "",
+              customer_gstin: tx.customer?.gst_number || "",
+              sales_executive: tx.cashier?.full_name || "POS Cashier",
+              sales_points_earned: Math.floor(txGrand / 100),
+              invoice_date: tx.created_at ? new Date(tx.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+              due_date: "",
+              payment_mode: tx.payments && tx.payments.length > 0 ? tx.payments.map((p: any) => p.payment_method).join(", ") : "Cash",
+              payment_status: isPaid ? "Paid" : isCredit ? "Unpaid" : "Partial",
+              subtotal: txSubtotal,
+              total_tax: txTax,
+              discount_amount: Number(tx.discount_amount) || 0,
+              grand_total: txGrand,
+              amount_received: isPaid ? txGrand : tx.payments ? tx.payments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0) : 0,
+              print_status: "Thermal Printed",
+              items: txLines,
+            });
+          });
+        }
+      } catch (e) {
+        console.warn("posApi.getHistory error:", e);
       }
 
-      // Merge local and remote invoice records.
+      // Merge local and remote invoice records
       const mergedMap = new Map<string, LocalInvoiceRecord>();
       remoteRecords.forEach((inv) => {
         if (inv && inv.invoice_number) {
           mergedMap.set(inv.invoice_number, inv);
         }
       });
+
       localRecords.forEach((inv) => {
         if (inv && inv.invoice_number) {
           const remote = mergedMap.get(inv.invoice_number);
@@ -289,12 +365,13 @@ export function PosInvoicesHistory() {
       const seenNumbers = new Set<string>();
       const dedupedList: LocalInvoiceRecord[] = [];
       const sorted = Array.from(mergedMap.values()).sort(
-        (a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime()
+        (a, b) => new Date(b.invoice_date || 0).getTime() - new Date(a.invoice_date || 0).getTime()
       );
+
       for (const inv of sorted) {
         if (inv.items && inv.items.length > 0) {
-          const sub = inv.items.reduce((s: number, it: any) => s + (Number(it.quantity || 1) * Number(it.unit_price || 0)), 0);
-          const tax = inv.items.reduce((s: number, it: any) => s + (Number(it.quantity || 1) * Number(it.unit_price || 0) * (Number(it.tax_rate || 0) / 100)), 0);
+          const sub = inv.items.reduce((s: number, it: any) => s + Number(it.quantity || 1) * Number(it.unit_price || 0), 0);
+          const tax = inv.items.reduce((s: number, it: any) => s + Number(it.quantity || 1) * Number(it.unit_price || 0) * (Number(it.tax_rate || 0) / 100), 0);
           if (sub > 0) {
             inv.subtotal = sub;
             inv.total_tax = tax;
@@ -311,11 +388,7 @@ export function PosInvoicesHistory() {
         }
       }
 
-      if (dedupedList.length > 0) {
-        setInvoices(dedupedList);
-      } else {
-        setInvoices([]);
-      }
+      setInvoices(dedupedList);
     } catch (err) {
       console.error("Error loading invoice history:", err);
       if (localRecords.length > 0) {
@@ -327,7 +400,6 @@ export function PosInvoicesHistory() {
   };
 
   useEffect(() => {
-    setInvoices([]);
     loadInvoices();
     const handleSync = () => loadInvoices();
     window.addEventListener("pos_invoices_updated", handleSync);
@@ -395,11 +467,14 @@ export function PosInvoicesHistory() {
       payment_method: fullInvRecord.payment_mode,
       payment_status: fullInvRecord.payment_status,
       subtotal: fullInvRecord.subtotal,
+      taxable_value: (fullInvRecord as any).taxable_value,
       tax_amount: fullInvRecord.total_tax,
       discount_amount: fullInvRecord.discount_amount,
       grand_total: fullInvRecord.grand_total,
       amount_received: fullInvRecord.payment_status === "Paid" ? fullInvRecord.grand_total : fullInvRecord.amount_received,
-      items: fullInvRecord.items
+      items: fullInvRecord.items,
+      gst_type: (fullInvRecord as any).gst_type,
+      is_interstate: (fullInvRecord as any).is_interstate,
     });
     setAutoPrintFullInvoice(true);
     setIsFullInvoiceOpen(true);

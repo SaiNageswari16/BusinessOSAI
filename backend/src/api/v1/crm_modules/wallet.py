@@ -185,9 +185,6 @@ async def _process_wallet_tx(db: AsyncSession, ctx: CurrentUserContext, payload:
     if not is_credit and not is_debit:
         raise HTTPException(status_code=400, detail=f"Unknown transaction type: {payload.transaction_type}")
 
-    if is_debit and float(wallet.balance or 0) < payload.amount:
-        raise HTTPException(status_code=400, detail="Insufficient wallet balance")
-
     balance_before = float(wallet.balance or 0)
     balance_after = balance_before + payload.amount if is_credit else balance_before - payload.amount
 
@@ -204,6 +201,7 @@ async def _process_wallet_tx(db: AsyncSession, ctx: CurrentUserContext, payload:
         description=payload.description,
     )
     db.add(tx)
+    customer.wallet_balance = balance_after
     await db.flush()
     await db.commit()
     

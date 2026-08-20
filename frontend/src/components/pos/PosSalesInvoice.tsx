@@ -88,6 +88,7 @@ export function PosSalesInvoice() {
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(false);
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -97,10 +98,10 @@ export function PosSalesInvoice() {
   // Invoice Fields
   const [invoiceNumber, setInvoiceNumber] = useState(`INV-${Date.now().toString().slice(-5)}`);
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0]);
-  const [dueDate, setDueDate] = useState(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
-  const [paymentTerms, setPaymentTerms] = useState("30");
+  const [dueDate, setDueDate] = useState(new Date().toISOString().split("T")[0]);
+  const [paymentTerms, setPaymentTerms] = useState("0");
   const [customPaymentTermsText, setCustomPaymentTermsText] = useState("");
-  const [customPaymentDays, setCustomPaymentDays] = useState<number | "">(30);
+  const [customPaymentDays, setCustomPaymentDays] = useState<number | "">(0);
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState(
     "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only."
@@ -552,6 +553,60 @@ export function PosSalesInvoice() {
     }
   };
 
+  const loadProducts = async () => {
+    setIsLoadingProducts(true);
+    try {
+      const combined: any[] = [];
+      const idSet = new Set<string>();
+
+      // 1. Primary: Fetch inventory products (from Inventory Tab)
+      try {
+        const invRes: any = await inventoryApi.getProducts({ page_size: 500 });
+        const invItems = invRes?.items || (Array.isArray(invRes) ? invRes : []);
+        if (Array.isArray(invItems)) {
+          invItems.forEach((p: any) => {
+            if (p && p.id && !idSet.has(String(p.id))) {
+              idSet.add(String(p.id));
+              combined.push({
+                ...p,
+                stock: p.stock ?? p.initial_stock ?? 0,
+                price: p.selling_price ?? p.price ?? p.mrp ?? 0,
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("inventoryApi.getProducts error:", e);
+      }
+
+      // 2. Secondary: Fetch POS products and merge
+      try {
+        const posRes: any = await posApi.getProducts();
+        const posItems = posRes?.items || (Array.isArray(posRes) ? posRes : []);
+        if (Array.isArray(posItems)) {
+          posItems.forEach((p: any) => {
+            if (p && p.id && !idSet.has(String(p.id))) {
+              idSet.add(String(p.id));
+              combined.push({
+                ...p,
+                stock: p.stock ?? p.initial_stock ?? 0,
+                price: p.selling_price ?? p.price ?? p.mrp ?? 0,
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("posApi.getProducts error:", e);
+      }
+
+      setProducts(combined);
+    } catch (err) {
+      console.error("Failed to load products for sales invoice:", err);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
+
   useEffect(() => {
     loadUnpaidInvoices();
     const handleSync = () => loadUnpaidInvoices();
@@ -596,10 +651,7 @@ export function PosSalesInvoice() {
     };
     window.addEventListener("pos_collect_invoice_trigger", handleCollectSync);
 
-    posApi
-      .getProducts()
-      .then((res: any) => setProducts(res?.items || (Array.isArray(res) ? res : [])))
-      .catch(console.error);
+    loadProducts();
     inventoryApi
       .getBatches()
       .then((bList: any) => setBatches(bList?.items || (Array.isArray(bList) ? bList : [])))
@@ -799,6 +851,12 @@ export function PosSalesInvoice() {
   const [multiProductSearch, setMultiProductSearch] = useState("");
   const [multiProductCategory, setMultiProductCategory] = useState("all");
   const [selectedProductQuantities, setSelectedProductQuantities] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (isMultiProductModalOpen) {
+      loadProducts();
+    }
+  }, [isMultiProductModalOpen]);
 
   const handleAddItem = () => {
     setItems([
@@ -1208,8 +1266,14 @@ export function PosSalesInvoice() {
         tax_rate: Number(it.tax_rate || 0),
       })),
       subtotal: subtotal,
+      taxable_value: taxableValue,
       discount_amount: totalDiscount,
       tax_amount: totalTax,
+      cgst_amount: gstType === 'cgst_sgst' ? totalTax / 2 : 0,
+      sgst_amount: gstType === 'cgst_sgst' ? totalTax / 2 : 0,
+      igst_amount: gstType === 'igst' ? totalTax : 0,
+      gst_type: gstType,
+      is_interstate: gstType === 'igst',
       additional_charges: customCharges
         .filter(c => Number(c.amount) > 0)
         .map(c => ({ name: c.name || 'Additional Charge', amount: Number(c.amount) })),
@@ -1288,6 +1352,12 @@ export function PosSalesInvoice() {
     setPaymentMode("Cash");
     setPricingMode("Retail");
     setBarcodeInput("");
+    const today = new Date().toISOString().split("T")[0];
+    setInvoiceDate(today);
+    setDueDate(today);
+    setPaymentTerms("0");
+    setCustomPaymentTermsText("");
+    setCustomPaymentDays(0);
     loadUnpaidInvoices();
     const seq = Math.floor(10000 + Math.random() * 90000);
     setInvoiceNumber(`INV-${seq}`);
@@ -1370,7 +1440,10 @@ export function PosSalesInvoice() {
         payment_mode: isCredit ? "Credit / Due" : paymentMode,
         payment_status: isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
         subtotal: subtotal,
-        total_tax: combinedTax,
+        taxable_value: taxableValue,
+        total_tax: totalTax,
+        gst_type: gstType,
+        is_interstate: gstType === "igst",
         discount_amount: totalDiscount,
         grand_total: grandTotal,
         amount_received: isCredit ? 0 : (amountReceived === "" ? grandTotal : (Number(amountReceived) || 0)),
@@ -1387,10 +1460,12 @@ export function PosSalesInvoice() {
 
       // Remove any stale record that shares the same frontend-generated invoiceNumber
       // so we don't end up with duplicates after the backend overwrites it
-      const stored = localStorage.getItem(posStorageKey);
+      const stored = localStorage.getItem(posStorageKey) || localStorage.getItem("pos_saved_invoices");
       const list = stored ? JSON.parse(stored) : [];
       const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber);
-      localStorage.setItem(posStorageKey, JSON.stringify([newInvoiceRecord, ...cleaned]));
+      const updatedList = [newInvoiceRecord, ...cleaned];
+      localStorage.setItem(posStorageKey, JSON.stringify(updatedList));
+      localStorage.setItem("pos_saved_invoices", JSON.stringify(updatedList));
 
       // If settling an existing unpaid/partial invoice
       if (settlingInvoice) {
@@ -1833,7 +1908,17 @@ export function PosSalesInvoice() {
                 <input
                   type="date"
                   value={invoiceDate}
-                  onChange={(e) => setInvoiceDate(e.target.value)}
+                  onChange={(e) => {
+                    const newDate = e.target.value;
+                    setInvoiceDate(newDate);
+                    if (paymentTerms !== "custom") {
+                      const days = parseInt(paymentTerms, 10) || 0;
+                      const base = new Date(newDate).getTime();
+                      if (!isNaN(base)) {
+                        setDueDate(new Date(base + days * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
+                      }
+                    }
+                  }}
                   className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1851,7 +1936,8 @@ export function PosSalesInvoice() {
                       if (val !== "custom") {
                         const days = parseInt(val, 10);
                         if (!isNaN(days)) {
-                          setDueDate(new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
+                          const base = new Date(invoiceDate).getTime() || Date.now();
+                          setDueDate(new Date(base + days * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
                         }
                       }
                     }}
@@ -3458,20 +3544,37 @@ export function PosSalesInvoice() {
                   <Boxes className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-lg text-slate-900 leading-tight">
-                    Multi-Product Catalog Selector
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-lg text-slate-900 leading-tight">
+                      Multi-Product Catalog Selector
+                    </h3>
+                    <span className="text-[11px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                      {products.length} {products.length === 1 ? "Product" : "Products"} Loaded
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-500 font-semibold mt-0.5">
                     Select multiple products & quantities to add directly to invoice items
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setIsMultiProductModalOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadProducts}
+                  disabled={isLoadingProducts}
+                  title="Reload inventory products"
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingProducts ? "animate-spin text-blue-600" : "text-slate-600"}`} />
+                  <span>{isLoadingProducts ? "Loading..." : "Refresh"}</span>
+                </button>
+                <button
+                  onClick={() => setIsMultiProductModalOpen(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Filter & Search Bar */}
@@ -3480,7 +3583,7 @@ export function PosSalesInvoice() {
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
                   type="text"
-                  placeholder="Search by product name, barcode, SKU, brand..."
+                  placeholder="Search by product name, barcode, SKU, brand, HSN..."
                   value={multiProductSearch}
                   onChange={(e) => setMultiProductSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium"
@@ -3491,12 +3594,18 @@ export function PosSalesInvoice() {
                 <button
                   type="button"
                   onClick={() => {
-                    const filtered = products.filter((p: any) =>
-                      !multiProductSearch.trim() ||
-                      p.name?.toLowerCase().includes(multiProductSearch.toLowerCase()) ||
-                      p.barcode?.includes(multiProductSearch) ||
-                      p.sku?.toLowerCase().includes(multiProductSearch.toLowerCase())
-                    );
+                    const filtered = products.filter((p: any) => {
+                      const q = multiProductSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        p.name?.toLowerCase().includes(q) ||
+                        p.barcode?.toLowerCase().includes(q) ||
+                        p.sku?.toLowerCase().includes(q) ||
+                        (p.brand?.name || p.brand)?.toLowerCase().includes(q) ||
+                        (p.category?.name || p.category)?.toLowerCase().includes(q) ||
+                        p.hsn_code?.toLowerCase().includes(q)
+                      );
+                    });
                     const newSelected: Record<string, number> = {};
                     filtered.forEach((p: any) => {
                       newSelected[p.id] = selectedProductQuantities[p.id] || 1;
@@ -3513,7 +3622,7 @@ export function PosSalesInvoice() {
                     onClick={() => setSelectedProductQuantities({})}
                     className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 transition-all shrink-0"
                   >
-                    Clear
+                    Clear Selection
                   </button>
                 )}
               </div>
@@ -3521,26 +3630,90 @@ export function PosSalesInvoice() {
 
             {/* Product Grid / List */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50">
-              {products
-                .filter((p: any) => {
+              {isLoadingProducts && products.length === 0 ? (
+                <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-3 text-center">
+                  <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
+                  <p className="text-sm font-bold text-slate-700">Loading products from inventory...</p>
+                  <p className="text-xs text-slate-400">Fetching ERP product catalog & POS items.</p>
+                </div>
+              ) : (() => {
+                const filtered = products.filter((p: any) => {
                   const q = multiProductSearch.trim().toLowerCase();
                   if (!q) return true;
                   return (
                     p.name?.toLowerCase().includes(q) ||
                     p.barcode?.toLowerCase().includes(q) ||
                     p.sku?.toLowerCase().includes(q) ||
-                    p.brand?.toLowerCase().includes(q)
+                    (p.brand?.name || p.brand)?.toLowerCase().includes(q) ||
+                    (p.category?.name || p.category)?.toLowerCase().includes(q) ||
+                    p.hsn_code?.toLowerCase().includes(q)
                   );
-                })
-                .map((p: any) => {
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-20 flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-dashed border-slate-300">
+                      <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-3">
+                        <Boxes className="w-7 h-7" />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-800 mb-1">
+                        {multiProductSearch.trim() ? "No matching products found" : "No products found in inventory"}
+                      </h4>
+                      <p className="text-xs text-slate-500 max-w-sm mb-4">
+                        {multiProductSearch.trim()
+                          ? `No items match the search query "${multiProductSearch}". Try adjusting your keywords or clearing the search.`
+                          : "You haven't added any products yet or they are loading from your inventory catalog."}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {multiProductSearch.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => setMultiProductSearch("")}
+                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl"
+                          >
+                            Clear Search
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={loadProducts}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          Refresh Inventory
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMultiProductModalOpen(false);
+                            setIsAddProductOpen(true);
+                          }}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Add New Product
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return filtered.map((p: any) => {
                   const isSelected = !!selectedProductQuantities[p.id];
                   const qty = selectedProductQuantities[p.id] || 1;
+                  const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
+                  const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
+                  const wholesalePrice = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : (basePrice > 0 ? Number((basePrice * 0.85).toFixed(2)) : 0)));
+                  const b2bPrice = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wholesalePrice > 0 ? wholesalePrice : basePrice)));
                   const price =
                     pricingMode === "B2B"
-                      ? (p.b2b_price || (p.selling_price || p.mrp || 0) * 0.70)
+                      ? b2bPrice
                       : pricingMode === "Wholesale"
-                        ? (p.wholesale_price || (p.selling_price || p.mrp || 0) * 0.85)
-                        : (p.selling_price || p.mrp || 0);
+                        ? wholesalePrice
+                        : basePrice;
+
+                  const brandName = p.brand?.name || p.brand || "";
+                  const categoryName = p.category?.name || p.category || "";
 
                   return (
                     <div
@@ -3560,7 +3733,7 @@ export function PosSalesInvoice() {
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-xs text-slate-900 truncate">
                               {p.name}
                             </span>
@@ -3569,15 +3742,32 @@ export function PosSalesInvoice() {
                                 {p.barcode}
                               </span>
                             )}
+                            {brandName && (
+                              <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-semibold">
+                                {brandName}
+                              </span>
+                            )}
                           </div>
-                          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
-                            <span>SKU: {p.sku || "N/A"}</span>
+                          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
+                            <span>SKU: <strong className="text-slate-700">{p.sku || "N/A"}</strong></span>
+                            {categoryName && (
+                              <>
+                                <span>•</span>
+                                <span>{categoryName}</span>
+                              </>
+                            )}
+                            {p.hsn_code && (
+                              <>
+                                <span>•</span>
+                                <span>HSN: <strong className="text-slate-700">{p.hsn_code}</strong></span>
+                              </>
+                            )}
                             <span>•</span>
                             <span className="font-semibold text-slate-700">
-                              Stock: <span className={(p.stock || p.initial_stock || 0) > 10 ? "text-emerald-600" : "text-amber-600"}>{p.stock || p.initial_stock || 0}</span>
+                              Stock: <span className={(p.stock || p.initial_stock || 0) > 10 ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>{p.stock || p.initial_stock || 0}</span>
                             </span>
                             <span>•</span>
-                            <span>GST: {p.tax_percent || 18}%</span>
+                            <span>GST: <strong className="text-slate-700">{p.tax_percent || 18}%</strong></span>
                           </div>
                         </div>
                       </div>
@@ -3625,7 +3815,8 @@ export function PosSalesInvoice() {
                       </div>
                     </div>
                   );
-                })}
+                });
+              })()}
             </div>
 
             {/* Sticky Bottom Summary & Action */}

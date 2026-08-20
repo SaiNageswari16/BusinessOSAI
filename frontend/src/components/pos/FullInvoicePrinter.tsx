@@ -32,6 +32,12 @@ export interface FullInvoiceData {
   subtotal?: number;
   discount_amount?: number;
   tax_amount?: number;
+  taxable_value?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  gst_type?: 'cgst_sgst' | 'igst';
+  is_interstate?: boolean;
   additional_charges?: Array<{ name: string; amount: number }>;
   round_off?: number;
   grand_total?: number;
@@ -134,8 +140,12 @@ export function FullInvoicePrinter({
   const customerGstin = (invoice.customerGST || '').trim().toUpperCase();
   const customerStateCode = customerGstin.slice(0, 2);
 
-  // If customer has a different valid 2-digit state GSTIN code -> Inter-State (IGST)
-  const isInterState = Boolean(customerStateCode && customerStateCode.length === 2 && customerStateCode !== sellerStateCode);
+  // If customer has a different valid 2-digit state GSTIN code, or user selected IGST -> Inter-State (IGST)
+  const isInterState = Boolean(
+    invoice.gst_type === 'igst' ||
+    invoice.is_interstate === true ||
+    (customerStateCode && customerStateCode.length === 2 && customerStateCode !== sellerStateCode)
+  );
 
   // 3. Tax Calculation
   let calculatedTaxableSubtotal = 0;
@@ -165,17 +175,21 @@ export function FullInvoicePrinter({
   });
 
   const grandTotal = Number(invoice.grand_total !== undefined ? invoice.grand_total : (calculatedTaxableSubtotal + calculatedTax));
-  const totalTax = Number(invoice.tax_amount !== undefined && Number(invoice.tax_amount) > 0 ? invoice.tax_amount : calculatedTax);
-  const taxableSubtotal = Math.max(0, grandTotal - totalTax);
+  const totalTax = Number(invoice.tax_amount !== undefined && Number(invoice.tax_amount) >= 0 ? invoice.tax_amount : calculatedTax);
+  const taxableSubtotal = Number(
+    invoice.taxable_value !== undefined && Number(invoice.taxable_value) > 0
+      ? invoice.taxable_value
+      : Math.max(0, grandTotal - totalTax)
+  );
   const totalDiscount = Number(invoice.discount_amount !== undefined ? invoice.discount_amount : calculatedDiscount);
 
   // Dominant statutory tax rate (e.g. 18%, 12%, 5%)
-  const dominantTaxRate = items.length > 0 && items[0].tax_rate ? Number(items[0].tax_rate) : (taxableSubtotal > 0 ? Math.round((totalTax / taxableSubtotal) * 100) : 18);
+  const dominantTaxRate = items.length > 0 && items[0].tax_rate ? Number(items[0].tax_rate) : (taxableSubtotal > 0 && totalTax > 0 ? Math.round((totalTax / taxableSubtotal) * 100) : 18);
   const halfTaxRate = (dominantTaxRate / 2);
 
-  const cgstAmount = totalTax / 2;
-  const sgstAmount = totalTax / 2;
-  const igstAmount = totalTax;
+  const cgstAmount = invoice.cgst_amount !== undefined ? Number(invoice.cgst_amount) : (totalTax / 2);
+  const sgstAmount = invoice.sgst_amount !== undefined ? Number(invoice.sgst_amount) : (totalTax / 2);
+  const igstAmount = invoice.igst_amount !== undefined ? Number(invoice.igst_amount) : totalTax;
 
   // 4. Clean Bank Details: Only display if real organization bank details exist (filter out dummy strings)
   const rawBank = (template.bankDetails || '').trim();
@@ -525,22 +539,22 @@ export function FullInvoicePrinter({
                     </div>
                   )}
 
-                  {f.showTaxSplit && totalTax > 0 && (
+                  {totalTax > 0 && (
                     <>
                       {isInterState ? (
-                        <div className="flex justify-between text-slate-600 text-[11px]">
+                        <div className="flex justify-between text-slate-600 text-[11px] font-medium">
                           <span>IGST ({dominantTaxRate}%):</span>
-                          <span>{currency.symbol}{igstAmount.toFixed(2)}</span>
+                          <span className="font-bold text-slate-800">{currency.symbol}{igstAmount.toFixed(2)}</span>
                         </div>
                       ) : (
                         <>
-                          <div className="flex justify-between text-slate-600 text-[11px]">
+                          <div className="flex justify-between text-slate-600 text-[11px] font-medium">
                             <span>CGST ({halfTaxRate}%):</span>
-                            <span>{currency.symbol}{cgstAmount.toFixed(2)}</span>
+                            <span className="font-bold text-slate-800">{currency.symbol}{cgstAmount.toFixed(2)}</span>
                           </div>
-                          <div className="flex justify-between text-slate-600 text-[11px]">
+                          <div className="flex justify-between text-slate-600 text-[11px] font-medium">
                             <span>SGST ({halfTaxRate}%):</span>
-                            <span>{currency.symbol}{sgstAmount.toFixed(2)}</span>
+                            <span className="font-bold text-slate-800">{currency.symbol}{sgstAmount.toFixed(2)}</span>
                           </div>
                         </>
                       )}

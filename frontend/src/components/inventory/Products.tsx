@@ -83,13 +83,16 @@ const esc = (v: any) => {
 const defaultFormData = () => ({
   name: "", brand: "", brand_id: "", sku: "", barcode: "", category_id: "",
   uom_id: "", warehouse: "", supplier: "",
-  purchase_price: 0, mrp: 0, selling_price: 0,
-  wholesale_price: 0, min_wholesale_qty: 1,
-  b2b_price: 0, min_b2b_qty: 1,
-  distributor_price: 0, min_distributor_qty: 1,
+  purchase_price: "" as any, mrp: "" as any, selling_price: "" as any,
+  wholesale_price: "" as any, min_wholesale_qty: "" as any,
+  b2b_price: "" as any, min_b2b_qty: "" as any,
+  distributor_price: "" as any, min_distributor_qty: "" as any,
   tax_percent: 0, is_tax_inclusive: true,
   purchase_tax_percent: 0, is_purchase_tax_inclusive: true,
-  discount_limit: 0, initial_stock: 0, reorder_level: 0, safety_stock: 0,
+  wholesale_is_tax_inclusive: true,
+  b2b_is_tax_inclusive: true,
+  distributor_is_tax_inclusive: true,
+  discount_limit: "" as any, initial_stock: "" as any, reorder_level: "" as any, safety_stock: "" as any,
   hsn_code: "",
   sub_category: "",
   item_code: "",
@@ -907,6 +910,7 @@ export function Products() {
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentForm, setCurrentForm] = useState(defaultFormData());
+  const [isManualHsn, setIsManualHsn] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formData = useMemo(() => defaultFormData(), []);
 
@@ -1166,8 +1170,13 @@ export function Products() {
       const specs = {
         b2b_price: Number(currentForm.b2b_price) || 0,
         min_b2b_qty: Number(currentForm.min_b2b_qty) || 1,
+        b2b_is_tax_inclusive: (currentForm as any).b2b_is_tax_inclusive !== false,
+        wholesale_price: Number(currentForm.wholesale_price) || 0,
+        min_wholesale_qty: Number(currentForm.min_wholesale_qty) || 1,
+        wholesale_is_tax_inclusive: (currentForm as any).wholesale_is_tax_inclusive !== false,
         distributor_price: Number(currentForm.distributor_price) || 0,
         min_distributor_qty: Number(currentForm.min_distributor_qty) || 1,
+        distributor_is_tax_inclusive: (currentForm as any).distributor_is_tax_inclusive !== false,
         purchase_tax_percent: Number(currentForm.purchase_tax_percent) || 0,
         is_purchase_tax_inclusive: currentForm.is_purchase_tax_inclusive !== false,
         sub_category: currentForm.sub_category || "",
@@ -1180,6 +1189,17 @@ export function Products() {
 
       const payload = {
         ...currentForm,
+        purchase_price: Number(currentForm.purchase_price) || 0,
+        mrp: Number(currentForm.mrp) || 0,
+        selling_price: Number(currentForm.selling_price) || 0,
+        wholesale_price: Number(currentForm.wholesale_price) || 0,
+        min_wholesale_qty: Number(currentForm.min_wholesale_qty) || 1,
+        b2b_price: Number(currentForm.b2b_price) || 0,
+        tax_percent: Number(currentForm.tax_percent) || 0,
+        discount_limit: Number(currentForm.discount_limit) || 0,
+        initial_stock: Number(currentForm.initial_stock) || 0,
+        reorder_level: Number(currentForm.reorder_level) || 0,
+        safety_stock: Number(currentForm.safety_stock) || 0,
         brand_id: currentForm.brand_id || null,
         category_id: currentForm.category_id || null,
         uom_id: currentForm.uom_id || null,
@@ -1218,23 +1238,26 @@ export function Products() {
       uom_id: product.uom_id || "",
       warehouse: product.warehouse || "",
       supplier: product.supplier || specs.preferred_supplier || "",
-      purchase_price: product.purchase_price || 0,
-      mrp: product.mrp || 0,
-      selling_price: product.selling_price || 0,
-      wholesale_price: product.wholesale_price || specs.wholesale_price || 0,
-      min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || 1,
-      b2b_price: product.b2b_price || specs.b2b_price || 0,
-      min_b2b_qty: specs.min_b2b_qty || 1,
-      distributor_price: specs.distributor_price || 0,
-      min_distributor_qty: specs.min_distributor_qty || 1,
-      tax_percent: product.tax_percent || 0,
+      purchase_price: product.purchase_price ? product.purchase_price : "",
+      mrp: product.mrp ? product.mrp : "",
+      selling_price: product.selling_price ? product.selling_price : "",
+      wholesale_price: product.wholesale_price || specs.wholesale_price || "",
+      min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || "",
+      wholesale_is_tax_inclusive: specs.wholesale_is_tax_inclusive !== false,
+      b2b_price: product.b2b_price || specs.b2b_price || "",
+      min_b2b_qty: specs.min_b2b_qty || "",
+      b2b_is_tax_inclusive: specs.b2b_is_tax_inclusive !== false,
+      distributor_price: specs.distributor_price || "",
+      min_distributor_qty: specs.min_distributor_qty || "",
+      distributor_is_tax_inclusive: specs.distributor_is_tax_inclusive !== false,
+      tax_percent: product.tax_percent ?? 0,
       is_tax_inclusive: product.is_tax_inclusive !== false,
-      purchase_tax_percent: specs.purchase_tax_percent || 0,
+      purchase_tax_percent: specs.purchase_tax_percent ?? 0,
       is_purchase_tax_inclusive: specs.is_purchase_tax_inclusive !== false,
-      discount_limit: product.discount_limit || 0,
-      initial_stock: product.stock ?? product.initial_stock ?? 0,
-      reorder_level: product.reorder_level || 0,
-      safety_stock: product.safety_stock || 0,
+      discount_limit: product.discount_limit ? product.discount_limit : "",
+      initial_stock: (product.stock ?? product.initial_stock) ? (product.stock ?? product.initial_stock) : "",
+      reorder_level: product.reorder_level ? product.reorder_level : "",
+      safety_stock: product.safety_stock ? product.safety_stock : "",
       hsn_code: product.hsn_code || specs.hsn_code || "",
       sub_category: specs.sub_category || "",
       item_code: specs.item_code || "",
@@ -1266,23 +1289,26 @@ export function Products() {
       uom_id: product.uom_id || "",
       warehouse: product.warehouse || "",
       supplier: product.supplier || specs.preferred_supplier || "",
-      purchase_price: product.purchase_price || 0,
-      mrp: product.mrp || 0,
-      selling_price: product.selling_price || 0,
-      wholesale_price: product.wholesale_price || specs.wholesale_price || 0,
-      min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || 1,
-      b2b_price: product.b2b_price || specs.b2b_price || 0,
-      min_b2b_qty: specs.min_b2b_qty || 1,
-      distributor_price: specs.distributor_price || 0,
-      min_distributor_qty: specs.min_distributor_qty || 1,
-      tax_percent: product.tax_percent || 0,
+      purchase_price: product.purchase_price ? product.purchase_price : "",
+      mrp: product.mrp ? product.mrp : "",
+      selling_price: product.selling_price ? product.selling_price : "",
+      wholesale_price: product.wholesale_price || specs.wholesale_price || "",
+      min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || "",
+      wholesale_is_tax_inclusive: specs.wholesale_is_tax_inclusive !== false,
+      b2b_price: product.b2b_price || specs.b2b_price || "",
+      min_b2b_qty: specs.min_b2b_qty || "",
+      b2b_is_tax_inclusive: specs.b2b_is_tax_inclusive !== false,
+      distributor_price: specs.distributor_price || "",
+      min_distributor_qty: specs.min_distributor_qty || "",
+      distributor_is_tax_inclusive: specs.distributor_is_tax_inclusive !== false,
+      tax_percent: product.tax_percent ?? 0,
       is_tax_inclusive: product.is_tax_inclusive !== false,
-      purchase_tax_percent: specs.purchase_tax_percent || 0,
+      purchase_tax_percent: specs.purchase_tax_percent ?? 0,
       is_purchase_tax_inclusive: specs.is_purchase_tax_inclusive !== false,
-      discount_limit: product.discount_limit || 0,
-      initial_stock: product.stock ?? product.initial_stock ?? 0,
-      reorder_level: product.reorder_level || 0,
-      safety_stock: product.safety_stock || 0,
+      discount_limit: product.discount_limit ? product.discount_limit : "",
+      initial_stock: (product.stock ?? product.initial_stock) ? (product.stock ?? product.initial_stock) : "",
+      reorder_level: product.reorder_level ? product.reorder_level : "",
+      safety_stock: product.safety_stock ? product.safety_stock : "",
       hsn_code: product.hsn_code || specs.hsn_code || "",
       sub_category: specs.sub_category || "",
       item_code: specs.item_code || "",
@@ -1765,9 +1791,18 @@ export function Products() {
   // ── Input handler for form ───────────────────────────────────────
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
+    let finalVal: any = value;
+    if (type === 'number') {
+      if (value === "") {
+        finalVal = "";
+      } else {
+        const num = Number(value);
+        finalVal = isNaN(num) ? "" : Math.max(0, num);
+      }
+    }
     setCurrentForm(prev => ({
       ...prev,
-      [name]: type === 'number' ? (value === "" ? "" : Number(value)) : value
+      [name]: finalVal
     }));
   };
 
@@ -2086,6 +2121,8 @@ export function Products() {
                           <label className="block text-sm font-semibold text-slate-900 mb-1.5">{field.label}</label>
                           <input
                             type={field.type}
+                            min={field.type === "number" ? "0" : undefined}
+                            onKeyDown={field.type === "number" ? (e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); } : undefined}
                             name={field.name}
                             value={(currentForm as any)[field.name] ?? ""}
                             onChange={handleFormChange}
@@ -2107,81 +2144,83 @@ export function Products() {
 
                     {/* Section 1: GST & Tax Configuration */}
                     <div className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
-                        <div>
-                          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">1. GST Tax & Pricing Mode</span>
-                          <span className="text-[11px] text-slate-500">Choose whether selling price includes tax or tax is extra.</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-                          <button
-                            type="button"
-                            onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: true }))}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                              (currentForm as any).is_tax_inclusive !== false
-                                ? "bg-indigo-600 text-white shadow-xs"
-                                : "text-slate-600 hover:bg-slate-100"
-                            }`}
-                          >
-                            GST Inclusive (MRP Mode)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: false }))}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                              (currentForm as any).is_tax_inclusive === false
-                                ? "bg-indigo-600 text-white shadow-xs"
-                                : "text-slate-600 hover:bg-slate-100"
-                            }`}
-                          >
-                            GST Exclusive (+Tax Extra)
-                          </button>
-                        </div>
+                      <div className="border-b border-slate-200/80 pb-3">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">1. GST Tax & HSN Configuration</span>
+                        <span className="text-[11px] text-slate-500">Configure official GST tax schedules and HSN codes.</span>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Official GST Rate *</label>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Official GST Rate *</label>
                           <select
                             name="tax_percent"
                             value={(currentForm as any).tax_percent ?? 0}
                             onChange={handleFormChange}
                             className="w-full h-11 px-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                           >
-                            <option value="0">0% — Zero / Nil Rated / Non-GST</option>
-                            <option value="0.25">0.25% — Precious Stones & Diamonds</option>
-                            <option value="3">3% — Gold, Silver & Jewellery</option>
-                            <option value="5">5% — Essential Goods, Tea, Spices</option>
-                            <option value="12">12% — Processed Foods, Apparel, Hardware</option>
-                            <option value="18">18% — Standard FMCG, Electronics, Services</option>
-                            <option value="28">28% — Luxury, Automobiles, Aerated Drinks</option>
+                            <option value="0">0%</option>
+                            <option value="0.25">0.25%</option>
+                            <option value="3">3%</option>
+                            <option value="5">5%</option>
+                            <option value="12">12%</option>
+                            <option value="18">18%</option>
+                            <option value="28">28%</option>
                           </select>
                         </div>
 
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">HSN Code Lookup</label>
-                          <select
-                            className="w-full h-11 px-3 text-sm rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                            value={(currentForm as any).hsn_code || ""}
-                            onChange={(e) => {
-                              const selectedCode = e.target.value;
-                              const match = hsnCodes.find(h => h.hsn_code === selectedCode);
-                              setCurrentForm(prev => ({
-                                ...prev,
-                                hsn_code: selectedCode,
-                                tax_percent: match ? match.gst_rate : prev.tax_percent
-                              }));
-                              if (match) {
-                                toast.success(`Selected HSN ${selectedCode} (${match.gst_rate}% GST Rate)`);
-                              }
-                            }}
-                          >
-                            <option value="">Select Official HSN Code / GST Schedule...</option>
-                            {hsnCodes.map((item) => (
-                              <option key={item.hsn_code} value={item.hsn_code}>
-                                {item.hsn_code} — {item.description.slice(0, 45)}... ({item.gst_rate}% GST)
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex items-center justify-between h-5 mb-1.5">
+                            <label className="block text-xs font-bold text-slate-700">HSN Code</label>
+                            <button
+                              type="button"
+                              onClick={() => setIsManualHsn(!isManualHsn)}
+                              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 transition-colors"
+                            >
+                              {isManualHsn ? "📋 Select from List" : "✏️ Enter Manually"}
+                            </button>
+                          </div>
+
+                          {isManualHsn ? (
+                            <div className="relative">
+                              <input
+                                type="text"
+                                name="hsn_code"
+                                value={(currentForm as any).hsn_code || ""}
+                                onChange={handleFormChange}
+                                placeholder="Enter HSN Code (e.g. 84713010)"
+                                className="w-full h-11 px-3 text-sm rounded-xl border border-slate-300 bg-white font-mono font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all uppercase placeholder:font-normal placeholder:normal-case placeholder:text-slate-400"
+                              />
+                            </div>
+                          ) : (
+                            <select
+                              className="w-full h-11 px-3 text-sm rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer font-mono font-bold text-slate-800"
+                              value={(currentForm as any).hsn_code || ""}
+                              onChange={(e) => {
+                                const selectedCode = e.target.value;
+                                if (selectedCode === "manual") {
+                                  setIsManualHsn(true);
+                                  return;
+                                }
+                                const match = hsnCodes.find(h => h.hsn_code === selectedCode);
+                                setCurrentForm(prev => ({
+                                  ...prev,
+                                  hsn_code: selectedCode,
+                                  tax_percent: match ? match.gst_rate : prev.tax_percent
+                                }));
+                                if (match) {
+                                  toast.success(`Selected HSN ${selectedCode} (${match.gst_rate}% GST Rate)`);
+                                }
+                              }}
+                            >
+                              <option value="">Select HSN Code</option>
+                              {hsnCodes.map((item) => (
+                                <option key={item.hsn_code} value={item.hsn_code}>
+                                  {item.hsn_code}
+                                </option>
+                              ))}
+                              <option value="manual">✏️ Enter Custom / Manual HSN...</option>
+                            </select>
+                          )}
                         </div>
                       </div>
 
@@ -2209,8 +2248,8 @@ export function Products() {
                           <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2.5 shadow-2xs">
                             <div className="flex items-center justify-between text-xs text-slate-500">
                               <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">Real-Time Price & Tax Breakdown</span>
-                              <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold text-[10px]">
-                                {isIncl ? "GST Included in Selling Price" : "GST Extra on Base Price"}
+                              <span className="bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-bold text-[10px]">
+                                {isIncl ? "With GST (Inclusive)" : "Without GST (+Tax Extra)"}
                               </span>
                             </div>
                             <div className="grid grid-cols-3 gap-3 pt-1">
@@ -2241,46 +2280,64 @@ export function Products() {
                         <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">2. Retail & Consumer Pricing</span>
                         <span className="text-[11px] text-slate-500">Standard walk-in counter sales prices and packaging MRP.</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Retail Selling Price *</label>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Retail Selling Price *</label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
                             <input
                               type="number"
                               step="any"
+                              min="0"
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                               name="selling_price"
                               value={(currentForm as any).selling_price ?? ""}
                               onChange={handleFormChange}
-                              placeholder="0.00"
+                              placeholder=""
                               className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                             />
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">MRP (Max Retail Price)</label>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Retail Tax Mode</label>
+                          <select
+                            name="is_tax_inclusive"
+                            value={(currentForm as any).is_tax_inclusive !== false ? "true" : "false"}
+                            onChange={(e) => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: e.target.value === "true" }))}
+                            className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                          >
+                            <option value="true">With GST</option>
+                            <option value="false">Without GST</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">MRP (Max Retail Price)</label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
                             <input
                               type="number"
                               step="any"
+                              min="0"
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                               name="mrp"
                               value={(currentForm as any).mrp ?? ""}
                               onChange={handleFormChange}
-                              placeholder="0.00"
+                              placeholder=""
                               className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                             />
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Discount Limit (%)</label>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Discount Limit (%)</label>
                           <div className="relative">
                             <input
                               type="number"
+                              min="0"
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                               name="discount_limit"
                               value={(currentForm as any).discount_limit ?? ""}
                               onChange={handleFormChange}
-                              placeholder="0"
+                              placeholder=""
                               className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                             />
                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">%</span>
@@ -2295,38 +2352,53 @@ export function Products() {
                         <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">3. Multi-Tier B2B, Wholesale & Distributor Pricing</span>
                         <span className="text-[11px] text-slate-500">Tiered contract pricing automatically applied at POS & invoices based on customer type and quantity.</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-3">
                         {/* Wholesale Tier */}
                         <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 shadow-2xs">
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                             <span className="text-xs font-bold text-indigo-900">Wholesale Tier</span>
-                            <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">Bulk Volume Rate</span>
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">Bulk Volume Rate</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2.5">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Wholesale Price</label>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Wholesale Price</label>
                               <div className="relative">
-                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
                                 <input
                                   type="number"
                                   step="any"
+                                  min="0"
+                                  onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                                   name="wholesale_price"
                                   value={(currentForm as any).wholesale_price ?? ""}
                                   onChange={handleFormChange}
-                                  placeholder="0.00"
-                                  className="w-full h-9 pl-6 pr-2 text-xs rounded-lg border bg-slate-50 font-bold text-slate-800 focus:bg-white"
+                                  placeholder=""
+                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                 />
                               </div>
                             </div>
                             <div>
-                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Min Wholesale Qty</label>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
+                              <select
+                                value={(currentForm as any).wholesale_is_tax_inclusive !== false ? "true" : "false"}
+                                onChange={(e) => setCurrentForm(prev => ({ ...prev, wholesale_is_tax_inclusive: e.target.value === "true" }))}
+                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                              >
+                                <option value="true">With GST</option>
+                                <option value="false">Without GST</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min Wholesale Qty</label>
                               <input
                                 type="number"
+                                min="0"
+                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                                 name="min_wholesale_qty"
                                 value={(currentForm as any).min_wholesale_qty ?? ""}
                                 onChange={handleFormChange}
-                                placeholder="1"
-                                className="w-full h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white"
+                                placeholder=""
+                                className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                               />
                             </div>
                           </div>
@@ -2334,71 +2406,101 @@ export function Products() {
 
                         {/* B2B Tier */}
                         <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 shadow-2xs">
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                             <span className="text-xs font-bold text-indigo-900">B2B Business Tier</span>
-                            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">GST Clients</span>
+                            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-medium">GST Clients</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2.5">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">B2B Price</label>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">B2B Price</label>
                               <div className="relative">
-                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
                                 <input
                                   type="number"
                                   step="any"
+                                  min="0"
+                                  onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                                   name="b2b_price"
                                   value={(currentForm as any).b2b_price ?? ""}
                                   onChange={handleFormChange}
-                                  placeholder="0.00"
-                                  className="w-full h-9 pl-6 pr-2 text-xs rounded-lg border bg-slate-50 font-bold text-slate-800 focus:bg-white"
+                                  placeholder=""
+                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                 />
                               </div>
                             </div>
                             <div>
-                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Min B2B Qty</label>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
+                              <select
+                                value={(currentForm as any).b2b_is_tax_inclusive !== false ? "true" : "false"}
+                                onChange={(e) => setCurrentForm(prev => ({ ...prev, b2b_is_tax_inclusive: e.target.value === "true" }))}
+                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                              >
+                                <option value="true">With GST</option>
+                                <option value="false">Without GST</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min B2B Qty</label>
                               <input
                                 type="number"
+                                min="0"
+                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                                 name="min_b2b_qty"
                                 value={(currentForm as any).min_b2b_qty ?? ""}
                                 onChange={handleFormChange}
-                                placeholder="1"
-                                className="w-full h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white"
+                                placeholder=""
+                                className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                               />
                             </div>
                           </div>
                         </div>
 
                         {/* Distributor Tier */}
-                        <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 md:col-span-2 shadow-2xs">
-                          <div className="flex items-center justify-between">
+                        <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 shadow-2xs">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                             <span className="text-xs font-bold text-indigo-900">Distributor / Stockist Tier</span>
-                            <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-medium">Dealer & Stockist Rate</span>
+                            <span className="text-[10px] bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full font-medium">Dealer & Stockist Rate</span>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Distributor Price</label>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Distributor Price</label>
                               <div className="relative">
-                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
                                 <input
                                   type="number"
                                   step="any"
+                                  min="0"
+                                  onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                                   name="distributor_price"
                                   value={(currentForm as any).distributor_price ?? ""}
                                   onChange={handleFormChange}
-                                  placeholder="0.00"
-                                  className="w-full h-9 pl-6 pr-2 text-xs rounded-lg border bg-slate-50 font-bold text-slate-800 focus:bg-white"
+                                  placeholder=""
+                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                 />
                               </div>
                             </div>
                             <div>
-                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Min Distributor Qty</label>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
+                              <select
+                                value={(currentForm as any).distributor_is_tax_inclusive !== false ? "true" : "false"}
+                                onChange={(e) => setCurrentForm(prev => ({ ...prev, distributor_is_tax_inclusive: e.target.value === "true" }))}
+                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                              >
+                                <option value="true">With GST</option>
+                                <option value="false">Without GST</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min Distributor Qty</label>
                               <input
                                 type="number"
+                                min="0"
+                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                                 name="min_distributor_qty"
                                 value={(currentForm as any).min_distributor_qty ?? ""}
                                 onChange={handleFormChange}
-                                placeholder="1"
-                                className="w-full h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white"
+                                placeholder=""
+                                className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                               />
                             </div>
                           </div>
@@ -2414,34 +2516,36 @@ export function Products() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Purchase / Cost Price</label>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Purchase / Cost Price</label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
                             <input
                               type="number"
                               step="any"
+                              min="0"
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                               name="purchase_price"
                               value={(currentForm as any).purchase_price ?? ""}
                               onChange={handleFormChange}
-                              placeholder="0.00"
+                              placeholder=""
                               className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                             />
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Purchase GST / Tax Mode</label>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Purchase Tax Mode</label>
                           <select
                             name="is_purchase_tax_inclusive"
                             value={(currentForm as any).is_purchase_tax_inclusive !== false ? "true" : "false"}
                             onChange={(e) => setCurrentForm(prev => ({ ...prev, is_purchase_tax_inclusive: e.target.value === "true" }))}
                             className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                           >
-                            <option value="true">✅ With Tax (Inclusive Cost)</option>
-                            <option value="false">📦 Without Tax (+ Tax Extra)</option>
+                            <option value="true">With GST</option>
+                            <option value="false">Without GST</option>
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Preferred Supplier / Vendor</label>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Preferred Supplier / Vendor</label>
                           <input
                             type="text"
                             name="supplier"

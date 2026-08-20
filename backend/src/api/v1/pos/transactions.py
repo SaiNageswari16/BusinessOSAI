@@ -175,7 +175,7 @@ async def checkout(
                     db.add(wallet)
                     await db.flush()
 
-                wallet.balance = max(0.0, float(wallet.balance) - float(payment.amount))
+                wallet.balance = float(wallet.balance or 0.0) - float(payment.amount)
 
                 # 2. Record CustomerWalletTransaction
                 tx = CustomerWalletTransaction(

@@ -305,14 +305,17 @@ async def create_invoice(
                 CustomerWallet.tenant_id == ctx.tenant_id
             ).with_for_update()
         )
-        if not wallet or float(wallet.balance or 0) < actual_paid:
-            avail = float(wallet.balance or 0) if wallet else 0.0
-            raise HTTPException(
-                status_code=400,
-                detail=f"Insufficient Customer Wallet Balance (₹{avail:,.2f} available, ₹{actual_paid:,.2f} required)."
+        if not wallet:
+            wallet = CustomerWallet(
+                tenant_id=ctx.tenant_id,
+                customer_id=payload.customer_id,
+                balance=0.0
             )
+            db.add(wallet)
+            await db.flush()
 
-        wallet.balance = float(wallet.balance) - actual_paid
+        # Debit customer wallet balance (allows negative / debit balance)
+        wallet.balance = float(wallet.balance or 0.0) - actual_paid
 
         tx = CustomerWalletTransaction(
             tenant_id=ctx.tenant_id,
@@ -325,6 +328,15 @@ async def create_invoice(
             description=f"Payment for Sales Invoice #{invoice_number} ({initial_status})",
         )
         db.add(tx)
+
+        cust = await db.scalar(
+            select(Customer).where(
+                Customer.id == payload.customer_id,
+                Customer.tenant_id == ctx.tenant_id
+            ).with_for_update()
+        )
+        if cust:
+            cust.wallet_balance = wallet.balance
 
         inv_pay = InvoicePayment(
             tenant_id=ctx.tenant_id,
@@ -633,10 +645,16 @@ async def add_payment(
                 CustomerWallet.tenant_id == ctx.tenant_id
             ).with_for_update()
         )
-        if not wallet or float(wallet.balance or 0.0) < pay_amount:
-            raise HTTPException(status_code=400, detail="Insufficient wallet balance")
+        if not wallet:
+            wallet = CustomerWallet(
+                tenant_id=ctx.tenant_id,
+                customer_id=invoice.customer_id,
+                balance=0.0
+            )
+            db.add(wallet)
+            await db.flush()
             
-        wallet.balance = max(0.0, float(wallet.balance) - pay_amount)
+        wallet.balance = float(wallet.balance or 0.0) - pay_amount
         wallet_tx = CustomerWalletTransaction(
             wallet_id=wallet.id,
             tenant_id=ctx.tenant_id,
