@@ -291,91 +291,9 @@ async def verify_gstin(
     if not gstin_input or len(gstin_input) != 15:
         raise HTTPException(status_code=400, detail="Invalid GSTIN. Must be exactly 15 characters long.")
 
-    state_code = gstin_input[:2]
-    pan = gstin_input[2:12]
-    state_info = STATE_DETAILS.get(state_code, {"state": "India", "city": "Central Hub", "pin": "500001"})
-    state_name = state_info["state"]
-    city_name = state_info["city"]
-    pincode = state_info["pin"]
-
-    # Attempt live GST API lookup
-    import httpx
-    import os
-    from src.config import get_settings
-
-    settings = get_settings()
-    api_key = settings.gstin_check_api_key or settings.gst_api_key or os.getenv("GSTIN_CHECK_API_KEY") or os.getenv("GST_API_KEY")
-
-    # List of endpoints to try
-    lookup_urls = []
-    if api_key:
-        lookup_urls.append(f"https://sheet.gstincheck.co.in/check/{api_key}/{gstin_input}")
-    lookup_urls.append(f"https://sheet.gstincheck.co.in/api/v1/check/{gstin_input}")
-
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            for url in lookup_urls:
-                try:
-                    resp = await client.get(url)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        # Check if successful response returned from gstincheck or standard API
-                        if data.get("flag") and data.get("data"):
-                            gst_data = data["data"]
-                            addr = gst_data.get("pradr", {}).get("addr", {})
-                            trade_name = gst_data.get("tradeNam") or gst_data.get("lgnm") or ""
-                            legal_name = gst_data.get("lgnm") or trade_name or ""
-                            addr_line = f"{addr.get('bno', '')} {addr.get('st', '')} {addr.get('loc', '')} {addr.get('dst', city_name)}".strip()
-                            return {
-                                "valid": True,
-                                "is_fallback": False,
-                                "gstin": gstin_input,
-                                "legal_name": legal_name,
-                                "trade_name": trade_name,
-                                "pan": pan,
-                                "state": addr.get("stcd") or state_name,
-                                "state_code": state_code,
-                                "taxpayer_type": gst_data.get("dty") or "Regular",
-                                "status": gst_data.get("sts") or "Active",
-                                "contact_person": gst_data.get("contact_person") or "",
-                                "email": gst_data.get("email") or "",
-                                "phone": gst_data.get("phone") or "",
-                                "bank_name": "",
-                                "account_number": "",
-                                "ifsc_code": "",
-                                "city": addr.get("dst") or city_name,
-                                "pincode": addr.get("pn") or pincode,
-                                "address": addr_line or f"{city_name}, {state_name} - {pincode}",
-                                "business_nature": gst_data.get("nba", [""])[0] if isinstance(gst_data.get("nba"), list) else (gst_data.get("nba") or "")
-                            }
-                except Exception as endpoint_err:
-                    continue
-    except Exception as e:
-        print(f"Live GST API lookup note: {e}")
-
-    # Fallback: Derive real mathematical properties without generating fake names
-    return {
-        "valid": True,
-        "is_fallback": True,
-        "gstin": gstin_input,
-        "legal_name": "",
-        "trade_name": "",
-        "pan": pan,
-        "state": state_name,
-        "state_code": state_code,
-        "taxpayer_type": "Regular",
-        "status": "Active",
-        "contact_person": "",
-        "email": "",
-        "phone": "",
-        "bank_name": "",
-        "account_number": "",
-        "ifsc_code": "",
-        "city": city_name,
-        "pincode": pincode,
-        "address": f"{city_name}, {state_name} - {pincode}",
-        "business_nature": ""
-    }
+    from src.services.whitebooks_service import whitebooks_service
+    result = await whitebooks_service.search_gstin(gstin_input)
+    return result
 
 
 # ─── Supplier Contacts CRUD ────────────────────────────────────────

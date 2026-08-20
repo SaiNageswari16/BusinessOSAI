@@ -20,6 +20,7 @@ import { crmCustomersApi, inventoryApi, type CrmCustomer } from "@/lib/api-clien
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
 import { Sparkles, Loader2 } from "lucide-react";
+import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 
 const CUSTOMER_TYPES = [
   "Retail",
@@ -78,6 +79,25 @@ export function Customers() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CrmCustomer | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>(blankCustomer);
+
+  const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
+
+  const handlePincodeChange = async (val: string) => {
+    setForm(prev => ({ ...prev, postal_code: val }));
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (clean.length === 6) {
+      const res = await lookupPincode(clean);
+      if (res) {
+        setForm(prev => ({
+          ...prev,
+          city: res.city || prev.city,
+          state: res.state || prev.state,
+          country: res.country || prev.country || "India",
+          address: prev.address || res.area || ""
+        }));
+      }
+    }
+  };
 
   const handleVerifyGstin = async () => {
     const cleanGst = String(form.gst_number || "").trim().toUpperCase();
@@ -329,11 +349,16 @@ export function Customers() {
           {/* Address */}
           <FieldSection label="Address">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input label="Billing Address" value={form.address as string} onChange={(v) => setForm({ ...form, address: v })} />
+              <Input
+                label={`Pincode ${isLookingUpPincode ? "(Detecting...)" : ""}`}
+                value={form.postal_code as string}
+                onChange={handlePincodeChange}
+                placeholder="e.g. 560001"
+              />
               <Input label="City" value={form.city as string} onChange={(v) => setForm({ ...form, city: v })} />
               <Input label="State" value={form.state as string} onChange={(v) => setForm({ ...form, state: v })} />
               <Input label="Country" value={form.country as string} onChange={(v) => setForm({ ...form, country: v })} />
-              <Input label="Pincode" value={form.postal_code as string} onChange={(v) => setForm({ ...form, postal_code: v })} />
+              <Input label="Billing Address / Area" value={form.address as string} onChange={(v) => setForm({ ...form, address: v })} placeholder="Street address, building..." />
             </div>
 
             <div className="flex items-center gap-2 mt-4 mb-2">
@@ -602,12 +627,14 @@ function Input({
   value,
   onChange,
   required,
+  placeholder,
 }: {
   label: string;
   type?: string;
   value: string;
   onChange: (v: string) => void;
   required?: boolean;
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -617,7 +644,8 @@ function Input({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
-        className={cn("rounded-lg border border-border bg-background/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50")}
+        placeholder={placeholder}
+        className={cn("rounded-lg border border-border bg-background/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-full")}
       />
     </div>
   );

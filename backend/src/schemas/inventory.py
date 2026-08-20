@@ -1,6 +1,6 @@
 import uuid
 from typing import Optional, List, Any
-from datetime import datetime
+from datetime import datetime, date
 from pydantic import BaseModel, Field, ConfigDict
 
 # --- Enums from models ---
@@ -396,6 +396,11 @@ class MasterCatalogSaveToLocalRequest(BaseModel):
     purchase_price: Optional[float] = 0.0
     mrp: Optional[float] = 0.0
     selling_price: Optional[float] = 0.0
+    wholesale_price: Optional[float] = 0.0
+    b2b_price: Optional[float] = 0.0
+    is_tax_inclusive: Optional[bool] = True
+    mfg_date: Optional[date] = None
+    expiry_date: Optional[date] = None
     tax_percent: Optional[float] = 0.0
     initial_stock: Optional[int] = 0
     supplier: Optional[str] = None

@@ -17,6 +17,7 @@ import { ExpenseClaims } from "@/components/accounting/ExpenseClaims";
 import { Budgets } from "@/components/accounting/Budgets";
 import { ProfitAndLoss } from "@/components/accounting/ProfitAndLoss";
 import { BalanceSheet } from "@/components/accounting/BalanceSheet";
+import { GstFilingDashboard } from "@/components/accounting/GstFilingDashboard";
 
 export const Route = createFileRoute("/_app/accounting")({
   component: AccountingModule,
@@ -58,12 +59,13 @@ const componentMap: Record<string, React.ElementType> = {
   reconciliation:       BankAccounts,
   bank_statements:      BankAccounts,
 
-  // Taxes
-  gst:                  TaxManagement,
+  // Taxes & GST Returns (Whitebooks GSP Compliant)
+  gst:                  GstFilingDashboard,
+  gst_returns:          GstFilingDashboard,
+  tax_filing:           GstFilingDashboard,
   tds:                  TaxManagement,
   vat:                  TaxManagement,
   tax_rules:            TaxManagement,
-  tax_filing:           TaxManagement,
 
   // Fixed Assets
   fixed_assets:         FixedAssets,

@@ -86,9 +86,19 @@ class Settings(BaseSettings):
     facebook_ad_account_id: str | None = Field(default=None, alias="FB_AD_ACCOUNT_ID")
 
 
-    # GST / Tax Lookup
+    # GST / Tax Lookup & Whitebooks GSP Integration
     gstin_check_api_key: str | None = Field(default=None, alias="GSTIN_CHECK_API_KEY")
     gst_api_key: str | None = Field(default=None, alias="GST_API_KEY")
+    whitebooks_base_url: str = Field(default="https://api.whitebooks.in", alias="WHITEBOOKS_BASE_URL")
+    whitebooks_client_id: str | None = Field(default=None, alias="WHITEBOOKS_CLIENT_ID")
+    whitebooks_client_secret: str | None = Field(default=None, alias="WHITEBOOKS_CLIENT_SECRET")
+    whitebooks_api_key: str | None = Field(default=None, alias="WHITEBOOKS_API_KEY")
+    whitebooks_gstin_username: str | None = Field(default=None, alias="WHITEBOOKS_GSTIN_USERNAME")
+    whitebooks_gstin_password: str | None = Field(default=None, alias="WHITEBOOKS_GSTIN_PASSWORD")
+    whitebooks_registered_email: str | None = Field(default=None, alias="WHITEBOOKS_REGISTERED_EMAIL")
+    whitebooks_sandbox_gstin: str | None = Field(default=None, alias="WHITEBOOKS_SANDBOX_GSTIN")
+    whitebooks_auth_token: str | None = Field(default=None, alias="WHITEBOOKS_AUTH_TOKEN")
+    whitebooks_ip_address: str | None = Field(default=None, alias="WHITEBOOKS_IP_ADDRESS")
 
     # LiveKit / Telephony
     livekit_url: str | None = Field(default=None, alias="LIVEKIT_URL")

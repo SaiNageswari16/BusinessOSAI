@@ -30,7 +30,7 @@ function WishlistPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {wishlistItems.map((item) => (
+            {wishlistItems.map((item: any) => (
               <div key={item.id} className="group relative border border-[#E5E4E2] rounded-lg overflow-hidden bg-white hover:shadow-xl transition-all duration-300">
                 
                 {/* Remove from Wishlist Button */}

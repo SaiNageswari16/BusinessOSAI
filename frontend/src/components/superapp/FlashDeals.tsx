@@ -37,7 +37,7 @@ export function FlashDeals() {
 
   const allProducts = dealsData ?? [];
   // Products are already filtered and ordered by backend
-  const deals = allProducts.map(p => ({
+  const deals = allProducts.map((p: any) => ({
     id: p.id,
     name: p.name,
     price: p.selling_price,
@@ -66,7 +66,7 @@ export function FlashDeals() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {deals.map(deal => (
+        {deals.map((deal: any) => (
           <div key={deal.id} onClick={() => navigate({ to: '/store/product/$id', params: { id: deal.id } })} className="bg-white rounded-2xl p-3 border border-gray-100 shadow-sm hover:shadow-lg transition-all group cursor-pointer relative overflow-hidden">
             {/* Discount Badge */}
             <div className="absolute top-2 left-2 z-10 bg-red-500 text-white text-xs font-black px-2 py-1 rounded-lg">

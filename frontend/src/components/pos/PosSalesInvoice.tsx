@@ -40,16 +40,20 @@ import {
   CheckCircle2,
   CheckCircle,
   Zap,
-  User
+  User,
+  Truck
 } from "lucide-react";
-import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi } from "../../lib/api-client";
+import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
+import { EWayBillModal } from "./EWayBillModal";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { INDIAN_STATES } from "@/data/indian-states";
+import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
+import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
 
 interface InvoiceItem {
   id: string;
@@ -61,11 +65,13 @@ interface InvoiceItem {
   mfg_date?: string;
   mrp?: number;
   quantity: number;
+  free_qty?: number;
   unit_price: number;
   discount_value: number;
   discount_type: "amount" | "percent";
   tax_rate: number;
   is_tax_inclusive?: boolean;
+  is_free?: boolean;
   custom_note?: string;
   is_note_open?: boolean;
   is_search_open?: boolean;
@@ -104,6 +110,8 @@ export function PosSalesInvoice() {
   const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [paymentMode, setPaymentMode] = useState("Cash");
   const [customerWalletBalance, setCustomerWalletBalance] = useState<number>(0);
+  const [bankAccounts, setBankAccounts] = useState<BankAccountRecord[]>([]);
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>("");
 
   // Dynamic Custom Additional Charges State
   const [customCharges, setCustomCharges] = useState<{ id: string; name: string; amount: number | ""; tax_rate: number }[]>([
@@ -177,12 +185,62 @@ export function PosSalesInvoice() {
   const [isShippingSameAsBilling, setIsShippingSameAsBilling] = useState(true);
   const [isVerifyingGstin, setIsVerifyingGstin] = useState(false);
 
+  // Free Quantity / Schemes State
+  const [freeItems, setFreeItems] = useState<FreeQtyItem[]>([]);
+
+  // Pincode Lookup Hook
+  const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
+
+  const handlePartyPincodeChange = async (val: string) => {
+    setNewPartyPincode(val);
+    if (isShippingSameAsBilling) setNewPartyShipPincode(val);
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (clean.length === 6) {
+      const res = await lookupPincode(clean);
+      if (res) {
+        if (res.city) setNewPartyCity(res.city);
+        if (res.state) {
+          const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
+          setNewPartyState(matched?.name || res.state);
+        }
+        if (!newPartyStreet && res.area) {
+          setNewPartyStreet(res.area);
+        }
+        if (isShippingSameAsBilling) {
+          if (res.city) setNewPartyShipCity(res.city);
+          if (res.state) {
+            const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
+            setNewPartyShipState(matched?.name || res.state);
+          }
+          if (!newPartyShipStreet && res.area) setNewPartyShipStreet(res.area);
+        }
+      }
+    }
+  };
+
+  const handlePartyShipPincodeChange = async (val: string) => {
+    setNewPartyShipPincode(val);
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (clean.length === 6) {
+      const res = await lookupPincode(clean);
+      if (res) {
+        if (res.city) setNewPartyShipCity(res.city);
+        if (res.state) {
+          const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
+          setNewPartyShipState(matched?.name || res.state);
+        }
+        if (!newPartyShipStreet && res.area) setNewPartyShipStreet(res.area);
+      }
+    }
+  };
+
   // Customer History & Pending Due Tracking
   const [customerSummary, setCustomerSummary] = useState<{
     total_invoices: number;
     total_spent: number;
     total_pending_due: number;
     last_purchase_date: string | null;
+    unpaid_invoices?: any[];
   } | null>(null);
   const [includePreviousDueInBill, setIncludePreviousDueInBill] = useState(false);
   const [showPendingDueAlert, setShowPendingDueAlert] = useState(false);
@@ -311,7 +369,7 @@ export function PosSalesInvoice() {
     let loadedLines = inv.items || [];
     if (inv.id && inv.id.length > 10) {
       try {
-        const full = await invoicesApi.getInvoice(inv.id);
+        const full: any = await invoicesApi.getInvoice(inv.id);
         if (full && full.lines && full.lines.length > 0) {
           loadedLines = full.lines.map((l: any) => ({
             product_id: l.product_id || "",
@@ -398,13 +456,15 @@ export function PosSalesInvoice() {
           setNewPartyPincode(res.pincode);
           if (isShippingSameAsBilling) setNewPartyShipPincode(res.pincode);
         }
-        if (res.address?.city) {
-          setNewPartyCity(res.address.city);
-          if (isShippingSameAsBilling) setNewPartyShipCity(res.address.city);
+        const rawAddr: any = (res as any).address;
+        const addrObj = typeof rawAddr === 'object' && rawAddr !== null ? rawAddr : null;
+        if (addrObj?.city) {
+          setNewPartyCity(addrObj.city);
+          if (isShippingSameAsBilling) setNewPartyShipCity(addrObj.city);
         }
-        if (res.address?.street) {
-          setNewPartyStreet(res.address.street);
-          if (isShippingSameAsBilling) setNewPartyShipStreet(res.address.street);
+        if (addrObj?.street) {
+          setNewPartyStreet(addrObj.street);
+          if (isShippingSameAsBilling) setNewPartyShipStreet(addrObj.street);
         }
         toast.success(`GSTIN Verified: ${res.legal_name} (${res.state || 'Active'})`);
       } else {
@@ -569,6 +629,21 @@ export function PosSalesInvoice() {
         }
       })
       .catch(console.error);
+
+    bankApi
+      .listBankAccounts({ page: 1, page_size: 50, status: "active" })
+      .then((res: any) => {
+        const bList = res?.items || (Array.isArray(res) ? res : []);
+        setBankAccounts(bList);
+        const defaultStored = localStorage.getItem("pos_default_bank_account_id");
+        if (defaultStored && bList.some((b: any) => b.id === defaultStored)) {
+          setSelectedBankAccountId(defaultStored);
+        } else {
+          const def = bList.find((b: any) => b.is_default);
+          if (def) setSelectedBankAccountId(def.id);
+        }
+      })
+      .catch(() => setBankAccounts([]));
 
     return () => {
       window.removeEventListener("pos_invoices_updated", handleSync);
@@ -1099,6 +1174,14 @@ export function PosSalesInvoice() {
   const [fullInvoiceModalData, setFullInvoiceModalData] = useState<FullInvoiceData | null>(null);
   const [isFullInvoiceOpen, setIsFullInvoiceOpen] = useState(false);
   const [autoPrintFullInvoice, setAutoPrintFullInvoice] = useState(false);
+  const [isEWayBillOpen, setIsEWayBillOpen] = useState(false);
+
+  const getSelectedBankDetailsString = (): string => {
+    if (!selectedBankAccountId) return "";
+    const b = bankAccounts.find((x) => x.id === selectedBankAccountId);
+    if (!b) return "";
+    return `Bank: ${b.bank_name || b.name} | A/C: ${b.account_number} | IFSC: ${b.ifsc_code}${b.branch_name ? ` | Branch: ${b.branch_name}` : ""}`;
+  };
 
   const constructFullInvoicePayload = (): FullInvoiceData => {
     const customerObj = customers.find((c) => c.id === selectedCustomer);
@@ -1190,7 +1273,7 @@ export function PosSalesInvoice() {
       hsn_code: "",
       tax_rate: 18,
       is_tax_inclusive: true,
-      discount_type: "%",
+      discount_type: "percent",
       discount_value: 0,
     }]);
     setSelectedCustomer("");
@@ -1204,7 +1287,7 @@ export function PosSalesInvoice() {
     setGstType("cgst_sgst");
     setPaymentMode("Cash");
     setPricingMode("Retail");
-    setBarcodeScanInput("");
+    setBarcodeInput("");
     loadUnpaidInvoices();
     const seq = Math.floor(10000 + Math.random() * 90000);
     setInvoiceNumber(`INV-${seq}`);
@@ -1324,7 +1407,7 @@ export function PosSalesInvoice() {
             payment_date: invoiceDate,
             payment_method: paymentMode.toLowerCase(),
             notes: `Settlement via POS Sales Invoice (${targetStatus})`,
-          }).catch(console.warn);
+          } as any).catch(console.warn);
         }
 
         const origStored = localStorage.getItem(posStorageKey);
@@ -2139,13 +2222,27 @@ export function PosSalesInvoice() {
                             </div>
                           </td>
                           <td className="px-3 py-3 text-right">
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={(e) => updateItem(item.id, "quantity", Math.max(1, Number(e.target.value)))}
-                              className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center font-bold outline-none"
-                            />
+                            <div className="flex flex-col items-end gap-1">
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => updateItem(item.id, "quantity", Math.max(1, Number(e.target.value)))}
+                                className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center font-bold outline-none"
+                                title="Billed / Chargeable Quantity"
+                              />
+                              <div className="flex items-center gap-0.5" title="Free / Scheme Quantity given at ₹0">
+                                <span className="text-[9px] font-bold text-emerald-600 uppercase">+Free:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.free_qty || 0}
+                                  onChange={(e) => updateItem(item.id, "free_qty", Math.max(0, Number(e.target.value)))}
+                                  className={`w-10 text-center text-[10px] font-bold rounded border py-0.5 outline-none ${item.free_qty ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "bg-slate-50 border-slate-200 text-slate-400"}`}
+                                  placeholder="0"
+                                />
+                              </div>
+                            </div>
                           </td>
                           <td className="px-3 py-3 text-right">
                             <input
@@ -2253,6 +2350,23 @@ export function PosSalesInvoice() {
               </span>
             )}
           </div>
+        </div>
+
+        {/* Dynamic Promotional Schemes & Free Items Panel */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative z-30 overflow-visible">
+          <FreeQtyPanel
+            cartSubtotal={subtotal}
+            cartItems={items.map((i) => ({
+              id: i.product_id || i.id,
+              product_id: i.product_id,
+              name: i.product_name,
+              quantity: i.quantity,
+            }))}
+            freeItems={freeItems}
+            onFreeItemsChange={(newFree) => setFreeItems(newFree)}
+            products={products.map((p) => ({ id: p.id, name: p.name, sku: p.sku }))}
+            compact={false}
+          />
         </div>
 
         {/* Invoice Footer: Terms, Notes & Summary Box */}
@@ -2554,6 +2668,51 @@ export function PosSalesInvoice() {
 
             {/* Payment & Action */}
             <div className="space-y-3 pt-3 border-t border-slate-100">
+              {/* Bank Account Selection for Invoice */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                    <Building className="w-3.5 h-3.5 text-blue-600" />
+                    Print Bank Details on Invoice
+                  </label>
+                  <a
+                    href="/accounting?tab=bank_accounts"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
+                  >
+                    + Manage Accounts
+                  </a>
+                </div>
+                <select
+                  value={selectedBankAccountId}
+                  onChange={(e) => {
+                    const newId = e.target.value;
+                    setSelectedBankAccountId(newId);
+                    if (newId) {
+                      localStorage.setItem("pos_default_bank_account_id", newId);
+                      toast.success("Bank account selected & set as default for invoices!");
+                    } else {
+                      localStorage.removeItem("pos_default_bank_account_id");
+                      toast.info("Bank details will be hidden on invoices.");
+                    }
+                  }}
+                  className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">(None - Do not print bank details)</option>
+                  {bankAccounts.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.bank_name || b.name} - A/C: {b.account_number} (IFSC: {b.ifsc_code}) {b.is_default ? "★ Default" : ""}
+                    </option>
+                  ))}
+                </select>
+                {selectedBankAccountId && (
+                  <div className="text-[10px] text-slate-600 font-mono bg-white p-1.5 rounded border border-slate-200 leading-tight">
+                    {getSelectedBankDetailsString()}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Mode</label>
@@ -2741,13 +2900,13 @@ export function PosSalesInvoice() {
                     : `Submit & Download PDF Invoice (${currency.symbol}${grandTotal.toFixed(2)})`}
                 </button>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     disabled={isSaving}
                     onClick={() => handleSave('thermal')}
-                    className="py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    className="py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 transition-all flex items-center justify-center gap-1 disabled:opacity-50"
                   >
-                    <QrCode className="w-3.5 h-3.5" /> Submit & Thermal print
+                    <QrCode className="w-3.5 h-3.5" /> Thermal
                   </button>
                   <button
                     disabled={isSaving}
@@ -2755,6 +2914,16 @@ export function PosSalesInvoice() {
                     className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-all flex items-center justify-center gap-1 disabled:opacity-50"
                   >
                     Save Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (items.length === 0) return toast.error("Please add items to bill before generating E-Way Bill");
+                      setIsEWayBillOpen(true);
+                    }}
+                    className="py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <Truck className="w-3.5 h-3.5" /> E-Way Bill
                   </button>
                 </div>
               </div>
@@ -3068,14 +3237,16 @@ export function PosSalesInvoice() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">PIN Code</label>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                      PIN Code {isLookingUpPincode && <span className="text-indigo-600 animate-pulse text-[10px]">Detecting...</span>}
+                    </label>
                     <input
                       type="text"
                       placeholder="e.g. 516360"
                       maxLength={6}
                       value={newPartyPincode}
-                      onChange={(e) => setNewPartyPincode(e.target.value)}
-                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                      onChange={(e) => handlePartyPincodeChange(e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-800"
                     />
                   </div>
                 </div>
@@ -3136,14 +3307,16 @@ export function PosSalesInvoice() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">PIN Code</label>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                          PIN Code {isLookingUpPincode && <span className="text-indigo-600 animate-pulse text-[10px]">Detecting...</span>}
+                        </label>
                         <input
                           type="text"
                           placeholder="PIN"
                           maxLength={6}
                           value={newPartyShipPincode}
-                          onChange={(e) => setNewPartyShipPincode(e.target.value)}
-                          className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                          onChange={(e) => handlePartyShipPincodeChange(e.target.value)}
+                          className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-800"
                         />
                       </div>
                     </div>
@@ -3619,6 +3792,34 @@ export function PosSalesInvoice() {
         isOpen={isFullInvoiceOpen}
         onClose={() => setIsFullInvoiceOpen(false)}
         autoPrint={autoPrintFullInvoice}
+        customTemplate={{
+          bankDetails: getSelectedBankDetailsString(),
+          fields: {
+            showBankDetails: Boolean(selectedBankAccountId && getSelectedBankDetailsString())
+          }
+        }}
+      />
+
+      {/* E-Way Bill Generation Modal (Whitebooks GSP) */}
+      <EWayBillModal
+        isOpen={isEWayBillOpen}
+        onClose={() => setIsEWayBillOpen(false)}
+        invoiceData={{
+          invoice_number: invoiceNumber,
+          invoice_date: invoiceDate,
+          total_amount: grandTotal,
+          cgst_amount: totalTax / 2,
+          sgst_amount: totalTax / 2,
+          to_customer_name: customers.find((c) => c.id === selectedCustomer)?.name || 'Walk-in Customer',
+          to_gstin: customers.find((c) => c.id === selectedCustomer)?.gst_number || 'URP',
+          items: items.map(it => ({
+            product_name: it.product_name,
+            hsn_code: it.hsn_code,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            tax_rate: it.tax_rate,
+          })),
+        }}
       />
     </div>
   );

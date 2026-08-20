@@ -117,7 +117,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
                 (pName && p.name?.toLowerCase().trim() === pName.toLowerCase().trim())
               );
               const estPrice = Number(it.estimated_unit_cost || it.unit_price || it.cost_price || it.mrp || it.selling_price || it.price) 
-                || (foundProd ? (Number(foundProd.cost_price) || Number(foundProd.selling_price) || Number(foundProd.mrp) || Number(foundProd.wholesale_price) || 0) : 0);
+                || (foundProd ? (Number((foundProd as any).cost_price) || Number((foundProd as any).selling_price) || Number(foundProd.mrp) || Number((foundProd as any).wholesale_price) || 0) : 0);
 
               return {
                 id: it.id || String(idx + 1),

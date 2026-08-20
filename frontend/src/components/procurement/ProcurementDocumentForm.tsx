@@ -146,14 +146,14 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 (pName && p.name?.toLowerCase().trim() === pName.toLowerCase().trim())
               );
               const price = Number(it.unit_price || it.estimated_unit_cost || it.cost_price || it.mrp || it.selling_price || it.price) 
-                || (foundProd ? (Number(foundProd.cost_price) || Number(foundProd.selling_price) || Number(foundProd.mrp) || Number(foundProd.wholesale_price) || 0) : 0);
+                || (foundProd ? (Number((foundProd as any).cost_price) || Number((foundProd as any).selling_price) || Number(foundProd.mrp) || Number((foundProd as any).wholesale_price) || 0) : 0);
               const mrpVal = Number(it.mrp) || (foundProd ? Number(foundProd.mrp) : 0) || price;
 
               return {
                 id: it.id || String(idx + 1),
                 product_id: it.product_id || foundProd?.id,
                 product_name: pName || foundProd?.name || "Purchased Product",
-                hsn_code: it.hsn_code || foundProd?.hsn_code || "2202",
+                hsn_code: it.hsn_code || (foundProd as any)?.hsn_code || "2202",
                 mrp: mrpVal,
                 quantity: Number(it.quantity) || 1,
                 unit_price: price,

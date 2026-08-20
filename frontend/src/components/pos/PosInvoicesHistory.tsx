@@ -18,10 +18,12 @@ import {
   Building,
   Sparkles,
   X,
-  MessageCircle
+  MessageCircle,
+  Truck
 } from "lucide-react";
 import { posApi, invoicesApi } from "@/lib/api-client";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
+import { EWayBillModal } from "./EWayBillModal";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -68,7 +70,7 @@ export function PosInvoicesHistory() {
     try {
       sessionStorage.setItem("pos_collect_invoice", JSON.stringify(inv));
       window.dispatchEvent(new Event("pos_collect_invoice_trigger"));
-    } catch (e) {}
+    } catch (e) { }
     navigate({ to: "/pos", search: { tab: "sales", collect_id: inv.id } as any });
   };
 
@@ -78,6 +80,8 @@ export function PosInvoicesHistory() {
   const [fullInvoiceModalData, setFullInvoiceModalData] = useState<any>(null);
   const [isFullInvoiceOpen, setIsFullInvoiceOpen] = useState<boolean>(false);
   const [autoPrintFullInvoice, setAutoPrintFullInvoice] = useState<boolean>(false);
+  const [ewayBillModalData, setEwayBillModalData] = useState<any | null>(null);
+  const [isEwayBillOpen, setIsEwayBillOpen] = useState<boolean>(false);
 
   // Settlement Modal State
   const [isSettleModalOpen, setIsSettleModalOpen] = useState<boolean>(false);
@@ -122,10 +126,9 @@ export function PosInvoicesHistory() {
       if (settlingInvoice.id && settlingInvoice.id.length > 10) {
         await invoicesApi.recordPayment(settlingInvoice.id, {
           amount: amountToCollect,
-          payment_mode: settlePaymentMode.toLowerCase(),
-          reference_id: `POS-SETTLE-${Date.now()}`,
-          notes: `POS Invoices History settlement (${newPaymentStatus})`,
-        }).catch((err) => {
+          payment_method: settlePaymentMode.toLowerCase(),
+          payment_date: new Date().toISOString(),
+        } as any).catch((err) => {
           console.warn("Backend payment recording warning:", err);
         });
       }
@@ -161,7 +164,7 @@ export function PosInvoicesHistory() {
           });
           localStorage.setItem(storageKey, JSON.stringify(updated));
         }
-      } catch (e) {}
+      } catch (e) { }
 
       window.dispatchEvent(new Event("pos_invoices_updated"));
 
@@ -349,7 +352,7 @@ export function PosInvoicesHistory() {
     let fullInvRecord = inv;
     if (inv.id && inv.id.length > 20) {
       try {
-        const remote = await invoicesApi.getInvoice(inv.id);
+        const remote: any = await invoicesApi.getInvoice(inv.id);
         if (remote) {
           fullInvRecord = {
             ...inv,
@@ -364,15 +367,15 @@ export function PosInvoicesHistory() {
             payment_status: String(remote.status).toLowerCase() === "paid" ? "Paid" : inv.payment_status,
             items: (remote.lines && remote.lines.length > 0)
               ? remote.lines.map((l: any) => ({
-                  id: l.id,
-                  product_name: l.product_name || l.item_name || "Item",
-                  quantity: Number(l.quantity) || 1,
-                  unit_price: Number(l.unit_price) || 0,
-                  mrp: Number(l.mrp) || Number(l.unit_price) || 0,
-                  hsn_code: l.hsn_code || "",
-                  tax_rate: Number(l.tax_rate) || 0,
-                  discount_value: Number(l.discount_value) || 0,
-                }))
+                id: l.id,
+                product_name: l.product_name || l.item_name || "Item",
+                quantity: Number(l.quantity) || 1,
+                unit_price: Number(l.unit_price) || 0,
+                mrp: Number(l.mrp) || Number(l.unit_price) || 0,
+                hsn_code: l.hsn_code || "",
+                tax_rate: Number(l.tax_rate) || 0,
+                discount_value: Number(l.discount_value) || 0,
+              }))
               : inv.items,
           };
         }
@@ -427,7 +430,7 @@ export function PosInvoicesHistory() {
       return;
     }
 
-    const itemsHtml = inv.items
+    const itemsHtml = (inv.items || [])
       .map(
         (it) => `
       <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:11px;">
@@ -695,13 +698,12 @@ export function PosInvoicesHistory() {
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              inv.payment_status === "Paid"
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.payment_status === "Paid"
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                 : inv.payment_status === "Partial"
-                                ? "bg-amber-50 text-amber-800 border border-amber-300 font-black"
-                                : "bg-rose-50 text-rose-700 border border-rose-200"
-                            }`}
+                                  ? "bg-amber-50 text-amber-800 border border-amber-300 font-black"
+                                  : "bg-rose-50 text-rose-700 border border-rose-200"
+                              }`}
                           >
                             {inv.payment_status === "Partial" ? "Partially Paid" : inv.payment_status}
                           </span>
@@ -725,10 +727,10 @@ export function PosInvoicesHistory() {
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold ${inv.print_status === "Thermal Printed"
-                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                            : inv.print_status === "A4 PDF Generated"
-                              ? "bg-indigo-50 text-indigo-800 border border-indigo-200"
-                              : "bg-amber-50 text-amber-800 border border-amber-200"
+                          ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                          : inv.print_status === "A4 PDF Generated"
+                            ? "bg-indigo-50 text-indigo-800 border border-indigo-200"
+                            : "bg-amber-50 text-amber-800 border border-amber-200"
                           }`}
                       >
                         {inv.print_status === "Thermal Printed" && "🖨️ Thermal Printed"}
@@ -809,6 +811,42 @@ export function PosInvoicesHistory() {
                           <FileText className="w-3.5 h-3.5 text-indigo-600" />
                           <span className="hidden lg:inline">A4 PDF</span>
                         </button>
+
+                        {/* Generate E-Way Bill */}
+                        <button
+                          title="Generate E-Way Bill (Whitebooks GSP)"
+                          onClick={() => {
+                            let cachedEwb: any = null;
+                            try {
+                              const raw = localStorage.getItem(`ewb_${inv.invoice_number}`);
+                              if (raw) cachedEwb = JSON.parse(raw);
+                            } catch { }
+
+                            setEwayBillModalData({
+                              invoice_id: inv.id,
+                              invoice_number: inv.invoice_number,
+                              invoice_date: inv.invoice_date,
+                              total_amount: Number(inv.grand_total || 0),
+                              cgst_amount: Number(inv.total_tax || 0) / 2,
+                              sgst_amount: Number(inv.total_tax || 0) / 2,
+                              to_customer_name: inv.customer_name,
+                              to_gstin: inv.customer_gstin || "URP",
+                              items: inv.items || [],
+                              eway_bill_number: cachedEwb?.eway_bill_number || inv.eway_bill_number,
+                              eway_bill_data: cachedEwb,
+                            });
+                            setIsEwayBillOpen(true);
+                          }}
+                          className={`p-1.5 rounded-lg transition-colors border flex items-center gap-1 text-[10px] font-bold ${localStorage.getItem(`ewb_${inv.invoice_number}`)
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
+                              : 'text-slate-600 hover:text-blue-700 hover:bg-blue-50 border-slate-200'
+                            }`}
+                        >
+                          <Truck className={`w-3.5 h-3.5 ${localStorage.getItem(`ewb_${inv.invoice_number}`) ? 'text-emerald-600' : 'text-blue-600'}`} />
+                          <span className="hidden xl:inline">
+                            {localStorage.getItem(`ewb_${inv.invoice_number}`) ? 'View E-Way Bill' : 'E-Way Bill'}
+                          </span>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -865,7 +903,7 @@ export function PosInvoicesHistory() {
               {/* Line Items Table */}
               <div>
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-600 mb-3 flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-blue-600" /> Itemized Line Items ({selectedInvoice.items.length})
+                  <Receipt className="w-4 h-4 text-blue-600" /> Itemized Line Items ({(selectedInvoice.items || []).length})
                 </h3>
                 <div className="border border-slate-200 rounded-xl overflow-hidden text-xs">
                   <table className="w-full text-left">
@@ -878,7 +916,7 @@ export function PosInvoicesHistory() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {selectedInvoice.items.map((it, idx) => {
+                      {(selectedInvoice.items || []).map((it, idx) => {
                         const price = Number(it.unit_price || 0);
                         const qty = Number(it.quantity || 1);
                         return (
@@ -1020,11 +1058,10 @@ export function PosInvoicesHistory() {
                       key={mode}
                       type="button"
                       onClick={() => setSettlePaymentMode(mode)}
-                      className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center ${
-                        settlePaymentMode === mode
+                      className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center ${settlePaymentMode === mode
                           ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
                           : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                      }`}
+                        }`}
                     >
                       {mode}
                     </button>
@@ -1131,13 +1168,28 @@ export function PosInvoicesHistory() {
                 {isSubmittingSettle
                   ? "Recording..."
                   : Number(settleAmount) < Math.max(0, Number(settlingInvoice.grand_total || 0) - Number(settlingInvoice.amount_received || 0))
-                  ? `Record Partial (${formatCurrency(Number(settleAmount))})`
-                  : "Confirm & Mark as Paid"}
+                    ? `Record Partial (${formatCurrency(Number(settleAmount))})`
+                    : "Confirm & Mark as Paid"}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Full A4 Printable Invoice Modal */}
+      <FullInvoicePrinter
+        invoice={fullInvoiceModalData}
+        isOpen={isFullInvoiceOpen}
+        onClose={() => setIsFullInvoiceOpen(false)}
+        autoPrint={autoPrintFullInvoice}
+      />
+
+      {/* E-Way Bill Generation Modal (Whitebooks GSP) */}
+      <EWayBillModal
+        isOpen={isEwayBillOpen}
+        onClose={() => setIsEwayBillOpen(false)}
+        invoiceData={ewayBillModalData}
+      />
     </div>
   );
 }

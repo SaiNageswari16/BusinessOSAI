@@ -598,31 +598,41 @@ function ImportPreviewModal({
   const [initialStock, setInitialStock] = useState(item.initial_stock || 10);
   const [sellingPrice, setSellingPrice] = useState(item.sale_price || item.mrp || 0);
   const [purchasePrice, setPurchasePrice] = useState(item.cost_price || (item.mrp ? item.mrp * 0.7 : 0));
+  const [mrpValue, setMrpValue] = useState(item.mrp || 0);
+  const defaultSelling = item.sale_price || item.mrp || 0;
+  const [wholesalePrice, setWholesalePrice] = useState(item.wholesale_price || (defaultSelling ? Math.round(defaultSelling * 0.85 * 100) / 100 : 0));
+  const [b2bPrice, setB2bPrice] = useState(item.b2b_price || (defaultSelling ? Math.round(defaultSelling * 0.80 * 100) / 100 : 0));
+  const [mfgDate, setMfgDate] = useState(item.mfg_date || "");
+  const [expiryDate, setExpiryDate] = useState(item.expiry_date || "");
+  const [supplier, setSupplier] = useState(item.supplier || "");
+  const [isTaxInclusive, setIsTaxInclusive] = useState(item.is_tax_inclusive !== false);
+
   // Category selection: default to matching name if found
   const matchedCat = categories.find(c => !c.parent_id && c.name.toLowerCase() === (item.category_name || "").toLowerCase());
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(matchedCat?.id || "");
   const [selectedSubCategoryId, setSelectedSubCategoryId] = useState<string>("");
 
   const isAISourced = item.source === "AI_WEB_SEARCH";
-
-  // Top-level categories (parents)
   const parentCategories = categories.filter(c => !c.parent_id);
-  // Sub-categories of selected parent
-  const subCategories = selectedCategoryId
-    ? categories.filter(c => c.parent_id === selectedCategoryId)
-    : [];
+  const subCategories = selectedCategoryId ? categories.filter(c => c.parent_id === selectedCategoryId) : [];
+
+  const gstBadge = isTaxInclusive
+    ? <span className="text-emerald-600 text-[10px] font-normal ml-1">incl. GST</span>
+    : <span className="text-orange-500 text-[10px] font-normal ml-1">excl. GST</span>;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-        className="bg-card border rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="p-5 border-b flex items-center justify-between">
+        className="bg-card border rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+        {/* Header */}
+        <div className="p-5 border-b flex items-center justify-between sticky top-0 bg-card z-10 rounded-t-2xl">
           <div>
             <h2 className="text-base font-bold">Preview Import</h2>
             <p className="text-[11px] text-muted-foreground">Review details before adding to your inventory</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="size-5" /></button>
         </div>
+
         <div className="p-5 space-y-4">
           {/* Product card */}
           <div className="flex gap-3 p-3 bg-muted/50 rounded-xl">
@@ -635,28 +645,46 @@ function ImportPreviewModal({
             )}
             <div className="min-w-0">
               <p className="text-sm font-bold truncate">{item.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {item.brand_name || item.brand || ""}
-              </p>
+              <p className="text-xs text-muted-foreground">{item.brand_name || item.brand || ""}</p>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[10px] mt-1 ${isAISourced ? "bg-amber-500/10 text-amber-600" : "bg-indigo-500/10 text-indigo-600"}`}>
                 <Sparkles className="size-3" /> {isAISourced ? "AI Sourced" : "Global Catalog"}
               </span>
             </div>
           </div>
 
-          {/* Specs preview */}
+          {/* Catalog specs preview */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             {item.sku_code && <div><span className="text-muted-foreground">SKU:</span> <span className="font-mono font-bold">{item.sku_code}</span></div>}
             {item.barcode && <div><span className="text-muted-foreground">Barcode:</span> <span className="font-mono font-bold">{item.barcode}</span></div>}
             {item.mrp && <div><span className="text-muted-foreground">MRP:</span> <span className="font-bold">{formatCurrency(item.mrp)}</span></div>}
             {item.sale_price && <div><span className="text-muted-foreground">Sale Price:</span> <span className="font-bold">{formatCurrency(item.sale_price)}</span></div>}
-            {item.cost_price && <div><span className="text-muted-foreground">Cost:</span> <span className="font-bold">{formatCurrency(item.cost_price)}</span></div>}
             {item.specifications && <div className="col-span-2"><span className="text-muted-foreground">Specs:</span> <span className="text-[11px]">{item.specifications}</span></div>}
           </div>
 
-          {/* Editable fields */}
+          {/* GST Toggle */}
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/40 border">
+            <span className="text-xs font-semibold text-muted-foreground flex-1">Prices entered are:</span>
+            <div className="flex rounded-lg overflow-hidden border text-xs font-semibold">
+              <button
+                onClick={() => setIsTaxInclusive(true)}
+                className={`px-3 py-1.5 transition-colors ${isTaxInclusive ? "bg-emerald-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+              >
+                With GST
+              </button>
+              <button
+                onClick={() => setIsTaxInclusive(false)}
+                className={`px-3 py-1.5 transition-colors ${!isTaxInclusive ? "bg-orange-500 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+              >
+                Without GST
+              </button>
+            </div>
+          </div>
+
+          {/* ── Customize Import Fields ── */}
           <div className="space-y-3 pt-3 border-t">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Customize Import</p>
+
+            {/* Row 1: Initial Stock + Selling Price */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Initial Stock</label>
@@ -664,19 +692,81 @@ function ImportPreviewModal({
                   className="w-full h-9 px-3 text-sm rounded-lg border bg-background" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Selling Price ({currency.symbol})</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Selling Price ({currency.symbol}){gstBadge}</label>
                 <input type="number" step="0.01" value={sellingPrice} onChange={(e) => setSellingPrice(parseFloat(e.target.value) || 0)}
                   className="w-full h-9 px-3 text-sm rounded-lg border bg-background" />
               </div>
+            </div>
+
+            {/* Row 2: Purchase Price WITH GST Dropdown directly beside it */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-indigo-50/40 rounded-xl border border-indigo-100">
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Purchase Price ({currency.symbol})</label>
-                <input type="number" step="0.01" value={purchasePrice} onChange={(e) => setPurchasePrice(parseFloat(e.target.value) || 0)}
+                <label className="block text-xs font-bold text-indigo-950 mb-1">
+                  Purchase Price ({currency.symbol})
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={purchasePrice}
+                  onChange={(e) => setPurchasePrice(parseFloat(e.target.value) || 0)}
+                  className="w-full h-9 px-3 text-sm rounded-lg border border-indigo-200 bg-white font-semibold"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-indigo-950 mb-1">
+                  Purchase GST / Tax Mode
+                </label>
+                <select
+                  value={isTaxInclusive ? "with_tax" : "without_tax"}
+                  onChange={(e) => setIsTaxInclusive(e.target.value === "with_tax")}
+                  className="w-full h-9 px-2 text-xs font-bold rounded-lg border border-indigo-200 bg-white text-indigo-900 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="with_tax">✅ With Tax (Inclusive GST)</option>
+                  <option value="without_tax">📦 Without Tax (Exclusive GST)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Row 3: MRP + Wholesale */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">MRP ({currency.symbol}){gstBadge}</label>
+                <input type="number" step="0.01" value={mrpValue} onChange={(e) => setMrpValue(parseFloat(e.target.value) || 0)}
                   className="w-full h-9 px-3 text-sm rounded-lg border bg-background" />
               </div>
               <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Wholesale Price ({currency.symbol}){gstBadge}</label>
+                <input type="number" step="0.01" value={wholesalePrice} onChange={(e) => setWholesalePrice(parseFloat(e.target.value) || 0)}
+                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background" placeholder="0.00" />
+              </div>
+            </div>
+
+            {/* Row 4: B2B Price + Supplier */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">B2B Price ({currency.symbol}){gstBadge}</label>
+                <input type="number" step="0.01" value={b2bPrice} onChange={(e) => setB2bPrice(parseFloat(e.target.value) || 0)}
+                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background" placeholder="0.00" />
+              </div>
+              <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Supplier</label>
-                <input type="text" value={item.supplier || ""} readOnly
-                  className="w-full h-9 px-3 text-sm rounded-lg border bg-muted/50 text-muted-foreground" />
+                <input type="text" value={supplier} onChange={(e) => setSupplier(e.target.value)}
+                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background" placeholder="Supplier name" />
+              </div>
+            </div>
+
+            {/* Row 5: Mfg Date + Expiry Date */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Mfg. Date <span className="text-slate-400 font-normal">(optional)</span></label>
+                <input type="date" value={mfgDate} onChange={(e) => setMfgDate(e.target.value)}
+                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Expiry Date <span className="text-slate-400 font-normal">(optional)</span></label>
+                <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)}
+                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background" />
               </div>
             </div>
 
@@ -713,6 +803,7 @@ function ImportPreviewModal({
             </div>
           </div>
 
+          {/* Footer buttons */}
           <div className="flex justify-end gap-2 pt-3 border-t">
             <Button variant="outline" onClick={onClose} disabled={isImporting}>Cancel</Button>
             <Button onClick={() => {
@@ -720,10 +811,16 @@ function ImportPreviewModal({
               const selectedSubCat = categories.find(c => c.id === selectedSubCategoryId);
               onConfirm({
                 ...item,
+                mrp: mrpValue,
                 cost_price: purchasePrice,
                 sale_price: sellingPrice,
                 initial_stock: initialStock,
-                // Pass selected category info — IDs take priority for direct DB linkage
+                wholesale_price: wholesalePrice,
+                b2b_price: b2bPrice,
+                mfg_date: mfgDate || undefined,
+                expiry_date: expiryDate || undefined,
+                is_tax_inclusive: isTaxInclusive,
+                supplier,
                 _selected_category_id: selectedCategoryId || undefined,
                 _selected_sub_category_id: selectedSubCategoryId || undefined,
                 category_name: selectedCat?.name || item.category_name || "",
@@ -1234,6 +1331,11 @@ export function Products() {
         purchase_price: item.cost_price || 0,
         mrp: item.mrp || 0,
         selling_price: item.sale_price || item.mrp || 0,
+        wholesale_price: item.wholesale_price || 0,
+        b2b_price: item.b2b_price || 0,
+        is_tax_inclusive: item.is_tax_inclusive !== false,
+        mfg_date: item.mfg_date || undefined,
+        expiry_date: item.expiry_date || undefined,
         tax_percent: 18,
         initial_stock: item.initial_stock || 10,
         supplier: item.supplier || "",
@@ -2310,7 +2412,7 @@ export function Products() {
                         <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 block">4. Purchase & Sourcing Costs</span>
                         <span className="text-[11px] text-slate-500">Cost price paid to vendors for margin tracking and procurement.</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-700 mb-1.5">Purchase / Cost Price</label>
                           <div className="relative">
@@ -2325,6 +2427,18 @@ export function Products() {
                               className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                             />
                           </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">Purchase GST / Tax Mode</label>
+                          <select
+                            name="is_purchase_tax_inclusive"
+                            value={(currentForm as any).is_purchase_tax_inclusive !== false ? "true" : "false"}
+                            onChange={(e) => setCurrentForm(prev => ({ ...prev, is_purchase_tax_inclusive: e.target.value === "true" }))}
+                            className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                          >
+                            <option value="true">✅ With Tax (Inclusive Cost)</option>
+                            <option value="false">📦 Without Tax (+ Tax Extra)</option>
+                          </select>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 mb-1.5">Preferred Supplier / Vendor</label>

@@ -21,6 +21,8 @@ import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { formatCurrency } from "../../lib/utils";
 import { INDIAN_STATES } from "@/data/indian-states";
+import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
+import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -83,6 +85,53 @@ function PosTerminalInner() {
   const [newCustShipPincode, setNewCustShipPincode] = useState("");
   const [isCustShippingSameAsBilling, setIsCustShippingSameAsBilling] = useState(true);
 
+  // Free Quantity / Promotional Schemes State
+  const [freeItems, setFreeItems] = useState<FreeQtyItem[]>([]);
+
+  // Pincode Lookup Hook
+  const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
+
+  const handleCustPincodeChange = async (val: string) => {
+    setNewCustPincode(val);
+    if (isCustShippingSameAsBilling) setNewCustShipPincode(val);
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (clean.length === 6) {
+      const res = await lookupPincode(clean);
+      if (res) {
+        if (res.city) setNewCustCity(res.city);
+        if (res.state) {
+          const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
+          setNewCustState(matched?.name || res.state);
+        }
+        if (!newCustStreet && res.area) setNewCustStreet(res.area);
+        if (isCustShippingSameAsBilling) {
+          if (res.city) setNewCustShipCity(res.city);
+          if (res.state) {
+            const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
+            setNewCustShipState(matched?.name || res.state);
+          }
+          if (!newCustShipStreet && res.area) setNewCustShipStreet(res.area);
+        }
+      }
+    }
+  };
+
+  const handleCustShipPincodeChange = async (val: string) => {
+    setNewCustShipPincode(val);
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (clean.length === 6) {
+      const res = await lookupPincode(clean);
+      if (res) {
+        if (res.city) setNewCustShipCity(res.city);
+        if (res.state) {
+          const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
+          setNewCustShipState(matched?.name || res.state);
+        }
+        if (!newCustShipStreet && res.area) setNewCustShipStreet(res.area);
+      }
+    }
+  };
+
   const [newCustTier, setNewCustTier] = useState("Silver");
 
   const [customerSummary, setCustomerSummary] = useState<any | null>(null);
@@ -111,7 +160,8 @@ function PosTerminalInner() {
           setNewCustPincode(res.pincode);
           if (isCustShippingSameAsBilling) setNewCustShipPincode(res.pincode);
         }
-        const addrObj = typeof res.address === 'object' && res.address !== null ? res.address : null;
+        const rawAddr: any = (res as any).address;
+        const addrObj = typeof rawAddr === 'object' && rawAddr !== null ? rawAddr : null;
         if (addrObj?.city) {
           setNewCustCity(addrObj.city);
           if (isCustShippingSameAsBilling) setNewCustShipCity(addrObj.city);
@@ -1293,6 +1343,20 @@ function PosTerminalInner() {
     }
   };
 
+  const handleSplitConfirm = async () => {
+    const cashAmt = parseFloat(splitCash) || 0;
+    const onlineAmt = parseFloat(splitOnline) || 0;
+    if (Math.abs(cashAmt + onlineAmt - total) > 0.05) {
+      toast.error(`Split amounts (${formatCurrency(cashAmt + onlineAmt)}) must equal total (${formatCurrency(total)})`);
+      return;
+    }
+    setSplitPaymentModalOpen(false);
+    const payments = [];
+    if (cashAmt > 0) payments.push({ payment_method: "cash", amount: cashAmt });
+    if (onlineAmt > 0) payments.push({ payment_method: "online", amount: onlineAmt });
+    await handleSplitPayment(payments);
+  };
+
   return (
     <div className="flex flex-col h-screen w-full overflow-hidden bg-[#F3F4F6] font-sans selection:bg-indigo-100 selection:text-indigo-900">
 
@@ -1825,7 +1889,7 @@ function PosTerminalInner() {
                           <input
                             type="text"
                             value={editForm.name}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, name: e.target.value }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -1834,7 +1898,7 @@ function PosTerminalInner() {
                           <input
                             type="text"
                             value={editForm.brand}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, brand: e.target.value }))}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, brand: e.target.value }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -1846,7 +1910,7 @@ function PosTerminalInner() {
                           <input
                             type="text"
                             value={editForm.sku}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, sku: e.target.value }))}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, sku: e.target.value }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-mono"
                           />
                         </div>
@@ -1855,7 +1919,7 @@ function PosTerminalInner() {
                           <input
                             type="text"
                             value={editForm.barcode}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, barcode: e.target.value }))}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, barcode: e.target.value }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-mono"
                           />
                         </div>
@@ -1867,7 +1931,7 @@ function PosTerminalInner() {
                           <input
                             type="number"
                             value={editForm.sellingPrice}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, sellingPrice: parseFloat(e.target.value) || 0 }))}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, sellingPrice: parseFloat(e.target.value) || 0 }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -1876,7 +1940,7 @@ function PosTerminalInner() {
                           <input
                             type="number"
                             value={editForm.mrp}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, mrp: parseFloat(e.target.value) || 0 }))}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, mrp: parseFloat(e.target.value) || 0 }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -1885,7 +1949,7 @@ function PosTerminalInner() {
                           <input
                             type="number"
                             value={editForm.purchasePrice}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0 }))}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0 }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -1897,7 +1961,7 @@ function PosTerminalInner() {
                           <input
                             type="number"
                             value={editForm.stock}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, stock: parseInt(e.target.value) || 0 }))}
+                            onChange={(e) => setEditForm((prev: any) => ({ ...prev, stock: parseInt(e.target.value) || 0 }))}
                             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-bold"
                           />
                         </div>
@@ -1917,7 +1981,7 @@ function PosTerminalInner() {
                         <textarea
                           rows={3}
                           value={editForm.longDesc}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, longDesc: e.target.value }))}
+                          onChange={(e) => setEditForm((prev: any) => ({ ...prev, longDesc: e.target.value }))}
                           className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 bg-white text-slate-900 font-medium"
                         />
                       </div>
@@ -2265,6 +2329,43 @@ function PosTerminalInner() {
 
             {/* Checkout Summary */}
             <div className="bg-white border-t border-slate-200/80 shadow-[0_-8px_30px_-10px_rgba(0,0,0,0.05)] flex flex-col shrink-0 z-20">
+
+              {/* DYNAMIC FREE QTY / SCHEMES BAR */}
+              <div className="p-2 border-b border-slate-200/70 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-indigo-500/10 relative z-30 overflow-visible">
+                <FreeQtyPanel
+                  cartSubtotal={subtotal}
+                  cartItems={cart.map(c => ({
+                    id: c.id,
+                    product_id: c.id,
+                    name: c.name,
+                    quantity: c.qty,
+                  }))}
+                  freeItems={freeItems}
+                  onFreeItemsChange={(newFree) => {
+                    setFreeItems(newFree);
+                    // Also ensure any newly added free item shows in cart with 0 price if not already
+                    newFree.forEach(f => {
+                      const exists = cart.find(ci => ci.id === f.product_id);
+                      if (!exists && f.product_id) {
+                        const prod = products.find(p => p.id === f.product_id);
+                        if (prod) {
+                          setCart(prev => [...prev, {
+                            ...prod,
+                            sellingPrice: 0,
+                            mrp: prod.mrp || 0,
+                            discount: 0,
+                            qty: f.quantity || 1,
+                            is_free: true,
+                            name: `🎁 [FREE] ${prod.name}`,
+                          }]);
+                        }
+                      }
+                    });
+                  }}
+                  products={products.map(p => ({ id: p.id, name: p.name, sku: p.sku }))}
+                  compact={true}
+                />
+              </div>
 
               {/* DYNAMIC CART DISCOUNT BAR */}
               <div className="p-3 border-b border-slate-200/70 bg-slate-50/90 space-y-2">
@@ -3301,14 +3402,16 @@ function PosTerminalInner() {
                           </select>
                         </div>
                         <div>
-                          <label className="text-[11px] font-semibold text-slate-600 block mb-1">PIN Code</label>
+                          <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                            PIN Code {isLookingUpPincode && <span className="text-indigo-600 animate-pulse text-[10px]">Detecting...</span>}
+                          </label>
                           <input
                             type="text"
                             placeholder="PIN Code"
                             maxLength={6}
                             value={newCustPincode}
-                            onChange={(e) => setNewCustPincode(e.target.value)}
-                            className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                            onChange={(e) => handleCustPincodeChange(e.target.value)}
+                            className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-800"
                           />
                         </div>
                       </div>
@@ -3369,14 +3472,16 @@ function PosTerminalInner() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-[11px] font-semibold text-slate-600 block mb-1">PIN Code</label>
+                              <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                                PIN Code {isLookingUpPincode && <span className="text-indigo-600 animate-pulse text-[10px]">Detecting...</span>}
+                              </label>
                               <input
                                 type="text"
                                 placeholder="PIN"
                                 maxLength={6}
                                 value={newCustShipPincode}
-                                onChange={(e) => setNewCustShipPincode(e.target.value)}
-                                className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                                onChange={(e) => handleCustShipPincodeChange(e.target.value)}
+                                className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-800"
                               />
                             </div>
                           </div>

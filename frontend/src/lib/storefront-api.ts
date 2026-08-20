@@ -153,3 +153,12 @@ export const removeFromWishlist = async (productId: string): Promise<any> => {
   if (!response.ok) throw new Error('Failed to remove from wishlist');
   return response.json();
 };
+
+export const fetchStorefrontFlashDeals = async (limit = 4): Promise<StorefrontProduct[]> => {
+  try {
+    const res = await fetchStorefrontProducts(undefined, undefined, undefined, 1, limit);
+    return res.items || [];
+  } catch {
+    return [];
+  }
+};

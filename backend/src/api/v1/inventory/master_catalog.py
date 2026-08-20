@@ -19,7 +19,7 @@ from src.api.deps import CurrentUserContext, require_any_permission, require_per
 from src.config import get_settings
 from src.database.session import get_db
 from src.models import EntityStatus
-from src.models.inventory import ProductCategory, Brand, UnitOfMeasure, Product, MasterCatalogProduct
+from src.models.inventory import ProductCategory, Brand, UnitOfMeasure, Product, MasterCatalogProduct, InventoryBatch
 from src.schemas.inventory import (
     MasterCatalogItem,
     MasterCatalogImportRequest,
@@ -2275,13 +2275,44 @@ async def import_to_local_inventory(
         purchase_price=payload.purchase_price or 0.0,
         mrp=payload.mrp or 0.0,
         selling_price=payload.selling_price or payload.mrp or 0.0,
+        wholesale_price=payload.wholesale_price or 0.0,
+        b2b_price=payload.b2b_price or 0.0,
         tax_percent=payload.tax_percent or 0.0,
+        is_tax_inclusive=payload.is_tax_inclusive if payload.is_tax_inclusive is not None else True,
         initial_stock=payload.initial_stock or 0,
         supplier=payload.supplier,
         warehouse=payload.warehouse,
         status=EntityStatus.ACTIVE
     )
     db.add(new_product)
+    await db.flush()
+
+    # 6. Create initial batch when stock or batch dates are provided
+    stock_qty = payload.initial_stock or 0
+    if stock_qty > 0 or payload.mfg_date or payload.expiry_date:
+        import string, random
+        batch_number = f"BATCH-{sku}-{''.join(random.choices(string.digits, k=4))}"
+        new_batch = InventoryBatch(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            batch_number=batch_number,
+            product_id=new_product.id,
+            product_name=payload.name,
+            sku=sku,
+            quantity=stock_qty,
+            remaining_quantity=stock_qty,
+            cost_price=payload.purchase_price or 0.0,
+            mrp=payload.mrp or 0.0,
+            selling_price=payload.selling_price or payload.mrp or 0.0,
+            tax_percent=payload.tax_percent or 0.0,
+            barcode=product_barcode,
+            manufacturing_date=payload.mfg_date,
+            expiry_date=payload.expiry_date,
+            supplier=payload.supplier,
+            status="Active",
+            notes="Created from catalog import",
+        )
+        db.add(new_batch)
     
     # Cache in global master catalog if we have a valid barcode and doesn't exist yet
     if product_barcode and product_barcode.strip():

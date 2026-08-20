@@ -2574,6 +2574,8 @@ export const crmLeadsApi = {
     sku?: string;
     barcode?: string;
     brand_name?: string;
+    category_id?: string;
+    sub_category_id?: string;
     category_name?: string;
     sub_category_name?: string;
     short_description?: string;
@@ -2581,6 +2583,11 @@ export const crmLeadsApi = {
     purchase_price?: number;
     mrp?: number;
     selling_price?: number;
+    wholesale_price?: number;
+    b2b_price?: number;
+    is_tax_inclusive?: boolean;
+    mfg_date?: string;
+    expiry_date?: string;
     tax_percent?: number;
     initial_stock?: number;
     supplier?: string;
@@ -3235,6 +3242,18 @@ export const posApi = {
   createCategory: (data: Record<string, unknown>) => request<POSCategory>("POST", "/pos/categories", data),
   getCustomerSummary: (nameOrId?: string, phone?: string) =>
     request<any>("GET", `/invoices/customer-summary/${nameOrId || ""}`, undefined, { phone }),
+  // Free Quantity & Promotional Schemes
+  getFreeQtyRules: () =>
+    request<any[]>("GET", "/pos/free-qty-rules"),
+  saveFreeQtyRules: (rules: any[]) =>
+    request<{ success: boolean; count: number }>("POST", "/pos/free-qty-rules", { rules }),
+  evaluateFreeQtyRules: (payload: { cart_subtotal: number; cart_items: any[] }) =>
+    request<{
+      rules_met: string[];
+      rules_failed: { name: string; reason: string }[];
+      can_add_free: boolean;
+      free_suggestions?: any[];
+    }>("POST", "/pos/free-qty-rules/evaluate", payload),
 };
 
 // --- Inventory (ERP Product Master) ------------------------------------------------
@@ -4333,5 +4352,69 @@ export const copilotApi = {
   getSuggestions: () =>
     request<{ title: string; category: string }[]>("GET", "/copilot/suggestions"),
 };
+
+export const ewayBillApi = {
+  generateEWayBill: (payload: {
+    invoice_id?: string;
+    invoice_number: string;
+    invoice_date?: string;
+    total_amount: number;
+    cgst_amount?: number;
+    sgst_amount?: number;
+    igst_amount?: number;
+    from_gstin?: string;
+    from_trade_name?: string;
+    from_address?: string;
+    from_city?: string;
+    from_pincode?: string;
+    to_gstin?: string;
+    to_customer_name?: string;
+    to_address?: string;
+    to_city?: string;
+    to_pincode?: string;
+    transporter_id?: string;
+    transporter_name?: string;
+    lr_number?: string;
+    vehicle_number: string;
+    transport_mode?: string;
+    approx_distance_km?: number;
+    vehicle_type?: string;
+    items?: any[];
+  }) => request<any>("POST", "/erp/eway-bill/generate", payload),
+  cancelEWayBill: (payload: { eway_bill_number: string; cancel_reason_code?: string; remarks?: string }) =>
+    request<any>("POST", "/erp/eway-bill/cancel", payload),
+};
+
+export const gstFilingApi = {
+  getGstr1Summary: (params: { year: number; month: number }) =>
+    request<any>("GET", "/erp/gst/gstr1-summary", undefined, params),
+  uploadGstr1: (payload: { year: number; month: number; gstr1_payload: any }) =>
+    request<any>("POST", "/erp/gst/gstr1-upload", payload),
+  getGstr3bSummary: (params: { year: number; month: number }) =>
+    request<any>("GET", "/erp/gst/gstr3b-summary", undefined, params),
+};
+
+export const utilsApi = {
+  lookupPincode: (pincode: string) =>
+    request<{
+      pincode: string;
+      city: string;
+      district: string;
+      state: string;
+      country: string;
+      area: string;
+      region?: string;
+      division?: string;
+      circle?: string;
+      post_offices?: string[];
+    }>("GET", `/utils/pincode/${pincode}`),
+};
+
+export const whitebooksApi = {
+  searchGstin: (gstin: string) => procurementApi.lookupGstin(gstin),
+  ewayBill: ewayBillApi,
+  gstFiling: gstFilingApi,
+};
+
 
 

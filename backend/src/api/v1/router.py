@@ -15,6 +15,7 @@ from src.api.v1.hrms.payroll import router as hrms_payroll_router
 from src.api.v1.pos import products as pos_products
 from src.api.v1.pos import sessions as pos_sessions
 from src.api.v1.pos import transactions as pos_transactions
+from src.api.v1.pos import free_qty_rules as pos_free_qty_rules
 from src.api.v1.hrms.recruitment import router as hrms_recruitment_router
 from src.api.v1.hrms.performance import router as hrms_performance_router
 from src.api.v1.hrms.learning import router as hrms_learning_router
@@ -81,6 +82,7 @@ api_router.include_router(hrms_exit_router)
 api_router.include_router(pos_transactions.router, prefix="/pos")
 api_router.include_router(pos_products.router, prefix="/pos")
 api_router.include_router(pos_sessions.router, prefix="/pos")
+api_router.include_router(pos_free_qty_rules.router)
 
 api_router.include_router(system_admin_router)
 api_router.include_router(crm_router)
@@ -171,9 +173,19 @@ api_router.include_router(financial_reports_router)
 from src.api.v1.erp.delivery_challan import router as delivery_challan_router
 api_router.include_router(delivery_challan_router, prefix="/erp")
 
+# E-Way Bill & GST Compliance Modules (Whitebooks GSP)
+from src.api.v1.erp.eway_bill import router as eway_bill_router
+from src.api.v1.erp.gst_filing import router as gst_filing_router
+api_router.include_router(eway_bill_router, prefix="/erp")
+api_router.include_router(gst_filing_router, prefix="/erp")
+
 # LazyMonkeyAI Copilot
 from src.api.v1.copilot import router as copilot_router
 api_router.include_router(copilot_router)
+
+# Utilities (Pincode lookup, geocoding)
+from src.api.v1.utils import router as utils_router
+api_router.include_router(utils_router)
 
 
 # Universal Static / Uploaded Image Serving via API Prefix

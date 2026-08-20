@@ -14,14 +14,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/use-currency";
+import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 
 export function PosCustomers() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
 
   const [form, setForm] = useState({
     name: "",
@@ -32,9 +35,27 @@ export function PosCustomers() {
     credit_limit: 0,
     address: "",
     city: "",
+    state: "",
+    pincode: "",
     shipping_address: "",
     isShippingSameAsBilling: true
   });
+
+  const handlePincodeChange = async (val: string) => {
+    setForm(prev => ({ ...prev, pincode: val }));
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (clean.length === 6) {
+      const res = await lookupPincode(clean);
+      if (res) {
+        setForm(prev => ({
+          ...prev,
+          city: res.city || prev.city,
+          state: res.state || prev.state,
+          address: prev.address || res.area || ""
+        }));
+      }
+    }
+  };
 
   const loadCustomers = async () => {
     setLoading(true);
@@ -65,7 +86,7 @@ export function PosCustomers() {
       });
       toast.success(`Customer ${form.name} registered successfully!`);
       setIsOpen(false);
-      setForm({ name: "", phone: "", email: "", customer_type: "Retail", gst_number: "", credit_limit: 0, address: "", city: "", shipping_address: "", isShippingSameAsBilling: true });
+      setForm({ name: "", phone: "", email: "", customer_type: "Retail", gst_number: "", credit_limit: 0, address: "", city: "", state: "", pincode: "", shipping_address: "", isShippingSameAsBilling: true });
       loadCustomers();
     } catch (err: any) {
       toast.error(err.message || "Failed to create customer");
@@ -200,15 +221,26 @@ export function PosCustomers() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">
+                  PIN Code {isLookingUpPincode && <span className="text-indigo-600 animate-pulse text-[10px]">Detecting...</span>}
+                </Label>
+                <Input maxLength={6} value={form.pincode} onChange={e => handlePincodeChange(e.target.value)} placeholder="e.g. 560001" className="font-mono font-bold" />
+              </div>
               <div className="space-y-1">
                 <Label className="text-xs font-bold">City / Location</Label>
-                <Input value={form.city} onChange={e => setForm({...form, city: e.target.value})} placeholder="Hyderabad" />
+                <Input value={form.city} onChange={e => setForm({...form, city: e.target.value})} placeholder="City / District" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-bold">Billing Address</Label>
-                <Input value={form.address} onChange={e => setForm({...form, address: e.target.value})} placeholder="Street address..." />
+                <Label className="text-xs font-bold">State</Label>
+                <Input value={form.state} onChange={e => setForm({...form, state: e.target.value})} placeholder="State" />
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Billing Address</Label>
+              <Input value={form.address} onChange={e => setForm({...form, address: e.target.value})} placeholder="Street address, building, area..." />
             </div>
 
             <div className="flex items-center gap-2 mt-2">
