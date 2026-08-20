@@ -56,7 +56,7 @@ interface LocalInvoiceRecord {
 export function PosInvoicesHistory() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
-  const currentTenantId = tenant?.id || "default";
+  const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
   const storageKey = `pos_saved_invoices_${currentTenantId}`;
 
   const navigate = useNavigate();
@@ -110,73 +110,44 @@ export function PosInvoicesHistory() {
 
     const currentReceived = Number(settlingInvoice.amount_received || 0);
     const totalGrand = Number(settlingInvoice.grand_total || 0);
-    const prevDue = Math.max(0, totalGrand - currentReceived);
-
-    if (amountToCollect > prevDue + 0.01) {
-      toast.error(`Amount cannot exceed the remaining due amount of ${formatCurrency(prevDue)}`);
-      return;
-    }
 
     setIsSubmittingSettle(true);
     try {
-      const newTotalReceived = currentReceived + amountToCollect;
-      const isFullyPaid = newTotalReceived >= totalGrand - 0.01;
-      const newPaymentStatus: "Paid" | "Partial" | "Unpaid" = isFullyPaid ? "Paid" : "Partial";
-
-      if (settlingInvoice.id && settlingInvoice.id.length > 10) {
-        await invoicesApi.recordPayment(settlingInvoice.id, {
+      if (settlingInvoice.realId || (typeof settlingInvoice.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(settlingInvoice.id))) {
+        const invId = settlingInvoice.realId || settlingInvoice.id;
+        await invoicesApi.recordPayment(invId, {
           amount: amountToCollect,
-          payment_method: settlePaymentMode.toLowerCase(),
-          payment_date: new Date().toISOString(),
-        } as any).catch((err) => {
-          console.warn("Backend payment recording warning:", err);
+          payment_date: new Date().toISOString().split("T")[0],
+          payment_method: settlePaymentMode,
         });
       }
 
-      setInvoices((prev) =>
-        prev.map((inv) => {
-          if (inv.id === settlingInvoice.id || inv.invoice_number === settlingInvoice.invoice_number) {
-            return {
-              ...inv,
-              amount_received: newTotalReceived,
-              payment_status: newPaymentStatus,
-              payment_mode: settlePaymentMode,
-            };
-          }
-          return inv;
-        })
-      );
+      const updatedReceived = currentReceived + amountToCollect;
+      const newStatus = updatedReceived >= totalGrand - 0.01 ? "Paid" : "Partial";
 
-      try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          const updated = parsed.map((inv: any) => {
-            if (inv.id === settlingInvoice.id || inv.invoice_number === settlingInvoice.invoice_number) {
-              return {
-                ...inv,
-                amount_received: newTotalReceived,
-                payment_status: newPaymentStatus,
-                payment_mode: settlePaymentMode,
-              };
-            }
-            return inv;
-          });
-          localStorage.setItem(storageKey, JSON.stringify(updated));
+      const updatedInvoices = invoices.map((inv) => {
+        if (inv.id === settlingInvoice.id || (inv.invoice_number && inv.invoice_number === settlingInvoice.invoice_number)) {
+          return {
+            ...inv,
+            amount_received: updatedReceived,
+            payment_status: newStatus,
+            amount_paid: updatedReceived,
+            balance_due: Math.max(0, totalGrand - updatedReceived),
+          };
         }
-      } catch (e) { }
+        return inv;
+      });
 
-      window.dispatchEvent(new Event("pos_invoices_updated"));
+      setInvoices(updatedInvoices);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(updatedInvoices));
+        window.dispatchEvent(new Event("pos_invoices_updated"));
+      } catch (e) {}
 
-      if (isFullyPaid) {
-        toast.success(`Invoice #${settlingInvoice.invoice_number} is now marked as FULLY PAID!`);
-      } else {
-        const remaining = totalGrand - newTotalReceived;
-        toast.success(`Partial payment of ${formatCurrency(amountToCollect)} recorded! Remaining due: ${formatCurrency(remaining)}`);
-      }
-
+      toast.success(`Recorded ${formatCurrency(amountToCollect)} payment for ${settlingInvoice.invoice_number || "invoice"}!`);
       setIsSettleModalOpen(false);
       setSettlingInvoice(null);
+      await loadInvoices();
     } catch (err: any) {
       toast.error(err.message || "Failed to record payment settlement");
     } finally {
@@ -184,42 +155,29 @@ export function PosInvoicesHistory() {
     }
   };
 
-  // Load invoices from Backend API (ERP Invoices + POS Transactions) & all localStorage keys
+  // Load invoices from Backend API (ERP Invoices + POS Transactions) strictly scoped to active tenant
   const loadInvoices = async () => {
     setLoading(true);
     const localRecords: LocalInvoiceRecord[] = [];
     const remoteRecords: LocalInvoiceRecord[] = [];
 
     try {
-      // 1. Gather all local storage invoices across all tenant & legacy keys
-      const checkedKeys = new Set<string>();
-      const candidateKeys = [storageKey, "pos_saved_invoices", "pos_saved_invoices_default"];
-      candidateKeys.forEach((k) => checkedKeys.add(k));
-
+      // 1. Gather ONLY active tenant's scoped local storage invoices
       try {
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && (key.startsWith("pos_saved_invoices") || key.startsWith("pos_invoices"))) {
-            checkedKeys.add(key);
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            list.forEach((inv) => {
+              if (inv && (inv.id || inv.invoice_number)) {
+                if (!inv.tenant_id || inv.tenant_id === currentTenantId || currentTenantId === "default") {
+                  localRecords.push(inv);
+                }
+              }
+            });
           }
         }
       } catch (e) {}
-
-      checkedKeys.forEach((k) => {
-        try {
-          const raw = localStorage.getItem(k);
-          if (raw) {
-            const list = JSON.parse(raw);
-            if (Array.isArray(list)) {
-              list.forEach((inv) => {
-                if (inv && (inv.id || inv.invoice_number)) {
-                  localRecords.push(inv);
-                }
-              });
-            }
-          }
-        } catch (e) {}
-      });
 
       // 2. Fetch remote ERP Invoices from Backend API
       try {

@@ -80,7 +80,7 @@ interface InvoiceItem {
 export function PosSalesInvoice() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
-  const currentTenantId = tenant?.id || "default";
+  const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
   const posStorageKey = `pos_saved_invoices_${currentTenantId}`;
 
   const [showPaymentTerms, setShowPaymentTerms] = useState(false);
@@ -676,15 +676,7 @@ export function PosSalesInvoice() {
       .getCustomers(1, 100)
       .then((data: any) => {
         const custList = data?.items || (Array.isArray(data) ? data : []);
-        setCustomers((prev) => {
-          const merged = [...custList];
-          prev.forEach((p) => {
-            if (!merged.some((m) => m.id === p.id)) {
-              merged.push(p);
-            }
-          });
-          return merged;
-        });
+        setCustomers(custList);
       })
       .catch(console.error);
     fetchSalesEmployees()
@@ -799,7 +791,7 @@ export function PosSalesInvoice() {
 
         let localInvoices: any[] = [];
         try {
-          const stored = localStorage.getItem(posStorageKey) || localStorage.getItem("pos_saved_invoices");
+          const stored = localStorage.getItem(posStorageKey);
           if (stored) {
             localInvoices = JSON.parse(stored);
           }
@@ -1511,12 +1503,11 @@ export function PosSalesInvoice() {
 
       // Remove any stale record that shares the same frontend-generated invoiceNumber
       // so we don't end up with duplicates after the backend overwrites it
-      const stored = localStorage.getItem(posStorageKey) || localStorage.getItem("pos_saved_invoices");
+      const stored = localStorage.getItem(posStorageKey);
       const list = stored ? JSON.parse(stored) : [];
       const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber);
-      const updatedList = [newInvoiceRecord, ...cleaned];
+      const updatedList = [{ ...newInvoiceRecord, tenant_id: currentTenantId }, ...cleaned];
       localStorage.setItem(posStorageKey, JSON.stringify(updatedList));
-      localStorage.setItem("pos_saved_invoices", JSON.stringify(updatedList));
 
       // If settling an existing unpaid/partial invoice
       if (settlingInvoice) {

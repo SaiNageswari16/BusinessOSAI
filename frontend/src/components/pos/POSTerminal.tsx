@@ -23,6 +23,7 @@ import { formatCurrency } from "../../lib/utils";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
+import { useTenant } from "../../contexts/tenant-context";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -39,6 +40,9 @@ export function PosTerminal() {
 
 function PosTerminalInner() {
   const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+  const posStorageKey = `pos_saved_invoices_${currentTenantId}`;
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
     const cb = () => setCurrencyTick(t => t + 1);
@@ -1160,9 +1164,9 @@ function PosTerminalInner() {
           print_status: "Thermal Printed",
           items: billData.items,
         };
-        const prevList = JSON.parse(localStorage.getItem("pos_saved_invoices") || "[]");
-        const mergedList = [terminalInvoiceRecord, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
-        localStorage.setItem("pos_saved_invoices", JSON.stringify(mergedList));
+        const prevList = JSON.parse(localStorage.getItem(posStorageKey) || "[]");
+        const mergedList = [{ ...terminalInvoiceRecord, tenant_id: currentTenantId }, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
+        localStorage.setItem(posStorageKey, JSON.stringify(mergedList));
       } catch (e) {
         console.warn("Could not save POS checkout bill to localStorage:", e);
       }
