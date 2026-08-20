@@ -227,6 +227,7 @@ class InvoiceCreate(BaseModel):
     customer_gstin: str | None = Field(default=None, max_length=30)
     billing_address: str | None = None
     shipping_address: str | None = None
+    invoice_number: str | None = None
     invoice_type: str = "tax_invoice"
     reference_number: str | None = None
     order_number: str | None = None

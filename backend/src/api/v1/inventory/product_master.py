@@ -118,7 +118,7 @@ Respond with ONLY a valid JSON object matching this schema:
   "estimated_b2b_price": 140.0,
   "confidence": 0.98
 }}"""
-            model = getattr(settings, "gemini_model", "gemini-1.5-flash") or "gemini-1.5-flash"
+            model = getattr(settings, "gemini_model", "gemini-3.6-flash") or "gemini-3.6-flash"
             async with httpx.AsyncClient(timeout=9.0) as client:
                 ai_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
                 ai_resp = await client.post(

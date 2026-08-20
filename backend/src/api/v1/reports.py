@@ -26,7 +26,7 @@ def _call_ai_consult(provider: str, prompt: str) -> str:
     """Helper to query Claude or Gemini based on active env config."""
     # 1. Gemini Sourcing
     if provider == "gemini" and settings.gemini_api_key:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model or 'gemini-2.0-flash'}:generateContent?key={settings.gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model or 'gemini-3.6-flash'}:generateContent?key={settings.gemini_api_key}"
 
         headers = {"Content-Type": "application/json"}
         body = {

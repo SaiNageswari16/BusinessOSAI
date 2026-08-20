@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check } from "lucide-react";
+import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles } from "lucide-react";
 import {
   employeesApi,
   departmentsApi,
@@ -14,7 +14,8 @@ import {
   Team,
   Company,
   Branch,
-  EmployeeDocument
+  EmployeeDocument,
+  EmployeeVCard
 } from "../../lib/api-client";
 import { Card } from "../ui/card";
 const formatDate = (dateStr: string | null | undefined) => {
@@ -67,6 +68,13 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   // Temporary password success dialog
   const [successCredentials, setSuccessCredentials] = useState<{ email: string; code: string; tempPass: string } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // vCard & Digital Business Card QR Modal
+  const [vCardModalOpen, setVCardModalOpen] = useState(false);
+  const [selectedEmpForVCard, setSelectedEmpForVCard] = useState<Employee | null>(null);
+  const [vCardData, setVCardData] = useState<EmployeeVCard | null>(null);
+  const [loadingVCard, setLoadingVCard] = useState(false);
+  const [vcardCopied, setVcardCopied] = useState(false);
 
   // Document management
   const [selectedEmpIdForDocs, setSelectedEmpIdForDocs] = useState<string>("");
@@ -351,6 +359,60 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleOpenVCard = async (emp: Employee) => {
+    setSelectedEmpForVCard(emp);
+    setVCardModalOpen(true);
+    setLoadingVCard(true);
+    setVCardData(null);
+    try {
+      const data = await employeesApi.getVCard(emp.id);
+      setVCardData(data);
+    } catch (err: any) {
+      console.error("Failed to load vCard:", err);
+    } finally {
+      setLoadingVCard(false);
+    }
+  };
+
+  const handleDownloadVCard = () => {
+    if (!selectedEmpForVCard) return;
+    const downloadUrl = employeesApi.getVCardDownloadUrl(selectedEmpForVCard.id);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = `${selectedEmpForVCard.employee_code}_${selectedEmpForVCard.full_name.replace(/\s+/g, "_")}.vcf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleBulkExportVCards = () => {
+    const downloadUrl = employeesApi.getBulkExportVCardUrl();
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = "Employees_Company_Directory.vcf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCopyVCardContact = () => {
+    if (!vCardData) return;
+    const text = `📇 ${vCardData.full_name}\n🏢 ${vCardData.company_name}\n💼 ${vCardData.designation || "Staff"} · ${vCardData.department || ""}\n🆔 ${vCardData.employee_code}\n📧 ${vCardData.email}\n📞 ${vCardData.phone || "N/A"}\n🌐 https://lazymonkeyai.com`;
+    navigator.clipboard.writeText(text);
+    setVcardCopied(true);
+    setTimeout(() => setVcardCopied(false), 2000);
+  };
+
+  const handleShareWhatsApp = () => {
+    if (!vCardData) return;
+    const text = `*${vCardData.full_name}* - Digital Business Card\n${vCardData.designation || ""} | ${vCardData.company_name}\nEmail: ${vCardData.email}\nPhone: ${vCardData.phone || ""}\nEmployee ID: ${vCardData.employee_code}\n🌐 https://lazymonkeyai.com`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
+  };
+
+  const handlePrintCard = () => {
+    window.print();
+  };
+
   // ─── Render: Departments Tab ─────────────────────────────────────
   if (tab === "departments") {
     return (
@@ -589,6 +651,15 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   <div><p className="text-muted-foreground text-xs uppercase font-bold">Reporting Manager</p><p className="font-semibold text-primary">{manager ? manager.full_name : "Org Admin (No Manager)"}</p></div>
                   <div><p className="text-muted-foreground text-xs uppercase font-bold">Basic Salary</p><p className="font-semibold font-mono">{emp.basic_salary ? `$${emp.basic_salary.toLocaleString()}` : "—"}</p></div>
                 </div>
+
+                <div className="mt-6 pt-5 border-t flex justify-end gap-3">
+                  <Button 
+                    className="gradient-brand text-white font-bold shadow-md hover:shadow-lg transition-all border-0"
+                    onClick={() => handleOpenVCard(emp)}
+                  >
+                    <QrCode className="size-4 mr-2" /> View Digital vCard & QR Pass
+                  </Button>
+                </div>
               </motion.div>
             );
           })()
@@ -606,6 +677,9 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
           <p className="text-sm text-muted-foreground">{total} active employee directories linked to user login authentication.</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" className="border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 shadow-sm" onClick={handleBulkExportVCards}>
+            <QrCode className="size-4 mr-2 text-indigo-500" /> Export All vCards
+          </Button>
           <Button variant="outline" onClick={() => setBulkDialogOpen(true)}>
             Bulk Import CSV
           </Button>
@@ -685,7 +759,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               <motion.div key={emp.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
                 className="glass-panel p-5 rounded-xl border hover:shadow-md transition-shadow bg-card group relative">
                 <div className="flex items-start gap-4">
-                  <div className="size-12 rounded-xl bg-gradient-to-br from-primary/80 to-purple-500/80 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                  <div className="size-12 rounded-xl bg-gradient-to-br from-primary/80 to-purple-500/80 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm">
                     {emp.full_name.split(" ").map(n => n[0]).join("")}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -707,13 +781,18 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   </p>
                 </div>
                 
-                <div className="flex justify-end gap-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button variant="outline" size="sm" onClick={() => openEditModal(emp)}>
-                    <Edit2 className="size-3 mr-1" /> Edit
+                <div className="flex justify-between items-center mt-4 pt-3 border-t">
+                  <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium" onClick={() => handleOpenVCard(emp)}>
+                    <QrCode className="size-3.5 mr-1.5 text-indigo-500" /> vCard & QR
                   </Button>
-                  <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteEmployee(emp.id)}>
-                    <Trash2 className="size-3" />
-                  </Button>
+                  <div className="flex gap-1.5">
+                    <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs" onClick={() => openEditModal(emp)}>
+                      <Edit2 className="size-3 mr-1" /> Edit
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => handleDeleteEmployee(emp.id)}>
+                      <Trash2 className="size-3" />
+                    </Button>
+                  </div>
                 </div>
               </motion.div>
             );
@@ -865,6 +944,155 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               </Button>
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* ─── DIGITAL VCARD & SMART QR BUSINESS CARD MODAL ─────────── */}
+      {vCardModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="w-full max-w-md bg-card rounded-2xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            
+            {/* Modal Header / Branding Bar */}
+            <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-primary p-5 text-white">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-white/20 backdrop-blur-md rounded-xl">
+                    <QrCode className="size-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base leading-tight">Digital Employee vCard</h3>
+                    <p className="text-[11px] text-white/80 font-medium">Smart Contact & NFC Business Pass</p>
+                  </div>
+                </div>
+                <button onClick={() => setVCardModalOpen(false)} 
+                  className="size-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-xs font-bold transition-colors">
+                  ✕
+                </button>
+              </div>
+
+              {/* Floating ID badge */}
+              <div className="mt-4 flex items-center justify-between text-[11px] bg-black/20 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10">
+                <span className="font-mono font-bold tracking-wider">{vCardData?.employee_code || selectedEmpForVCard?.employee_code || "EMP"}</span>
+                <span className="flex items-center gap-1 text-emerald-300 font-semibold">
+                  <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  Verified Corporate ID
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-5">
+              {loadingVCard ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="size-8 animate-spin text-primary" />
+                  <p className="text-xs text-muted-foreground">Generating vCard 3.0 & Scannable QR...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Profile Header */}
+                  <div className="flex items-center gap-4 pb-4 border-b">
+                    <div className="size-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-lg font-bold shadow-md shrink-0">
+                      {(vCardData?.full_name || selectedEmpForVCard?.full_name || "E").split(" ").map(n => n[0]).join("")}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-foreground text-lg truncate">{vCardData?.full_name || selectedEmpForVCard?.full_name}</h4>
+                      <p className="text-xs text-primary font-semibold truncate">
+                        {vCardData?.designation || designations.find(d => d.id === selectedEmpForVCard?.designation_id)?.name || "Corporate Staff"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {vCardData?.department || departments.find(d => d.id === selectedEmpForVCard?.department_id)?.name || "Department"} · {vCardData?.company_name || "LazyMonkey AI"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* QR Code Presentation Box */}
+                  <div className="flex flex-col items-center justify-center p-4 bg-muted/40 rounded-xl border border-dashed border-indigo-500/30 text-center relative group">
+                    <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200">
+                      {vCardData?.qr_code_data_url ? (
+                        <img 
+                          src={vCardData.qr_code_data_url} 
+                          alt="Employee Contact vCard QR" 
+                          className="size-44 object-contain rounded"
+                        />
+                      ) : (
+                        <div className="size-44 flex items-center justify-center text-muted-foreground text-xs">
+                          <QrCode className="size-12 opacity-30 animate-pulse" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="mt-3 space-y-1">
+                      <p className="text-xs font-bold text-foreground flex items-center justify-center gap-1.5">
+                        <Sparkles className="size-3.5 text-indigo-500" /> Instant Phone Contact Save
+                      </p>
+                      <p className="text-[11px] text-muted-foreground max-w-[260px] leading-relaxed">
+                        Scan with your iPhone or Android camera to add <span className="font-semibold text-foreground">{vCardData?.full_name?.split(" ")[0]}</span> directly to your phone contacts.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Contact Summary Details */}
+                  <div className="space-y-2 bg-card p-3.5 rounded-xl border text-xs">
+                    <div className="flex items-center justify-between py-1 border-b border-border/50">
+                      <span className="text-muted-foreground flex items-center gap-1.5"><Mail className="size-3.5 text-indigo-500" /> Work Email</span>
+                      <a href={`mailto:${vCardData?.email || selectedEmpForVCard?.email}`} className="font-semibold text-foreground hover:text-primary transition-colors truncate max-w-[180px]">
+                        {vCardData?.email || selectedEmpForVCard?.email}
+                      </a>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-b border-border/50">
+                      <span className="text-muted-foreground flex items-center gap-1.5"><Phone className="size-3.5 text-emerald-500" /> Mobile / Phone</span>
+                      <span className="font-semibold text-foreground font-mono">
+                        {vCardData?.phone || selectedEmpForVCard?.phone || "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-muted-foreground flex items-center gap-1.5"><Building className="size-3.5 text-purple-500" /> Organization</span>
+                      <span className="font-semibold text-foreground">{vCardData?.company_name || "LazyMonkey AI"}</span>
+                    </div>
+                  </div>
+
+                  {/* Actions Grid */}
+                  <div className="space-y-2 pt-1">
+                    <Button 
+                      className="w-full h-11 gradient-brand text-white font-bold shadow-md hover:shadow-lg transition-all border-0 flex items-center justify-center gap-2"
+                      onClick={handleDownloadVCard}
+                    >
+                      <Download className="size-4" /> Download .VCF Contact Card
+                    </Button>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-9 text-xs flex items-center justify-center gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                        onClick={handleShareWhatsApp}
+                      >
+                        <Share2 className="size-3.5" /> WhatsApp
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-9 text-xs flex items-center justify-center gap-1"
+                        onClick={handleCopyVCardContact}
+                      >
+                        {vcardCopied ? <Check className="size-3.5 text-emerald-600" /> : <Clipboard className="size-3.5" />}
+                        {vcardCopied ? "Copied" : "Copy Info"}
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-9 text-xs flex items-center justify-center gap-1"
+                        onClick={handlePrintCard}
+                      >
+                        <Printer className="size-3.5" /> Print Pass
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </motion.div>
         </div>
       )}
     </div>

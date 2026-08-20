@@ -2359,43 +2359,6 @@ function PosTerminalInner() {
             {/* Checkout Summary */}
             <div className="bg-white border-t border-slate-200/80 shadow-[0_-8px_30px_-10px_rgba(0,0,0,0.05)] flex flex-col shrink-0 z-20">
 
-              {/* DYNAMIC FREE QTY / SCHEMES BAR */}
-              <div className="p-2 border-b border-slate-200/70 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-indigo-500/10 relative z-30 overflow-visible">
-                <FreeQtyPanel
-                  cartSubtotal={subtotal}
-                  cartItems={cart.map(c => ({
-                    id: c.id,
-                    product_id: c.id,
-                    name: c.name,
-                    quantity: c.qty,
-                  }))}
-                  freeItems={freeItems}
-                  onFreeItemsChange={(newFree) => {
-                    setFreeItems(newFree);
-                    // Also ensure any newly added free item shows in cart with 0 price if not already
-                    newFree.forEach(f => {
-                      const exists = cart.find(ci => ci.id === f.product_id);
-                      if (!exists && f.product_id) {
-                        const prod = products.find(p => p.id === f.product_id);
-                        if (prod) {
-                          setCart(prev => [...prev, {
-                            ...prod,
-                            sellingPrice: 0,
-                            mrp: prod.mrp || 0,
-                            discount: 0,
-                            qty: f.quantity || 1,
-                            is_free: true,
-                            name: `🎁 [FREE] ${prod.name}`,
-                          }]);
-                        }
-                      }
-                    });
-                  }}
-                  products={products.map(p => ({ id: p.id, name: p.name, sku: p.sku }))}
-                  compact={true}
-                />
-              </div>
-
               {/* DYNAMIC CART DISCOUNT BAR */}
               <div className="p-3 border-b border-slate-200/70 bg-slate-50/90 space-y-2">
                 <div className="flex items-center justify-between">

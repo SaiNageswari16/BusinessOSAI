@@ -251,8 +251,17 @@ async def create_invoice(
     totals = _compute_invoice_totals(payload.lines)
     total_amt = float(totals["total_amount"])
 
-    from src.utils.number_series import generate_number
-    invoice_number = await generate_number(db, ctx.tenant_id, "invoice", payload.company_id)
+    if payload.invoice_number and payload.invoice_number.strip():
+        invoice_number = payload.invoice_number.strip()
+    else:
+        from src.utils.number_series import generate_number
+        prefix_type = "estimate" if str(payload.invoice_type).upper() in ["ESTIMATE", "PROFORMA", "CASH_MEMO", "NON_GST"] else "invoice"
+        try:
+            invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, payload.company_id)
+        except Exception:
+            seq = int(datetime.now().timestamp()) % 100000
+            prefix = "EST" if prefix_type == "estimate" else "INV"
+            invoice_number = f"{prefix}-{seq:05d}"
 
     inv_kwargs = payload.model_dump(exclude={"lines", "payment_status", "payment_method", "amount_paid", "amount_received"})
 

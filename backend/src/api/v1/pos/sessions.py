@@ -2,7 +2,7 @@ from typing import Annotated
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import CurrentUserContext, get_current_user_context
@@ -20,6 +20,7 @@ async def open_session(
 ):
     """Open a new POS register session."""
     stmt = select(POSSession).where(
+        POSSession.tenant_id == ctx.tenant_id,
         POSSession.user_id == ctx.user.id,
         POSSession.status == POSSessionStatus.OPEN
     ).order_by(POSSession.created_at.desc())
@@ -30,7 +31,7 @@ async def open_session(
 
     session = POSSession(
         user_id=ctx.user.id,
-        tenant_id=ctx.user.tenant_id,
+        tenant_id=ctx.tenant_id,
         starting_cash=payload.starting_cash,
         status=POSSessionStatus.OPEN
     )
@@ -49,6 +50,7 @@ async def close_session(
     """Close an open POS register session."""
     stmt = select(POSSession).where(
         POSSession.id == session_id,
+        POSSession.tenant_id == ctx.tenant_id,
         POSSession.user_id == ctx.user.id
     )
     result = await db.execute(stmt)
@@ -77,6 +79,7 @@ async def get_current_session(
 ):
     """Get the currently open POS session for the user."""
     stmt = select(POSSession).where(
+        POSSession.tenant_id == ctx.tenant_id,
         POSSession.user_id == ctx.user.id,
         POSSession.status == POSSessionStatus.OPEN
     ).order_by(POSSession.created_at.desc())

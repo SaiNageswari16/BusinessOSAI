@@ -63,7 +63,8 @@ class ProductBase(BaseModel):
     selling_price: Optional[float] = 0.0
     wholesale_price: Optional[float] = 0.0
     b2b_price: Optional[float] = 0.0
-    min_wholesale_qty: Optional[int] = 1
+    min_wholesale_qty: Optional[int] = 5
+    min_b2b_qty: Optional[int] = 20
     tax_percent: Optional[float] = 0.0
     is_tax_inclusive: Optional[bool] = True
     discount_limit: Optional[float] = 0.0

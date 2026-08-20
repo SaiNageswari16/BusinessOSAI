@@ -53,7 +53,6 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
-import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
 
 interface InvoiceItem {
   id: string;
@@ -95,7 +94,8 @@ export function PosSalesInvoice() {
   // Fixed-position dropdown anchor for product search (avoids overflow-x-auto clipping)
   const [dropdownAnchor, setDropdownAnchor] = useState<{ itemId: string; top: number; left: number; width: number } | null>(null);
 
-  // Invoice Fields
+  // Invoice Fields & Segregation (Official Tax Invoice vs Estimate / Non-GST Bill)
+  const [invoiceType, setInvoiceType] = useState<"TAX_INVOICE" | "ESTIMATE_NON_GST">("TAX_INVOICE");
   const [invoiceNumber, setInvoiceNumber] = useState(`INV-${Date.now().toString().slice(-5)}`);
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0]);
   const [dueDate, setDueDate] = useState(new Date().toISOString().split("T")[0]);
@@ -106,6 +106,22 @@ export function PosSalesInvoice() {
   const [terms, setTerms] = useState(
     "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only."
   );
+
+  const handleRegenerateInvoiceNumber = (type: "TAX_INVOICE" | "ESTIMATE_NON_GST" = invoiceType) => {
+    const seq = Math.floor(10000 + Math.random() * 90000);
+    const prefix = type === "ESTIMATE_NON_GST" ? "EST" : "INV";
+    setInvoiceNumber(`${prefix}-${seq}`);
+  };
+
+  const handleInvoiceTypeChange = (newType: "TAX_INVOICE" | "ESTIMATE_NON_GST") => {
+    setInvoiceType(newType);
+    if (invoiceNumber.startsWith("INV-") || invoiceNumber.startsWith("EST-")) {
+      const parts = invoiceNumber.split("-");
+      const seq = parts.length > 1 ? parts[1] : Math.floor(10000 + Math.random() * 90000).toString();
+      const prefix = newType === "ESTIMATE_NON_GST" ? "EST" : "INV";
+      setInvoiceNumber(`${prefix}-${seq}`);
+    }
+  };
   const [showPaymentQR, setShowPaymentQR] = useState(false);
   const [autoRoundOff, setAutoRoundOff] = useState(true);
   const [amountReceived, setAmountReceived] = useState<number | "">("");
@@ -704,18 +720,39 @@ export function PosSalesInvoice() {
     };
   }, []);
 
-  const getProductBatchInfo = (prod: any) => {
-    if (!prod) return { batch_number: "", expiry_date: "", mrp: 0, unit_price: 0 };
+  const getProductTierPrice = (prod: any, qty: number = 1, activePricingMode = pricingMode) => {
+    if (!prod) return 0;
     const specs = typeof prod.specifications === "string" ? JSON.parse(prod.specifications || "{}") : (prod.specifications || {});
     const basePrice = Number(prod.selling_price || prod.price || prod.mrp || 0);
-    const wholesalePrice = Number(prod.wholesale_price && Number(prod.wholesale_price) > 0 ? prod.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : basePrice));
-    const b2bPrice = Number(prod.b2b_price && Number(prod.b2b_price) > 0 ? prod.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wholesalePrice > 0 ? wholesalePrice : basePrice)));
-    const targetPrice =
-      pricingMode === "B2B"
-        ? b2bPrice
-        : pricingMode === "Wholesale"
-          ? wholesalePrice
-          : basePrice;
+    const wholesalePrice = Number(prod.wholesale_price && Number(prod.wholesale_price) > 0 ? prod.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : (basePrice > 0 ? Number((basePrice * 0.9).toFixed(2)) : 0)));
+    const b2bPrice = Number(prod.b2b_price && Number(prod.b2b_price) > 0 ? prod.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : (wholesalePrice > 0 ? Number((wholesalePrice * 0.85).toFixed(2)) : (basePrice > 0 ? Number((basePrice * 0.8).toFixed(2)) : 0))));
+
+    const minWholesaleQty = Number(prod.min_wholesale_qty || specs.min_wholesale_qty || specs.wholesale_min_qty || 5);
+    const minB2bQty = Number(prod.min_b2b_qty || specs.min_b2b_qty || specs.b2b_min_qty || 20);
+
+    // Quantity-based tiered pricing takes effect dynamically when MOQ is reached
+    if (qty >= minB2bQty && b2bPrice > 0) {
+      return b2bPrice;
+    }
+    if (qty >= minWholesaleQty && wholesalePrice > 0) {
+      return wholesalePrice;
+    }
+
+    // Explicit manual pricingMode fallback
+    if (activePricingMode === "B2B" && b2bPrice > 0) {
+      return b2bPrice;
+    }
+    if (activePricingMode === "Wholesale" && wholesalePrice > 0) {
+      return wholesalePrice;
+    }
+
+    return basePrice;
+  };
+
+  const getProductBatchInfo = (prod: any, qty: number = 1, activePricingMode = pricingMode) => {
+    if (!prod) return { batch_number: "", expiry_date: "", mrp: 0, unit_price: 0 };
+    const basePrice = Number(prod.selling_price || prod.price || prod.mrp || 0);
+    const targetPrice = getProductTierPrice(prod, qty, activePricingMode);
 
     const matchingBatches = batches.filter(
       (b) =>
@@ -831,16 +868,14 @@ export function PosSalesInvoice() {
     fetchSummary();
   }, [selectedCustomer, customers, posStorageKey]);
 
-  const handlePricingModeChange = (mode: "Retail" | "Wholesale") => {
+  const handlePricingModeChange = (mode: "Retail" | "Wholesale" | "B2B") => {
     setPricingMode(mode);
     setItems((prevItems) =>
       prevItems.map((item) => {
         if (!item.product_id) return item;
         const product = products.find((p) => p.id === item.product_id);
         if (!product) return item;
-        const basePrice = product.selling_price || product.price || product.mrp || 0;
-        const wholesalePrice = product.wholesale_price || (basePrice * 0.9);
-        const targetPrice = mode === "Wholesale" ? wholesalePrice : basePrice;
+        const targetPrice = getProductTierPrice(product, item.quantity || 1, mode);
         return { ...item, unit_price: targetPrice };
       })
     );
@@ -910,7 +945,7 @@ export function PosSalesInvoice() {
       const prod = products.find((p) => p.id === pid);
       if (!prod) return;
       const qty = selectedProductQuantities[pid] || 1;
-      const batchInfo = getProductBatchInfo(prod);
+      const batchInfo = getProductBatchInfo(prod, qty);
 
       newItems.push({
         id: Math.random().toString(36).substr(2, 9),
@@ -939,7 +974,7 @@ export function PosSalesInvoice() {
       const queryCode = barcodeInput.trim();
       const product = products.find((p) => p.barcode === queryCode || p.sku === queryCode);
       if (product) {
-        const batchInfo = getProductBatchInfo(product);
+        const batchInfo = getProductBatchInfo(product, 1);
 
         setItems((prev) => [
           ...prev,
@@ -971,7 +1006,8 @@ export function PosSalesInvoice() {
           const p = res.product;
           const basePrice = p.selling_price || p.mrp || 0;
           const wholesalePrice = basePrice * 0.9;
-          const targetPrice = pricingMode === "Wholesale" ? wholesalePrice : basePrice;
+          const b2bPrice = basePrice * 0.8;
+          const targetPrice = pricingMode === "B2B" ? b2bPrice : (pricingMode === "Wholesale" ? wholesalePrice : basePrice);
 
           setItems((prev) => [
             ...prev,
@@ -1007,7 +1043,8 @@ export function PosSalesInvoice() {
           if (field === "product_id" && value) {
             const product = products.find((p) => p.id === value);
             if (product) {
-              const batchInfo = getProductBatchInfo(product);
+              const currentQty = Number(updated.quantity) || 1;
+              const batchInfo = getProductBatchInfo(product, currentQty);
 
               updated.product_name = product.name;
               updated.unit_price = batchInfo.unit_price;
@@ -1019,6 +1056,18 @@ export function PosSalesInvoice() {
               updated.expiry_date = batchInfo.expiry_date;
               if (!updated.quantity || updated.quantity === 0) {
                 updated.quantity = 1;
+              }
+            }
+          }
+          if (field === "quantity") {
+            const newQty = Math.max(1, Number(value) || 1);
+            updated.quantity = newQty;
+            if (updated.product_id) {
+              const product = products.find((p) => p.id === updated.product_id);
+              if (product) {
+                const batchInfo = getProductBatchInfo(product, newQty);
+                updated.unit_price = batchInfo.unit_price;
+                if (batchInfo.mrp) updated.mrp = batchInfo.mrp;
               }
             }
           }
@@ -1381,6 +1430,8 @@ export function PosSalesInvoice() {
 
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
+        invoice_number: invoiceNumber.trim(),
+        invoice_type: invoiceType === "TAX_INVOICE" ? "tax_invoice" : "estimate",
         customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || null,
@@ -1887,20 +1938,60 @@ export function PosSalesInvoice() {
 
           {/* Invoice Details Card (5 cols) */}
           <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
-            <div className="border-b border-slate-100 pb-3">
+            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                 <FileText className="w-4 h-4 text-indigo-600" /> Invoice Metadata
               </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${invoiceType === "TAX_INVOICE" ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
+                {invoiceType === "TAX_INVOICE" ? "GST Tax Invoice" : "Non-GST / Estimate"}
+              </span>
+            </div>
+
+            {/* Invoice Category / Type Segregation Selector */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-500 flex items-center justify-between">
+                <span>Invoice Classification / Type</span>
+                <span className="text-[10px] text-slate-400 font-normal">Controls GST Filing Exclusion</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => handleInvoiceTypeChange("TAX_INVOICE")}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${invoiceType === "TAX_INVOICE" ? "bg-white text-indigo-700 shadow-sm border border-slate-200" : "text-slate-600 hover:text-slate-900"}`}
+                >
+                  <Receipt className="w-3.5 h-3.5 text-indigo-600" /> Tax Invoice (GST)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleInvoiceTypeChange("ESTIMATE_NON_GST")}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${invoiceType === "ESTIMATE_NON_GST" ? "bg-white text-amber-700 shadow-sm border border-slate-200" : "text-slate-600 hover:text-slate-900"}`}
+                >
+                  <FileText className="w-3.5 h-3.5 text-amber-600" /> Estimate (Non-GST)
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-1">
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-slate-500">Sales Invoice No</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-slate-500">
+                    {invoiceType === "TAX_INVOICE" ? "Tax Invoice No (Manual / Auto)" : "Estimate / Bill No"}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleRegenerateInvoiceNumber(invoiceType)}
+                    className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold hover:underline flex items-center gap-0.5"
+                    title="Generate new sequential invoice number"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" /> Auto-Gen
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={invoiceNumber}
-                  readOnly
-                  className="w-full h-9 bg-slate-100 border border-slate-200 rounded-xl px-3 text-xs font-bold text-slate-700 outline-none"
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder={invoiceType === "TAX_INVOICE" ? "e.g. INV-65693 or custom number" : "e.g. EST-102 or custom bill name"}
+                  className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
                 />
               </div>
               <div className="space-y-1">
@@ -2436,23 +2527,6 @@ export function PosSalesInvoice() {
               </span>
             )}
           </div>
-        </div>
-
-        {/* Dynamic Promotional Schemes & Free Items Panel */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative z-30 overflow-visible">
-          <FreeQtyPanel
-            cartSubtotal={subtotal}
-            cartItems={items.map((i) => ({
-              id: i.product_id || i.id,
-              product_id: i.product_id,
-              name: i.product_name,
-              quantity: i.quantity,
-            }))}
-            freeItems={freeItems}
-            onFreeItemsChange={(newFree) => setFreeItems(newFree)}
-            products={products.map((p) => ({ id: p.id, name: p.name, sku: p.sku }))}
-            compact={false}
-          />
         </div>
 
         {/* Invoice Footer: Terms, Notes & Summary Box */}
