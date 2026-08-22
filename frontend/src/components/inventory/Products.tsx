@@ -2280,11 +2280,11 @@ export function Products() {
                         <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">2. Retail & Consumer Pricing</span>
                         <span className="text-[11px] text-slate-500">Standard walk-in counter sales prices and packaging MRP.</span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Retail Selling Price *</label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
+                          <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
+                            <span className="pl-3 pr-1 text-slate-400 font-bold text-sm select-none">{currency.symbol}</span>
                             <input
                               type="number"
                               step="any"
@@ -2293,22 +2293,21 @@ export function Products() {
                               name="selling_price"
                               value={(currentForm as any).selling_price ?? ""}
                               onChange={handleFormChange}
-                              placeholder=""
-                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                              placeholder="0.00"
+                              className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-black text-slate-900 outline-none"
                             />
+                            <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
+                              <select
+                                name="is_tax_inclusive"
+                                value={(currentForm as any).is_tax_inclusive !== false ? "true" : "false"}
+                                onChange={(e) => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: e.target.value === "true" }))}
+                                className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
+                              >
+                                <option value="true">With GST</option>
+                                <option value="false">Without GST</option>
+                              </select>
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Retail Tax Mode</label>
-                          <select
-                            name="is_tax_inclusive"
-                            value={(currentForm as any).is_tax_inclusive !== false ? "true" : "false"}
-                            onChange={(e) => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: e.target.value === "true" }))}
-                            className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                          >
-                            <option value="true">With GST</option>
-                            <option value="false">Without GST</option>
-                          </select>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">MRP (Max Retail Price)</label>
@@ -2359,11 +2358,11 @@ export function Products() {
                             <span className="text-xs font-bold text-indigo-900">Wholesale Tier</span>
                             <span className="text-[10px] bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">Bulk Volume Rate</span>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Wholesale Price</label>
-                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
+                              <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
+                                <span className="pl-3 pr-1 text-slate-400 font-bold text-xs select-none">{currency.symbol}</span>
                                 <input
                                   type="number"
                                   step="any"
@@ -2372,21 +2371,20 @@ export function Products() {
                                   name="wholesale_price"
                                   value={(currentForm as any).wholesale_price ?? ""}
                                   onChange={handleFormChange}
-                                  placeholder=""
-                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                  placeholder="0.00"
+                                  className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-bold text-slate-800 outline-none"
                                 />
+                                <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
+                                  <select
+                                    value={(currentForm as any).wholesale_is_tax_inclusive !== false ? "true" : "false"}
+                                    onChange={(e) => setCurrentForm(prev => ({ ...prev, wholesale_is_tax_inclusive: e.target.value === "true" }))}
+                                    className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
+                                  >
+                                    <option value="true">With GST</option>
+                                    <option value="false">Without GST</option>
+                                  </select>
+                                </div>
                               </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
-                              <select
-                                value={(currentForm as any).wholesale_is_tax_inclusive !== false ? "true" : "false"}
-                                onChange={(e) => setCurrentForm(prev => ({ ...prev, wholesale_is_tax_inclusive: e.target.value === "true" }))}
-                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                              >
-                                <option value="true">With GST</option>
-                                <option value="false">Without GST</option>
-                              </select>
                             </div>
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min Wholesale Qty</label>
@@ -2410,11 +2408,11 @@ export function Products() {
                             <span className="text-xs font-bold text-indigo-900">B2B Business Tier</span>
                             <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-medium">GST Clients</span>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">B2B Price</label>
-                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
+                              <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
+                                <span className="pl-3 pr-1 text-slate-400 font-bold text-xs select-none">{currency.symbol}</span>
                                 <input
                                   type="number"
                                   step="any"
@@ -2423,21 +2421,20 @@ export function Products() {
                                   name="b2b_price"
                                   value={(currentForm as any).b2b_price ?? ""}
                                   onChange={handleFormChange}
-                                  placeholder=""
-                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                  placeholder="0.00"
+                                  className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-bold text-slate-800 outline-none"
                                 />
+                                <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
+                                  <select
+                                    value={(currentForm as any).b2b_is_tax_inclusive !== false ? "true" : "false"}
+                                    onChange={(e) => setCurrentForm(prev => ({ ...prev, b2b_is_tax_inclusive: e.target.value === "true" }))}
+                                    className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
+                                  >
+                                    <option value="true">With GST</option>
+                                    <option value="false">Without GST</option>
+                                  </select>
+                                </div>
                               </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
-                              <select
-                                value={(currentForm as any).b2b_is_tax_inclusive !== false ? "true" : "false"}
-                                onChange={(e) => setCurrentForm(prev => ({ ...prev, b2b_is_tax_inclusive: e.target.value === "true" }))}
-                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                              >
-                                <option value="true">With GST</option>
-                                <option value="false">Without GST</option>
-                              </select>
                             </div>
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min B2B Qty</label>
@@ -2461,11 +2458,11 @@ export function Products() {
                             <span className="text-xs font-bold text-indigo-900">Distributor / Stockist Tier</span>
                             <span className="text-[10px] bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full font-medium">Dealer & Stockist Rate</span>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Distributor Price</label>
-                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
+                              <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
+                                <span className="pl-3 pr-1 text-slate-400 font-bold text-xs select-none">{currency.symbol}</span>
                                 <input
                                   type="number"
                                   step="any"
@@ -2474,21 +2471,20 @@ export function Products() {
                                   name="distributor_price"
                                   value={(currentForm as any).distributor_price ?? ""}
                                   onChange={handleFormChange}
-                                  placeholder=""
-                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                  placeholder="0.00"
+                                  className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-bold text-slate-800 outline-none"
                                 />
+                                <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
+                                  <select
+                                    value={(currentForm as any).distributor_is_tax_inclusive !== false ? "true" : "false"}
+                                    onChange={(e) => setCurrentForm(prev => ({ ...prev, distributor_is_tax_inclusive: e.target.value === "true" }))}
+                                    className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
+                                  >
+                                    <option value="true">With GST</option>
+                                    <option value="false">Without GST</option>
+                                  </select>
+                                </div>
                               </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
-                              <select
-                                value={(currentForm as any).distributor_is_tax_inclusive !== false ? "true" : "false"}
-                                onChange={(e) => setCurrentForm(prev => ({ ...prev, distributor_is_tax_inclusive: e.target.value === "true" }))}
-                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                              >
-                                <option value="true">With GST</option>
-                                <option value="false">Without GST</option>
-                              </select>
                             </div>
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min Distributor Qty</label>
@@ -2514,11 +2510,11 @@ export function Products() {
                         <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 block">4. Purchase & Sourcing Costs</span>
                         <span className="text-[11px] text-slate-500">Cost price paid to vendors for margin tracking and procurement.</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Purchase / Cost Price</label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
+                          <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
+                            <span className="pl-3 pr-1 text-slate-400 font-bold text-sm select-none">{currency.symbol}</span>
                             <input
                               type="number"
                               step="any"
@@ -2527,22 +2523,21 @@ export function Products() {
                               name="purchase_price"
                               value={(currentForm as any).purchase_price ?? ""}
                               onChange={handleFormChange}
-                              placeholder=""
-                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                              placeholder="0.00"
+                              className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-semibold focus:ring-0 outline-none"
                             />
+                            <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
+                              <select
+                                name="is_purchase_tax_inclusive"
+                                value={(currentForm as any).is_purchase_tax_inclusive !== false ? "true" : "false"}
+                                onChange={(e) => setCurrentForm(prev => ({ ...prev, is_purchase_tax_inclusive: e.target.value === "true" }))}
+                                className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
+                              >
+                                <option value="true">With GST</option>
+                                <option value="false">Without GST</option>
+                              </select>
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Purchase Tax Mode</label>
-                          <select
-                            name="is_purchase_tax_inclusive"
-                            value={(currentForm as any).is_purchase_tax_inclusive !== false ? "true" : "false"}
-                            onChange={(e) => setCurrentForm(prev => ({ ...prev, is_purchase_tax_inclusive: e.target.value === "true" }))}
-                            className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                          >
-                            <option value="true">With GST</option>
-                            <option value="false">Without GST</option>
-                          </select>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Preferred Supplier / Vendor</label>

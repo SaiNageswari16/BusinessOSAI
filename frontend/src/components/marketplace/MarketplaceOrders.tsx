@@ -1,15 +1,34 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ShoppingCart, Search, Filter, Store, User, MapPin, Calendar, Clock, CreditCard, Box, ExternalLink } from "lucide-react";
 import { mockMarketplaceOrders } from "@/data/mockMarketplaceData";
 import { cn } from "@/lib/utils";
-import { useCurrency } from "@/hooks/use-currency";
+import { marketplaceApi } from "@/lib/marketplace-api";
 
 export function MarketplaceOrders() {
-    const { currency, formatCurrency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
+  const [orders, setOrders] = useState(mockMarketplaceOrders);
 
-  const filtered = mockMarketplaceOrders.filter(o => 
+  useEffect(() => {
+    marketplaceApi.getOrders().then(data => {
+      if (data.orders && data.orders.length > 0) {
+        setOrders(data.orders.map((o: any) => ({
+          id: o.id,
+          customerName: o.customerName || "Customer",
+          customerId: o.customerId || `CUST-${o.id.slice(-4)}`,
+          vendorName: o.vendorName || "Marketplace Vendor",
+          vendorId: o.vendorId || `VEND-${o.id.slice(-3)}`,
+          items: o.items || o.itemsCount || 1,
+          total: Number(o.total || o.totalAmount || 0),
+          status: o.status || "Processing",
+          date: o.date || new Date().toISOString(),
+          paymentStatus: o.paymentStatus || "Paid"
+        })));
+      }
+    }).catch(() => {});
+  }, []);
+
+  const filtered = orders.filter(o => 
     o.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
     o.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     o.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
@@ -93,7 +112,7 @@ export function MarketplaceOrders() {
                 <Box className="size-4" /> {order.items} {order.items === 1 ? 'item' : 'items'}
               </div>
               <div className="text-lg font-bold text-foreground">
-                {currency.symbol}{order.total.toFixed(2)}
+                ${order.total.toFixed(2)}
               </div>
             </div>
             

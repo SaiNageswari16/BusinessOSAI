@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-
+from src.api.v1.marketplace import marketplace_router
 from src.api.v1.auth import router as auth_router
 from src.api.v1.erp.access_control import router as access_control_router
 from src.api.v1.erp.audit import router as audit_router
@@ -98,6 +98,9 @@ api_router.include_router(whatsapp_automation_router)
 
 # Storefront
 api_router.include_router(storefront_router)
+
+# Marketplace
+api_router.include_router(marketplace_router)
 
 # Workspace
 api_router.include_router(workspace_router)

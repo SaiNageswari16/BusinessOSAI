@@ -382,12 +382,10 @@ export const nav: NavGroup[] = [
           { to: "/marketplace?tab=vendors", label: "Vendors", icon: Store },
           { to: "/marketplace?tab=vendor_categories", label: "Vendor Categories", icon: FolderTree },
           { to: "/marketplace?tab=vendor_contracts", label: "Vendor Contracts", icon: FileCheck },
-          { to: "/marketplace?tab=vendor_wallet", label: "Vendor Wallet", icon: CreditCard },
-          { to: "/marketplace?tab=vendor_payouts", label: "Vendor Payouts", icon: Clock },
+          { to: "/marketplace?tab=vendor_wallet", label: "Wallet & Payouts", icon: CreditCard },
           { to: "/marketplace?tab=vendor_ratings", label: "Vendor Ratings", icon: Target },
           { to: "/marketplace?tab=vendor_performance", label: "Vendor Performance", icon: Activity },
-          { to: "/marketplace?tab=vendor_kyc", label: "Vendor KYC", icon: ShieldCheck },
-          { to: "/marketplace?tab=vendor_approvals", label: "Vendor Approvals", icon: ShieldCheck },
+          { to: "/marketplace?tab=vendor_kyc", label: "KYC & Approvals", icon: ShieldCheck },
         ]
       },
       {

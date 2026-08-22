@@ -151,11 +151,11 @@ function ErpModule() {
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
   const { hasPermission } = useRbac();
-  
+
   if (!hasPermission("view:erp")) {
     return <Unauthorized />;
   }
-  
+
   // Parse search param ?tab=...
   let activeTab = "companies";
   if (searchStr.includes("tab=")) {
