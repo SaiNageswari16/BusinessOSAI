@@ -2,8 +2,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, cast, Date, String, desc
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from typing import Annotated
 
+from src.api.deps import CurrentUserContext, require_permission
 from src.database.session import get_db
 from src.models import (
     Invoice, POSTransaction, CRMSalesOrder, Customer, 
@@ -13,30 +15,36 @@ from src.models import (
     LiveNotification, Interview, User
 )
 from src.models.erp import InvoiceType, InvoiceStatus, ExpenseStatus
-from datetime import timedelta
 
 router = APIRouter(prefix="/workspace", tags=["Workspace Dashboard"])
 
 @router.get("/dashboard/kpis")
-async def get_dashboard_kpis(db: AsyncSession = Depends(get_db)):
+async def get_dashboard_kpis(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:dashboard"))],
+    db: AsyncSession = Depends(get_db)
+):
     today = date.today()
 
     # 1. Today's Revenue & Sales
     # Revenue from Invoices
     inv_revenue_q = select(func.sum(Invoice.total_amount)).where(
+        Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
         cast(Invoice.created_at, Date) == today
     )
     inv_sales_q = select(func.count(Invoice.id)).where(
+        Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
         cast(Invoice.created_at, Date) == today
     )
     
     # Revenue from POS
     pos_revenue_q = select(func.sum(POSTransaction.total_amount)).where(
+        POSTransaction.tenant_id == ctx.tenant_id,
         cast(POSTransaction.created_at, Date) == today
     )
     pos_sales_q = select(func.count(POSTransaction.id)).where(
+        POSTransaction.tenant_id == ctx.tenant_id,
         cast(POSTransaction.created_at, Date) == today
     )
 
@@ -50,36 +58,40 @@ async def get_dashboard_kpis(db: AsyncSession = Depends(get_db)):
 
     # 2. Orders Pending
     pending_orders_q = select(func.count(CRMSalesOrder.id)).where(
+        CRMSalesOrder.tenant_id == ctx.tenant_id,
         CRMSalesOrder.status.in_(["PENDING", "PROCESSING", "Draft"])
     )
     orders_pending = await db.scalar(pending_orders_q) or 0
 
     # 3. Active Customers
-    active_customers_q = select(func.count(Customer.id))
+    active_customers_q = select(func.count(Customer.id)).where(Customer.tenant_id == ctx.tenant_id)
     active_customers = await db.scalar(active_customers_q) or 0
 
     # 4. Employees Present
     employees_present_q = select(func.count(AttendanceRecord.id)).where(
+        AttendanceRecord.tenant_id == ctx.tenant_id,
         AttendanceRecord.date == today
     )
-    total_employees_q = select(func.count(Employee.id))
+    total_employees_q = select(func.count(Employee.id)).where(Employee.tenant_id == ctx.tenant_id)
     
     employees_present = await db.scalar(employees_present_q) or 0
     total_employees = await db.scalar(total_employees_q) or 0
     attendance_str = f"{employees_present} / {total_employees}"
 
     # 5. Inventory Value
-    inv_value_q = select(func.sum(Product.initial_stock * Product.selling_price))
+    inv_value_q = select(func.sum(Product.initial_stock * Product.selling_price)).where(Product.tenant_id == ctx.tenant_id)
     inventory_value = await db.scalar(inv_value_q) or 0.0
 
     # 6. Pending Deliveries
     pending_deliveries_q = select(func.count(GoodsIssue.id)).where(
+        GoodsIssue.tenant_id == ctx.tenant_id,
         GoodsIssue.status.in_(["PENDING", "DRAFT"])
     )
     pending_deliveries = await db.scalar(pending_deliveries_q) or 0
 
     # 7. Pending Payments (AR overdue/unpaid)
     pending_payments_q = select(func.sum(Invoice.balance_due)).where(
+        Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
         cast(Invoice.status, String).in_([InvoiceStatus.SENT.value, InvoiceStatus.VIEWED.value, InvoiceStatus.PARTIALLY_PAID.value, InvoiceStatus.OVERDUE.value])
     )
@@ -151,17 +163,22 @@ async def get_dashboard_kpis(db: AsyncSession = Depends(get_db)):
     }
 
 @router.get("/dashboard/charts")
-async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
+async def get_dashboard_charts(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:dashboard"))],
+    db: AsyncSession = Depends(get_db)
+):
     today = date.today()
     six_months_ago = today.replace(day=1) - timedelta(days=5*30)
     six_months_ago = six_months_ago.replace(day=1)
     
     # 1. Revenue vs Expenses
     inv_q = select(Invoice.created_at, Invoice.total_amount).where(
+        Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
         cast(Invoice.created_at, Date) >= six_months_ago
     )
     expenses_q = select(ExpenseClaim.created_at, ExpenseClaim.total_amount).where(
+        ExpenseClaim.tenant_id == ctx.tenant_id,
         cast(ExpenseClaim.status, String).in_([ExpenseStatus.APPROVED.value, ExpenseStatus.PAID.value]),
         cast(ExpenseClaim.created_at, Date) >= six_months_ago
     )
@@ -202,8 +219,12 @@ async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
             
     # 2. Revenue by Channel (Current Month)
     first_day = today.replace(day=1)
-    retail_q = select(func.sum(POSTransaction.total_amount)).where(cast(POSTransaction.created_at, Date) >= first_day)
+    retail_q = select(func.sum(POSTransaction.total_amount)).where(
+        POSTransaction.tenant_id == ctx.tenant_id,
+        cast(POSTransaction.created_at, Date) >= first_day
+    )
     b2b_q = select(func.sum(Invoice.total_amount)).where(
+        Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
         cast(Invoice.created_at, Date) >= first_day
     )
@@ -224,10 +245,14 @@ async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
     # 3. Orders Trend (Last 14 days)
     fourteen_days_ago = today - timedelta(days=14)
     trend_inv_q = select(Invoice.created_at).where(
+        Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
         cast(Invoice.created_at, Date) >= fourteen_days_ago
     )
-    trend_pos_q = select(POSTransaction.created_at).where(cast(POSTransaction.created_at, Date) >= fourteen_days_ago)
+    trend_pos_q = select(POSTransaction.created_at).where(
+        POSTransaction.tenant_id == ctx.tenant_id,
+        cast(POSTransaction.created_at, Date) >= fourteen_days_ago
+    )
     
     trend_inv = (await db.execute(trend_inv_q)).all()
     trend_pos = (await db.execute(trend_pos_q)).all()
@@ -254,20 +279,23 @@ async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
     }
 
 @router.get("/dashboard/widgets")
-async def get_dashboard_widgets(db: AsyncSession = Depends(get_db)):
+async def get_dashboard_widgets(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:dashboard"))],
+    db: AsyncSession = Depends(get_db)
+):
     today = date.today()
     
-    pr_count = await db.scalar(select(func.count(PurchaseRequest.id))) or 0
-    exp_pend = await db.scalar(select(func.count(ExpenseClaim.id)).where(cast(ExpenseClaim.status, String) == 'PENDING')) or 0
-    leave_pend = await db.scalar(select(func.count(LeaveRequest.id)).where(cast(LeaveRequest.status, String) == 'PENDING')) or 0
+    pr_count = await db.scalar(select(func.count(PurchaseRequest.id)).where(PurchaseRequest.tenant_id == ctx.tenant_id)) or 0
+    exp_pend = await db.scalar(select(func.count(ExpenseClaim.id)).where(ExpenseClaim.tenant_id == ctx.tenant_id, cast(ExpenseClaim.status, String) == 'PENDING')) or 0
+    leave_pend = await db.scalar(select(func.count(LeaveRequest.id)).where(LeaveRequest.tenant_id == ctx.tenant_id, cast(LeaveRequest.status, String) == 'PENDING')) or 0
     pending_approvals = exp_pend + leave_pend
-    warehouse_count = await db.scalar(select(func.count(Warehouse.id))) or 0
-    low_stock = await db.scalar(select(func.count(Product.id)).where(Product.initial_stock < Product.reorder_level)) or 0
+    warehouse_count = await db.scalar(select(func.count(Warehouse.id)).where(Warehouse.tenant_id == ctx.tenant_id)) or 0
+    low_stock = await db.scalar(select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id, Product.initial_stock < Product.reorder_level)) or 0
     thirty_days_later = today + timedelta(days=30)
-    expiring = await db.scalar(select(func.count(InventoryBatch.id)).where(cast(InventoryBatch.expiry_date, Date) <= thirty_days_later)) or 0
-    delivery_status = await db.scalar(select(func.count(GoodsIssue.id))) or 0
-    open_returns = await db.scalar(select(func.count(InvoiceReturn.id)).where(cast(InvoiceReturn.status, String) == 'PENDING')) or 0
-    prod_orders = await db.scalar(select(func.count(PurchaseOrder.id))) or 0
+    expiring = await db.scalar(select(func.count(InventoryBatch.id)).where(InventoryBatch.tenant_id == ctx.tenant_id, cast(InventoryBatch.expiry_date, Date) <= thirty_days_later)) or 0
+    delivery_status = await db.scalar(select(func.count(GoodsIssue.id)).where(GoodsIssue.tenant_id == ctx.tenant_id)) or 0
+    open_returns = await db.scalar(select(func.count(InvoiceReturn.id)).where(InvoiceReturn.tenant_id == ctx.tenant_id, cast(InvoiceReturn.status, String) == 'PENDING')) or 0
+    prod_orders = await db.scalar(select(func.count(PurchaseOrder.id)).where(PurchaseOrder.tenant_id == ctx.tenant_id)) or 0
     
     operationsWidgets = [
         {'label': 'Purchase Requests', 'count': int(pr_count), 'progress': min(100, pr_count * 5), 'status': 'awaiting approval', 'tone': 'blue'},
@@ -280,7 +308,7 @@ async def get_dashboard_widgets(db: AsyncSession = Depends(get_db)):
         {'label': 'Production Orders', 'count': int(prod_orders), 'progress': min(100, prod_orders * 5), 'status': 'Active POs', 'tone': 'green'}
     ]
     
-    branches = (await db.execute(select(Branch))).scalars().all()
+    branches = (await db.execute(select(Branch).where(Branch.tenant_id == ctx.tenant_id))).scalars().all()
     branchPerformance = []
     for b in branches:
         seed = int(hashlib.md5(str(b.id).encode()).hexdigest(), 16)
@@ -292,7 +320,7 @@ async def get_dashboard_widgets(db: AsyncSession = Depends(get_db)):
         branchPerformance = [{'branch': 'HQ', 'revenue': 800, 'profit': 200, 'employees': 40, 'growth': 10.5}]
         
     low_stock_prods = (await db.execute(
-        select(Product.name, Product.sku, Product.initial_stock).where(Product.initial_stock < Product.reorder_level).order_by(Product.initial_stock.asc()).limit(3)
+        select(Product.name, Product.sku, Product.initial_stock).where(Product.tenant_id == ctx.tenant_id, Product.initial_stock < Product.reorder_level).order_by(Product.initial_stock.asc()).limit(3)
     )).all()
     
     inventoryAlerts = []
@@ -305,7 +333,7 @@ async def get_dashboard_widgets(db: AsyncSession = Depends(get_db)):
             'status': 'critical' if (stock or 0) == 0 else 'warn'
         })
         
-    recent_q = select(ActivityLog, User.full_name).join(User, User.id == ActivityLog.user_id, isouter=True).order_by(desc(ActivityLog.created_at)).limit(6)
+    recent_q = select(ActivityLog, User.full_name).join(User, User.id == ActivityLog.user_id, isouter=True).where(ActivityLog.tenant_id == ctx.tenant_id).order_by(desc(ActivityLog.created_at)).limit(6)
     recent_logs = (await db.execute(recent_q)).all()
     recentActivity = []
     for log, user_name in recent_logs:
@@ -319,7 +347,7 @@ async def get_dashboard_widgets(db: AsyncSession = Depends(get_db)):
         })
         
     notifs = (await db.execute(
-        select(LiveNotification).order_by(desc(LiveNotification.created_at)).limit(5)
+        select(LiveNotification).where(LiveNotification.tenant_id == ctx.tenant_id).order_by(desc(LiveNotification.created_at)).limit(5)
     )).scalars().all()
     notifications = []
     for n in notifs:
@@ -333,7 +361,7 @@ async def get_dashboard_widgets(db: AsyncSession = Depends(get_db)):
         })
         
     interviews = (await db.execute(
-        select(Interview).where(cast(Interview.date, Date) >= today).order_by(cast(Interview.date, Date).asc()).limit(3)
+        select(Interview).where(Interview.tenant_id == ctx.tenant_id, cast(Interview.date, Date) >= today).order_by(cast(Interview.date, Date).asc()).limit(3)
     )).scalars().all()
     
     calendarEvents = []

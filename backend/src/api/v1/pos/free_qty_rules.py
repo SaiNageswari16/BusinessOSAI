@@ -113,18 +113,21 @@ async def list_free_qty_rules(
     return settings.get("free_qty_rules") or []
 
 
-@router.put("/free-qty-rules", response_model=List[FreeQtyRule])
+@router.post("/free-qty-rules")
+@router.put("/free-qty-rules")
 async def save_free_qty_rules(
     payload: FreeQtyRulesPayload,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:pos"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     settings, tenant = await _get_tenant_settings(db, ctx.tenant_id)
-    settings["free_qty_rules"] = [r.model_dump() for r in payload.rules]
+    rules_dump = [r.model_dump() for r in payload.rules]
+    settings["free_qty_rules"] = rules_dump
     tenant.settings = settings
     flag_modified(tenant, "settings")
     await db.commit()
-    return payload.rules
+    return {"success": True, "count": len(payload.rules), "rules": rules_dump}
+
 
 
 @router.post("/free-qty-rules/evaluate", response_model=FreeQtyEvaluateResponse)

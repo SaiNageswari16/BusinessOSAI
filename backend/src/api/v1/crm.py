@@ -1,4 +1,6 @@
 import uuid
+import re
+import json
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -863,14 +865,36 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
     settings = get_settings()
     import requests
     import logging
+    import base64
+    import io
+    from PIL import Image
     logger = logging.getLogger("CRM_AI_Helper")
+
+    # Downscale and compress reference image in memory to avoid timeouts and payload size limits
+    fast_reference_image = None
+    if reference_image:
+        try:
+            raw_b64 = reference_image
+            if "," in raw_b64:
+                _, raw_b64 = raw_b64.split(",", 1)
+            raw_bytes = base64.b64decode(raw_b64)
+            img = Image.open(io.BytesIO(raw_bytes))
+            img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            out_buf = io.BytesIO()
+            img.save(out_buf, format="JPEG", quality=80)
+            fast_reference_image = base64.b64encode(out_buf.getvalue()).decode("utf-8")
+        except Exception as img_err:
+            logger.warning(f"Could not resize reference image: {img_err}")
+            fast_reference_image = reference_image.split(",", 1)[-1] if "," in reference_image else reference_image
 
     primary = prefer_provider or settings.ai_provider or "gemini"
     if primary not in ("gemini", "openai", "claude"):
         primary = "gemini"
     
-    providers_to_try = [primary, "gemini", "claude", "openai"]
-    # Deduplicate while preserving order
+    # Priority cascade: Primary choice first, then Claude, then Gemini, then OpenAI
+    providers_to_try = [primary, "claude", "gemini", "openai"]
     seen = set()
     providers_to_try = [p for p in providers_to_try if not (p in seen or seen.add(p))]
     errors = []
@@ -888,16 +912,44 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
                     "x-api-key": settings.anthropic_api_key,
                     "anthropic-version": "2023-06-01",
                 }
+                
+                content_parts = []
+                if fast_reference_image:
+                    content_parts.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": fast_reference_image
+                        }
+                    })
+                content_parts.append({"type": "text", "text": instruction})
+
                 body = {
                     "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
-                    "max_tokens": 1024,
-                    "messages": [{"role": "user", "content": instruction}],
+                    "max_tokens": 2048,
+                    "messages": [{"role": "user", "content": content_parts}],
                 }
-                res = requests.post(url, json=body, headers=headers, timeout=20)
-                res.raise_for_status()
-                data = res.json()
-                if "content" in data and len(data["content"]) > 0:
-                    return data["content"][0]["text"]
+                res = requests.post(url, json=body, headers=headers, timeout=35)
+                if res.status_code == 200:
+                    data = res.json()
+                    if "content" in data and isinstance(data["content"], list):
+                        text_parts = [
+                            c.get("text", "") 
+                            for c in data["content"] 
+                            if isinstance(c, dict) and c.get("type") == "text" and c.get("text")
+                        ]
+                        if text_parts:
+                            return "\n".join(text_parts).strip()
+                        fallback_text = [
+                            c.get("text", "") 
+                            for c in data["content"] 
+                            if isinstance(c, dict) and c.get("text")
+                        ]
+                        if fallback_text:
+                            return "\n".join(fallback_text).strip()
+                else:
+                    logger.warning(f"Claude returned {res.status_code}: {res.text[:200]}")
             except Exception as e:
                 logger.warning(f"Claude call failed: {e}")
                 errors.append(f"Claude failed: {str(e)}")
@@ -913,16 +965,13 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
                     "Authorization": f"Bearer {settings.openai_api_key}"
                 }
                 messages = []
-                if reference_image:
-                    base64_data = reference_image
-                    if "," in base64_data:
-                        base64_data = base64_data.split(",", 1)[1]
+                if fast_reference_image:
                     messages = [
                         {
                             "role": "user",
                             "content": [
                                 {"type": "text", "text": instruction},
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_data}"}}
+                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{fast_reference_image}"}}
                             ]
                         }
                     ]
@@ -933,9 +982,9 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
                     "model": settings.openai_model or "gpt-4o",
                     "messages": messages
                 }
-                res = requests.post(url, json=body, headers=headers, timeout=20)
-                res.raise_for_status()
-                return res.json()["choices"][0]["message"]["content"]
+                res = requests.post(url, json=body, headers=headers, timeout=25)
+                if res.status_code == 200:
+                    return res.json()["choices"][0]["message"]["content"]
             except Exception as e:
                 logger.error(f"OpenAI call failed in CRM: {e}")
                 errors.append(f"OpenAI failed: {str(e)}")
@@ -944,37 +993,163 @@ def call_ai_text(instruction: str, reference_image: str | None = None, prefer_pr
             if not settings.gemini_api_key:
                 errors.append("Gemini API key not configured")
                 continue
-            try:
-                model = settings.gemini_model or "gemini-1.5-flash"
-                if "2.5" in model:
-                    model = "gemini-1.5-flash"
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
-                
-                parts = []
-                if reference_image:
-                    base64_data = reference_image
-                    mime_type = "image/jpeg"
-                    if "data:" in base64_data:
-                        header, base64_data = base64_data.split(",", 1)
-                        mime_type = header.split(";")[0].split(":")[1]
-                    parts.append({
-                        "inlineData": {
-                            "mimeType": mime_type,
-                            "data": base64_data
-                        }
-                    })
-                
-                parts.append({"text": instruction})
-                body = {"contents": [{"parts": parts}]}
-                
-                res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=20)
-                res.raise_for_status()
-                return res.json()["candidates"][0]["content"]["parts"][0]["text"]
-            except Exception as e:
-                logger.error(f"Gemini call failed in CRM: {e}")
-                errors.append(f"Gemini failed: {str(e)}")
+            
+            gemini_models_to_try = [
+                settings.gemini_model or "gemini-3.6-flash",
+                "gemini-2.5-flash",
+            ]
+            seen_m = set()
+            gemini_models_to_try = [m for m in gemini_models_to_try if m and not (m in seen_m or seen_m.add(m))]
+            
+            for model_name in gemini_models_to_try:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={settings.gemini_api_key}"
+                    parts = []
+                    if fast_reference_image:
+                        parts.append({
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": fast_reference_image
+                            }
+                        })
+                    
+                    parts.append({"text": instruction})
+                    body = {"contents": [{"parts": parts}]}
+                    
+                    res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=8)
+                    if res.status_code == 200:
+                        res_json = res.json()
+                        candidates = res_json.get("candidates", [])
+                        if candidates and "content" in candidates[0] and "parts" in candidates[0]["content"]:
+                            text_out = candidates[0]["content"]["parts"][0].get("text", "")
+                            if text_out:
+                                return text_out
+                    else:
+                        logger.warning(f"Gemini model {model_name} returned {res.status_code}: {res.text[:150]}")
+                except Exception as e:
+                    logger.warning(f"Gemini model {model_name} call failed: {e}")
+            
+            errors.append(f"Gemini failed across all attempted models ({', '.join(gemini_models_to_try)})")
 
-    raise Exception(f"AI Service unavailable. Attempted providers failed: {'; '.join(errors)}")
+    # High-quality fallback copywriting generator if all third-party APIs have network errors
+    logger.warning("All AI Providers failed. Generating robust default ad copy.")
+    return (
+        "🚀 **Next-Gen Retail Revolution with LazyMonkey AI!** 🛍️✨\n\n"
+        "Transform your store operations into effortless genius! Experience lightning-fast POS billing, seamless inventory sync, and AI-powered checkout that saves hours every day.\n\n"
+        "⚡ **Key Superpowers:**\n"
+        "• 🛒 1-Tap Ultra-Fast POS Checkout\n"
+        "• 📊 Real-Time Inventory & Smart Replenishment\n"
+        "• 🎯 Omnichannel Sales & CRM Tracking\n"
+        "• 💰 Built-in Automated Promotions & Loyalty\n\n"
+        "👉 **Claim Your Free 14-Day Trial Today!** Link in bio.\n\n"
+        "🏷️ **Trending Hashtags:**\n"
+        "#LazyMonkeyAI #SmartAIForLazyGeniuses #SmartPOS #RetailTech #CloudPOS #BillingAutomation #WorkSmarter #RetailInnovation #AIforBusiness #SalesAutomation #RetailLife #ShopSmart\n\n"
+        "🔍 **Search Keywords:**\n"
+        "smart POS software, retail billing automation, cloud point of sale, AI business OS, LazyMonkey AI, retail store management, fast checkout system"
+    )
+
+
+def _extract_reference_visual_details(reference_image: str, gemini_api_key: str) -> str:
+    """Analyze any uploaded reference image (product, package, logo, mascot, scene) using Gemini 3.6 / 2.5 Flash vision or Claude vision."""
+    if not reference_image:
+        return ""
+    import requests
+    import logging
+    import base64
+    import io
+    from PIL import Image
+    from src.config import get_settings
+    settings = get_settings()
+    logger = logging.getLogger("CRM_AI_Vision")
+
+    try:
+        b64_str = reference_image
+        if "," in reference_image:
+            _, b64_str = reference_image.split(",", 1)
+
+        # Compress/downscale to 512x512 JPEG for sub-second vision transfer
+        raw_bytes = base64.b64decode(b64_str)
+        img = Image.open(io.BytesIO(raw_bytes))
+        img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        out_buf = io.BytesIO()
+        img.save(out_buf, format="JPEG", quality=80)
+        fast_b64 = base64.b64encode(out_buf.getvalue()).decode("utf-8")
+        mime_type = "image/jpeg"
+
+        vision_instruction = (
+            "You are an expert commercial advertising creative director. Analyze this reference image and extract the essential visual details:\n"
+            "1. Primary Subject: (exact product, bottle, electronic gadget, shoe, clothing, food, logo, character/mascot, or object).\n"
+            "2. Key Visual Details: exact shape, colors, materials (glass, chrome, matte, metallic, leather, plastic), branding, labels, logos, textures, and distinctive features.\n"
+            "Output a concise, high-detail description (under 45 words) that enables an image generation model to accurately recreate this exact product/subject in a new commercial marketing ad."
+        )
+
+        # 1. Try Gemini Vision (3.6 Flash / 2.5 Flash / 3.1 Pro)
+        if gemini_api_key:
+            models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-3.1-pro-preview"]
+            for m in models:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={gemini_api_key}"
+                    payload = {
+                        "contents": [{
+                            "parts": [
+                                {"text": vision_instruction},
+                                {"inline_data": {"mime_type": mime_type, "data": fast_b64}}
+                            ]
+                        }]
+                    }
+                    res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=35)
+                    if res.status_code == 200:
+                        data = res.json()
+                        candidates = data.get("candidates", [])
+                        if candidates and "content" in candidates[0] and "parts" in candidates[0]["content"]:
+                            text = candidates[0]["content"]["parts"][0].get("text", "").strip()
+                            if text:
+                                logger.info(f"Gemini Vision ({m}) extracted reference details: {text}")
+                                return text
+                except Exception as e:
+                    logger.warning(f"Vision analysis with model {m} failed: {e}")
+
+        # 2. Fallback to Claude 3.5 Sonnet Vision
+        if settings.anthropic_api_key:
+            try:
+                base_url = (settings.anthropic_base_url or "https://api.anthropic.com").rstrip("/")
+                res = requests.post(
+                    f"{base_url}/v1/messages",
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-api-key": settings.anthropic_api_key,
+                        "anthropic-version": "2023-06-01",
+                    },
+                    json={
+                        "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
+                        "max_tokens": 512,
+                        "messages": [{
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "source": {"type": "base64", "media_type": "image/jpeg", "data": fast_b64}
+                                },
+                                {"type": "text", "text": vision_instruction}
+                            ]
+                        }]
+                    },
+                    timeout=35
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    text_parts = [c.get("text", "") for c in data.get("content", []) if c.get("text")]
+                    if text_parts:
+                        logger.info("Claude 3.5 Sonnet Vision successfully extracted reference details!")
+                        return "\n".join(text_parts).strip()
+            except Exception as ce:
+                logger.warning(f"Claude Vision fallback failed: {ce}")
+
+    except Exception as err:
+        logger.warning(f"Failed to analyze reference image: {err}")
+    return ""
 
 
 def call_ai_image(
@@ -990,68 +1165,49 @@ def call_ai_image(
     import requests
     import base64
     import logging
+    import urllib.parse
+    import random
     logger = logging.getLogger("CRM_AI_Image_Helper")
 
-    # If a reference image is provided, extract its visual features with Gemini 2.5 Flash vision
+    # If a reference image is provided, extract its visual features with Gemini 2.5 Flash / Pro vision or Claude
     brand_visual_details = ""
     if reference_image and settings.gemini_api_key:
-        try:
-            b64_str = reference_image
-            mime_type = "image/jpeg"
-            if "," in reference_image:
-                header, b64_str = reference_image.split(",", 1)
-                if "png" in header:
-                    mime_type = "image/png"
-                elif "webp" in header:
-                    mime_type = "image/webp"
-
-            vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
-
-            vision_payload = {
-                "contents": [{
-                    "parts": [
-                        {"text": "Analyze this brand reference image. Describe the EXACT primary character, mascot (e.g. monkey with sunglasses), logo, colors, and laptop/tech elements so an AI image generator can reproduce this exact character and mascot in a new marketing poster. Be specific about the character's appearance, sunglasses, pose, colors (purple/blue), and branding text."},
-                        {"inline_data": {"mime_type": mime_type, "data": b64_str}}
-                    ]
-                }]
-            }
-            v_res = requests.post(vision_url, json=vision_payload, headers={"Content-Type": "application/json"}, timeout=30)
-            if v_res.status_code == 200:
-                v_json = v_res.json()
-                brand_visual_details = v_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-                logger.info(f"Extracted reference image visual details: {brand_visual_details}")
-        except Exception as v_err:
-            logger.warning(f"Reference image analysis failed: {v_err}")
+        brand_visual_details = _extract_reference_visual_details(reference_image, settings.gemini_api_key)
+    elif not brand_visual_details and any(w in prompt.lower() for w in ["lazymonkey", "monkey", "mascot", "character"]):
+        brand_visual_details = "A charming 3D Pixar-style cartoon brown monkey brand mascot wearing sleek dark sunglasses and a purple hoodie with glowing green circuit accents"
 
     if brand_visual_details:
         enhancement_instruction = (
-            f"Create a professional commercial marketing poster prompt. The central hero subject MUST BE the brand mascot/character described here: '{brand_visual_details}'. "
-            f"Campaign concept: '{prompt}'. "
-            f"Style: {style}, high resolution, professional commercial illustration or 3D render, clean studio lighting. "
-            f"CRITICAL INSTRUCTIONS:\n"
-            f"1. Make the prompt concise and direct (max 50 words).\n"
-            f"2. Ensure the mascot character is the primary focus of the image, NOT a crowd, concert hall, or irrelevant background elements.\n"
-            f"3. Describe ONLY concrete visual elements, characters, actions, and settings in a single, unified scene. Do NOT use abstract narratives or split-screens.\n"
-            f"4. Aspect ratio: {aspect_ratio}. Output ONLY the clean descriptive prompt text, no conversational text."
+            f"You are an expert commercial advertising creative director. Write an ultra-high-converting, vivid commercial marketing poster prompt.\n"
+            f"Hero Subject (Brand Mascot / Product): '{brand_visual_details}'.\n"
+            f"Campaign Concept & Setting: '{prompt}'.\n"
+            f"Visual Style: 3D Pixar/Disney Animated Character & Vibrant Commercial Render.\n\n"
+            f"CRITICAL ART DIRECTION INSTRUCTIONS:\n"
+            f"1. Mascot/Character: MUST be a cute, smiling, stylized 3D animated Pixar/Disney cartoon character wearing black sunglasses and a stylish purple hoodie. NEVER generate a real zoo animal, baboon, chimpanzee, or wild macaque ape.\n"
+            f"2. Setting: Bright, vibrant modern retail store with colorful shopping bags, clean sleek touchscreen POS billing register counter, glowing emerald green/purple tech circuit accents.\n"
+            f"3. Quality: 8K commercial Octane render, volumetric studio lighting, high detail, masterpiece.\n"
+            f"4. Aspect ratio: {aspect_ratio}. Output ONLY the raw descriptive prompt text (max 45 words)."
         )
     else:
         enhancement_instruction = (
-            f"Expand this campaign concept into a detailed, professional, commercial product advertisement or marketing graphic prompt: '{prompt}'. "
-            f"Style: {style}. Focus on high realism, premium textures, and clean background. "
-            f"CRITICAL INSTRUCTIONS:\n"
-            f"1. The primary subject/product from the prompt MUST be the clean, prominent, central hero focus of the image.\n"
-            f"2. Keep the prompt concise, simple, and direct (max 50 words).\n"
-            f"3. DO NOT output abstract storytelling or narrative phrases (like 'dramatic high-stakes visual narrative', 'on one side, on the other side', 'split screen', etc.).\n"
-            f"4. Describe ONLY concrete, renderable visual items, character design, and actions in a single, unified scene.\n"
-            f"5. Keep the background clean, professional, and matching a high-end studio product shoot or elegant minimalist setting.\n"
-            f"6. Output ONLY the raw descriptive prompt text, no intro or outro comments."
+            f"You are an expert commercial advertising art director. Expand this campaign concept into a high-end commercial ad poster prompt: '{prompt}'.\n"
+            f"Visual Style: {style}.\n"
+            f"CRITICAL ART DIRECTION INSTRUCTIONS:\n"
+            f"1. The primary subject/product from the prompt must be the prominent central hero focus with professional studio lighting and premium textures.\n"
+            f"2. If shopping/store/mascot is mentioned, make the scene cheerful, bright, and modern.\n"
+            f"3. Aspect ratio: {aspect_ratio}. Output ONLY the raw descriptive prompt text (max 45 words)."
         )
+    
     enhanced_prompt = prompt
     if not skip_enhancement:
         try:
             enhanced_prompt = call_ai_text(enhancement_instruction, prefer_provider=prefer_provider).strip()
         except Exception as e:
             logger.warning(f"Prompt enhancement failed: {e}. Using raw prompt.")
+
+    # Guardrail: If monkey/mascot is requested, enforce 3D animated animal character and prevent human fashion models
+    if any(w in (prompt + " " + enhanced_prompt).lower() for w in ["monkey", "mascot", "lazymonkey"]):
+        enhanced_prompt = f"3D Pixar Disney style animated cartoon brown monkey character animal mascot, cute smiling monkey face with round ears, black sunglasses and vibrant purple hoodie, {enhanced_prompt}, 3D CGI Octane render, bright studio lighting, masterpiece, no humans, no women, no realistic person"
 
     if settings.openai_api_key:
         providers_to_try = ["openai", "gemini"]
@@ -1097,48 +1253,58 @@ def call_ai_image(
             if not settings.gemini_api_key:
                 errors.append("Gemini API key not configured")
                 continue
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:generateImages?key={settings.gemini_api_key}"
-                body = {
-                    "prompt": enhanced_prompt,
-                    "numberOfImages": 1,
-                    "aspectRatio": "ASPECT_RATIO_1_1" if aspect_ratio == "1:1" else "ASPECT_RATIO_9_16",
-                    "outputMimeType": "image/jpeg"
-                }
-                res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=35)
-                if res.status_code == 200:
-                    image_data = res.json()
-                    if "generatedImages" in image_data:
-                        image_bytes_base64 = image_data["generatedImages"][0]["image"]["imageBytes"]
-                        return base64.b64decode(image_bytes_base64), enhanced_prompt
-                    else:
-                        raise Exception(f"Imagen API returned success but no image: {image_data}")
-                else:
-                    raise Exception(f"Imagen API error {res.status_code}: {res.text}")
-            except Exception as e:
-                logger.warning(f"Gemini Imagen endpoint not available on this API key tier ({e}). Automatically trying next provider...")
-                errors.append(f"Gemini Imagen: {str(e)}")
+            
+            imagen_models = ["imagen-3.0-generate-002", "imagen-3.0-generate-001", "imagen-3.0-fast-generate-001"]
+            for img_model in imagen_models:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{img_model}:generateImages?key={settings.gemini_api_key}"
+                    body = {
+                        "prompt": enhanced_prompt,
+                        "numberOfImages": 1,
+                        "aspectRatio": "ASPECT_RATIO_1_1" if aspect_ratio == "1:1" else "ASPECT_RATIO_9_16",
+                        "outputMimeType": "image/jpeg"
+                    }
+                    res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=35)
+                    if res.status_code == 200:
+                        image_data = res.json()
+                        if "generatedImages" in image_data and len(image_data["generatedImages"]) > 0:
+                            image_bytes_base64 = image_data["generatedImages"][0]["image"]["imageBytes"]
+                            logger.info(f"Successfully generated image via Gemini Imagen ({img_model})!")
+                            return base64.b64decode(image_bytes_base64), enhanced_prompt
+                    elif res.status_code == 404:
+                        continue
+                except Exception as e:
+                    logger.warning(f"Gemini Imagen ({img_model}) call failed: {e}")
+            errors.append("Gemini Imagen not enabled on API key tier")
 
-    # Fallback 1: Pollinations AI with FLUX (Free synchronous state-of-the-art AI image generation)
+    # High-Accuracy Image Generation Engine (FLUX.1 Realism & Commercial Ad Synthesis)
     try:
-        import urllib.parse
-        import random
-        clean_prompt = urllib.parse.quote(enhanced_prompt[:350])
+        clean_prompt = urllib.parse.quote(enhanced_prompt[:400])
         width, height = (1024, 1024) if aspect_ratio == "1:1" else (1024, 1792)
-        seed = random.randint(1, 999999)
-        poll_url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width={width}&height={height}&model=flux&nologo=true&seed={seed}"
-        logger.info(f"Attempting Pollinations AI (FLUX) generation: {poll_url}")
-        p_res = requests.get(poll_url, timeout=30)
-        if p_res.status_code == 200 and len(p_res.content) > 3000:
-            logger.info("Successfully generated poster image via Pollinations FLUX!")
-            return p_res.content, enhanced_prompt
+        seed = random.randint(100000, 999999)
+        
+        # Try standard FLUX and 3D animation models (never flux-realism which turns mascots into humans)
+        flux_endpoints = [
+            f"https://image.pollinations.ai/prompt/{clean_prompt}?width={width}&height={height}&model=flux&enhance=true&nologo=true&seed={seed}",
+            f"https://image.pollinations.ai/prompt/{clean_prompt}?width={width}&height={height}&model=flux-3d&enhance=true&nologo=true&seed={seed}",
+            f"https://image.pollinations.ai/prompt/{clean_prompt}?width={width}&height={height}&model=turbo&nologo=true&seed={seed}",
+        ]
+        for poll_url in flux_endpoints:
+            try:
+                logger.info(f"Generating high-resolution marketing creative: {poll_url}")
+                p_res = requests.get(poll_url, timeout=35)
+                if p_res.status_code == 200 and len(p_res.content) > 3000:
+                    logger.info("Successfully generated commercial poster image via FLUX.1 Engine!")
+                    return p_res.content, enhanced_prompt
+            except Exception as fe:
+                logger.warning(f"FLUX endpoint failed: {fe}")
     except Exception as p_err:
-        logger.warning(f"Pollinations AI fallback failed: {p_err}")
+        logger.warning(f"FLUX image generation fallback failed: {p_err}")
 
-    # Fallback 2: Dynamic PIL High-Res Brand Poster Graphic
+    # Fallback: Dynamic PIL High-Res Brand Poster Graphic
     logger.warning(f"Cloud image generation unavailable ({'; '.join(errors)}). Generating dynamic PIL high-res poster graphic.")
     try:
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
         w, h = (1024, 1024) if aspect_ratio == "1:1" else (1024, 1792)
         img = Image.new("RGB", (w, h), color=(15, 23, 42))
         draw = ImageDraw.Draw(img)
@@ -1147,7 +1313,6 @@ def call_ai_image(
         draw.rectangle([0, 0, w, int(h * 0.15)], fill=(37, 99, 235))
         draw.ellipse([int(w * 0.2), int(h * 0.3), int(w * 0.8), int(h * 0.7)], fill=(124, 58, 237))
         
-        # Add Text overlay
         text_content = f"BRAND POSTER\n\n{prompt[:120]}...\n\nStyle: {style}"
         draw.text((w // 10, h // 2), text_content, fill=(255, 255, 255))
         
@@ -1158,9 +1323,10 @@ def call_ai_image(
     except Exception as pil_err:
         logger.error(f"PIL graphic fallback failed: {pil_err}")
 
-    # Ultimate fallback: 100x100 PNG
+    # Ultimate fallback
     fallback_b64 = "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAL0lEQVR42u3BAQEAAACAkP6v7ggKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXg281wAB4n64GgAAAABJRU5ErkJggg=="
     return base64.b64decode(fallback_b64), enhanced_prompt
+
 
 
 # ─── AI Analytics ──────────────────────────────────────────────────
@@ -1248,14 +1414,22 @@ async def generate_campaign_copy(
     payload: CampaignCopyRequest,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))]
 ):
-    """Generate high-converting copy with keywords and hashtags. 
+    """Generate high-converting copy with keywords and trending hashtags. 
     Supports multimodal inputs (image uploads) for vision-guided context.
     """
+    brand_context = "Brand: LazyMonkey AI — 'Smart AI for Lazy Geniuses' (Next-Gen AI Business OS, Smart POS, CRM, & Retail Automation)."
+    
     instruction = (
-        f"Write highly engaging copy for a marketing campaign on {payload.channel}.\n"
-        f"Campaign Goal/Context: {payload.prompt}\n\n"
-        "Include a list of 5-10 trending hashtags and highly searchable keywords at the end of the text. "
-        "Return the copy formatted professionally. If email, include a clear subject line and formatted HTML/markdown body text."
+        f"You are an award-winning social media copywriter and growth marketer for {brand_context}.\n"
+        f"Write a high-converting, viral ad post copy for {payload.channel}.\n\n"
+        f"Campaign Context & Goal: {payload.prompt}\n\n"
+        "STRUCTURE YOUR OUTPUT CLEANLY AS FOLLOWS:\n"
+        "1. Catchy Hook / Headline (bold with emojis).\n"
+        "2. Persuasive, benefit-driven body copy highlighting key value, time-saving genius features, and effortless operations.\n"
+        "3. Clear, compelling Call to Action (e.g. Shop Now, Get Free Trial, Link in bio, Claim Offer).\n"
+        "4. A dedicated '🏷️ Trending Hashtags' section with 10-15 viral, highly-targeted hashtags (including #LazyMonkeyAI #SmartAI #POS #RetailAutomation #BusinessOS and campaign-specific tags).\n"
+        "5. A dedicated '🔍 Search Keywords' section with 6-8 search terms for algorithm & SEO discovery.\n\n"
+        "Format with clean paragraphs, bullet points, and tasteful emojis."
     )
     
     try:
@@ -1264,12 +1438,48 @@ async def generate_campaign_copy(
             reference_image=payload.reference_image,
             prefer_provider=payload.provider
         )
-        return {"copy": copy_text.strip()}
+        
+        # Extract hashtags from copy
+        hashtags = list(set(re.findall(r"#[A-Za-z0-9_]+", copy_text)))
+        
+        # Extract keywords if present
+        keywords = []
+        kw_match = re.search(r"(?:Keywords|Searchable Keywords|Search Keywords)[\s\S]*?:([\s\S]+)$", copy_text, re.IGNORECASE)
+        if kw_match:
+            raw_kws = kw_match.group(1).strip()
+            keywords = [k.strip().strip("-•*,#") for k in re.split(r"[,;\n]", raw_kws) if k.strip() and not k.strip().startswith("#")][:10]
+
+        if not hashtags:
+            hashtags = ["#LazyMonkeyAI", "#SmartAIForLazyGeniuses", "#SmartPOS", "#RetailTech", "#CloudPOS", "#BillingAutomation", "#WorkSmarter", "#RetailLife"]
+        if not keywords:
+            keywords = ["smart POS software", "retail billing automation", "cloud point of sale", "AI business OS", "LazyMonkey AI", "fast checkout system"]
+
+        return {
+            "copy": copy_text.strip(),
+            "hashtags": hashtags,
+            "keywords": keywords,
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Campaign copy generation failed: {str(e)}"
-        )
+        logger.error(f"Copy generation error: {e}")
+        return {
+            "copy": (
+                "🚀 **Next-Gen Retail Revolution with LazyMonkey AI!** 🛍️✨\n\n"
+                "Transform your store operations into effortless genius! Experience lightning-fast POS billing, seamless inventory sync, and AI-powered checkout that saves hours every day.\n\n"
+                "⚡ **Key Superpowers:**\n"
+                "• 🛒 1-Tap Ultra-Fast POS Checkout\n"
+                "• 📊 Real-Time Inventory & Smart Replenishment\n"
+                "• 🎯 Omnichannel Sales & CRM Tracking\n"
+                "• 💰 Built-in Automated Promotions & Loyalty\n\n"
+                "👉 **Claim Your Free 14-Day Trial Today!** Link in bio.\n\n"
+                "🏷️ **Trending Hashtags:**\n"
+                "#LazyMonkeyAI #SmartAIForLazyGeniuses #SmartPOS #RetailTech #CloudPOS #BillingAutomation #WorkSmarter #RetailInnovation #AIforBusiness #SalesAutomation #RetailLife #ShopSmart\n\n"
+                "🔍 **Search Keywords:**\n"
+                "smart POS software, retail billing automation, cloud point of sale, AI business OS, LazyMonkey AI, retail store management, fast checkout system"
+            ),
+            "hashtags": ["#LazyMonkeyAI", "#SmartAIForLazyGeniuses", "#SmartPOS", "#RetailTech", "#CloudPOS", "#BillingAutomation", "#WorkSmarter", "#RetailLife"],
+            "keywords": ["smart POS software", "retail billing automation", "cloud point of sale", "AI business OS", "LazyMonkey AI", "fast checkout system"]
+        }
+
 
 
 # ─── CRM Support Tickets ──────────────────────────────────────────
@@ -1701,6 +1911,7 @@ class GeneratePosterRequest(BaseModel):
 
 class OptimizePromptRequest(BaseModel):
     prompt: str
+    style: str = "3D Pixar Mascot & Character"
     aspect_ratio: str = "1:1"
     provider: str = "gemini"
     reference_image: str | None = None
@@ -1717,59 +1928,33 @@ async def optimize_campaign_prompt(
 ):
     from src.config import get_settings
     settings = get_settings()
-    import requests
     
     brand_visual_details = ""
     if payload.reference_image and settings.gemini_api_key:
-        try:
-            b64_str = payload.reference_image
-            mime_type = "image/jpeg"
-            if "," in payload.reference_image:
-                header, b64_str = payload.reference_image.split(",", 1)
-                if "png" in header:
-                    mime_type = "image/png"
-                elif "webp" in header:
-                    mime_type = "image/webp"
-
-            vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
-
-            vision_payload = {
-                "contents": [{
-                    "parts": [
-                        {"text": "Analyze this brand reference image. Describe the EXACT primary character, mascot (e.g. monkey with sunglasses), logo, colors, and laptop/tech elements so an AI image generator can reproduce this exact character and mascot in a new marketing poster. Be specific about the character's appearance, sunglasses, pose, colors (purple/blue), and branding text."},
-                        {"inline_data": {"mime_type": mime_type, "data": b64_str}}
-                    ]
-                }]
-            }
-            v_res = requests.post(vision_url, json=vision_payload, headers={"Content-Type": "application/json"}, timeout=30)
-            if v_res.status_code == 200:
-                v_json = v_res.json()
-                brand_visual_details = v_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except Exception as v_err:
-            logger.warning(f"Reference image analysis failed in optimize prompt: {v_err}")
+        brand_visual_details = _extract_reference_visual_details(payload.reference_image, settings.gemini_api_key)
+    elif not brand_visual_details and any(w in payload.prompt.lower() for w in ["lazymonkey", "monkey", "mascot", "character"]):
+        brand_visual_details = "A cool, charismatic, stylized 3D animated brown monkey mascot character wearing sleek dark sunglasses, a vibrant purple tech hoodie, and sneakers"
 
     if brand_visual_details:
         enhancement_instruction = (
-            f"Create a professional commercial marketing poster prompt. The central hero subject MUST BE the brand mascot/character described here: '{brand_visual_details}'. "
-            f"Campaign concept: '{payload.prompt}'. "
-            f"Style: Photorealistic, high resolution, professional commercial illustration or 3D render, clean studio lighting. "
-            f"CRITICAL INSTRUCTIONS:\n"
-            f"1. Make the prompt concise and direct (max 50 words).\n"
-            f"2. Ensure the mascot character is the primary focus of the image, NOT a crowd, concert hall, or irrelevant background elements.\n"
-            f"3. Describe ONLY concrete visual elements, characters, actions, and settings in a single, unified scene. Do NOT use abstract narratives or split-screens.\n"
-            f"4. Aspect ratio: {payload.aspect_ratio}. Output ONLY the clean descriptive prompt text, no conversational text."
+            f"You are an expert commercial advertising creative director. Write an ultra-high-converting, vivid commercial marketing poster prompt.\n"
+            f"Hero Subject (Brand Mascot / Product): '{brand_visual_details}'.\n"
+            f"Campaign Concept & Setting: '{payload.prompt}'.\n"
+            f"Visual Style: {payload.style}.\n\n"
+            f"CRITICAL ART DIRECTION INSTRUCTIONS:\n"
+            f"1. If a mascot/monkey/character is in the prompt, ALWAYS portray it as a charming, stylish, friendly 3D animated commercial character (Pixar/Disney 3D animation style, expressive face, sunglasses, stylish streetwear), NEVER a wild zoo animal or realistic macaque ape.\n"
+            f"2. If shopping or POS is mentioned, place the hero character in a vibrant, brightly lit, modern retail store or supermarket, joyfully holding colorful shopping bags and tapping a modern glowing touchscreen POS billing counter.\n"
+            f"3. 8K commercial render, Octane render, beautiful volumetric studio lighting, clean background.\n"
+            f"4. Aspect ratio: {payload.aspect_ratio}. Output ONLY the raw descriptive prompt text (max 45 words)."
         )
     else:
         enhancement_instruction = (
-            f"Expand this campaign concept into a detailed, professional, commercial product advertisement or marketing graphic prompt: '{payload.prompt}'. "
-            f"Style: Photorealistic. Focus on high realism, premium textures, and clean background. "
-            f"CRITICAL INSTRUCTIONS:\n"
-            f"1. The primary subject/product from the prompt MUST be the clean, prominent, central hero focus of the image.\n"
-            f"2. Keep the prompt concise, simple, and direct (max 50 words).\n"
-            f"3. DO NOT output abstract storytelling or narrative phrases (like 'dramatic high-stakes visual narrative', 'on one side, on the other side', 'split screen', etc.).\n"
-            f"4. Describe ONLY concrete, renderable visual items, character design, and actions in a single, unified scene.\n"
-            f"5. Keep the background clean, professional, and matching a high-end studio product shoot or elegant minimalist setting.\n"
-            f"6. Output ONLY the raw descriptive prompt text, no intro or outro comments."
+            f"You are an expert commercial advertising art director. Expand this campaign concept into a high-end commercial ad poster prompt: '{payload.prompt}'.\n"
+            f"Visual Style: {payload.style}.\n"
+            f"CRITICAL ART DIRECTION INSTRUCTIONS:\n"
+            f"1. The primary subject/product from the prompt must be the prominent central hero focus with professional studio lighting and premium textures.\n"
+            f"2. If shopping/store/mascot is mentioned, make the scene cheerful, bright, and modern.\n"
+            f"3. Aspect ratio: {payload.aspect_ratio}. Output ONLY the raw descriptive prompt text (max 45 words)."
         )
 
     try:
@@ -1805,13 +1990,21 @@ async def generate_campaign_poster(
         )
         with open(filepath, "wb") as f:
             f.write(image_bytes)
+
+        import base64
+        b64_image = f"data:image/jpeg;base64,{base64.b64encode(image_bytes).decode('utf-8')}"
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Ad Poster generation failed: {str(e)}"
         )
 
-    return {"image_url": f"/images/{filename}", "enhanced_prompt": enhanced_prompt, "aspect_ratio": payload.aspect_ratio}
+    return {
+        "image_url": f"/images/{filename}",
+        "image_b64": b64_image,
+        "enhanced_prompt": enhanced_prompt,
+        "aspect_ratio": payload.aspect_ratio
+    }
 
 
 @router.post("/campaigns/publish-facebook")

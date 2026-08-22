@@ -33,7 +33,7 @@ import { useTenant } from "@/contexts/tenant-context";
 export function PosPaymentIn() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
-  const currentTenantId = tenant?.id || "default";
+  const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
   const posStorageKey = `pos_saved_invoices_${currentTenantId}`;
 
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
@@ -262,7 +262,7 @@ export function PosPaymentIn() {
         // Check local storage saved invoices for this customer
         let localInvoices: any[] = [];
         try {
-          const stored = localStorage.getItem(posStorageKey) || localStorage.getItem("pos_saved_invoices");
+          const stored = localStorage.getItem(posStorageKey);
           if (stored) {
             localInvoices = JSON.parse(stored);
           }
@@ -526,7 +526,6 @@ export function PosPaymentIn() {
             }
           };
           syncStorage(posStorageKey);
-          if (posStorageKey !== "pos_saved_invoices") syncStorage("pos_saved_invoices");
         } catch (e) {
           console.warn("Could not sync pos_saved_invoices:", e);
         }

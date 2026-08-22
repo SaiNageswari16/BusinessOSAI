@@ -331,6 +331,7 @@ async def _async_bg_enrich_full_barcode(barcode: str):
 @router.get("/products/barcode/{raw_barcode}", response_model=ProductBarcodeLookupResponse)
 async def lookup_product_by_barcode(
     raw_barcode: str,
+    ctx: Optional[CurrentUserContext] = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
     clean_barcode = raw_barcode.strip()
@@ -345,7 +346,10 @@ async def lookup_product_by_barcode(
     for code in variants:
         if not code:
             continue
-        stmt = select(Product).where(or_(Product.barcode == code, Product.sku == code))
+        filters = [or_(Product.barcode == code, Product.sku == code)]
+        if ctx and ctx.tenant_id:
+            filters.append(Product.tenant_id == ctx.tenant_id)
+        stmt = select(Product).where(*filters)
         res = await db.execute(stmt)
         prod = res.scalars().first()
         if prod:
@@ -589,8 +593,17 @@ async def recognize_product_with_db(
 @router.post("/products")
 async def create_product(
     payload: CreateProductSchema,
+    ctx: Optional[CurrentUserContext] = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
+    # Resolve tenant
+    tenant_id = ctx.tenant_id if ctx else None
+    if not tenant_id:
+        from src.models import Tenant
+        tenant_res = await db.execute(select(Tenant).limit(1))
+        tenant = tenant_res.scalars().first()
+        tenant_id = tenant.id if tenant else None
+
     # Resolve category and brand
     cat_id = None
     if payload.category_name:
@@ -600,18 +613,24 @@ async def create_product(
     if payload.brand_name:
         brand_id = await resolve_or_create_brand(db, payload.brand_name)
 
-    # Check if product with this barcode or name already exists -> Update dynamically
+    # Check if product with this barcode or name already exists in this tenant -> Update dynamically
     clean_barcode = payload.barcode.strip()[:100]
     clean_name = payload.name.strip()
     existing_prod = None
 
     if clean_barcode:
-        existing_stmt = select(Product).where(Product.barcode == clean_barcode)
+        existing_filters = [Product.barcode == clean_barcode]
+        if tenant_id:
+            existing_filters.append(Product.tenant_id == tenant_id)
+        existing_stmt = select(Product).where(*existing_filters)
         existing_res = await db.execute(existing_stmt)
         existing_prod = existing_res.scalars().first()
 
     if not existing_prod and clean_name:
-        existing_stmt = select(Product).where(func.lower(Product.name) == clean_name.lower())
+        existing_filters = [func.lower(Product.name) == clean_name.lower()]
+        if tenant_id:
+            existing_filters.append(Product.tenant_id == tenant_id)
+        existing_stmt = select(Product).where(*existing_filters)
         existing_res = await db.execute(existing_stmt)
         existing_prod = existing_res.scalars().first()
 
@@ -637,12 +656,6 @@ async def create_product(
             "product_id": str(existing_prod.id),
             "message": "Product updated successfully"
         }
-
-    # Resolve default tenant
-    from src.models import Tenant
-    tenant_res = await db.execute(select(Tenant).limit(1))
-    tenant = tenant_res.scalars().first()
-    tenant_id = tenant.id if tenant else None
 
     new_product_kwargs = dict(
         name=payload.name.strip(),
@@ -681,6 +694,7 @@ async def create_product(
 @router.post("/inventory/stock")
 async def add_inventory_stock(
     payload: AddStockSchema,
+    ctx: Optional[CurrentUserContext] = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -688,7 +702,10 @@ async def add_inventory_stock(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid product ID format")
 
-    stmt = select(Product).where(Product.id == prod_uuid)
+    filters = [Product.id == prod_uuid]
+    if ctx and ctx.tenant_id:
+        filters.append(Product.tenant_id == ctx.tenant_id)
+    stmt = select(Product).where(*filters)
     res = await db.execute(stmt)
     prod = res.scalars().first()
 
@@ -747,8 +764,14 @@ async def get_brands(
 
 # 6. Public Product Catalog Endpoint for POS UI
 @router.get("/products/all")
-async def get_all_products(db: AsyncSession = Depends(get_db)):
-    stmt = select(Product).limit(500)
+async def get_all_products(
+    ctx: Optional[CurrentUserContext] = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Product)
+    if ctx and ctx.tenant_id:
+        stmt = stmt.where(Product.tenant_id == ctx.tenant_id)
+    stmt = stmt.limit(500)
     res = await db.execute(stmt)
     products = res.scalars().all()
 

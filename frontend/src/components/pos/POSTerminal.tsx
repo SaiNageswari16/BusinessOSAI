@@ -23,6 +23,7 @@ import { formatCurrency } from "../../lib/utils";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
+import { useTenant } from "../../contexts/tenant-context";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -39,6 +40,9 @@ export function PosTerminal() {
 
 function PosTerminalInner() {
   const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+  const posStorageKey = `pos_saved_invoices_${currentTenantId}`;
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
     const cb = () => setCurrencyTick(t => t + 1);
@@ -1160,9 +1164,9 @@ function PosTerminalInner() {
           print_status: "Thermal Printed",
           items: billData.items,
         };
-        const prevList = JSON.parse(localStorage.getItem("pos_saved_invoices") || "[]");
-        const mergedList = [terminalInvoiceRecord, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
-        localStorage.setItem("pos_saved_invoices", JSON.stringify(mergedList));
+        const prevList = JSON.parse(localStorage.getItem(posStorageKey) || "[]");
+        const mergedList = [{ ...terminalInvoiceRecord, tenant_id: currentTenantId }, ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number)];
+        localStorage.setItem(posStorageKey, JSON.stringify(mergedList));
       } catch (e) {
         console.warn("Could not save POS checkout bill to localStorage:", e);
       }
@@ -2358,43 +2362,6 @@ function PosTerminalInner() {
 
             {/* Checkout Summary */}
             <div className="bg-white border-t border-slate-200/80 shadow-[0_-8px_30px_-10px_rgba(0,0,0,0.05)] flex flex-col shrink-0 z-20">
-
-              {/* DYNAMIC FREE QTY / SCHEMES BAR */}
-              <div className="p-2 border-b border-slate-200/70 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-indigo-500/10 relative z-30 overflow-visible">
-                <FreeQtyPanel
-                  cartSubtotal={subtotal}
-                  cartItems={cart.map(c => ({
-                    id: c.id,
-                    product_id: c.id,
-                    name: c.name,
-                    quantity: c.qty,
-                  }))}
-                  freeItems={freeItems}
-                  onFreeItemsChange={(newFree) => {
-                    setFreeItems(newFree);
-                    // Also ensure any newly added free item shows in cart with 0 price if not already
-                    newFree.forEach(f => {
-                      const exists = cart.find(ci => ci.id === f.product_id);
-                      if (!exists && f.product_id) {
-                        const prod = products.find(p => p.id === f.product_id);
-                        if (prod) {
-                          setCart(prev => [...prev, {
-                            ...prod,
-                            sellingPrice: 0,
-                            mrp: prod.mrp || 0,
-                            discount: 0,
-                            qty: f.quantity || 1,
-                            is_free: true,
-                            name: `🎁 [FREE] ${prod.name}`,
-                          }]);
-                        }
-                      }
-                    });
-                  }}
-                  products={products.map(p => ({ id: p.id, name: p.name, sku: p.sku }))}
-                  compact={true}
-                />
-              </div>
 
               {/* DYNAMIC CART DISCOUNT BAR */}
               <div className="p-3 border-b border-slate-200/70 bg-slate-50/90 space-y-2">

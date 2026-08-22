@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle } from "lucide-react";
+import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle, Gift } from "lucide-react";
 
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { RealBarcodeSvg, SingleBarcodeLabelCard } from "../../lib/barcode-svg";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
+import { FreeQtySettingsModal } from "./FreeQtySettingsModal";
 
 // ── Types ───────────────────────────────────────────────────────────
 interface MasterResult {
@@ -604,7 +605,9 @@ function ImportPreviewModal({
   const [mrpValue, setMrpValue] = useState(item.mrp || 0);
   const defaultSelling = item.sale_price || item.mrp || 0;
   const [wholesalePrice, setWholesalePrice] = useState(item.wholesale_price || (defaultSelling ? Math.round(defaultSelling * 0.85 * 100) / 100 : 0));
+  const [minWholesaleQty, setMinWholesaleQty] = useState(item.min_wholesale_qty || 5);
   const [b2bPrice, setB2bPrice] = useState(item.b2b_price || (defaultSelling ? Math.round(defaultSelling * 0.80 * 100) / 100 : 0));
+  const [minB2bQty, setMinB2bQty] = useState(item.min_b2b_qty || 20);
   const [mfgDate, setMfgDate] = useState(item.mfg_date || "");
   const [expiryDate, setExpiryDate] = useState(item.expiry_date || "");
   const [supplier, setSupplier] = useState(item.supplier || "");
@@ -731,26 +734,40 @@ function ImportPreviewModal({
               </div>
             </div>
 
-            {/* Row 3: MRP + Wholesale */}
+            {/* Row 3: MRP + Wholesale Tier with MOQ */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">MRP ({currency.symbol}){gstBadge}</label>
                 <input type="number" step="0.01" value={mrpValue} onChange={(e) => setMrpValue(parseFloat(e.target.value) || 0)}
                   className="w-full h-9 px-3 text-sm rounded-lg border bg-background" />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Wholesale Price ({currency.symbol}){gstBadge}</label>
-                <input type="number" step="0.01" value={wholesalePrice} onChange={(e) => setWholesalePrice(parseFloat(e.target.value) || 0)}
-                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background" placeholder="0.00" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Wholesale ({currency.symbol})</label>
+                  <input type="number" step="0.01" value={wholesalePrice} onChange={(e) => setWholesalePrice(parseFloat(e.target.value) || 0)}
+                    className="w-full h-9 px-3 text-sm rounded-lg border bg-background" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Wholesale MOQ</label>
+                  <input type="number" min="1" value={minWholesaleQty} onChange={(e) => setMinWholesaleQty(parseInt(e.target.value) || 1)}
+                    className="w-full h-9 px-3 text-sm rounded-lg border bg-background" placeholder="e.g. 5" title="Min Qty for Wholesale Price" />
+                </div>
               </div>
             </div>
 
-            {/* Row 4: B2B Price + Supplier */}
+            {/* Row 4: B2B Distributor Tier with MOQ + Supplier */}
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">B2B Price ({currency.symbol}){gstBadge}</label>
-                <input type="number" step="0.01" value={b2bPrice} onChange={(e) => setB2bPrice(parseFloat(e.target.value) || 0)}
-                  className="w-full h-9 px-3 text-sm rounded-lg border bg-background" placeholder="0.00" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">B2B Price ({currency.symbol})</label>
+                  <input type="number" step="0.01" value={b2bPrice} onChange={(e) => setB2bPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full h-9 px-3 text-sm rounded-lg border bg-background" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">B2B MOQ</label>
+                  <input type="number" min="1" value={minB2bQty} onChange={(e) => setMinB2bQty(parseInt(e.target.value) || 1)}
+                    className="w-full h-9 px-3 text-sm rounded-lg border bg-background" placeholder="e.g. 20" title="Min Qty for B2B Distributor Price" />
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Supplier</label>
@@ -819,7 +836,9 @@ function ImportPreviewModal({
                 sale_price: sellingPrice,
                 initial_stock: initialStock,
                 wholesale_price: wholesalePrice,
+                min_wholesale_qty: minWholesaleQty,
                 b2b_price: b2bPrice,
+                min_b2b_qty: minB2bQty,
                 mfg_date: mfgDate || undefined,
                 expiry_date: expiryDate || undefined,
                 is_tax_inclusive: isTaxInclusive,
@@ -929,6 +948,10 @@ export function Products() {
   // ── Import preview state ────────────────────────────────────────
   const [previewItem, setPreviewItem] = useState<MasterResult | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+
+  // ── Free Quantity & Promotional Schemes state ────────────────────
+  const [isFreeQtyModalOpen, setIsFreeQtyModalOpen] = useState(false);
+  const [freeQtyTriggerProductId, setFreeQtyTriggerProductId] = useState<string | undefined>(undefined);
 
   // ── Derived ──────────────────────────────────────────────────────
   const localBarcodes = useMemo(() => new Set(products.map(p => p.barcode).filter(Boolean)), [products]);
@@ -2844,6 +2867,18 @@ export function Products() {
       })}
       <td className="px-6 py-4 text-right">
         <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+            title="Configure Free Item / Promotional Scheme for this product"
+            onClick={() => {
+              setFreeQtyTriggerProductId(product.id);
+              setIsFreeQtyModalOpen(true);
+            }}
+          >
+            <Gift className="size-4" />
+          </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => handleDuplicate(product)}><Copy className="size-4" /></Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(product.id)}><Archive className="size-4" /></Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => handleEdit(product)}><Edit2 className="size-4" /></Button>
@@ -2966,6 +3001,17 @@ export function Products() {
             className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
           >
             <Printer className="size-4" /> Print Barcodes
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setFreeQtyTriggerProductId(undefined);
+              setIsFreeQtyModalOpen(true);
+            }}
+            className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-semibold"
+            title="Configure Promotional Free Quantity Schemes"
+          >
+            <Gift className="size-4" /> Free Schemes
           </Button>
           <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Create Product</Button>
         </div>
@@ -3242,6 +3288,24 @@ export function Products() {
           />
         )}
       </AnimatePresence>
+
+      {/* ── Promotional Schemes & Free Quantity Settings Modal ──────── */}
+      <FreeQtySettingsModal
+        isOpen={isFreeQtyModalOpen}
+        onClose={() => {
+          setIsFreeQtyModalOpen(false);
+          setFreeQtyTriggerProductId(undefined);
+        }}
+        products={products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          sku: p.sku,
+          mrp: p.mrp,
+          selling_price: p.selling_price,
+          stock: p.stock ?? p.initial_stock,
+        }))}
+        initialTriggerProductId={freeQtyTriggerProductId}
+      />
     </div>
   );
 }

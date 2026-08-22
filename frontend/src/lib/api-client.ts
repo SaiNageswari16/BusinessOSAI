@@ -996,6 +996,22 @@ export const auditLogsApi = {
 
 // â”€â”€â”€ HRMS â€” Employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+export interface EmployeeVCard {
+  employee_id: string;
+  employee_code: string;
+  full_name: string;
+  email: string;
+  phone?: string;
+  company_name: string;
+  department?: string;
+  designation?: string;
+  status: string;
+  date_of_joining?: string;
+  vcard_raw: string;
+  qr_code_data_url: string;
+  filename: string;
+}
+
 export const employeesApi = {
   list: (page = 1, pageSize = 20, search?: string, companyId?: string, departmentId?: string, status?: string, role?: string) =>
     request<PaginatedResponse<Employee>>("GET", "/hrms/employees", undefined, {
@@ -1009,6 +1025,12 @@ export const employeesApi = {
     }),
   getMe: () => request<Employee>("GET", "/hrms/employees/me"),
   get: (id: string) => request<Employee>("GET", `/hrms/employees/${id}`),
+  getVCard: (empId: string) =>
+    request<EmployeeVCard>("GET", `/hrms/employees/${empId}/vcard`),
+  getVCardDownloadUrl: (empId: string) =>
+    `/api/v1/hrms/employees/${empId}/vcard/download`,
+  getBulkExportVCardUrl: () =>
+    `/api/v1/hrms/employees/vcard/bulk-export`,
   create: (data: Record<string, unknown>) =>
     request<Employee>("POST", "/hrms/employees", data),
   bulkCreate: (employees: Record<string, unknown>[]) =>
@@ -2660,11 +2682,11 @@ export interface LiveNotification {
 
 export const crmCampaignsApi = {
   generateCopy: (data: { prompt: string; channel: string; provider?: string; reference_image?: string }) =>
-    request<{ copy: string }>("POST", "/crm/campaigns/generate-copy", data),
-  optimizePrompt: (data: { prompt: string; aspect_ratio?: string; provider?: string; reference_image?: string }) =>
+    request<{ copy: string; hashtags?: string[]; keywords?: string[] }>("POST", "/crm/campaigns/generate-copy", data),
+  optimizePrompt: (data: { prompt: string; style?: string; aspect_ratio?: string; provider?: string; reference_image?: string }) =>
     request<{ optimized_prompt: string }>("POST", "/crm/campaigns/optimize-prompt", data),
   generatePoster: (data: { prompt: string; style?: string; aspect_ratio?: string; provider?: string; reference_image?: string; skip_enhancement?: boolean }) =>
-    request<{ image_url: string; enhanced_prompt: string; aspect_ratio: string }>("POST", "/crm/campaigns/generate-poster", data),
+    request<{ image_url: string; image_b64?: string; enhanced_prompt: string; aspect_ratio: string }>("POST", "/crm/campaigns/generate-poster", data),
   publishFacebook: (data: { image_url: string; caption: string }) =>
     request<{ status: string; post_id?: string; message: string }>("POST", "/crm/campaigns/publish-facebook", data),
 

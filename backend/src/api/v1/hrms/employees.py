@@ -3,7 +3,7 @@ HRMS — Employee Management Endpoints (Single & Bulk Import, Profiles, Document
 """
 import uuid
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -24,6 +24,7 @@ from src.models import (
     UserStatus,
     Department,
     Designation,
+    Tenant,
 )
 from src.utils.security import hash_password
 from src.schemas.erp import (
@@ -508,3 +509,201 @@ async def create_employee_document(
     )
     await db.commit()
     return doc
+
+
+# ─── vCard & Digital Business Card QR Generation ──────────────────────────
+
+def _build_vcard_for_employee(emp: Employee, company_name: str = "LazyMonkey AI", department: str = "", designation: str = "") -> str:
+    """Build standards-compliant vCard 3.0 string."""
+    full_name = (emp.full_name or "Employee").strip()
+    name_parts = full_name.split(" ", 1)
+    first_name = name_parts[0]
+    last_name = name_parts[1] if len(name_parts) > 1 else ""
+    
+    org_line = company_name
+    if department:
+        org_line += f";{department}"
+        
+    lines = [
+        "BEGIN:VCARD",
+        "VERSION:3.0",
+        f"N:{last_name};{first_name};;;",
+        f"FN:{full_name}",
+        f"ORG:{org_line}",
+    ]
+    if designation:
+        lines.append(f"TITLE:{designation}")
+    if department:
+        lines.append(f"ROLE:{department}")
+    if emp.phone:
+        clean_phone = "".join(c for c in emp.phone if c.isdigit() or c in "+- ()")
+        lines.append(f"TEL;TYPE=WORK,VOICE:{clean_phone}")
+        lines.append(f"TEL;TYPE=CELL:{clean_phone}")
+    if emp.email:
+        lines.append(f"EMAIL;TYPE=WORK,INTERNET:{emp.email}")
+    lines.append(f"NOTE:Employee Code: {emp.employee_code or 'EMP'} | Status: {emp.status or 'Active'}")
+    lines.append("URL:https://lazymonkeyai.com")
+    lines.append(f"REV:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}")
+    lines.append("END:VCARD")
+    return "\r\n".join(lines)
+
+
+def _generate_vcard_qr_data_url(vcard_text: str) -> str:
+    """Generate high-resolution scannable QR Code as base64 Data URL."""
+    try:
+        import qrcode
+        import io
+        import base64
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=8,
+            border=2,
+        )
+        qr.add_data(vcard_text)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="#1E1B4B", back_color="#FFFFFF")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+    except Exception as e:
+        import logging
+        logging.getLogger("HRMS_vCard").warning(f"QR generation failed: {e}")
+        return ""
+
+
+@router.get("/employees/{emp_id}/vcard")
+async def get_employee_vcard_details(
+    emp_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Retrieve full vCard 3.0 contact details and scannable QR Code for an employee."""
+    emp = await db.scalar(
+        select(Employee).where(Employee.id == emp_id, Employee.tenant_id == ctx.tenant_id)
+    )
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    company_name = tenant.name if tenant else "LazyMonkey AI"
+
+    dept_name = ""
+    if emp.department_id:
+        dept = await db.scalar(select(Department).where(Department.id == emp.department_id))
+        if dept:
+            dept_name = dept.name
+
+    desig_name = ""
+    if emp.designation_id:
+        desig = await db.scalar(select(Designation).where(Designation.id == emp.designation_id))
+        if desig:
+            desig_name = desig.name
+
+    vcard_raw = _build_vcard_for_employee(emp, company_name, dept_name, desig_name)
+    qr_data_url = _generate_vcard_qr_data_url(vcard_raw)
+    safe_name = "".join(c for c in emp.full_name if c.isalnum() or c in (" ", "_")).replace(" ", "_")
+
+    return {
+        "employee_id": str(emp.id),
+        "employee_code": emp.employee_code,
+        "full_name": emp.full_name,
+        "email": emp.email,
+        "phone": emp.phone,
+        "company_name": company_name,
+        "department": dept_name,
+        "designation": desig_name,
+        "status": emp.status,
+        "date_of_joining": str(emp.date_of_joining) if emp.date_of_joining else "",
+        "vcard_raw": vcard_raw,
+        "qr_code_data_url": qr_data_url,
+        "filename": f"{emp.employee_code or 'EMP'}_{safe_name}.vcf",
+    }
+
+
+@router.get("/employees/{emp_id}/vcard/download")
+async def download_employee_vcard(
+    emp_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Download single employee vCard (.vcf) file for iPhone / Android / Outlook import."""
+    from fastapi.responses import Response
+
+    emp = await db.scalar(
+        select(Employee).where(Employee.id == emp_id, Employee.tenant_id == ctx.tenant_id)
+    )
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    company_name = tenant.name if tenant else "LazyMonkey AI"
+
+    dept_name = ""
+    if emp.department_id:
+        dept = await db.scalar(select(Department).where(Department.id == emp.department_id))
+        if dept:
+            dept_name = dept.name
+
+    desig_name = ""
+    if emp.designation_id:
+        desig = await db.scalar(select(Designation).where(Designation.id == emp.designation_id))
+        if desig:
+            desig_name = desig.name
+
+    vcard_raw = _build_vcard_for_employee(emp, company_name, dept_name, desig_name)
+    safe_name = "".join(c for c in emp.full_name if c.isalnum() or c in (" ", "_")).replace(" ", "_")
+    filename = f"{emp.employee_code or 'EMP'}_{safe_name}.vcf"
+
+    return Response(
+        content=vcard_raw.encode("utf-8"),
+        media_type="text/vcard; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache"
+        }
+    )
+
+
+@router.get("/employees/vcard/bulk-export")
+async def export_all_employees_vcard(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Export all active employees of this organization as a single bulk address book .vcf file."""
+    from fastapi.responses import Response
+
+    result = await db.execute(
+        select(Employee).where(Employee.tenant_id == ctx.tenant_id).order_by(Employee.employee_code.asc())
+    )
+    employees = result.scalars().all()
+    if not employees:
+        raise HTTPException(status_code=404, detail="No employees found in directory")
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    company_name = tenant.name if tenant else "LazyMonkey AI"
+
+    # Pre-fetch departments & designations
+    dept_res = await db.execute(select(Department).where(Department.tenant_id == ctx.tenant_id))
+    dept_map = {d.id: d.name for d in dept_res.scalars().all()}
+
+    desig_res = await db.execute(select(Designation).where(Designation.tenant_id == ctx.tenant_id))
+    desig_map = {d.id: d.name for d in desig_res.scalars().all()}
+
+    vcard_blocks = []
+    for emp in employees:
+        dept_name = dept_map.get(emp.department_id, "")
+        desig_name = desig_map.get(emp.designation_id, "")
+        vcard_blocks.append(_build_vcard_for_employee(emp, company_name, dept_name, desig_name))
+
+    bulk_vcard = "\r\n\r\n".join(vcard_blocks)
+    filename = f"{company_name.replace(' ', '_')}_Employees_Directory.vcf"
+
+    return Response(
+        content=bulk_vcard.encode("utf-8"),
+        media_type="text/vcard; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache"
+        }
+    )

@@ -4,7 +4,7 @@ import {
   Sparkles, Loader2, Image as ImageIcon, Send, FileText, CheckCircle,
   AlertCircle, Copy, Upload, ArrowRight, BrainCircuit, Facebook, X,
   RefreshCw, Unlink, ExternalLink, ChevronRight, AlertTriangle, Shield,
-  ThumbsUp, ThumbsDown, Megaphone, Layers, TrendingUp
+  ThumbsUp, ThumbsDown, Megaphone, Layers, TrendingUp, Hash, Tag, Check
 } from "lucide-react";
 import { crmCampaignsApi, crmLeadsApi, paidAdsApi, assetLibraryApi, resolveImageUrl } from "@/lib/api-client";
 import PaidCampaignBuilder from "./PaidCampaignBuilder";
@@ -223,10 +223,13 @@ export function AdGenerator() {
   const [refImageName, setRefImageName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Caption
+  // Caption & Trending SEO
   const [captionPrompt, setCaptionPrompt] = useState("");
   const [caption, setCaption] = useState("");
+  const [trendingHashtags, setTrendingHashtags] = useState<string[]>([]);
+  const [searchKeywords, setSearchKeywords] = useState<string[]>([]);
   const [generatingCaption, setGeneratingCaption] = useState(false);
+  const [copiedTag, setCopiedTag] = useState<string | null>(null);
 
   // Pipeline flow
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus>("idle");
@@ -240,10 +243,10 @@ export function AdGenerator() {
 
   // Asset library modal
   const [showAssetLibrary, setShowAssetLibrary] = useState(false);
-  const [assetLibrary, setAssetLibrary] = useState<anyLibraryItem[]>([]);
+  const [assetLibrary, setAssetLibrary] = useState<any[]>([]);
   const [assetFilter, setAssetFilter] = useState<"all" | "approved" | "unused">("approved");
 
-  const reuseAsset = (asset: anyLibraryItem) => {
+  const reuseAsset = (asset: any) => {
     setImageUrl(asset.public_url);
     setEnhancedPrompt(asset.enhanced_prompt || asset.original_prompt || "");
     if (asset.original_prompt && asset.original_prompt !== posterPrompt) {
@@ -274,6 +277,22 @@ export function AdGenerator() {
     reader.readAsDataURL(file);
   };
 
+  const handleLoadBrandMascot = async () => {
+    try {
+      const response = await fetch("/Logo.png");
+      const blob = await response.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setRefImageBase64(reader.result as string);
+        setRefImageName("LazyMonkey Brand Mascot (Logo.png)");
+        toast.success("LazyMonkey Brand Mascot attached as reference!");
+      };
+      reader.readAsDataURL(blob);
+    } catch (e) {
+      toast.error("Could not load brand logo");
+    }
+  };
+
   // ── STEP 1a: Optimize Prompt ────────────────────────────────────────────────
   const handleOptimizePrompt = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -281,9 +300,12 @@ export function AdGenerator() {
     setOptimizingPrompt(true);
     setIsPromptOptimized(false);
     setOptimizedEditablePrompt("");
+    setImageUrl("");
+    setPipelineStatus("idle");
     try {
       const res = await crmCampaignsApi.optimizePrompt({
         prompt: posterPrompt,
+        style,
         aspect_ratio: aspectRatio,
         provider,
         reference_image: refImageBase64 || undefined,
@@ -316,13 +338,17 @@ export function AdGenerator() {
         aspect_ratio: aspectRatio,
         provider,
         reference_image: refImageBase64 || undefined,
-        skip_enhancement: true, // Bypass backend expander since it is already optimized/edited
+        skip_enhancement: Boolean(optimizedEditablePrompt.trim()),
       });
-      setImageUrl(resolveImageUrl(res.image_url));
+      const resolvedImg = res.image_b64 || resolveImageUrl(res.image_url);
+      setImageUrl(resolvedImg);
       setEnhancedPrompt(res.enhanced_prompt);
       setPipelineStatus("review");
-      setCaptionPrompt(`Write a highly engaging Facebook post with hashtags and search tags about: ${posterPrompt}`);
-      toast.success("Image generated! Review below.");
+      setCaptionPrompt(`Write a high-converting Facebook & Instagram ad caption with trending hashtags for: ${finalPrompt}`);
+      toast.success("Creative image generated! Generating matching copy & viral hashtags...");
+      
+      // Auto-trigger caption & hashtags generation
+      void handleGenerateCaption(undefined, finalPrompt);
     } catch (err: any) {
       toast.error(err instanceof Error ? err.message : "Failed to generate ad poster");
       setPipelineStatus("idle");
@@ -331,26 +357,44 @@ export function AdGenerator() {
     }
   };
 
-  // ── STEP 2: Generate Caption ────────────────────────────────────────────────
+  // ── STEP 2: Generate Caption & Trending Hashtags ────────────────────────────
 
-  const handleGenerateCaption = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    const promptText = captionPrompt || `Post for: ${posterPrompt}`;
-    if (!promptText) return;
+  const handleGenerateCaption = async (e?: React.MouseEvent, overridePrompt?: string) => {
+    if (e) e.preventDefault();
+    const promptText = overridePrompt || captionPrompt || `Commercial post for: ${posterPrompt}`;
+    if (!promptText.trim()) return;
     setGeneratingCaption(true);
-    setCaption("");
     try {
       const res = await crmCampaignsApi.generateCopy({
         prompt: promptText,
-        channel: "Facebook Feed",
+        channel: "Facebook Feed & Instagram Reels",
         provider,
         reference_image: refImageBase64 || undefined,
       });
       setCaption(res.copy);
+      if (res.hashtags && res.hashtags.length > 0) {
+        setTrendingHashtags(res.hashtags);
+      }
+      if (res.keywords && res.keywords.length > 0) {
+        setSearchKeywords(res.keywords);
+      }
+      toast.success("Viral caption, trending hashtags & SEO keywords ready!");
     } catch (err: any) {
       toast.error(err instanceof Error ? err.message : "Failed to generate caption");
     } finally {
       setGeneratingCaption(false);
+    }
+  };
+
+  const handleAppendHashtag = (tag: string) => {
+    if (!caption.includes(tag)) {
+      setCaption(prev => `${prev.trim()}\n\n${tag}`);
+      toast.success(`Appended ${tag} to caption`);
+    } else {
+      navigator.clipboard.writeText(tag);
+      setCopiedTag(tag);
+      setTimeout(() => setCopiedTag(null), 1500);
+      toast.success(`Copied ${tag}`);
     }
   };
 
@@ -594,64 +638,106 @@ export function AdGenerator() {
         <div className="space-y-6">
           {/* Step 1: Generate */}
           <div className="border border-border/50 bg-card rounded-xl p-6 space-y-4">
-            <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-              <span className="flex items-center justify-center size-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">1</span>
-              Design Creative
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <span className="flex items-center justify-center size-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">1</span>
+                Design Creative
+              </h2>
+              <span className="text-[10px] font-bold bg-muted px-2 py-0.5 rounded text-muted-foreground">
+                AI Commercial Art Director
+              </span>
+            </div>
+
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Design Prompt</label>
                 <textarea required rows={3} value={posterPrompt} onChange={(e) => { setPosterPrompt(e.target.value); setIsPromptOptimized(false); }}
-                  placeholder="e.g., Promotional poster for a summer collection, minimalist background, neon glow accent."
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none resize-none" />
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Aspect Ratio</label>
-                  <select value={aspectRatio} onChange={(e) => { setAspectRatio(e.target.value); setIsPromptOptimized(false); }} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none cursor-pointer">
-                    <option value="1:1">1:1 (Post Square)</option>
-                    <option value="9:16">9:16 (Story / Reel)</option>
-                  </select>
-                </div>
-                <div>
-                  <button type="button" onClick={handleOptimizePrompt} disabled={optimizingPrompt || !posterPrompt.trim()}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors border-none cursor-pointer shadow-sm">
-                    {optimizingPrompt ? <><Loader2 className="size-4 animate-spin" /> Optimizing Prompt...</> : <><Sparkles className="size-4" /> Optimize Prompt with AI</>}
-                  </button>
-                </div>
+                  placeholder="e.g., create a monkey shopping using pos from lazymonkeyai, vibrant boutique setting."
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none resize-none font-medium" />
                 
-                {isPromptOptimized && (
-                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3 p-4 bg-muted/30 border rounded-xl animate-in fade-in duration-200">
-                    <label className="block text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                      <Sparkles className="size-3.5 text-indigo-500" />
-                      Final AI Prompt (Review & Edit before generating)
-                    </label>
-                    <textarea rows={4} value={optimizedEditablePrompt} onChange={(e) => setOptimizedEditablePrompt(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none resize-none font-medium leading-relaxed text-slate-800" />
-                    
-                    <button type="button" onClick={handleGeneratePoster} disabled={generatingPoster || !optimizedEditablePrompt.trim()}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold disabled:opacity-60 transition-colors border-none cursor-pointer shadow-md">
-                      {generatingPoster ? <><Loader2 className="size-4 animate-spin" /> Synthesizing Image...</> : <><ImageIcon className="size-4" /> Generate Creative Image</>}
+                {/* Prompt Inspiration Chips */}
+                <div className="flex flex-wrap gap-1.5 pt-2">
+                  <span className="text-[10px] text-muted-foreground font-bold mr-1 self-center">Quick Ideas:</span>
+                  {[
+                    { label: "🛍️ LazyMonkey Shopping at POS", prompt: "3D stylized cute LazyMonkey mascot character shopping in a modern vibrant store, joyfully holding colorful shopping bags and using a sleek touchscreen POS terminal", style: "3D Pixar Mascot & Character" },
+                    { label: "🚀 Tech Commercial Poster", prompt: "LazyMonkey AI mascot with sunglasses operating a glowing futuristic POS terminal with neon digital hologram stats", style: "Cyberpunk & Neon Tech" },
+                    { label: "🛒 Store Checkout Promo", prompt: "Cheerful retail customer checkout with shopping cart, colorful retail products, and modern POS payment register", style: "Vibrant Retail & Shopping Store" },
+                  ].map((chip) => (
+                    <button
+                      key={chip.label}
+                      type="button"
+                      onClick={() => {
+                        setPosterPrompt(chip.prompt);
+                        setStyle(chip.style);
+                        setIsPromptOptimized(false);
+                      }}
+                      className="px-2 py-0.5 rounded-full bg-muted/60 hover:bg-muted text-[10px] font-semibold text-slate-700 dark:text-slate-300 border border-border/50 cursor-pointer transition-colors"
+                    >
+                      {chip.label}
                     </button>
-                  </motion.div>
-                )}
+                  ))}
+                </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Aspect Ratio</label>
+                <select value={aspectRatio} onChange={(e) => { setAspectRatio(e.target.value); setIsPromptOptimized(false); }} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none cursor-pointer">
+                  <option value="1:1">1:1 (Post Square)</option>
+                  <option value="9:16">9:16 (Story / Reel)</option>
+                </select>
+              </div>
+
+              <div>
+                <button type="button" onClick={handleOptimizePrompt} disabled={optimizingPrompt || !posterPrompt.trim()}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors border-none cursor-pointer shadow-sm">
+                  {optimizingPrompt ? <><Loader2 className="size-4 animate-spin" /> Optimizing Art Direction...</> : <><Sparkles className="size-4" /> Optimize Prompt with AI</>}
+                </button>
+              </div>
+              
+              {isPromptOptimized && (
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3 p-4 bg-muted/30 border rounded-xl animate-in fade-in duration-200">
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-indigo-500" />
+                    Final Commercial Art Prompt (Review & Edit)
+                  </label>
+                  <textarea rows={4} value={optimizedEditablePrompt} onChange={(e) => setOptimizedEditablePrompt(e.target.value)}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none resize-none font-medium leading-relaxed text-slate-800 dark:text-slate-100" />
+                  
+                  <button type="button" onClick={handleGeneratePoster} disabled={generatingPoster || !optimizedEditablePrompt.trim()}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold disabled:opacity-60 transition-colors border-none cursor-pointer shadow-md">
+                    {generatingPoster ? <><Loader2 className="size-4 animate-spin" /> Synthesizing 3D Creative...</> : <><ImageIcon className="size-4" /> Generate Creative Image</>}
+                  </button>
+                </motion.div>
+              )}
             </div>
           </div>
 
           {/* Step 2: Reference Upload */}
           <div className="border border-border/50 bg-card rounded-xl p-6 space-y-4">
-            <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-              <span className="flex items-center justify-center size-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">2</span>
-              Reference Asset (Optional)
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <span className="flex items-center justify-center size-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">2</span>
+                Reference Asset (Optional)
+              </h2>
+              
+              {/* Quick Brand Mascot Attach Button */}
+              <button
+                type="button"
+                onClick={handleLoadBrandMascot}
+                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+              >
+                <Sparkles className="size-3" /> Attach LazyMonkey Mascot
+              </button>
+            </div>
+
             <div onClick={() => fileInputRef.current?.click()}
               className="border-2 border-dashed border-border/60 rounded-xl p-5 text-center hover:bg-muted/40 transition-colors cursor-pointer flex flex-col items-center justify-center space-y-2">
               <Upload className="size-6 text-muted-foreground opacity-60" />
-              <p className="text-xs font-semibold">Upload brand asset / reference photo</p>
+              <p className="text-xs font-semibold">Upload brand asset / product / mascot photo</p>
               <p className="text-[10px] text-muted-foreground">JPG, PNG — Max 4MB</p>
               <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
             </div>
+
             {refImageBase64 && (
               <div className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/30 text-xs">
                 <div className="flex items-center gap-2 min-w-0">
@@ -694,29 +780,105 @@ export function AdGenerator() {
             )}
           </div>
 
-          {/* Step 3: Copy Generator */}
+          {/* Step 3: Copy & Trending Hashtags Generator */}
           <div className="border border-border/50 bg-card rounded-xl p-6 space-y-4">
-            <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-              <span className="flex items-center justify-center size-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">3</span>
-              Caption & Keywords
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <span className="flex items-center justify-center size-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">3</span>
+                Caption, Viral Hashtags & SEO
+              </h2>
+              {trendingHashtags.length > 0 && (
+                <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 px-2 py-0.5 rounded-full">
+                  {trendingHashtags.length} Viral Tags Active
+                </span>
+              )}
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Copywriter Context</label>
               <textarea rows={2} value={captionPrompt} onChange={(e) => setCaptionPrompt(e.target.value)}
                 placeholder="Optional context. Auto-filled from your prompt above."
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none resize-none" />
             </div>
-            <button onClick={handleGenerateCaption} disabled={generatingCaption || (!posterPrompt && !captionPrompt)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-background border border-border hover:bg-accent text-foreground rounded-lg text-sm font-medium disabled:opacity-60 transition-colors cursor-pointer">
-              {generatingCaption ? <><Loader2 className="size-4 animate-spin" /> Drafting...</> : <><FileText className="size-4" /> Draft Caption</>}
+
+            <button onClick={(e) => handleGenerateCaption(e)} disabled={generatingCaption || (!posterPrompt && !captionPrompt)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-sm font-bold disabled:opacity-60 transition-all cursor-pointer shadow-sm">
+              {generatingCaption ? <><Loader2 className="size-4 animate-spin" /> Analyzing Trends & Drafting...</> : <><Sparkles className="size-4" /> Draft Viral Caption & Trending Hashtags</>}
             </button>
+
             {caption && (
-              <div className="rounded-lg border bg-muted/40 p-4 space-y-2.5 relative group">
-                <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{caption}</p>
-                <button onClick={() => { navigator.clipboard.writeText(caption); toast.success("Caption copied!"); }}
-                  className="absolute right-2 top-2 p-1.5 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 rounded-md border cursor-pointer">
-                  <Copy className="size-3" />
-                </button>
+              <div className="space-y-3">
+                <div className="rounded-xl border bg-muted/40 p-4 space-y-2.5 relative group">
+                  <div className="flex items-center justify-between border-b pb-2 text-[11px] font-bold text-slate-500">
+                    <span>Ad Caption & Post Body</span>
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard.writeText(caption); toast.success("Full post copy with hashtags copied!"); }}
+                      className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-bold bg-white dark:bg-slate-800 border px-2 py-0.5 rounded-md shadow-xs transition-colors"
+                    >
+                      <Copy className="size-3" /> Copy Entire Post
+                    </button>
+                  </div>
+                  <textarea
+                    rows={6}
+                    value={caption}
+                    onChange={(e) => setCaption(e.target.value)}
+                    className="w-full bg-transparent border-0 text-xs text-foreground focus:outline-none resize-none font-medium leading-relaxed"
+                  />
+                </div>
+
+                {/* Trending Hashtags Section */}
+                {trendingHashtags.length > 0 && (
+                  <div className="p-3.5 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-black text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5 uppercase tracking-wider">
+                        <Hash className="size-3.5 text-indigo-600" /> Trending & Viral Hashtags ({trendingHashtags.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allTags = trendingHashtags.join(" ");
+                          navigator.clipboard.writeText(allTags);
+                          toast.success("All trending hashtags copied!");
+                        }}
+                        className="text-[10px] font-bold text-indigo-700 hover:underline flex items-center gap-1"
+                      >
+                        <Copy className="size-3" /> Copy Tags
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {trendingHashtags.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => handleAppendHashtag(tag)}
+                          className="px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50 text-indigo-700 dark:text-indigo-300 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                          title="Click to copy / insert into caption"
+                        >
+                          {copiedTag === tag ? <Check className="size-3 text-emerald-600" /> : <Tag className="size-3 text-indigo-500 opacity-60" />}
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Search Keywords Section */}
+                {searchKeywords.length > 0 && (
+                  <div className="p-3 bg-slate-50 dark:bg-slate-900/50 border rounded-xl space-y-1.5">
+                    <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 flex items-center gap-1 uppercase tracking-wider">
+                      🔍 Meta & Search Discovery Keywords
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {searchKeywords.map((kw) => (
+                        <span key={kw} className="text-[10px] font-medium bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-md">
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -811,6 +973,21 @@ export function AdGenerator() {
                     <BrainCircuit className="size-3" /> Enhanced Creative Brief
                   </p>
                   <p className="text-[11px] text-muted-foreground italic">"{enhancedPrompt}"</p>
+                </div>
+              )}
+
+              {/* Live Caption & Hashtags Preview Card */}
+              {caption && (
+                <div className="text-left w-full max-w-sm rounded-xl border bg-muted/40 p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-1">
+                      <Facebook className="size-3" /> Live Post Caption Preview
+                    </p>
+                    <span className="text-[10px] font-bold text-slate-400">Ready to Publish</span>
+                  </div>
+                  <p className="text-xs text-foreground line-clamp-4 leading-relaxed font-medium whitespace-pre-wrap">
+                    {caption}
+                  </p>
                 </div>
               )}
 
