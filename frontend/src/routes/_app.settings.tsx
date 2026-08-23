@@ -32,6 +32,7 @@ import { NumberSeries } from "@/components/erp/NumberSeries";
 import { TaxConfiguration } from "@/components/erp/TaxConfiguration";
 import { CurrencyManagement } from "@/components/erp/CurrencyManagement";
 import { PaymentGateways } from "@/components/erp/PaymentGateways";
+import { WhitebooksSettings } from "@/components/settings/WhitebooksSettings";
 import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/_app/settings")({
@@ -90,6 +91,10 @@ const componentMap: Record<string, React.ElementType> = {
   // Integrations & API Connections
   payment_gateways: PaymentGateways,
   recruitment_integrations: RecruitmentIntegrations,
+  whitebooks_settings: WhitebooksSettings,
+  gst_integration: WhitebooksSettings,
+  ewaybill_integration: WhitebooksSettings,
+  einvoice_integration: WhitebooksSettings,
   whatsapp_integration: NotificationTemplates,
   sms_integration: NotificationTemplates,
   email_integration: EmailCampaigns,

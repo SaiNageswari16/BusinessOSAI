@@ -66,10 +66,9 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstat
             total_cgst += tax / 2
             total_sgst += tax / 2
 
-    taxable_net = subtotal - discount_amt
-    total_before_round = taxable_net + total_tax
-    round_off = round(total_before_round) - total_before_round
-    total = round(total_before_round + round_off, 2)
+    taxable_net = round(subtotal - discount_amt, 2)
+    total_tax = round(total_tax, 2)
+    total = round(taxable_net + total_tax, 2)
 
     return dict(
         subtotal=round(subtotal, 2),
@@ -78,7 +77,7 @@ def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstat
         sgst_amount=round(total_sgst, 2),
         igst_amount=round(total_igst, 2),
         tds_amount=round(total_tds, 2),
-        round_off=round(round_off, 2),
+        round_off=0.0,
         total_amount=total,
         balance_due=total,
     )
@@ -695,10 +694,8 @@ async def add_payment(
 
     if invoice.balance_due <= 0.01:
         invoice.status = "paid"
-        invoice.payment_status = "paid"
     elif invoice.amount_paid > 0:
         invoice.status = "partially_paid"
-        invoice.payment_status = "partially_paid"
 
     if invoice.due_date and invoice.due_date < date.today() and invoice.balance_due > 0.01:
         invoice.status = "overdue"

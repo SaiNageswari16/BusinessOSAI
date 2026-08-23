@@ -4405,15 +4405,68 @@ export const ewayBillApi = {
   }) => request<any>("POST", "/erp/eway-bill/generate", payload),
   cancelEWayBill: (payload: { eway_bill_number: string; cancel_reason_code?: string; remarks?: string }) =>
     request<any>("POST", "/erp/eway-bill/cancel", payload),
+  updateVehicle: (payload: {
+    eway_bill_number: string;
+    vehicle_no: string;
+    from_place?: string;
+    from_state?: string;
+    reason_code?: string;
+    remarks?: string;
+  }) => request<any>("POST", "/erp/eway-bill/update-vehicle", payload),
+  getEWayBillDetails: (ewbNumber: string) =>
+    request<any>("GET", `/erp/eway-bill/${ewbNumber}`),
+};
+
+export const einvoiceApi = {
+  generateIrn: (payload: {
+    invoice_id?: string;
+    invoice_number?: string;
+    invoice_date?: string;
+    seller_gstin?: string;
+    seller_name?: string;
+    buyer_gstin?: string;
+    buyer_name?: string;
+    taxable_value?: number;
+    total_amount?: number;
+    items?: any[];
+  }) => request<any>("POST", "/erp/einvoice/generate-irn", payload),
+  cancelIrn: (payload: { irn: string; cancel_reason?: string; remarks?: string }) =>
+    request<any>("POST", "/erp/einvoice/cancel-irn", payload),
+  generateEwaybillByIrn: (payload: {
+    irn: string;
+    transporter_id?: string;
+    transporter_name?: string;
+    trans_mode?: string;
+    distance_km?: number;
+    vehicle_no: string;
+    vehicle_type?: string;
+  }) => request<any>("POST", "/erp/einvoice/generate-ewaybill-by-irn", payload),
+  generateB2CQr: (payload: {
+    invoice_number: string;
+    total_amount: number;
+    payee_name?: string;
+    upi_id?: string;
+  }) => request<any>("POST", "/erp/einvoice/b2c-qr", payload),
 };
 
 export const gstFilingApi = {
-  getGstr1Summary: (params: { year: number; month: number }) =>
+  searchGstin: (gstin: string) =>
+    request<any>("GET", `/erp/gst/search/${encodeURIComponent(gstin)}`),
+  getGstr1Summary: (params: { year: number; month: number; invoice_type?: string }) =>
     request<any>("GET", "/erp/gst/gstr1-summary", undefined, params),
   uploadGstr1: (payload: { year: number; month: number; gstr1_payload: any }) =>
     request<any>("POST", "/erp/gst/gstr1-upload", payload),
-  getGstr3bSummary: (params: { year: number; month: number }) =>
+  getGstr2b: (params: { year: number; month: number }) =>
+    request<any>("GET", "/erp/gst/gstr2b", undefined, params),
+  getGstr3bSummary: (params: { year: number; month: number; invoice_type?: string }) =>
     request<any>("GET", "/erp/gst/gstr3b-summary", undefined, params),
+};
+
+export const whitebooksSettingsApi = {
+  getConfig: () => request<any>("GET", "/erp/whitebooks/config"),
+  saveConfig: (payload: any) => request<any>("PUT", "/erp/whitebooks/config", payload),
+  testConnection: (module: "ewb" | "gst" | "einv", credentials?: any) =>
+    request<any>("POST", "/erp/whitebooks/test-connection", { module, credentials }),
 };
 
 export const utilsApi = {
@@ -4433,9 +4486,11 @@ export const utilsApi = {
 };
 
 export const whitebooksApi = {
-  searchGstin: (gstin: string) => procurementApi.lookupGstin(gstin),
+  searchGstin: (gstin: string) => gstFilingApi.searchGstin(gstin),
   ewayBill: ewayBillApi,
+  einvoice: einvoiceApi,
   gstFiling: gstFilingApi,
+  settings: whitebooksSettingsApi,
 };
 
 

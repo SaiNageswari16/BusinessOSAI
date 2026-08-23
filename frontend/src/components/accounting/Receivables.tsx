@@ -161,16 +161,21 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 // ─── Modal: Record Payment ───────────────────────────────────────────────
 function RecordPaymentModal({ invoice, onClose, onSaved }: { invoice: Invoice; onClose: () => void; onSaved: () => void }) {
   const [saving, setSaving] = useState(false);
-  const [amount, setAmount] = useState(invoice.balance_due);
+  const [amount, setAmount] = useState(Number(invoice.balance_due || 0));
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0]);
   const [paymentMethod, setPaymentMethod] = useState("bank_transfer");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (amount <= 0 || amount > invoice.balance_due) { toast.error(`Amount must be between 0 and ${fmt(invoice.balance_due)}`); return; }
+    const payAmt = Number(parseFloat(String(amount)).toFixed(2));
+    const maxDue = Number(Number(invoice.balance_due || 0).toFixed(2));
+    if (payAmt <= 0 || payAmt > maxDue + 0.01) { 
+      toast.error(`Amount must be between 0.01 and ${fmt(maxDue)}`); 
+      return; 
+    }
     setSaving(true);
     try {
-      await invoicesApi.recordPayment(invoice.id, { amount, payment_date: paymentDate, payment_method: paymentMethod });
+      await invoicesApi.recordPayment(invoice.id, { amount: payAmt, payment_date: paymentDate, payment_method: paymentMethod });
       toast.success("Payment recorded successfully!");
       onSaved();
       onClose();

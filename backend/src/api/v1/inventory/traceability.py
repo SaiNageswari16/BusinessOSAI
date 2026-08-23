@@ -51,7 +51,7 @@ async def list_batches(
 @router.post("/batches", response_model=InventoryBatchResponse)
 async def create_batch(
     batch_in: InventoryBatchCreate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:inventory", "manage:pos"))],
     db: AsyncSession = Depends(get_db),
 ):
     from src.models.inventory import Product
@@ -65,9 +65,9 @@ async def create_batch(
     if sync_to_stock and batch.product_id:
         prod = await db.get(Product, batch.product_id)
         if prod:
-            prod.stock_quantity = (prod.stock_quantity or 0) + (batch.quantity or 0)
+            prod.initial_stock = (prod.initial_stock or 0) + (batch.quantity or 0)
             if batch.cost_price and float(batch.cost_price) > 0:
-                prod.cost_price = batch.cost_price
+                prod.purchase_price = batch.cost_price
             if batch.mrp and float(batch.mrp) > 0:
                 prod.mrp = batch.mrp
             if batch.selling_price and float(batch.selling_price) > 0:
@@ -78,13 +78,16 @@ async def create_batch(
         ev = TraceabilityEvent(
             event_type="received",
             batch_id=batch.id,
-            destination_location=batch.warehouse_name,
+            destination_location=batch.warehouse_name or batch.location,
             destination_warehouse_id=batch.warehouse_id,
             party_type="supplier",
             party_name=batch.supplier,
             reference_document=batch.batch_number,
             quantity=batch.quantity,
-            actor_user_id=ctx.user.id if hasattr(ctx, "user") else None,
+            unit=batch.uom or "Pcs",
+            notes=batch.notes,
+            event_at=datetime.utcnow(),
+            actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
             tenant_id=ctx.tenant_id,
         )
         db.add(ev)
@@ -116,7 +119,7 @@ async def get_batch(
 async def update_batch(
     batch_id: str,
     batch_in: InventoryBatchUpdate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:inventory", "manage:pos"))],
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -140,7 +143,7 @@ async def update_batch(
 @router.delete("/batches/{batch_id}")
 async def delete_batch(
     batch_id: str,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:inventory", "manage:pos"))],
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -209,9 +212,12 @@ async def create_serial(
             event_type="received",
             serial_id=serial.id,
             batch_id=serial.batch_id,
-            destination_location=serial.warehouse_name,
+            destination_location=serial.warehouse_name or serial.location,
             destination_warehouse_id=serial.warehouse_id,
             quantity=1,
+            unit="Pcs",
+            notes=serial.notes,
+            event_at=datetime.utcnow(),
             actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
             tenant_id=ctx.tenant_id,
         )
@@ -225,7 +231,7 @@ async def create_serial(
 async def update_serial(
     serial_id: str,
     serial_in: InventorySerialUpdate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:inventory", "manage:pos"))],
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -247,7 +253,7 @@ async def update_serial(
 @router.delete("/serials/{serial_id}")
 async def delete_serial(
     serial_id: str,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:inventory", "manage:pos"))],
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -279,9 +285,15 @@ async def list_events(
 ):
     q = select(TraceabilityEvent).where(TraceabilityEvent.tenant_id == ctx.tenant_id)
     if batch_id:
-        q = q.where(TraceabilityEvent.batch_id == UUID(batch_id))
+        try:
+            q = q.where(TraceabilityEvent.batch_id == UUID(batch_id))
+        except ValueError:
+            pass
     if serial_id:
-        q = q.where(TraceabilityEvent.serial_id == UUID(serial_id))
+        try:
+            q = q.where(TraceabilityEvent.serial_id == UUID(serial_id))
+        except ValueError:
+            pass
     if event_type:
         q = q.where(TraceabilityEvent.event_type == event_type)
     q = q.order_by(TraceabilityEvent.event_at.desc()).limit(limit)
@@ -292,11 +304,16 @@ async def list_events(
 @router.post("/traceability/events", response_model=TraceabilityEventResponse)
 async def create_event(
     event_in: TraceabilityEventCreate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:erp", "manage:inventory", "manage:pos"))],
     db: AsyncSession = Depends(get_db),
 ):
     user = getattr(ctx, "user", None)
-    ev = TraceabilityEvent(**event_in.model_dump(), actor_user_id=getattr(user, "id", None), tenant_id=ctx.tenant_id)
+    event_data = event_in.model_dump()
+    if not event_data.get("event_at"):
+        event_data["event_at"] = datetime.utcnow()
+    if not event_data.get("actor_user_id") and user:
+        event_data["actor_user_id"] = getattr(user, "id", None)
+    ev = TraceabilityEvent(**event_data, tenant_id=ctx.tenant_id)
     db.add(ev)
     await db.commit()
     await db.refresh(ev)

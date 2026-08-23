@@ -89,6 +89,53 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
     document.body.removeChild(link);
   };
 
+  const handleDownloadMyQrImage = () => {
+    if (!vCardData?.qr_code_data_url) {
+      alert("QR code image is not yet available.");
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = vCardData.qr_code_data_url;
+    link.download = `${(vCardData.full_name || emp?.full_name || "My").replace(/\s+/g, "_")}_vCard_QR.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleShareMyQrCode = async () => {
+    if (!vCardData) return;
+    const shareText = `*${vCardData.full_name}* - Digital Business Card\n${vCardData.designation || ""} | ${vCardData.company_name}\nEmail: ${vCardData.email}\nPhone: ${vCardData.phone || ""}\nEmployee ID: ${vCardData.employee_code}\n🌐 https://lazymonkeyai.com`;
+
+    if (typeof navigator !== "undefined" && navigator.share && vCardData.qr_code_data_url) {
+      try {
+        const res = await fetch(vCardData.qr_code_data_url);
+        const blob = await res.blob();
+        const file = new File([blob], `${(vCardData.full_name || "My_vCard").replace(/\s+/g, "_")}_QR.png`, { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: `${vCardData.full_name} - Digital Business Card`,
+            text: shareText,
+            files: [file],
+          });
+          return;
+        } else {
+          await navigator.share({
+            title: `${vCardData.full_name} - Digital Business Card`,
+            text: shareText,
+          });
+          return;
+        }
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          console.warn("Share fallback:", err);
+        } else {
+          return;
+        }
+      }
+    }
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, "_blank");
+  };
+
   const handleCopyMyVCardContact = () => {
     if (!vCardData) return;
     const text = `📇 ${vCardData.full_name}\n🏢 ${vCardData.company_name}\n💼 ${vCardData.designation || "Staff"} · ${vCardData.department || ""}\n🆔 ${vCardData.employee_code}\n📧 ${vCardData.email}\n📞 ${vCardData.phone || "N/A"}\n🌐 https://lazymonkeyai.com`;
@@ -652,13 +699,33 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                       )}
                     </div>
                     
-                    <div className="mt-3 space-y-1">
-                      <p className="text-xs font-bold text-foreground flex items-center justify-center gap-1.5">
-                        <Sparkles className="size-3.5 text-indigo-500" /> Instant Phone Contact Save
-                      </p>
-                      <p className="text-[11px] text-muted-foreground max-w-[260px] leading-relaxed">
-                        Anyone scanning this with their mobile camera can immediately add your contact details to their phone.
-                      </p>
+                    <div className="mt-3 space-y-2 flex flex-col items-center">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-foreground flex items-center justify-center gap-1.5">
+                          <Sparkles className="size-3.5 text-indigo-500" /> Instant Phone Contact Save
+                        </p>
+                        <p className="text-[11px] text-muted-foreground max-w-[260px] leading-relaxed">
+                          Anyone scanning this with their mobile camera can immediately add your contact details to their phone.
+                        </p>
+                      </div>
+
+                      {/* Quick QR Action Pills */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleDownloadMyQrImage}
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 dark:text-indigo-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors border border-indigo-200 dark:border-indigo-800 shadow-xs cursor-pointer"
+                        >
+                          <Download className="size-3.5" /> Download QR (PNG)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleShareMyQrCode}
+                          className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 dark:text-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors border border-emerald-200 dark:border-emerald-800 shadow-xs cursor-pointer"
+                        >
+                          <Share2 className="size-3.5" /> Share QR
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -684,21 +751,30 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
                   {/* Actions Grid */}
                   <div className="space-y-2 pt-1">
-                    <Button 
-                      className="w-full h-11 gradient-brand text-white font-bold shadow-md hover:shadow-lg transition-all border-0 flex items-center justify-center gap-2"
-                      onClick={handleDownloadMyVCard}
-                    >
-                      <Download className="size-4" /> Download My .VCF File
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button 
+                        className="h-10 gradient-brand text-white font-bold shadow-md hover:shadow-lg transition-all border-0 flex items-center justify-center gap-2 text-xs"
+                        onClick={handleDownloadMyVCard}
+                      >
+                        <Download className="size-3.5" /> Save .VCF Contact
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="h-10 text-xs font-bold flex items-center justify-center gap-2 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                        onClick={handleDownloadMyQrImage}
+                      >
+                        <QrCode className="size-3.5 text-indigo-600" /> Export QR Code
+                      </Button>
+                    </div>
 
                     <div className="grid grid-cols-3 gap-2">
                       <Button 
                         variant="outline" 
                         size="sm" 
                         className="h-9 text-xs flex items-center justify-center gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                        onClick={handleShareMyWhatsApp}
+                        onClick={handleShareMyQrCode}
                       >
-                        <Share2 className="size-3.5" /> WhatsApp
+                        <Share2 className="size-3.5" /> Share Pass
                       </Button>
                       <Button 
                         variant="outline" 

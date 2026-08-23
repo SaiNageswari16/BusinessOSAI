@@ -462,12 +462,20 @@ class TraceabilityEvent(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampM
     __tablename__ = "erp_traceability_events"
 
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False, index=True)
-    batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_inventory_batches.id", ondelete="SET NULL"), nullable=True)
-    serial_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_inventory_serials.id", ondelete="SET NULL"), nullable=True)
-    location: Mapped[str | None] = mapped_column(String(150), nullable=True)
-    actor: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_inventory_batches.id", ondelete="SET NULL"), nullable=True, index=True)
+    serial_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_inventory_serials.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_location: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    destination_location: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    source_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
+    destination_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
+    party_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    party_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    reference_document: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    quantity: Mapped[int | None] = mapped_column(Integer, nullable=True, default=1)
+    unit: Mapped[str | None] = mapped_column(String(50), nullable=True, default="Pcs")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class PutAwayRule(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):

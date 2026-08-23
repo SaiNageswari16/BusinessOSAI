@@ -173,11 +173,16 @@ api_router.include_router(financial_reports_router)
 from src.api.v1.erp.delivery_challan import router as delivery_challan_router
 api_router.include_router(delivery_challan_router, prefix="/erp")
 
-# E-Way Bill & GST Compliance Modules (Whitebooks GSP)
+# E-Way Bill, GST Compliance & e-Invoice Modules (Whitebooks GSP)
 from src.api.v1.erp.eway_bill import router as eway_bill_router
 from src.api.v1.erp.gst_filing import router as gst_filing_router
-api_router.include_router(eway_bill_router, prefix="/erp")
-api_router.include_router(gst_filing_router, prefix="/erp")
+from src.api.v1.erp.einvoice import router as einvoice_router
+from src.api.v1.erp.whitebooks_config import router as whitebooks_config_router
+
+api_router.include_router(eway_bill_router)
+api_router.include_router(gst_filing_router)
+api_router.include_router(einvoice_router)
+api_router.include_router(whitebooks_config_router)
 
 # LazyMonkeyAI Copilot
 from src.api.v1.copilot import router as copilot_router
