@@ -3941,6 +3941,8 @@ export const inventoryApi = {
   // --- Real-time Analytics & Intelligence ---
   getReportData: (tab: string) => request<any>("GET", `/analytics/reports/${tab}`),
   consultAIReport: (tab: string, query: string, contextData: any) => request<{ answer: string }>("POST", `/analytics/reports/${tab}/ai-consult`, { query, contextData }),
+  getReportBuilderPresets: () => request<any>("GET", "/analytics/report-builder/presets"),
+  generateCustomReport: (payload: any) => request<any>("POST", "/analytics/report-builder/generate", payload),
 
   // --- Zoho Recruit Integration ---
   getZohoStatus: () => request<any>("GET", "/integrations/zoho/status"),
