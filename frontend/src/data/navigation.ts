@@ -58,7 +58,7 @@ export const nav: NavGroup[] = [
       {
         to: "/erp?tab=fiscal_years",
         label: "Financial Configuration",
-        icon: CreditCard,
+        icon: FileText,
         subItems: [
           { to: "/erp?tab=fiscal_years", label: "Fiscal Years", icon: Calendar },
           { to: "/erp?tab=cost_centers", label: "Cost Centers", icon: CreditCard },
@@ -85,9 +85,9 @@ export const nav: NavGroup[] = [
       {
         to: "/erp?tab=approval_workflows",
         label: "Workflow Engine",
-        icon: Network,
+        icon: Workflow,
         subItems: [
-          { to: "/erp?tab=approval_workflows", label: "Approval Workflows", icon: Network },
+          { to: "/erp?tab=approval_workflows", label: "Approval Workflows", icon: Workflow },
           { to: "/erp?tab=notification_templates", label: "Notification Templates", icon: Radio },
           { to: "/erp?tab=document_templates", label: "Document Templates", icon: Briefcase },
           { to: "/erp?tab=custom_fields", label: "Custom Fields", icon: Target },
@@ -97,7 +97,7 @@ export const nav: NavGroup[] = [
       {
         to: "/erp?tab=geography",
         label: "Master Data",
-        icon: MapPin,
+        icon: Database,
         subItems: [
           { to: "/erp?tab=geography", label: "Geography (Countries/States/Cities)", icon: MapPin },
           { to: "/erp?tab=locations", label: "Locations", icon: MapPin },
@@ -106,12 +106,12 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/erp?tab=global_users",
+        to: "/erp?tab=super_admin",
         label: "System Administration",
         icon: Settings,
         permission: "manage:system_admin",
         subItems: [
-          { to: "/erp?tab=global_users", label: "Global Users", icon: Users, permission: "manage:system_admin" },
+          { to: "/erp?tab=super_admin", label: "Super Admin", icon: ShieldCheck, permission: "manage:system_admin" },
           { to: "/erp?tab=audit_logs", label: "Audit Logs", icon: History, permission: "manage:system_admin" },
           { to: "/erp?tab=activity_logs", label: "Activity Logs", icon: Activity, permission: "manage:system_admin" },
           { to: "/erp?tab=error_logs", label: "Error Logs", icon: Activity, permission: "manage:system_admin" },

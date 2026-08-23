@@ -42,7 +42,7 @@ import { TagsLabels } from "../components/erp/TagsLabels";
 import { ErrorLogs } from "../components/erp/ErrorLogs";
 import { SystemHealth } from "../components/erp/SystemHealth";
 import { BackupRestore } from "../components/erp/BackupRestore";
-import { GlobalUsers } from "../components/erp/GlobalUsers";
+import { SuperAdminManagement } from "../components/erp/SuperAdminManagement";
 
 export const Route = createFileRoute("/_app/erp")({
   component: ErpModule,
@@ -90,8 +90,9 @@ const componentMap: Record<string, React.ElementType> = {
   calendars_shifts: CalendarsAndShifts,
   tags_labels: TagsLabels,
 
-  // System
-  global_users: GlobalUsers,
+  // System & Super Admin
+  super_admin: SuperAdminManagement,
+  global_users: SuperAdminManagement,
   audit_logs: AuditLogs,
   activity_logs: ActivityLogs,
   error_logs: ErrorLogs,
@@ -137,6 +138,7 @@ const tabPermissions: Record<string, string> = {
   calendars_shifts: "view:erp",
   tags_labels: "view:tags",
 
+  super_admin: "manage:system_admin",
   global_users: "manage:system_admin",
   audit_logs: "manage:system_admin",
   activity_logs: "manage:system_admin",

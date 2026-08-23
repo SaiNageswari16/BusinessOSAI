@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from typing import Annotated
 from pydantic import BaseModel
@@ -10,11 +11,18 @@ from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentUserContext, get_current_user_context
 from src.database.session import get_db
-from src.models import Tenant, User, TenantStatus
+from src.models import Tenant, User, TenantStatus, UserStatus, Company, Role, UserRole, AuditLog
 from src.schemas.erp import ORMModel, MessageResponse
+from src.utils.security import hash_password, create_super_admin_role
+from src.database.init_db import write_audit_log
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/system", tags=["SaaS Platform Administration"])
+
+
+def slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug[:100] or f"tenant-{uuid.uuid4().hex[:8]}"
 
 
 # ─── Schemas ──────────────────────────────────────────────────────
@@ -29,6 +37,20 @@ class PlatformTenantSummary(ORMModel):
     owner_name: str | None = None
     owner_email: str | None = None
     user_count: int = 0
+
+
+class CreateTenantByAdminRequest(ORMModel):
+    name: str
+    slug: str | None = None
+    plan: str = "starter"
+    status: str = "active"
+    max_users: int = 50
+    max_branches: int = 10
+    enabled_modules: list[str] = ["inventory", "pos", "accounting", "crm", "hrms"]
+    company_name: str | None = None
+    admin_name: str = "Super Admin"
+    admin_email: str
+    admin_password: str
 
 
 class TenantStatusUpdateRequest(ORMModel):
@@ -119,6 +141,110 @@ async def list_tenants(
         )
 
     return items
+
+
+@router.post("/tenants", response_model=PlatformTenantSummary, status_code=status.HTTP_201_CREATED)
+async def create_platform_tenant(
+    payload: CreateTenantByAdminRequest,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Platform Super Admin: Create and provision a new Organisation / Tenant workspace,
+    including initial Owner account, Super Admin role, default company, and module entitlements.
+    """
+    require_platform_admin(ctx)
+
+    slug_val = slugify(payload.slug or payload.name)
+    existing_slug = await db.scalar(select(Tenant).where(Tenant.slug == slug_val))
+    if existing_slug:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Organisation slug '{slug_val}' is already in use. Please choose a different slug.",
+        )
+
+    try:
+        tenant_status = TenantStatus(payload.status.lower())
+    except ValueError:
+        tenant_status = TenantStatus.ACTIVE
+
+    enabled_mods = payload.enabled_modules or ["inventory", "pos", "accounting", "crm", "hrms"]
+
+    tenant = Tenant(
+        slug=slug_val,
+        name=payload.name,
+        plan=payload.plan,
+        status=tenant_status,
+        max_users=payload.max_users,
+        max_branches=payload.max_branches,
+        settings={
+            "enabled_modules": enabled_mods,
+            "requested_modules": enabled_mods,
+            "created_by": str(ctx.user.id),
+        },
+    )
+    db.add(tenant)
+    await db.flush()
+
+    # Create super admin role for the new tenant
+    super_role = await create_super_admin_role(db, tenant.id)
+
+    # Create initial administrator user
+    admin_user = User(
+        tenant_id=tenant.id,
+        email=payload.admin_email.lower().strip(),
+        password_hash=hash_password(payload.admin_password),
+        full_name=payload.admin_name.strip(),
+        avatar_initials="".join(part[0].upper() for part in (payload.admin_name or "Admin").split()[:2] if part),
+        status=UserStatus.ACTIVE,
+        is_tenant_owner=True,
+    )
+    db.add(admin_user)
+    await db.flush()
+
+    db.add(UserRole(user_id=admin_user.id, role_id=super_role.id, is_default=True))
+
+    # Create default Company
+    company_name = payload.company_name or payload.name
+    company = Company(
+        tenant_id=tenant.id,
+        name=company_name,
+        legal_name=company_name,
+        logo_initials="".join(part[0].upper() for part in company_name.split()[:2] if part),
+    )
+    db.add(company)
+
+    await write_audit_log(
+        db,
+        tenant_id=tenant.id,
+        user_id=ctx.user.id,
+        module="system_admin",
+        action="tenant_created_by_admin",
+        entity_type="tenant",
+        entity_id=tenant.id,
+        new_values={
+            "slug": tenant.slug,
+            "name": tenant.name,
+            "plan": tenant.plan,
+            "owner_email": admin_user.email,
+            "enabled_modules": enabled_mods,
+        },
+    )
+
+    await db.commit()
+    await db.refresh(tenant)
+
+    return PlatformTenantSummary(
+        id=tenant.id,
+        slug=tenant.slug,
+        name=tenant.name,
+        plan=tenant.plan,
+        status=tenant.status.value,
+        created_at=tenant.created_at.isoformat(),
+        owner_name=admin_user.full_name,
+        owner_email=admin_user.email,
+        user_count=1,
+    )
 
 
 @router.patch("/tenants/{tenant_id}/status", response_model=MessageResponse)
@@ -274,6 +400,18 @@ class PlatformUserResponse(ORMModel):
     created_at: str
 
 
+class CreatePlatformUserPayload(ORMModel):
+    tenant_id: uuid.UUID
+    email: str
+    password: str
+    full_name: str
+    role_name: str | None = "Admin"
+    is_tenant_owner: bool = False
+    is_platform_admin: bool = False
+    phone: str | None = None
+    status: str = "ACTIVE"
+
+
 class UpdateUserStatusPayload(ORMModel):
     status: str
 
@@ -332,6 +470,134 @@ async def list_platform_users(
             )
         )
     return users
+
+
+@router.post("/users", response_model=PlatformUserResponse, status_code=status.HTTP_201_CREATED)
+async def create_platform_user(
+    payload: CreatePlatformUserPayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Platform Super Admin: Create a new user in any Organisation / Tenant workspace.
+    """
+    require_platform_admin(ctx)
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == payload.tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Organisation workspace not found")
+
+    email_clean = payload.email.lower().strip()
+    existing_user = await db.scalar(
+        select(User).where(User.tenant_id == payload.tenant_id, User.email == email_clean)
+    )
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A user with email '{email_clean}' already exists in organisation '{tenant.name}'.",
+        )
+
+    try:
+        user_status = UserStatus(payload.status.upper())
+    except ValueError:
+        user_status = UserStatus.ACTIVE
+
+    new_user = User(
+        tenant_id=payload.tenant_id,
+        email=email_clean,
+        password_hash=hash_password(payload.password),
+        full_name=payload.full_name.strip(),
+        phone=payload.phone,
+        avatar_initials="".join(part[0].upper() for part in (payload.full_name or "User").split()[:2] if part),
+        status=user_status,
+        is_tenant_owner=payload.is_tenant_owner,
+        is_platform_admin=payload.is_platform_admin,
+    )
+    db.add(new_user)
+    await db.flush()
+
+    # Assign role if requested
+    if payload.role_name:
+        role_record = await db.scalar(
+            select(Role).where(
+                Role.tenant_id == payload.tenant_id,
+                func.lower(Role.name) == payload.role_name.lower().strip(),
+            )
+        )
+        if not role_record and payload.role_name.lower() in ("super admin", "super_admin"):
+            role_record = await create_super_admin_role(db, payload.tenant_id)
+        if role_record:
+            db.add(UserRole(user_id=new_user.id, role_id=role_record.id, is_default=True))
+
+    await write_audit_log(
+        db,
+        tenant_id=payload.tenant_id,
+        user_id=ctx.user.id,
+        module="system_admin",
+        action="user_created_by_admin",
+        entity_type="user",
+        entity_id=new_user.id,
+        new_values={
+            "email": new_user.email,
+            "full_name": new_user.full_name,
+            "tenant_slug": tenant.slug,
+            "is_tenant_owner": new_user.is_tenant_owner,
+            "is_platform_admin": new_user.is_platform_admin,
+        },
+    )
+
+    await db.commit()
+    await db.refresh(new_user)
+
+    return PlatformUserResponse(
+        id=new_user.id,
+        tenant_name=tenant.name,
+        email=new_user.email,
+        full_name=new_user.full_name,
+        status=new_user.status.value if hasattr(new_user.status, "value") else str(new_user.status),
+        is_tenant_owner=new_user.is_tenant_owner,
+        is_platform_admin=bool(new_user.is_platform_admin),
+        mfa_enabled=new_user.mfa_enabled,
+        created_at=new_user.created_at.isoformat(),
+    )
+
+
+@router.post("/users/{user_id}/reset-password", response_model=MessageResponse)
+async def reset_platform_user_password(
+    user_id: uuid.UUID,
+    payload: ResetPasswordPayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Platform Super Admin: Administratively reset any user's password.
+    """
+    require_platform_admin(ctx)
+
+    if not payload.password or len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+
+    user = await db.scalar(select(User).where(User.id == user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password_hash = hash_password(payload.password)
+    user.must_change_password = True
+    user.failed_login_attempts = 0
+    user.locked_until = None
+
+    await write_audit_log(
+        db,
+        tenant_id=user.tenant_id,
+        user_id=ctx.user.id,
+        module="system_admin",
+        action="password_reset_by_admin",
+        entity_type="user",
+        entity_id=user.id,
+    )
+
+    await db.commit()
+    return MessageResponse(message=f"Password for {user.email} has been reset successfully.")
 
 
 

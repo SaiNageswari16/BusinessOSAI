@@ -173,131 +173,189 @@ export function StockTransfer() {
   );
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-5 pb-12">
       {viewMode === "list" ? (
         <>
-          {/* List Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                <ArrowRightLeft className="size-6 text-emerald-600" /> Stock Transfer Vouchers
-              </h2>
-              <p className="text-sm text-slate-500 mt-1">
+          {/* ── Page Header ── */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
+            <div className="flex flex-col">
+              <div className="flex items-center gap-3">
+                <h1 className="text-[26px] font-black text-slate-900 tracking-tight leading-none">
+                  Stock Transfers
+                </h1>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
+                  {transfers.length} Transfers
+                </span>
+              </div>
+              <p className="text-[13px] font-medium text-slate-500 mt-1.5 leading-normal">
                 Transfer stock seamlessly between warehouses, distribution hubs, and retail stores.
               </p>
             </div>
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Button variant="outline" className="rounded-xl"><FileDown className="size-4 mr-2" /> Export</Button>
-              <Button onClick={openCreateView} className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-lg shadow-emerald-500/20 rounded-xl">
-                <Plus className="size-4 mr-2" /> Create New Transfer
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
+                onClick={() => toast.info("Exporting stock transfers report...")}
+              >
+                <FileDown className="size-3.5 mr-1.5 text-slate-500" /> Export
+              </Button>
+              <Button 
+                size="sm"
+                onClick={openCreateView} 
+                className="h-9 px-3.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-all cursor-pointer"
+              >
+                <Plus className="size-4 mr-1.5" /> Create New Transfer
               </Button>
             </div>
           </div>
 
-          {/* Search bar */}
-          <div className="relative max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border bg-white shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-              placeholder="Search by Transfer #, Source, or Destination..." />
+          {/* ── Search & Filters Bar ── */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+            <div className="relative flex-1 w-full max-w-md">
+              <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                value={search} 
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50/80 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 font-medium" 
+                placeholder="Search by Transfer #, Source, or Destination..." 
+              />
+            </div>
           </div>
 
-          {/* Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative min-h-[350px]">
-            {loading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm rounded-2xl">
-                <Loader2 className="size-8 animate-spin text-emerald-600" />
+          {/* ── DataTable ── */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center p-16 bg-white rounded-2xl border border-slate-200/80">
+              <Loader2 className="size-8 animate-spin text-blue-600 mb-3" />
+              <p className="text-sm font-semibold text-slate-600">Loading stock transfer records...</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center p-14 border border-dashed rounded-2xl bg-slate-50/50">
+              <ArrowRightLeft className="size-12 mx-auto text-slate-400 mb-3" />
+              <h3 className="text-base font-bold text-slate-800">No Stock Transfers found</h3>
+              <p className="text-xs text-slate-500 mt-1 mb-4">Click 'Create New Transfer' to move inventory between locations.</p>
+              <Button onClick={openCreateView} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg h-9">
+                <Plus className="size-4 mr-1.5" /> Create New Transfer
+              </Button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="border-b border-slate-200/80 bg-slate-50/75 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 select-none">
+                    <tr>
+                      <th className="px-4 py-3">Transfer # & Date</th>
+                      <th className="px-4 py-3">Source Warehouse</th>
+                      <th className="px-4 py-3">Destination Warehouse</th>
+                      <th className="px-4 py-3">Product Transferred</th>
+                      <th className="px-4 py-3">Quantity</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered.map((tr) => {
+                      const prodObj = productsList.find(p => p.id === tr.product_id);
+                      return (
+                        <tr 
+                          key={tr.id} 
+                          className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                          onClick={() => {
+                            setForm({
+                              movement_number: tr.movement_number,
+                              source_location: tr.source_location || "",
+                              destination_location: tr.destination_location || "",
+                              notes: tr.reference_note || "",
+                              transfer_date: tr.created_at ? tr.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                              status: tr.status || "In Transit",
+                            });
+                            setItems([{
+                              product_id: tr.product_id,
+                              product_name: tr.product_name,
+                              quantity: Number(tr.quantity) || 1,
+                              unit_price: 150
+                            }]);
+                            setViewMode("create");
+                          }}
+                        >
+                          <td className="py-3.5 px-4 font-mono font-bold text-blue-600">
+                            <div>{tr.movement_number}</div>
+                            <div className="text-[10.5px] font-normal text-slate-400 font-sans mt-0.5">
+                              {tr.created_at ? new Date(tr.created_at).toLocaleDateString() : "Today"}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-slate-800">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200/80">
+                              {tr.source_location}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-slate-800">
+                            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200/80">
+                              {tr.destination_location}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-slate-900">{prodObj?.name || tr.product_name || tr.product_id}</div>
+                            {prodObj?.sku && <div className="text-[10.5px] text-slate-400 font-mono">{prodObj.sku}</div>}
+                          </td>
+                          <td className="py-3.5 px-4 font-black text-slate-900 text-sm">
+                            {tr.quantity} Units
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                              tr.status === "Completed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80" : "bg-blue-50 text-blue-700 border border-blue-200/80"
+                            }`}>
+                              <Truck className="size-3" />
+                              {tr.status}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => {
+                                  setForm({
+                                    movement_number: tr.movement_number,
+                                    source_location: tr.source_location || "",
+                                    destination_location: tr.destination_location || "",
+                                    notes: tr.reference_note || "",
+                                    transfer_date: tr.created_at ? tr.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                    status: tr.status || "In Transit",
+                                  });
+                                  setItems([{
+                                    product_id: tr.product_id,
+                                    product_name: tr.product_name,
+                                    quantity: Number(tr.quantity) || 1,
+                                    unit_price: 150
+                                  }]);
+                                  setViewMode("create");
+                                }}
+                                className="size-8 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition cursor-pointer"
+                                title="View / Edit Transfer"
+                              >
+                                <Eye className="size-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(tr.id)}
+                                className="size-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center transition cursor-pointer"
+                                title="Delete Transfer"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-            {filtered.length === 0 && !loading && (
-              <div className="col-span-full text-center text-slate-400 py-16 bg-white border rounded-2xl">
-                No Stock Transfers found. Click "Create New Transfer" to transfer stock.
+
+              <div className="px-4 py-3 border-t border-slate-200/80 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500 font-medium">
+                <span>Showing {filtered.length} of {transfers.length} transfers</span>
+                <span className="font-semibold text-slate-700">Click any row to open full voucher document</span>
               </div>
-            )}
-            {filtered.map((tr) => {
-              const isExpanded = expandedId === tr.id;
-              const prodObj = productsList.find(p => p.id === tr.product_id);
-              return (
-                <Card key={tr.id} className={`p-6 relative overflow-hidden rounded-2xl border-slate-200 shadow-sm hover:shadow-md transition-shadow bg-white ${isExpanded ? "ring-2 ring-emerald-500" : ""}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <div className="font-mono font-bold text-lg text-emerald-900">{tr.movement_number}</div>
-                      <div className="text-xs text-slate-400 font-semibold mt-0.5">{tr.quantity} Units Transferred</div>
-                    </div>
-                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
-                      tr.status === "Completed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-blue-50 text-blue-700 border border-blue-200"
-                    }`}>
-                      <Truck className="size-3.5" /> {tr.status}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-dashed border-slate-200">
-                    <div className="flex-1">
-                      <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Source Warehouse</div>
-                      <div className="text-sm font-bold text-slate-800">{tr.source_location}</div>
-                    </div>
-                    <div className="bg-emerald-500 text-white rounded-full p-2 shadow-md">
-                      <ArrowRightLeft className="size-4" />
-                    </div>
-                    <div className="flex-1 text-right">
-                      <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Destination Warehouse</div>
-                      <div className="text-sm font-bold text-slate-800">{tr.destination_location}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex justify-end items-center gap-2 pt-3 border-t border-slate-100">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => {
-                        setForm({
-                          movement_number: tr.movement_number,
-                          source_location: tr.source_location || "",
-                          destination_location: tr.destination_location || "",
-                          notes: tr.reference_note || "",
-                          transfer_date: tr.created_at ? tr.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
-                          status: tr.status || "In Transit",
-                        });
-                        setItems([{
-                          product_id: tr.product_id,
-                          product_name: tr.product_name,
-                          quantity: Number(tr.quantity) || 1,
-                          unit_price: 150
-                        }]);
-                        setViewMode("create");
-                      }}
-                      className="h-8 gap-1.5 font-bold rounded-lg hover:bg-emerald-50"
-                    >
-                      <Eye className="size-4" /> View / Edit Page
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(tr.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-slate-50 p-4 rounded-xl">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Product Item Transferred</span>
-                        <Button size="sm" variant="outline" onClick={() => window.print()} className="h-7 text-xs font-bold rounded-md">
-                          <Printer className="size-3.5 mr-1" /> Print Delivery Challan
-                        </Button>
-                      </div>
-                      <div className="bg-white p-3 border rounded-lg flex justify-between items-center">
-                        <div>
-                          <div className="font-bold text-sm text-slate-900">{prodObj?.name || tr.product_id}</div>
-                          <div className="text-xs text-slate-400 font-mono">SKU: {prodObj?.sku || "N/A"}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-black text-emerald-600">{tr.quantity} Units</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
+            </div>
+          )}
         </>
       ) : (
         /* ══════════════════════════════════════════════════════════════════════ */

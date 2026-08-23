@@ -172,170 +172,189 @@ export function StockAdjustment() {
   const qtyPrefix = (q: number) => q < 0 ? "" : "+";
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-5 pb-12">
       {viewMode === "list" ? (
         <>
-          {/* List Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                <Sliders className="size-6 text-amber-600" /> Stock Adjustment & Audit Vouchers
-              </h2>
-              <p className="text-sm text-slate-500 mt-1">
+          {/* ── Page Header ── */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
+            <div className="flex flex-col">
+              <div className="flex items-center gap-3">
+                <h1 className="text-[26px] font-black text-slate-900 tracking-tight leading-none">
+                  Stock Adjustments
+                </h1>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
+                  {adjustments.length} Vouchers
+                </span>
+              </div>
+              <p className="text-[13px] font-medium text-slate-500 mt-1.5 leading-normal">
                 Reconcile physical stock counts, log inventory write-offs, damages, and audit variances.
               </p>
             </div>
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Button variant="outline" className="rounded-xl"><FileDown className="size-4 mr-2" /> Export</Button>
-              <Button onClick={openCreateView} className="bg-amber-600 hover:bg-amber-700 text-white border-0 shadow-lg shadow-amber-500/20 rounded-xl">
-                <Plus className="size-4 mr-2" /> New Stock Adjustment
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
+                onClick={() => toast.info("Exporting stock adjustments report...")}
+              >
+                <FileDown className="size-3.5 mr-1.5 text-slate-500" /> Export
+              </Button>
+              <Button 
+                size="sm"
+                onClick={openCreateView} 
+                className="h-9 px-3.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-all cursor-pointer"
+              >
+                <Plus className="size-4 mr-1.5" /> New Stock Adjustment
               </Button>
             </div>
           </div>
 
-          {/* Search bar */}
-          <div className="relative max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border bg-white shadow-sm focus:ring-2 focus:ring-amber-500 outline-none"
-              placeholder="Search by Ref #, Adjustment Type, or Reason..." />
+          {/* ── Search & Filters Bar ── */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+            <div className="relative flex-1 w-full max-w-md">
+              <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                value={search} 
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50/80 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 font-medium" 
+                placeholder="Search by Ref #, Adjustment Type, or Reason..." 
+              />
+            </div>
           </div>
 
-          {/* Table */}
-          <Card className="overflow-hidden border-slate-200 shadow-md rounded-2xl">
-            <div className="overflow-x-auto min-h-[350px] relative">
-              {loading && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm">
-                  <Loader2 className="size-8 animate-spin text-amber-600" />
-                </div>
-              )}
-              <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
-                  <tr>
-                    <th className="px-6 py-4">Ref Number</th>
-                    <th className="px-6 py-4">Type</th>
-                    <th className="px-6 py-4">Qty Variance</th>
-                    <th className="px-6 py-4">Reason / Remarks</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {filtered.length === 0 && !loading && (
-                    <tr><td colSpan={6} className="px-6 py-16 text-center text-slate-400">No Stock Adjustments found. Click "New Stock Adjustment" to record stock audit variances.</td></tr>
-                  )}
-                  {filtered.map((adj) => {
-                    const isExpanded = expandedId === adj.id;
-                    const prodObj = productsList.find(p => p.id === adj.product_id);
-                    return (
-                      <React.Fragment key={adj.id}>
-                        <tr className={`hover:bg-amber-50/30 transition-colors ${isExpanded ? "bg-amber-50/50" : ""}`}>
-                          <td className="px-6 py-4 font-mono font-bold text-slate-900">{adj.adjustment_number}</td>
-                          <td className="px-6 py-4">
-                            <span className="bg-slate-100 px-2.5 py-1 rounded-md text-xs font-bold text-slate-700">{adj.adjustment_type}</span>
+          {/* ── Table Section ── */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center p-16 bg-white rounded-2xl border border-slate-200/80">
+              <Loader2 className="size-8 animate-spin text-blue-600 mb-3" />
+              <p className="text-sm font-semibold text-slate-600">Loading stock adjustments...</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center p-14 border border-dashed rounded-2xl bg-slate-50/50">
+              <Sliders className="size-12 mx-auto text-slate-400 mb-3" />
+              <h3 className="text-base font-bold text-slate-800">No Stock Adjustments found</h3>
+              <p className="text-xs text-slate-500 mt-1 mb-4">Click 'New Stock Adjustment' to record stock audit variances.</p>
+              <Button onClick={openCreateView} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg h-9">
+                <Plus className="size-4 mr-1.5" /> New Stock Adjustment
+              </Button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="border-b border-slate-200/80 bg-slate-50/75 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 select-none">
+                    <tr>
+                      <th className="px-4 py-3">Ref Number</th>
+                      <th className="px-4 py-3">Adjustment Type</th>
+                      <th className="px-4 py-3">Qty Variance</th>
+                      <th className="px-4 py-3">Reason / Remarks</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered.map((adj) => {
+                      const isExpanded = expandedId === adj.id;
+                      return (
+                        <tr 
+                          key={adj.id} 
+                          className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                          onClick={() => {
+                            setForm({
+                              adjustment_number: adj.adjustment_number,
+                              warehouse: (adj as any).warehouse_id || "",
+                              adjustment_type: adj.adjustment_type || "Write-Off",
+                              reason: adj.reason || "",
+                              adjustment_date: adj.created_at ? adj.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                            });
+                            if (adj.items && adj.items.length > 0) {
+                              setItems(adj.items.map((it: any) => ({
+                                product_id: it.product_id,
+                                product_name: it.product_name,
+                                adjustment_type: adj.adjustment_type || "Write-Off",
+                                quantity_changed: Number(it.quantity_changed) || 1,
+                                unit_price: Number(it.unit_price) || 0,
+                                reason: adj.reason || ""
+                              })));
+                            }
+                            setViewMode("create");
+                          }}
+                        >
+                          <td className="py-3.5 px-4 font-mono font-bold text-blue-600">
+                            <div>{adj.adjustment_number}</div>
+                            <div className="text-[10.5px] font-normal text-slate-400 font-sans mt-0.5">
+                              {adj.created_at ? new Date(adj.created_at).toLocaleDateString() : "Today"}
+                            </div>
                           </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md font-mono text-xs font-bold ${qtyColor(adj.quantity_changed)}`}>
+                          <td className="py-3.5 px-4">
+                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80">
+                              {adj.adjustment_type}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 font-black">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold ${qtyColor(adj.quantity_changed)}`}>
                               {qtyPrefix(adj.quantity_changed)}{adj.quantity_changed} Units
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-xs text-slate-500 max-w-[200px] truncate">{adj.reason || "Audit adjustment"}</td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
-                              adj.status === "Completed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
+                          <td className="py-3.5 px-4 text-slate-500 max-w-xs truncate font-medium">
+                            {adj.reason || "Audit adjustment"}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                              adj.status === "Completed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80" : "bg-amber-50 text-amber-700 border border-amber-200/80"
                             }`}>
-                              <CheckCircle2 className="size-3.5" /> {adj.status}
+                              <CheckCircle2 className="size-3" /> {adj.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-right space-x-1">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => {
-                                setForm({
-                                  adjustment_number: adj.adjustment_number,
-                                  warehouse: (adj as any).warehouse_id || "",
-                                  adjustment_type: adj.adjustment_type || "Write-Off",
-                                  reason: adj.reason || "",
-                                  adjustment_date: adj.created_at ? adj.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
-                                });
-                                if (adj.items && adj.items.length > 0) {
-                                  setItems(adj.items.map((it: any) => ({
-                                    product_id: it.product_id,
-                                    product_name: it.product_name,
+                          <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => {
+                                  setForm({
+                                    adjustment_number: adj.adjustment_number,
+                                    warehouse: (adj as any).warehouse_id || "",
                                     adjustment_type: adj.adjustment_type || "Write-Off",
-                                    quantity_changed: Number(it.quantity_changed) || 1,
-                                    unit_price: Number(it.unit_price) || 0,
-                                    reason: adj.reason || ""
-                                  })));
-                                }
-                                setViewMode("create");
-                              }}
-                              className="h-8 gap-1.5 font-bold rounded-lg hover:bg-amber-50"
-                            >
-                              <Eye className="size-4" /> View / Edit Page
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(adj.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
-                              <Trash2 className="size-4" />
-                            </Button>
+                                    reason: adj.reason || "",
+                                    adjustment_date: adj.created_at ? adj.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                  });
+                                  if (adj.items && adj.items.length > 0) {
+                                    setItems(adj.items.map((it: any) => ({
+                                      product_id: it.product_id,
+                                      product_name: it.product_name,
+                                      adjustment_type: adj.adjustment_type || "Write-Off",
+                                      quantity_changed: Number(it.quantity_changed) || 1,
+                                      unit_price: Number(it.unit_price) || 0,
+                                      reason: adj.reason || ""
+                                    })));
+                                  }
+                                  setViewMode("create");
+                                }}
+                                className="size-8 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition cursor-pointer"
+                                title="View / Edit Adjustment"
+                              >
+                                <Eye className="size-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(adj.id)}
+                                className="size-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center transition cursor-pointer"
+                                title="Delete Adjustment"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-                        {isExpanded && (
-                          <tr className="bg-slate-50/80">
-                            <td colSpan={6} className="p-6 border-b border-amber-100">
-                              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-                                <div className="flex flex-wrap justify-between items-center gap-3 border-b pb-3">
-                                  <div>
-                                    <div className="text-xs font-bold text-amber-600 uppercase tracking-wider">Adjustment Voucher Audit Details</div>
-                                    <div className="text-lg font-black text-slate-900 mt-0.5">{adj.adjustment_number}</div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-slate-500 font-mono">Adjustment Type: {adj.adjustment_type}</span>
-                                    <Button size="sm" variant="outline" onClick={() => window.print()} className="h-8 text-xs font-bold rounded-lg">
-                                      <Printer className="size-3.5 mr-1" /> Print Adjustment Voucher
-                                    </Button>
-                                  </div>
-                                </div>
-
-                                <div>
-                                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                    <FileText className="size-3.5 text-amber-500" /> Adjusted Line Items & Variance Breakdown
-                                  </h4>
-                                  <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                    <table className="w-full text-sm text-left">
-                                      <thead className="bg-slate-100 text-slate-600 text-xs uppercase font-bold">
-                                        <tr>
-                                          <th className="px-4 py-2.5">Product ID / Name</th>
-                                          <th className="px-4 py-2.5">Adjustment Type</th>
-                                          <th className="px-4 py-2.5 text-center">Qty Variance</th>
-                                          <th className="px-4 py-2.5">Audit Reason</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-slate-100 bg-white">
-                                        <tr className="hover:bg-slate-50">
-                                          <td className="px-4 py-2.5 font-semibold text-slate-800">{prodObj?.name || adj.product_id}</td>
-                                          <td className="px-4 py-2.5 font-bold text-slate-700">{adj.adjustment_type}</td>
-                                          <td className={`px-4 py-2.5 text-center font-bold font-mono ${adj.quantity_changed < 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                                            {adj.quantity_changed > 0 ? `+${adj.quantity_changed}` : adj.quantity_changed} Units
-                                          </td>
-                                          <td className="px-4 py-2.5 text-xs text-slate-600">{adj.reason || "Physical count audit variance"}</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="px-4 py-3 border-t border-slate-200/80 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500 font-medium">
+                <span>Showing {filtered.length} of {adjustments.length} adjustment records</span>
+                <span className="font-semibold text-slate-700">Click any row to view voucher details</span>
+              </div>
             </div>
-          </Card>
+          )}
         </>
       ) : (
         /* ══════════════════════════════════════════════════════════════════════ */
