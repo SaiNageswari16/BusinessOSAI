@@ -2,7 +2,7 @@ import {
   Activity, AlertTriangle, Archive, AreaChart, ArrowDownToLine, ArrowRightLeft, Banknote, BarChart3, Barcode, Blocks,
   BookOpen, Boxes, BrainCircuit, Briefcase, BriefcaseBusiness, Building, Building2, Calculator, Calendar, CalendarClock,
   CalendarRange, CalendarX, ChartPie, ChartSpline, CircleDollarSign, ClipboardCheck, ClipboardList, Clock, Cog, Columns,
-  Combine, Compass, Component, Contact, CreditCard, Crosshair, Database, DoorOpen, Factory, FileCheck,
+  Combine, Compass, Component, Contact, CreditCard, Crosshair, Crown, Database, DoorOpen, Factory, FileCheck,
   FileText, Fingerprint, FlaskConical, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
   Heart, HeartHandshake, History, Image, Inbox, Laptop, Layers, LayoutDashboard, LibraryBig, LineChart,
   ListChecks, Lock, Map, MapPin, Megaphone, MessageSquare, MessagesSquare, Microscope, Monitor, Navigation,
@@ -34,6 +34,7 @@ export const nav: NavGroup[] = [
   {
     group: "Workspace", theme: "indigo", icon: Package, items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view:dashboard" },
+      { to: "/portfolio", label: "Owner Portfolio", icon: Crown, badge: "PRO" },
       { to: "/dashboard?tab=lazymonkey_ai", label: "LazyMonkey AI", icon: Sparkles, badge: "OS", permission: "view:dashboard" },
     ]
   },

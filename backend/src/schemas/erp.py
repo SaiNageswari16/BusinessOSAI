@@ -32,9 +32,10 @@ class RegistrationResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    email: str
+    password: str
     tenant_slug: str | None = None
+
 
 
 class TokenResponse(BaseModel):

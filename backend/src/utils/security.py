@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
@@ -386,17 +386,32 @@ async def seed_permissions(db: AsyncSession) -> None:
 
 
 async def create_super_admin_role(db: AsyncSession, tenant_id) -> Role:
-    role = Role(
-        tenant_id=tenant_id,
-        name="Super Admin",
-        description="Full access to all modules and system settings",
-        is_system=True,
+    role = await db.scalar(
+        select(Role).where(
+            Role.tenant_id == tenant_id,
+            func.lower(Role.name) == "super admin"
+        )
     )
-    db.add(role)
-    await db.flush()
+    if not role:
+        role = Role(
+            tenant_id=tenant_id,
+            name="Super Admin",
+            description="Full access to all modules and system settings",
+            is_system=True,
+        )
+        db.add(role)
+        await db.flush()
 
-    permissions = await db.execute(select(Permission))
-    for permission in permissions.scalars().all():
-        db.add(RolePermission(role_id=role.id, permission_id=permission.id))
+    # Ensure all permissions are mapped to this Super Admin role
+    permissions = (await db.execute(select(Permission))).scalars().all()
+    existing_perm_ids = set(
+        (await db.execute(
+            select(RolePermission.permission_id).where(RolePermission.role_id == role.id)
+        )).scalars().all()
+    )
+    for permission in permissions:
+        if permission.id not in existing_perm_ids:
+            db.add(RolePermission(role_id=role.id, permission_id=permission.id))
     await db.flush()
     return role
+

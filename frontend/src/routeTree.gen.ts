@@ -35,6 +35,8 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
 import { Route as AppProcurementRouteImport } from './routes/_app.procurement'
 import { Route as AppPosRouteImport } from './routes/_app.pos'
+import { Route as AppPortfolioRouteImport } from './routes/_app.portfolio'
+import { Route as AppOwnerPortfolioRouteImport } from './routes/_app.owner-portfolio'
 import { Route as AppMarketplaceRouteImport } from './routes/_app.marketplace'
 import { Route as AppIotRouteImport } from './routes/_app.iot'
 import { Route as AppInventoryRouteImport } from './routes/_app.inventory'
@@ -175,6 +177,16 @@ const AppPosRoute = AppPosRouteImport.update({
   path: '/pos',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPortfolioRoute = AppPortfolioRouteImport.update({
+  id: '/portfolio',
+  path: '/portfolio',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOwnerPortfolioRoute = AppOwnerPortfolioRouteImport.update({
+  id: '/owner-portfolio',
+  path: '/owner-portfolio',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppMarketplaceRoute = AppMarketplaceRouteImport.update({
   id: '/marketplace',
   path: '/marketplace',
@@ -241,6 +253,8 @@ export interface FileRoutesByFullPath {
   '/inventory': typeof AppInventoryRoute
   '/iot': typeof AppIotRoute
   '/marketplace': typeof AppMarketplaceRoute
+  '/owner-portfolio': typeof AppOwnerPortfolioRoute
+  '/portfolio': typeof AppPortfolioRoute
   '/pos': typeof AppPosRoute
   '/procurement': typeof AppProcurementRoute
   '/reports': typeof AppReportsRoute
@@ -277,6 +291,8 @@ export interface FileRoutesByTo {
   '/inventory': typeof AppInventoryRoute
   '/iot': typeof AppIotRoute
   '/marketplace': typeof AppMarketplaceRoute
+  '/owner-portfolio': typeof AppOwnerPortfolioRoute
+  '/portfolio': typeof AppPortfolioRoute
   '/pos': typeof AppPosRoute
   '/procurement': typeof AppProcurementRoute
   '/reports': typeof AppReportsRoute
@@ -316,6 +332,8 @@ export interface FileRoutesById {
   '/_app/inventory': typeof AppInventoryRoute
   '/_app/iot': typeof AppIotRoute
   '/_app/marketplace': typeof AppMarketplaceRoute
+  '/_app/owner-portfolio': typeof AppOwnerPortfolioRoute
+  '/_app/portfolio': typeof AppPortfolioRoute
   '/_app/pos': typeof AppPosRoute
   '/_app/procurement': typeof AppProcurementRoute
   '/_app/reports': typeof AppReportsRoute
@@ -355,6 +373,8 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/iot'
     | '/marketplace'
+    | '/owner-portfolio'
+    | '/portfolio'
     | '/pos'
     | '/procurement'
     | '/reports'
@@ -391,6 +411,8 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/iot'
     | '/marketplace'
+    | '/owner-portfolio'
+    | '/portfolio'
     | '/pos'
     | '/procurement'
     | '/reports'
@@ -429,6 +451,8 @@ export interface FileRouteTypes {
     | '/_app/inventory'
     | '/_app/iot'
     | '/_app/marketplace'
+    | '/_app/owner-portfolio'
+    | '/_app/portfolio'
     | '/_app/pos'
     | '/_app/procurement'
     | '/_app/reports'
@@ -645,6 +669,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/portfolio': {
+      id: '/_app/portfolio'
+      path: '/portfolio'
+      fullPath: '/portfolio'
+      preLoaderRoute: typeof AppPortfolioRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/owner-portfolio': {
+      id: '/_app/owner-portfolio'
+      path: '/owner-portfolio'
+      fullPath: '/owner-portfolio'
+      preLoaderRoute: typeof AppOwnerPortfolioRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/marketplace': {
       id: '/_app/marketplace'
       path: '/marketplace'
@@ -728,6 +766,8 @@ interface AppRouteChildren {
   AppInventoryRoute: typeof AppInventoryRoute
   AppIotRoute: typeof AppIotRoute
   AppMarketplaceRoute: typeof AppMarketplaceRoute
+  AppOwnerPortfolioRoute: typeof AppOwnerPortfolioRoute
+  AppPortfolioRoute: typeof AppPortfolioRoute
   AppPosRoute: typeof AppPosRoute
   AppProcurementRoute: typeof AppProcurementRoute
   AppReportsRoute: typeof AppReportsRoute
@@ -745,6 +785,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppInventoryRoute: AppInventoryRoute,
   AppIotRoute: AppIotRoute,
   AppMarketplaceRoute: AppMarketplaceRoute,
+  AppOwnerPortfolioRoute: AppOwnerPortfolioRoute,
+  AppPortfolioRoute: AppPortfolioRoute,
   AppPosRoute: AppPosRoute,
   AppProcurementRoute: AppProcurementRoute,
   AppReportsRoute: AppReportsRoute,

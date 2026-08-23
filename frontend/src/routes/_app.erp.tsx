@@ -154,15 +154,32 @@ function ErpModule() {
   const searchStr = routerState.location.searchStr;
   const { hasPermission } = useRbac();
 
-  if (!hasPermission("view:erp")) {
-    return <Unauthorized />;
-  }
-
   // Parse search param ?tab=...
   let activeTab = "companies";
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "companies";
+  }
+
+  const isSystemAdminTab = [
+    "super_admin",
+    "global_users",
+    "audit_logs",
+    "activity_logs",
+    "error_logs",
+    "system_health",
+    "backup_restore",
+    "global_settings",
+  ].includes(activeTab);
+
+  if (isSystemAdminTab) {
+    if (!hasPermission("manage:system_admin")) {
+      return <Unauthorized />;
+    }
+  } else {
+    if (!hasPermission("view:erp")) {
+      return <Unauthorized />;
+    }
   }
 
   const requiredPerm = tabPermissions[activeTab];

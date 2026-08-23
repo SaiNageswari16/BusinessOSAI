@@ -14,16 +14,26 @@ import {
   Plus,
   Copy,
   Sparkles,
-  ShieldAlert
+  ShieldAlert,
+  CheckCircle2,
+  AlertCircle,
+  Activity,
+  History,
+  Settings,
+  Database,
+  ExternalLink,
+  Crown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "@tanstack/react-router";
 import {
   systemAdminApi,
   SystemTenant,
   SystemUser,
+  SystemPendingApproval,
   CreateSystemTenantPayload,
   CreateSystemUserPayload,
 } from "@/lib/api-client";
@@ -486,12 +496,13 @@ function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
   );
 }
 
-// ─── Main Simple Super Admin Component ───────────────────────────────────────
+// ─── Main Super Admin Component ───────────────────────────────────────────────
 
 export function SuperAdminManagement() {
-  const [activeTab, setActiveTab] = useState<"tenants" | "users">("tenants");
+  const [activeTab, setActiveTab] = useState<"tenants" | "users" | "pending">("tenants");
   const [tenants, setTenants] = useState<SystemTenant[]>([]);
   const [users, setUsers] = useState<SystemUser[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<SystemPendingApproval[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
@@ -504,7 +515,7 @@ export function SuperAdminManagement() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [tenantsData, usersData] = await Promise.all([
+      const [tenantsData, usersData, pendingData] = await Promise.all([
         systemAdminApi.listTenants().catch((e) => {
           if (e.status === 403) setIsForbidden(true);
           return [];
@@ -513,9 +524,11 @@ export function SuperAdminManagement() {
           if (e.status === 403) setIsForbidden(true);
           return [];
         }),
+        systemAdminApi.listPendingApprovals().catch(() => []),
       ]);
       setTenants(tenantsData);
       setUsers(usersData);
+      setPendingApprovals(pendingData);
     } finally {
       setLoading(false);
     }
@@ -544,6 +557,28 @@ export function SuperAdminManagement() {
       void loadData();
     } catch (err: any) {
       toast.error(err.message || "Failed to update user status");
+    }
+  };
+
+  const handleToggleSuperAdmin = async (u: SystemUser) => {
+    const nextState = !u.is_platform_admin;
+    try {
+      await systemAdminApi.toggleSuperAdmin(u.id, nextState);
+      toast.success(`Platform God Mode ${nextState ? "granted to" : "revoked from"} ${u.full_name}`);
+      void loadData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to toggle Super Admin status");
+    }
+  };
+
+  const handleApprovePendingTenant = async (p: SystemPendingApproval) => {
+    try {
+      const defaultModules = p.requested_modules.length > 0 ? p.requested_modules : ["inventory", "pos", "accounting", "crm"];
+      await systemAdminApi.approveTenant(p.tenant_id, defaultModules);
+      toast.success(`Workspace "${p.tenant_name}" approved successfully!`);
+      void loadData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to approve workspace");
     }
   };
 
@@ -593,31 +628,41 @@ export function SuperAdminManagement() {
     });
   }, [users, search, tenantFilter]);
 
+  const activeTenantsCount = useMemo(() => tenants.filter((t) => t.status === "active").length, [tenants]);
+  const superAdminCount = useMemo(() => users.filter((u) => u.is_platform_admin).length, [users]);
+
   if (isForbidden) {
     return (
       <div className="p-8 text-center bg-card rounded-2xl border max-w-md mx-auto my-12 space-y-3">
         <ShieldAlert className="size-10 text-destructive mx-auto" />
         <h2 className="text-lg font-bold">Access Restricted</h2>
-        <p className="text-xs text-muted-foreground">Only Super Admins can access this page.</p>
+        <p className="text-xs text-muted-foreground">Only Platform Super Admins can access this page.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
-      {/* Simple Clean Header */}
+    <div className="space-y-6">
+      {/* Header & Quick Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card p-5 rounded-2xl border shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
-            <ShieldCheck className="size-6" />
+          <div className="size-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold shadow-inner">
+            <Crown className="size-6 text-amber-500" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-foreground">Super Admin</h1>
-            <p className="text-xs text-muted-foreground">Manage organisations, workspace slugs, and platform users</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-foreground">Super Admin & Platform Operations</h1>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                GOD MODE
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Universal control plane for multi-tenant organisations, platform users, and global infrastructure
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <Button
             size="sm"
             onClick={() => setShowCreateTenant(true)}
@@ -645,7 +690,92 @@ export function SuperAdminManagement() {
         </div>
       </div>
 
-      {/* Tabs Bar */}
+      {/* KPI Stats Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="bg-card p-4 rounded-xl border shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+            <span>Organisations</span>
+            <Building2 className="size-4 text-primary" />
+          </div>
+          <div className="text-2xl font-bold text-foreground">{tenants.length}</div>
+          <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+            <CheckCircle2 className="size-3" /> {activeTenantsCount} active workspaces
+          </div>
+        </div>
+
+        <div className="bg-card p-4 rounded-xl border shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+            <span>Total Users</span>
+            <Users className="size-4 text-indigo-500" />
+          </div>
+          <div className="text-2xl font-bold text-foreground">{users.length}</div>
+          <div className="text-[11px] text-muted-foreground">Across all organisations</div>
+        </div>
+
+        <div className="bg-card p-4 rounded-xl border shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+            <span>God Mode Admins</span>
+            <Sparkles className="size-4 text-amber-500" />
+          </div>
+          <div className="text-2xl font-bold text-foreground">{superAdminCount}</div>
+          <div className="text-[11px] text-amber-600 font-medium">Full platform privileges</div>
+        </div>
+
+        <div className="bg-card p-4 rounded-xl border shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+            <span>Pending Approvals</span>
+            <AlertCircle className="size-4 text-rose-500" />
+          </div>
+          <div className="text-2xl font-bold text-foreground">{pendingApprovals.length}</div>
+          <div className="text-[11px] text-muted-foreground">Self-service signups</div>
+        </div>
+      </div>
+
+      {/* System Quick Links Hub */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Link
+          to="/erp"
+          search={{ tab: "audit_logs" }}
+          className="flex items-center gap-2.5 p-3 rounded-xl border bg-card/60 hover:bg-muted transition-colors text-xs font-medium text-foreground"
+        >
+          <div className="size-7 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center">
+            <History className="size-3.5" />
+          </div>
+          <span>Audit Logs</span>
+        </Link>
+        <Link
+          to="/erp"
+          search={{ tab: "system_health" }}
+          className="flex items-center gap-2.5 p-3 rounded-xl border bg-card/60 hover:bg-muted transition-colors text-xs font-medium text-foreground"
+        >
+          <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+            <Activity className="size-3.5" />
+          </div>
+          <span>System Health</span>
+        </Link>
+        <Link
+          to="/erp"
+          search={{ tab: "backup_restore" }}
+          className="flex items-center gap-2.5 p-3 rounded-xl border bg-card/60 hover:bg-muted transition-colors text-xs font-medium text-foreground"
+        >
+          <div className="size-7 rounded-lg bg-violet-500/10 text-violet-500 flex items-center justify-center">
+            <Database className="size-3.5" />
+          </div>
+          <span>Backup & Restore</span>
+        </Link>
+        <Link
+          to="/erp"
+          search={{ tab: "global_settings" }}
+          className="flex items-center gap-2.5 p-3 rounded-xl border bg-card/60 hover:bg-muted transition-colors text-xs font-medium text-foreground"
+        >
+          <div className="size-7 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center">
+            <Settings className="size-3.5" />
+          </div>
+          <span>Global Settings</span>
+        </Link>
+      </div>
+
+      {/* Navigation Tabs Bar */}
       <div className="flex items-center justify-between gap-4 border-b pb-1 flex-wrap">
         <div className="flex items-center gap-2">
           <button
@@ -668,7 +798,18 @@ export function SuperAdminManagement() {
                 : "text-muted-foreground hover:bg-muted"
             )}
           >
-            <Users className="size-3.5" /> Users ({users.length})
+            <Users className="size-3.5" /> Platform Users ({users.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("pending")}
+            className={cn(
+              "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5",
+              activeTab === "pending"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            <AlertCircle className="size-3.5" /> Pending Approvals ({pendingApprovals.length})
           </button>
         </div>
 
@@ -802,6 +943,7 @@ export function SuperAdminManagement() {
                 <th className="p-3.5">User</th>
                 <th className="p-3.5">Organisation</th>
                 <th className="p-3.5">Role</th>
+                <th className="p-3.5">God Mode</th>
                 <th className="p-3.5">Status</th>
                 <th className="p-3.5 text-right">Actions</th>
               </tr>
@@ -809,7 +951,7 @@ export function SuperAdminManagement() {
             <tbody className="divide-y divide-border">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
                     No users found.
                   </td>
                 </tr>
@@ -839,6 +981,22 @@ export function SuperAdminManagement() {
                             User
                           </span>
                         )}
+                      </td>
+                      <td className="p-3.5">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSuperAdmin(u)}
+                          className={cn(
+                            "px-2 py-0.5 rounded-full text-[10px] font-bold transition-all inline-flex items-center gap-1",
+                            u.is_platform_admin
+                              ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          )}
+                          title="Click to toggle platform god-mode"
+                        >
+                          <Crown className="size-2.5" />
+                          {u.is_platform_admin ? "Active" : "Disabled"}
+                        </button>
                       </td>
                       <td className="p-3.5">
                         <button
@@ -878,6 +1036,69 @@ export function SuperAdminManagement() {
                     </tr>
                   );
                 })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Tab 3: Pending Approvals */}
+      {activeTab === "pending" && (
+        <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-muted/40 border-b font-semibold text-muted-foreground">
+              <tr>
+                <th className="p-3.5">Workspace Name</th>
+                <th className="p-3.5">Slug</th>
+                <th className="p-3.5">Admin Contact</th>
+                <th className="p-3.5">Requested Modules</th>
+                <th className="p-3.5">Requested At</th>
+                <th className="p-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {pendingApprovals.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    No pending registration approvals.
+                  </td>
+                </tr>
+              ) : (
+                pendingApprovals.map((p) => (
+                  <tr key={p.tenant_id} className="hover:bg-muted/20 transition-colors">
+                    <td className="p-3.5 font-semibold text-foreground">
+                      {p.tenant_name}
+                    </td>
+                    <td className="p-3.5 font-mono text-[11px] text-muted-foreground">
+                      {p.tenant_slug}
+                    </td>
+                    <td className="p-3.5">
+                      <div className="font-semibold text-foreground">{p.admin_name || "Admin"}</div>
+                      <div className="text-[11px] text-muted-foreground">{p.admin_email}</div>
+                    </td>
+                    <td className="p-3.5">
+                      <div className="flex flex-wrap gap-1">
+                        {(p.requested_modules.length > 0 ? p.requested_modules : ["inventory", "pos"]).map((m) => (
+                          <span key={m} className="px-1.5 py-0.5 rounded text-[10px] bg-primary/10 text-primary">
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="p-3.5 text-muted-foreground">
+                      {p.requested_at ? new Date(p.requested_at).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="p-3.5 text-right">
+                      <Button
+                        size="sm"
+                        onClick={() => handleApprovePendingTenant(p)}
+                        className="gradient-brand text-white border-0 text-xs h-7"
+                      >
+                        <CheckCircle2 className="size-3 mr-1" /> Approve
+                      </Button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

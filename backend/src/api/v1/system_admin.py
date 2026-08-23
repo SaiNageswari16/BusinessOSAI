@@ -81,15 +81,18 @@ class UpdateTenantModulesPayload(ORMModel):
 # ─── Helpers ──────────────────────────────────────────────────────
 
 def require_platform_admin(ctx: CurrentUserContext):
-    # Allow platform administration access for system/nimbus-retail tenant owners and super admins
-    is_platform_tenant = ctx.user.tenant and ctx.user.tenant.slug in ("system", "nimbus-retail")
+    # Allow platform administration access for platform super admins and system tenant admins
+    is_platform_admin = bool(getattr(ctx.user, "is_platform_admin", False))
+    is_platform_tenant = bool(ctx.user.tenant and ctx.user.tenant.slug in ("system", "default", "nimbus-retail"))
     is_admin = (
-        ctx.user.is_tenant_owner
+        is_platform_admin
+        or ctx.user.is_tenant_owner
         or ctx.has_permission("all")
         or ctx.has_permission("manage:all")
         or ctx.has_permission("super_admin")
+        or ctx.has_permission("manage:system_admin")
     )
-    if not (is_platform_tenant and is_admin) and not ctx.user.is_tenant_owner:
+    if not (is_platform_admin or (is_platform_tenant and is_admin) or ctx.user.is_tenant_owner):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Only system platform administrators can access SaaS administration endpoints.",
