@@ -296,8 +296,6 @@ async def _create_invoice_and_send_whatsapp(
             total_amount=total_amt,
             amount_paid=actual_paid,
             balance_due=bal_due,
-            payment_status=pay_status,
-            payment_method=pay_method,
         )
         db.add(invoice)
         await db.flush()

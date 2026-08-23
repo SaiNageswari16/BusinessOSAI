@@ -207,12 +207,20 @@ class ProductRFIDResponse(ProductRFIDBase, TimestampSchema):
 
 class TraceabilityEventBase(BaseModel):
     event_type: str
-    product_id: UUID
     batch_id: Optional[UUID] = None
     serial_id: Optional[UUID] = None
-    location: Optional[str] = None
-    actor: Optional[str] = None
+    source_location: Optional[str] = None
+    destination_location: Optional[str] = None
+    source_warehouse_id: Optional[UUID] = None
+    destination_warehouse_id: Optional[UUID] = None
+    party_type: Optional[str] = None
+    party_name: Optional[str] = None
+    reference_document: Optional[str] = None
+    quantity: Optional[int] = 1
+    unit: Optional[str] = "Pcs"
     notes: Optional[str] = None
+    event_at: Optional[datetime] = None
+    actor_user_id: Optional[UUID] = None
 
 class TraceabilityEventCreate(TraceabilityEventBase):
     pass

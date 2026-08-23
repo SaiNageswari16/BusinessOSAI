@@ -1102,6 +1102,15 @@ function PosTerminalInner() {
       const response = await posApi.checkout(payload);
       console.log("Checkout Success! Receipt:", response.receipt_number);
 
+      const actualPaid = paymentsArray
+        .filter(p => p.payment_method?.toLowerCase() !== 'credit')
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const balanceDue = Number(Math.max(0, total - actualPaid).toFixed(2));
+      const isCreditOnly = actualPaid <= 0.01;
+      const isPartial = actualPaid > 0.01 && actualPaid < total - 0.01;
+      const paymentStatusDisplay = isCreditOnly ? 'UNPAID' : (isPartial ? 'PARTIALLY PAID' : 'PAID');
+      const paymentMethodSummary = paymentsArray.map(p => `${p.payment_method?.toUpperCase()} (₹${Number(p.amount).toFixed(2)})`).join(', ') || 'Cash';
+
       const billData = {
         invoice_number: response.receipt_number || `REC-${Date.now().toString().slice(-6)}`,
         date: new Date(),
@@ -1121,8 +1130,10 @@ function PosTerminalInner() {
         discount_amount: totalDiscount,
         tax_amount: tax,
         grand_total: total,
-        payment_method: paymentsArray[0]?.payment_method || 'Cash',
-        payment_status: 'PAID'
+        paid_amount: actualPaid,
+        balance_due: balanceDue,
+        payment_method: paymentMethodSummary,
+        payment_status: paymentStatusDisplay,
       };
 
       setCompletedCheckoutBill(billData);
@@ -1155,12 +1166,13 @@ function PosTerminalInner() {
           invoice_date: new Date().toISOString().slice(0, 10),
           due_date: new Date().toISOString().slice(0, 10),
           payment_mode: billData.payment_method,
-          payment_status: "Paid",
+          payment_status: isCreditOnly ? "Unpaid" : (isPartial ? "Partially Paid" : "Paid"),
           subtotal: subtotal,
           total_tax: tax,
           discount_amount: totalDiscount,
           grand_total: total,
-          amount_received: total,
+          amount_received: actualPaid,
+          balance_due: balanceDue,
           print_status: "Thermal Printed",
           items: billData.items,
         };

@@ -45,6 +45,7 @@ import {
 } from "../../lib/api-client";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { RealBarcodeSvg } from "../../lib/barcode-svg";
+import { encodeCode128 } from "../../lib/code128";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -100,10 +101,6 @@ function BatchPrintModal({
   const [labelSize, setLabelSize] = useState<string>(activeTemplate?.paperSize || "50x25");
   const printAreaRef = useRef<HTMLDivElement | null>(null);
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const fields = activeTemplate?.fields || {
     showCompanyName: true,
     showProductName: true,
@@ -112,6 +109,349 @@ function BatchPrintModal({
     showSKU: true,
     showBarcodeGraphic: true,
     showMfgExpDate: true,
+  };
+
+  const handlePrint = () => {
+    const storeName = activeTemplate?.storeName || "LAZYMONKEY AI STORE";
+    const barcodeValue = batch.barcode || batch.batch_number || "BATCH-001";
+    const mrpVal = Number(batch.mrp || 0);
+    const priceVal = Number(batch.selling_price || 0);
+    const mfgDate = batch.manufacturing_date ? String(batch.manufacturing_date).slice(0, 10) : "";
+    const expDate = batch.expiry_date ? String(batch.expiry_date).slice(0, 10) : "";
+
+    // Generate ISO/IEC 15417 Code-128 vector bars
+    const bars = encodeCode128(barcodeValue);
+    const isLarge = labelSize === "100x50" || labelSize === "75x50";
+    const isCompact = labelSize === "38x25";
+    const unit = isLarge ? 1.8 : isCompact ? 1.0 : 1.3;
+    const quietZone = Math.round(6 * unit);
+    let totalModules = 0;
+    bars.forEach((b) => (totalModules += b.width));
+    const svgWidth = Math.round(totalModules * unit + quietZone * 2);
+    const barHeight = isLarge ? 36 : isCompact ? 18 : 22;
+
+    let xModules = 0;
+    const rectsHtml = bars
+      .map((b) => {
+        const x1 = Math.round(quietZone + xModules * unit);
+        const x2 = Math.round(quietZone + (xModules + b.width) * unit);
+        const wPx = Math.max(1, x2 - x1);
+        xModules += b.width;
+        if (!b.isBlack) return "";
+        return `<rect x="${x1}" y="0" width="${wPx}" height="${barHeight}" fill="#000000" />`;
+      })
+      .join("");
+
+    const barcodeSvgHtml = `
+      <svg width="${svgWidth}" height="${barHeight}" viewBox="0 0 ${svgWidth} ${barHeight}" shape-rendering="crispEdges" style="display:block; margin:0 auto; max-width:92%; height:${barHeight}px;">
+        <rect width="${svgWidth}" height="${barHeight}" fill="#ffffff" />
+        ${rectsHtml}
+      </svg>
+    `;
+
+    // Size parameters in mm & pt
+    let pageWidth = "50mm";
+    let pageHeight = "25mm";
+    let storeSize = "6.5pt";
+    let prodSize = "7.2pt";
+    let metaSize = "5.5pt";
+    let priceSize = "6.8pt";
+    let barcodeTextSize = "6.2pt";
+    let footerSize = "5.2pt";
+    const is2Up = labelSize === "100x25_2up";
+
+    if (labelSize === "38x25") {
+      pageWidth = "38mm";
+      pageHeight = "25mm";
+      storeSize = "5.5pt";
+      prodSize = "6.5pt";
+      metaSize = "5pt";
+      priceSize = "6pt";
+      barcodeTextSize = "5.5pt";
+      footerSize = "4.8pt";
+    } else if (labelSize === "100x25_2up") {
+      pageWidth = "100mm";
+      pageHeight = "25mm";
+      storeSize = "6.5pt";
+      prodSize = "7.2pt";
+      metaSize = "5.5pt";
+      priceSize = "6.8pt";
+      barcodeTextSize = "6.2pt";
+      footerSize = "5.2pt";
+    } else if (labelSize === "100x50") {
+      pageWidth = "100mm";
+      pageHeight = "50mm";
+      storeSize = "10pt";
+      prodSize = "11.5pt";
+      metaSize = "8.5pt";
+      priceSize = "10.5pt";
+      barcodeTextSize = "9pt";
+      footerSize = "8pt";
+    } else if (labelSize === "75x50") {
+      pageWidth = "75mm";
+      pageHeight = "50mm";
+      storeSize = "9pt";
+      prodSize = "10pt";
+      metaSize = "7.5pt";
+      priceSize = "9pt";
+      barcodeTextSize = "8pt";
+      footerSize = "7pt";
+    } else if (labelSize === "retail") {
+      pageWidth = "60mm";
+      pageHeight = "35mm";
+      storeSize = "7.5pt";
+      prodSize = "8.5pt";
+      metaSize = "6.5pt";
+      priceSize = "8pt";
+      barcodeTextSize = "7pt";
+      footerSize = "6pt";
+    }
+
+    const renderSingleCard = () => `
+      <div class="sticker-card">
+        ${fields.showCompanyName ? `<div class="sticker-store-name">${storeName}</div>` : ""}
+        <div class="sticker-row">
+          <div class="sticker-left">
+            ${fields.showProductName ? `<div class="sticker-prod-name">${batch.product_name || "Product"}</div>` : ""}
+            ${fields.showSKU ? `<div class="sticker-sku">SKU: ${batch.sku || "—"} | ${batch.uom || "Pcs"}</div>` : ""}
+          </div>
+          <div class="sticker-right">
+            ${fields.showMRP && mrpVal > 0 ? `<div class="sticker-mrp">MRP: ₹${mrpVal.toLocaleString("en-IN")}</div>` : ""}
+            ${fields.showPrice && priceVal > 0 ? `<div class="sticker-rate">Rate: ₹${priceVal.toLocaleString("en-IN")}</div>` : ""}
+          </div>
+        </div>
+        ${
+          fields.showBarcodeGraphic
+            ? `
+          <div class="sticker-barcode-wrap">
+            ${barcodeSvgHtml}
+            <div class="sticker-barcode-num">${barcodeValue}</div>
+          </div>
+        `
+            : ""
+        }
+        <div class="sticker-footer">
+          <div><strong>LOT:</strong> ${batch.batch_number}</div>
+          <div style="text-align:center;">${expDate ? `<strong>EXP:</strong> ${expDate}` : ""}</div>
+          <div style="text-align:right;"><strong>BIN:</strong> ${batch.location || batch.warehouse_name || "Shelf 1"}</div>
+        </div>
+      </div>
+    `;
+
+    const copiesCount = Math.max(1, labelCopies);
+    let pagesHtml = "";
+
+    if (is2Up) {
+      const pageCount = Math.ceil(copiesCount / 2);
+      for (let p = 0; p < pageCount; p++) {
+        pagesHtml += `
+          <div class="sticker-page-2up">
+            <div class="sticker-half">${renderSingleCard()}</div>
+            <div class="sticker-half">${p * 2 + 1 < copiesCount ? renderSingleCard() : `<div class="sticker-card" style="border:none; visibility:hidden;"></div>`}</div>
+          </div>
+        `;
+      }
+    } else {
+      pagesHtml = Array.from({ length: copiesCount }, () => `
+        <div class="sticker-page-item">
+          ${renderSingleCard()}
+        </div>
+      `).join("\n");
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Batch Barcode Labels - ${batch.batch_number}</title>
+          <style>
+            @page {
+              size: ${pageWidth} ${pageHeight};
+              margin: 0mm;
+            }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            .sticker-page-item {
+              width: ${pageWidth};
+              height: ${pageHeight};
+              max-width: ${pageWidth};
+              max-height: ${pageHeight};
+              page-break-after: always;
+              break-after: page;
+              box-sizing: border-box;
+              padding: 0.6mm 1mm;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+              background: #ffffff;
+            }
+            .sticker-page-2up {
+              width: ${pageWidth};
+              height: ${pageHeight};
+              max-width: ${pageWidth};
+              max-height: ${pageHeight};
+              page-break-after: always;
+              break-after: page;
+              box-sizing: border-box;
+              padding: 0.6mm 1mm;
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 2mm;
+              align-items: center;
+              overflow: hidden;
+              background: #ffffff;
+            }
+            .sticker-half {
+              width: 100%;
+              height: 100%;
+              overflow: hidden;
+            }
+            .sticker-page-item:last-child, .sticker-page-2up:last-child {
+              page-break-after: auto;
+              break-after: auto;
+            }
+            .sticker-card {
+              width: 100%;
+              height: 100%;
+              border: 1px solid #64748b;
+              border-radius: 3px;
+              padding: 0.8mm 1.2mm;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              box-sizing: border-box;
+              background: #ffffff;
+              overflow: hidden;
+            }
+            .sticker-store-name {
+              text-align: center;
+              font-size: ${storeSize};
+              font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 0.4px;
+              border-bottom: 0.75px solid #94a3b8;
+              padding-bottom: 0.5px;
+              line-height: 1;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+            .sticker-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 2px;
+              line-height: 1;
+              margin-top: 0.5px;
+            }
+            .sticker-left {
+              flex: 1;
+              min-width: 0;
+            }
+            .sticker-prod-name {
+              font-size: ${prodSize};
+              font-weight: 800;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              color: #000000;
+              line-height: 1.05;
+            }
+            .sticker-sku {
+              font-size: ${metaSize};
+              color: #334155;
+              font-family: monospace;
+              line-height: 1;
+            }
+            .sticker-right {
+              text-align: right;
+              white-space: nowrap;
+              line-height: 1.05;
+            }
+            .sticker-mrp {
+              font-size: ${priceSize};
+              font-weight: 800;
+              color: #000000;
+            }
+            .sticker-rate {
+              font-size: ${metaSize};
+              font-weight: 700;
+              color: #047857;
+            }
+            .sticker-barcode-wrap {
+              text-align: center;
+              margin: 0.5px 0;
+            }
+            .sticker-barcode-num {
+              font-size: ${barcodeTextSize};
+              font-family: "Courier New", Courier, monospace;
+              font-weight: 800;
+              letter-spacing: 0.6px;
+              line-height: 1;
+              margin-top: 0.5px;
+              color: #000000;
+            }
+            .sticker-footer {
+              display: grid;
+              grid-template-columns: 1fr 1fr 1fr;
+              font-size: ${footerSize};
+              color: #1e293b;
+              border-top: 0.75px solid #94a3b8;
+              padding-top: 0.5px;
+              line-height: 1;
+              white-space: nowrap;
+              overflow: hidden;
+            }
+          </style>
+        </head>
+        <body>
+          ${pagesHtml}
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    iframe.contentWindow?.focus();
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.print();
+      } catch (e) {
+        console.error("Label print error:", e);
+      } finally {
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 1500);
+      }
+    }, 300);
   };
 
   return (
@@ -140,17 +480,19 @@ function BatchPrintModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                Sticker Size & Template
+                Sticker Size & Printer Roll
               </label>
               <select
                 value={labelSize}
                 onChange={(e) => setLabelSize(e.target.value)}
                 className="w-full h-9 border border-slate-300 rounded-xl px-3 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="50x25">Thermal 50mm × 25mm (2 Inch)</option>
-                <option value="38x25">Compact 38mm × 25mm (1.5 Inch)</option>
-                <option value="100x50">Standard 100mm × 50mm (4 Inch)</option>
-                <option value="retail">Retail Shelf Sticker</option>
+                <option value="50x25">Thermal 50mm × 25mm (2" × 1" - Single Roll)</option>
+                <option value="100x25_2up">Thermal 100mm × 25mm (4" × 1" - 2 Across Dual Roll)</option>
+                <option value="100x50">Thermal 100mm × 50mm (4" × 2" - Shipping & Carton)</option>
+                <option value="75x50">Thermal 75mm × 50mm (3" × 2" - Medium Tag)</option>
+                <option value="38x25">Compact 38mm × 25mm (1.5" × 1" - Jewelry / Pharma)</option>
+                <option value="retail">Retail Shelf Sticker (60mm × 35mm)</option>
               </select>
             </div>
             <div>

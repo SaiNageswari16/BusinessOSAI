@@ -86,19 +86,46 @@ class Settings(BaseSettings):
     facebook_ad_account_id: str | None = Field(default=None, alias="FB_AD_ACCOUNT_ID")
 
 
-    # GST / Tax Lookup & Whitebooks GSP Integration
+    # GST / Tax Lookup & Whitebooks GSP Multi-Module Integration
     gstin_check_api_key: str | None = Field(default=None, alias="GSTIN_CHECK_API_KEY")
     gst_api_key: str | None = Field(default=None, alias="GST_API_KEY")
-    whitebooks_base_url: str = Field(default="https://api.whitebooks.in", alias="WHITEBOOKS_BASE_URL")
-    whitebooks_client_id: str | None = Field(default=None, alias="WHITEBOOKS_CLIENT_ID")
-    whitebooks_client_secret: str | None = Field(default=None, alias="WHITEBOOKS_CLIENT_SECRET")
+    whitebooks_environment: str = Field(default="sandbox", alias="WHITEBOOKS_ENVIRONMENT")
+    whitebooks_base_url: str = Field(default="https://apisandbox.whitebooks.in", alias="WHITEBOOKS_BASE_URL")
+
+    # Module 1: e-Way Bill (EWB)
+    whitebooks_ewb_base_url: str = Field(default="https://apisandbox.whitebooks.in", alias="WHITEBOOKS_EWB_BASE_URL")
+    whitebooks_ewb_client_id: str | None = Field(default="EWBSb8a4ced2-50fd-4ec9-af3b-d20513af7a52", alias="WHITEBOOKS_EWB_CLIENT_ID")
+    whitebooks_ewb_client_secret: str | None = Field(default="EWBS71804adb-a3fc-4fa7-9bf1-39d0637d5505", alias="WHITEBOOKS_EWB_CLIENT_SECRET")
+    whitebooks_ewb_username: str | None = Field(default="BVMGSP", alias="WHITEBOOKS_EWB_USERNAME")
+    whitebooks_ewb_password: str | None = Field(default="Wbooks@0142", alias="WHITEBOOKS_EWB_PASSWORD")
+    whitebooks_ewb_gstin: str | None = Field(default="29AAGCB1286Q000", alias="WHITEBOOKS_EWB_GSTIN")
+
+    # Module 2: GST Filing & Return Portal (GST)
+    whitebooks_gst_base_url: str = Field(default="https://apisandbox.whitebooks.in", alias="WHITEBOOKS_GST_BASE_URL")
+    whitebooks_gst_client_id: str | None = Field(default="GSTS478f82bc-958c-4da6-a6b5-c87afd7b2ad7", alias="WHITEBOOKS_GST_CLIENT_ID")
+    whitebooks_gst_client_secret: str | None = Field(default="GSTS897fbdc8-e45f-4598-9fd1-1150e606d4d5", alias="WHITEBOOKS_GST_CLIENT_SECRET")
+    whitebooks_gst_username: str | None = Field(default="TN_NT2.152383", alias="WHITEBOOKS_GST_USERNAME")
+    whitebooks_gst_password: str | None = Field(default="Wbooks@0142", alias="WHITEBOOKS_GST_PASSWORD")
+    whitebooks_gst_gstin: str | None = Field(default="33AAGCB1286Q1ZB", alias="WHITEBOOKS_GST_GSTIN")
+
+    # Module 3: e-Invoice & IRN Portal (EINV)
+    whitebooks_einv_base_url: str = Field(default="https://apisandbox.whitebooks.in", alias="WHITEBOOKS_EINV_BASE_URL")
+    whitebooks_einv_client_id: str | None = Field(default="EINS234e6aff-d9f9-4369-baad-1c33af717043", alias="WHITEBOOKS_EINV_CLIENT_ID")
+    whitebooks_einv_client_secret: str | None = Field(default="EINS5eb933db-6591-48b7-ab15-e59477010d4c", alias="WHITEBOOKS_EINV_CLIENT_SECRET")
+    whitebooks_einv_username: str | None = Field(default="BVMGSP", alias="WHITEBOOKS_EINV_USERNAME")
+    whitebooks_einv_password: str | None = Field(default="Wbooks@0142", alias="WHITEBOOKS_EINV_PASSWORD")
+    whitebooks_einv_gstin: str | None = Field(default="29AAGCB1286Q000", alias="WHITEBOOKS_EINV_GSTIN")
+
+    # Legacy / Common Whitebooks Fallback
+    whitebooks_client_id: str | None = Field(default="EWBSb8a4ced2-50fd-4ec9-af3b-d20513af7a52", alias="WHITEBOOKS_CLIENT_ID")
+    whitebooks_client_secret: str | None = Field(default="EWBS71804adb-a3fc-4fa7-9bf1-39d0637d5505", alias="WHITEBOOKS_CLIENT_SECRET")
     whitebooks_api_key: str | None = Field(default=None, alias="WHITEBOOKS_API_KEY")
-    whitebooks_gstin_username: str | None = Field(default=None, alias="WHITEBOOKS_GSTIN_USERNAME")
-    whitebooks_gstin_password: str | None = Field(default=None, alias="WHITEBOOKS_GSTIN_PASSWORD")
-    whitebooks_registered_email: str | None = Field(default=None, alias="WHITEBOOKS_REGISTERED_EMAIL")
-    whitebooks_sandbox_gstin: str | None = Field(default=None, alias="WHITEBOOKS_SANDBOX_GSTIN")
+    whitebooks_gstin_username: str | None = Field(default="BVMGSP", alias="WHITEBOOKS_GSTIN_USERNAME")
+    whitebooks_gstin_password: str | None = Field(default="Wbooks@0142", alias="WHITEBOOKS_GSTIN_PASSWORD")
+    whitebooks_registered_email: str | None = Field(default="roufbaig123@gmail.com", alias="WHITEBOOKS_REGISTERED_EMAIL")
+    whitebooks_sandbox_gstin: str | None = Field(default="29AAGCB1286Q000", alias="WHITEBOOKS_SANDBOX_GSTIN")
     whitebooks_auth_token: str | None = Field(default=None, alias="WHITEBOOKS_AUTH_TOKEN")
-    whitebooks_ip_address: str | None = Field(default=None, alias="WHITEBOOKS_IP_ADDRESS")
+    whitebooks_ip_address: str | None = Field(default="106.213.64.83", alias="WHITEBOOKS_IP_ADDRESS")
 
     # LiveKit / Telephony
     livekit_url: str | None = Field(default=None, alias="LIVEKIT_URL")

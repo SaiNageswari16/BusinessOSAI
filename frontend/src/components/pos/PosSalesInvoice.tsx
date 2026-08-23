@@ -1934,15 +1934,15 @@ export function PosSalesInvoice() {
                 <FileText className="w-4 h-4 text-indigo-600" /> Invoice Metadata
               </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${invoiceType === "TAX_INVOICE" ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
-                {invoiceType === "TAX_INVOICE" ? "GST Tax Invoice" : "Non-GST / Estimate"}
+                {invoiceType === "TAX_INVOICE" ? "Tax Invoice" : "Estimate"}
               </span>
             </div>
 
             {/* Invoice Category / Type Segregation Selector */}
             <div className="space-y-1">
               <label className="text-[11px] font-semibold text-slate-500 flex items-center justify-between">
-                <span>Invoice Classification / Type</span>
-                <span className="text-[10px] text-slate-400 font-normal">Controls GST Filing Exclusion</span>
+                <span>Invoice Type</span>
+                <span className="text-[10px] text-slate-400 font-normal">Select Tax Invoice or Estimate</span>
               </label>
               <div className="grid grid-cols-2 gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200">
                 <button
@@ -1950,14 +1950,14 @@ export function PosSalesInvoice() {
                   onClick={() => handleInvoiceTypeChange("TAX_INVOICE")}
                   className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${invoiceType === "TAX_INVOICE" ? "bg-white text-indigo-700 shadow-sm border border-slate-200" : "text-slate-600 hover:text-slate-900"}`}
                 >
-                  <Receipt className="w-3.5 h-3.5 text-indigo-600" /> Tax Invoice (GST)
+                  <Receipt className="w-3.5 h-3.5 text-indigo-600" /> Tax Invoice
                 </button>
                 <button
                   type="button"
                   onClick={() => handleInvoiceTypeChange("ESTIMATE_NON_GST")}
                   className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${invoiceType === "ESTIMATE_NON_GST" ? "bg-white text-amber-700 shadow-sm border border-slate-200" : "text-slate-600 hover:text-slate-900"}`}
                 >
-                  <FileText className="w-3.5 h-3.5 text-amber-600" /> Estimate (Non-GST)
+                  <FileText className="w-3.5 h-3.5 text-amber-600" /> Estimate
                 </button>
               </div>
             </div>
@@ -1966,7 +1966,7 @@ export function PosSalesInvoice() {
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-semibold text-slate-500">
-                    {invoiceType === "TAX_INVOICE" ? "Tax Invoice No (Manual / Auto)" : "Estimate / Bill No"}
+                    {invoiceType === "TAX_INVOICE" ? "Tax Invoice No" : "Estimate No"}
                   </label>
                   <button
                     type="button"

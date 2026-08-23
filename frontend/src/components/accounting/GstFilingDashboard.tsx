@@ -27,6 +27,7 @@ export function GstFilingDashboard() {
   const currentDate = new Date();
   const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
+  const [selectedInvoiceType, setSelectedInvoiceType] = useState<'tax_invoice' | 'estimate' | 'all'>('tax_invoice');
   const [activeTab, setActiveTab] = useState<'gstr1' | 'gstr3b'>('gstr1');
   const [gstr1SubTab, setGstr1SubTab] = useState<'b2b' | 'b2cs' | 'hsn' | 'docs'>('b2b');
 
@@ -40,11 +41,14 @@ export function GstFilingDashboard() {
     setLoading(true);
     try {
       const [gstr1Res, gstr3bRes] = await Promise.all([
-        gstFilingApi.getGstr1Summary({ year: selectedYear, month: selectedMonth }),
-        gstFilingApi.getGstr3bSummary({ year: selectedYear, month: selectedMonth }),
+        gstFilingApi.getGstr1Summary({ year: selectedYear, month: selectedMonth, invoice_type: selectedInvoiceType }),
+        gstFilingApi.getGstr3bSummary({ year: selectedYear, month: selectedMonth, invoice_type: selectedInvoiceType }),
       ]);
       setSummaryData(gstr1Res);
       setGstr3bData(gstr3bRes);
+      if (gstr1Res?.b2b?.count === 0 && gstr1Res?.b2cs?.count > 0) {
+        setGstr1SubTab('b2cs');
+      }
     } catch (e: any) {
       toast.error('Failed to load GST return data from ERP database.');
     } finally {
@@ -54,19 +58,20 @@ export function GstFilingDashboard() {
 
   useEffect(() => {
     loadData();
-  }, [selectedYear, selectedMonth]);
+  }, [selectedYear, selectedMonth, selectedInvoiceType]);
 
   const handleDownloadJson = () => {
     if (!summaryData) return;
-    const jsonStr = JSON.stringify(summaryData, null, 2);
+    const exportData = summaryData.gstn_json_payload || summaryData;
+    const jsonStr = JSON.stringify(exportData, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `GSTR1_${selectedMonth}_${selectedYear}_Whitebooks.json`;
+    a.download = `GSTR1_${String(selectedMonth).padStart(2, '0')}${selectedYear}_GSTN_Standard.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success('GSTR-1 JSON Package downloaded!');
+    toast.success('Official GSTN GSTR-1 JSON Package downloaded!');
   };
 
   const handleUploadToGstn = async () => {
@@ -76,7 +81,7 @@ export function GstFilingDashboard() {
       const res = await gstFilingApi.uploadGstr1({
         year: selectedYear,
         month: selectedMonth,
-        gstr1_payload: summaryData,
+        gstr1_payload: summaryData.gstn_json_payload || summaryData,
       });
       if (res && res.success) {
         setFilingReceipt(res);
@@ -181,6 +186,55 @@ export function GstFilingDashboard() {
           </span>
         </div>
       )}
+
+      {/* Invoice Type Selection & Segregation Filter */}
+      <div className="bg-slate-100 dark:bg-slate-800/80 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300 ml-2">Filing Data Source:</span>
+          <div className="flex items-center bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xs">
+            <button
+              onClick={() => setSelectedInvoiceType('tax_invoice')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                selectedInvoiceType === 'tax_invoice'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <FileCheck className="w-3.5 h-3.5" />
+              Tax Invoices (GST Only)
+            </button>
+            <button
+              onClick={() => setSelectedInvoiceType('estimate')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                selectedInvoiceType === 'estimate'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Estimates (Non-Tax)
+            </button>
+            <button
+              onClick={() => setSelectedInvoiceType('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                selectedInvoiceType === 'all'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              All Invoices (Combined)
+            </button>
+          </div>
+        </div>
+
+        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-2 flex items-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+          {selectedInvoiceType === 'tax_invoice' && 'Official Tax Invoices selected for Statutory GSTN Return'}
+          {selectedInvoiceType === 'estimate' && 'Estimates & Quotations selected for Internal Reconciliation'}
+          {selectedInvoiceType === 'all' && 'All Invoice Records included'}
+        </div>
+      </div>
 
       {/* High Level KPI Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -551,6 +605,77 @@ export function GstFilingDashboard() {
                   <span>{currency.symbol}{Number(gstr3bData?.net_tax_payable?.total || 0).toFixed(2)}</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Official Filing Receipt / Acknowledgment Modal */}
+      {filingReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-600 rounded-2xl text-white shadow-md">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Official GST Filing Acknowledgment</h3>
+                  <p className="text-xs text-slate-500">Government of India • GSTN & Whitebooks GSP</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setFilingReceipt(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-600">Filing Status:</span>
+                <span className="font-bold text-emerald-800 bg-emerald-200/80 px-2.5 py-0.5 rounded-md uppercase tracking-wider text-[11px]">
+                  {filingReceipt.status || 'ACCEPTED'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-600">Application Reference No (ARN):</span>
+                <span className="font-mono font-bold text-slate-900">{filingReceipt.arn || filingReceipt.reference_id}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-600">Tax Period:</span>
+                <span className="font-bold text-slate-900">{summaryData?.month_name || 'August 2026'} ({filingReceipt.period || '082026'})</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-600">Total Invoices Filed:</span>
+                <span className="font-bold text-slate-900">{summaryData?.total_invoices_count || 0} Transactions</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-600">Total Tax Liability:</span>
+                <span className="font-bold text-emerald-950 font-mono text-sm">{currency.symbol}{(summaryData?.total_tax || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs border-t border-emerald-200/60 pt-2">
+                <span className="text-slate-500 text-[11px]">Timestamp:</span>
+                <span className="font-mono text-slate-600 text-[11px]">{filingReceipt.timestamp || new Date().toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleDownloadJson}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
+              >
+                <Download className="w-3.5 h-3.5" /> Download Filed JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilingReceipt(null)}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
