@@ -5,7 +5,7 @@ import {
   ChevronDown, Building2, ShieldCheck, Globe, Coins,
   Component, Archive, Layers, Terminal, ShoppingCart,
   ShoppingBag, Receipt, UsersRound, BarChart3, Settings,
-  LayoutDashboard,
+  LayoutDashboard, Crown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
