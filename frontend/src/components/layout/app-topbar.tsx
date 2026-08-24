@@ -504,23 +504,39 @@ export function AppTopbar() {
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60 shadow-lg">
-            <div className="px-3 py-2">
-              <div className="text-sm font-bold text-slate-800">{user?.name || "Venkat E."}</div>
-              <div className="text-xs text-slate-500">{user?.email || "venkat@venatic.com"}</div>
-              <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
-                <ShieldCheck className="size-3" /> {activeRole?.name || "Super Admin"}
+          <DropdownMenuContent align="end" className="w-64 shadow-xl border-slate-200">
+            <div className="px-3 py-2.5">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-bold text-slate-800 dark:text-white truncate">{user?.name || "Super Admin"}</div>
+                {(user?.isPlatformAdmin || user?.email === "venaticfungus@gmail.com") && (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300">
+                    <Crown className="size-3 text-amber-500" /> GOD MODE
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-slate-500 truncate">{user?.email || "admin@platform.com"}</div>
+              <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded-full border border-blue-200">
+                <ShieldCheck className="size-3" /> {activeRole?.name || "Platform Super Admin"}
               </div>
             </div>
             <DropdownMenuSeparator />
+            {(user?.isPlatformAdmin || user?.email === "venaticfungus@gmail.com") && (
+              <>
+                <DropdownMenuItem onClick={() => navigate({ to: "/portfolio" })} className="cursor-pointer text-xs font-bold text-indigo-600 gap-2 bg-indigo-50/50 hover:bg-indigo-100/60">
+                  <Crown className="size-3.5 text-amber-500" />
+                  <span>Super Admin Portfolio & God Hub</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuLabel className="text-[11px] text-slate-400 font-semibold uppercase">Switch Role</DropdownMenuLabel>
             {availableRoles.map((r) => (
-              <DropdownMenuItem key={r.id} onClick={() => setActiveRole(r)} className="cursor-pointer text-xs">
+              <DropdownMenuItem key={r.id} onClick={() => setActiveRole(r)} className="cursor-pointer text-xs font-medium">
                 {r.name}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => { logout(); navigate({ to: "/" }); }} className="text-destructive cursor-pointer">
+            <DropdownMenuItem onClick={() => { logout(); navigate({ to: "/" }); }} className="text-destructive cursor-pointer font-semibold">
               <LogOut className="size-4 mr-2" /> Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>

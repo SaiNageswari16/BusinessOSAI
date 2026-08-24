@@ -44,7 +44,7 @@ export const Route = createFileRoute("/_app/portfolio")({
 
 type PortfolioTab = "overview" | "users" | "roles" | "organizations" | "company" | "system";
 
-function BusinessOwnerPortfolioPage() {
+export function BusinessOwnerPortfolioPage() {
   const { user } = useAuth();
   const { tenant } = useTenant();
   const { hasPermission } = useRbac();

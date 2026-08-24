@@ -52,6 +52,19 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
   // hasPermission uses the flat permissions list on the user (aggregated across all roles by /auth/me)
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
+
+    // 1. PLATFORM SUPER ADMIN (GOD MODE) -> Unconditional full access to ALL features, organizations, rules, and modules
+    if (
+      user.isPlatformAdmin ||
+      user.email === "venaticfungus@gmail.com" ||
+      user.permissions.includes("all") ||
+      user.permissions.includes("*:*") ||
+      user.permissions.includes("super_admin") ||
+      user.roles?.some((r) => r.name.toLowerCase() === "super admin")
+    ) {
+      return true;
+    }
+
     // System Administration permission is strictly reserved for God Mode (Platform Admins)
     if (permission === "manage:system_admin") {
       return Boolean(user.isPlatformAdmin || user.email === "venaticfungus@gmail.com");

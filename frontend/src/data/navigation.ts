@@ -74,6 +74,7 @@ export const nav: NavGroup[] = [
         label: "Access & Security",
         icon: ShieldCheck,
         subItems: [
+          { to: "/erp?tab=super_admin", label: "Super Admin God Mode", icon: Crown, permission: "manage:system_admin" },
           { to: "/erp?tab=users", label: "Users", icon: Users },
           { to: "/erp?tab=roles", label: "Roles", icon: Contact },
           { to: "/erp?tab=permission_matrix", label: "Permission Matrix", icon: ShieldCheck },
