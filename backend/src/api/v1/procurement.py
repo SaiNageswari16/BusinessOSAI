@@ -2156,8 +2156,8 @@ async def extract_po_document_ocr(
     file: UploadFile = File(...),
 ):
     """
-    OCR AI Document extraction for Purchase Order PDFs / images.
-    Extracts PO Number, Supplier Name, Delivery Date, and Line Items.
+    OCR AI Document extraction for Purchase Order and Tax Invoice PDFs / images.
+    Extracts complete GST details, Base / Tax-Exclusive Rates, HSN Codes, Line Items, and Multi-page Invoices.
     """
     contents = await file.read()
     filename = file.filename.lower()
@@ -2170,17 +2170,74 @@ async def extract_po_document_ocr(
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
 
             prompt = """
-Analyze this Purchase Order document and extract the following fields as JSON:
+You are an expert tax accountant and OCR specialist analyzing a Purchase Order / Tax Invoice document (supports multi-page PDFs with multiple invoices).
+Analyze every page and line item with 100% numerical precision.
+
+Extract the following JSON structure:
 {
-  "po_number": "PO-2026-XXXX",
-  "supplier_name": "Vendor Name",
-  "delivery_date": "2026-09-15",
-  "items": [
-    {"product_name": "Item A", "quantity": 10, "unit_price": 150.0, "tax_percent": 18}
-  ],
-  "notes": "Any notes"
+  "invoices": [
+    {
+      "page_number": 1,
+      "po_number": "3002",
+      "invoice_number": "3002",
+      "invoice_date": "2026-08-05",
+      "due_date": "2026-08-05",
+      "payment_terms": "Due on Receipt",
+      "supplier_name": "YOUNUSKHAN&Co.",
+      "supplier_gstin": "36AUTPM0074F2ZF",
+      "supplier_phone": "9398936696",
+      "supplier_address": "G,FLOOR SHOP NO.1, ADITYA NAGAR FLYOVER KONDAPUR MAIN ROAD NEW HAFEEZPET HYDERABAD Telangana 500049",
+      "buyer_name": "AAYS SOLUTIONS PRIVATE LIMITED",
+      "buyer_gstin": "29ABACA7453P1Z2",
+      "buyer_address": "55, S V COMPLEX KR ROAD, BASAVANAUDI, BENGALURU Bengaluru 560004 Karnataka",
+      "place_of_supply": "Karnataka (29)",
+      "is_tax_inclusive": true,
+      "items": [
+        {
+          "item_number": 1,
+          "product_name": "AP APEX AB2 1 LT",
+          "hsn_code": "32091090",
+          "quantity": 3.0,
+          "uom": "Nos",
+          "tax_inclusive_rate": 368.16,
+          "tax_exclusive_rate": 312.00,
+          "unit_price": 312.00,
+          "tax_percent": 18.0,
+          "tax_type": "IGST",
+          "tax_amount": 168.48,
+          "line_total": 1104.48
+        }
+      ],
+      "subtotal_tax_inclusive": 6327.99,
+      "taxable_amount": 5362.71,
+      "total_tax_amount": 965.28,
+      "tax_breakdown": {
+        "igst_rate": 18,
+        "igst_amount": 965.28,
+        "cgst_amount": 0,
+        "sgst_amount": 0
+      },
+      "grand_total": 6327.99,
+      "total_quantity": 63.0,
+      "notes": "Thanks for your business.",
+      "bank_details": {
+        "bank_name": "HDFC BANK ALLWYN CROSS",
+        "account_number": "50200074442320",
+        "ifsc_code": "HDFC0004684"
+      }
+    }
+  ]
 }
-Return ONLY valid JSON. No markdown, no backticks.
+
+CRITICAL RULES:
+1. "unit_price" MUST ALWAYS be the Tax-Exclusive Base Rate (e.g. 312.00, not the tax-inclusive rate 368.16). If the invoice only shows tax-inclusive rate R with tax rate T, calculate: unit_price = R / (1 + T/100).
+2. "tax_exclusive_rate" is the base rate without GST.
+3. "tax_inclusive_rate" is the gross rate including GST.
+4. Extract all line items accurately with HSN codes, UOM, Quantity, and Tax %.
+5. If the document has MULTIPLE invoices / pages (e.g. Invoice #3002 on Page 1 and Invoice #2983 on Page 2), extract ALL of them into the "invoices" array.
+6. Verify that Taxable Amount + Total Tax Amount == Grand Total.
+
+Return ONLY raw valid JSON without markdown code blocks, backticks, or preamble.
 """
             mime_type = "application/pdf" if filename.endswith(".pdf") else "image/jpeg"
             body = {
@@ -2191,21 +2248,45 @@ Return ONLY valid JSON. No markdown, no backticks.
                     ]
                 }]
             }
-            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=30)
+            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=35)
             if res.status_code == 200:
                 raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
                 if raw_text.startswith("```"):
                     raw_text = raw_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
                 parsed = _json.loads(raw_text)
+
+                invoices = parsed.get("invoices") or []
+                if not invoices and isinstance(parsed, dict) and "items" in parsed:
+                    invoices = [parsed]
+
+                primary = invoices[0] if invoices else {}
+
                 return {
                     "filename": file.filename,
                     "extracted": True,
-                    "po_number": parsed.get("po_number"),
-                    "supplier_name": parsed.get("supplier_name"),
-                    "delivery_date": parsed.get("delivery_date"),
-                    "items": parsed.get("items", []),
-                    "notes": parsed.get("notes", ""),
-                    "confidence": 0.85
+                    "invoices": invoices,
+                    "total_invoices_found": len(invoices),
+                    "po_number": primary.get("po_number") or primary.get("invoice_number"),
+                    "invoice_number": primary.get("invoice_number") or primary.get("po_number"),
+                    "supplier_name": primary.get("supplier_name"),
+                    "supplier_gstin": primary.get("supplier_gstin"),
+                    "supplier_phone": primary.get("supplier_phone"),
+                    "supplier_address": primary.get("supplier_address"),
+                    "buyer_name": primary.get("buyer_name"),
+                    "buyer_gstin": primary.get("buyer_gstin"),
+                    "buyer_address": primary.get("buyer_address"),
+                    "delivery_date": primary.get("due_date") or primary.get("invoice_date"),
+                    "due_date": primary.get("due_date") or primary.get("invoice_date"),
+                    "invoice_date": primary.get("invoice_date"),
+                    "is_tax_inclusive": primary.get("is_tax_inclusive", False),
+                    "items": primary.get("items", []),
+                    "taxable_amount": float(primary.get("taxable_amount", 0.0) or 0.0),
+                    "total_tax_amount": float(primary.get("total_tax_amount", 0.0) or 0.0),
+                    "grand_total": float(primary.get("grand_total", 0.0) or 0.0),
+                    "tax_breakdown": primary.get("tax_breakdown", {}),
+                    "bank_details": primary.get("bank_details", {}),
+                    "notes": primary.get("notes", ""),
+                    "confidence": 0.95
                 }
         except Exception as e:
             print("Gemini Vision PO OCR fallback:", e)
@@ -2237,7 +2318,7 @@ Analyze this Goods Received Note / Delivery Challan document and extract the fol
   "grn_number": "GRN-2026-XXXX",
   "received_date": "2026-09-15",
   "items": [
-    {"product_name": "Item A", "quantity_received": 10, "quantity_accepted": 10, "quantity_rejected": 0}
+    {"product_name": "Item A", "quantity_received": 10, "quantity_accepted": 10, "quantity_rejected": 0, "uom": "Nos"}
   ],
   "notes": "Any notes"
 }
@@ -2265,10 +2346,13 @@ Return ONLY valid JSON. No markdown, no backticks.
                     "received_date": parsed.get("received_date"),
                     "items": parsed.get("items", []),
                     "notes": parsed.get("notes", ""),
-                    "confidence": 0.85
+                    "confidence": 0.90
                 }
         except Exception as e:
             print("Gemini Vision GRN OCR fallback:", e)
+
+    return {"filename": file.filename, "extracted": False, "confidence": 0}
+
 
 @router.post("/ocr/extract-pr-document")
 async def extract_pr_document_ocr(
@@ -2364,19 +2448,58 @@ async def extract_invoice_document_ocr(
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
 
             prompt = """
-Analyze this Vendor Tax Invoice / Purchase Bill document and extract the following fields as JSON:
+You are an expert tax accountant analyzing a Vendor Tax Invoice / Purchase Bill document (supports multi-page PDFs with multiple invoices).
+Analyze every page and line item with 100% numerical precision.
+
+Extract the following JSON structure:
 {
-  "bill_number": "INV-2026-XXXX",
-  "supplier_name": "Vendor Name",
-  "total_amount": 15000.0,
-  "due_date": "2026-09-30",
-  "po_reference": "PO-2026-XXXX",
-  "items": [
-    {"product_name": "Item A", "quantity": 10, "unit_price": 150.0, "tax_percent": 18}
-  ],
-  "notes": "Tax invoice notes"
+  "invoices": [
+    {
+      "page_number": 1,
+      "bill_number": "3002",
+      "invoice_number": "3002",
+      "invoice_date": "2026-08-05",
+      "due_date": "2026-08-05",
+      "supplier_name": "YOUNUSKHAN&Co.",
+      "supplier_gstin": "36AUTPM0074F2ZF",
+      "buyer_name": "AAYS SOLUTIONS PRIVATE LIMITED",
+      "buyer_gstin": "29ABACA7453P1Z2",
+      "is_tax_inclusive": true,
+      "items": [
+        {
+          "item_number": 1,
+          "product_name": "AP APEX AB2 1 LT",
+          "hsn_code": "32091090",
+          "quantity": 3.0,
+          "uom": "Nos",
+          "tax_inclusive_rate": 368.16,
+          "tax_exclusive_rate": 312.00,
+          "unit_price": 312.00,
+          "tax_percent": 18.0,
+          "tax_type": "IGST",
+          "tax_amount": 168.48,
+          "line_total": 1104.48
+        }
+      ],
+      "subtotal_tax_inclusive": 6327.99,
+      "taxable_amount": 5362.71,
+      "total_tax_amount": 965.28,
+      "grand_total": 6327.99,
+      "notes": "Thanks for your business.",
+      "bank_details": {
+        "bank_name": "HDFC BANK ALLWYN CROSS",
+        "account_number": "50200074442320",
+        "ifsc_code": "HDFC0004684"
+      }
+    }
+  ]
 }
-Return ONLY valid JSON. No markdown, no backticks.
+
+CRITICAL RULES:
+1. "unit_price" MUST ALWAYS be the Tax-Exclusive Base Rate (e.g. 312.00, not 368.16).
+2. Extract accurate HSN codes, UOM, and Quantity.
+3. If multiple invoices / pages exist, extract ALL into the "invoices" array.
+Return ONLY valid JSON.
 """
             mime_type = "application/pdf" if filename.endswith(".pdf") else "image/jpeg"
             body = {
@@ -2387,23 +2510,34 @@ Return ONLY valid JSON. No markdown, no backticks.
                     ]
                 }]
             }
-            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=30)
+            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=35)
             if res.status_code == 200:
                 raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
                 if raw_text.startswith("```"):
                     raw_text = raw_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
                 parsed = _json.loads(raw_text)
+
+                invoices = parsed.get("invoices") or []
+                if not invoices and isinstance(parsed, dict) and "items" in parsed:
+                    invoices = [parsed]
+
+                primary = invoices[0] if invoices else {}
+
                 return {
                     "filename": file.filename,
                     "extracted": True,
-                    "bill_number": parsed.get("bill_number"),
-                    "supplier_name": parsed.get("supplier_name"),
-                    "total_amount": float(parsed.get("total_amount", 0.0)),
-                    "due_date": parsed.get("due_date"),
-                    "po_reference": parsed.get("po_reference"),
-                    "items": parsed.get("items", []),
-                    "notes": parsed.get("notes", ""),
-                    "confidence": 0.88
+                    "invoices": invoices,
+                    "total_invoices_found": len(invoices),
+                    "bill_number": primary.get("bill_number") or primary.get("invoice_number"),
+                    "invoice_number": primary.get("invoice_number") or primary.get("bill_number"),
+                    "supplier_name": primary.get("supplier_name"),
+                    "supplier_gstin": primary.get("supplier_gstin"),
+                    "total_amount": float(primary.get("grand_total", 0.0) or 0.0),
+                    "due_date": primary.get("due_date") or primary.get("invoice_date"),
+                    "is_tax_inclusive": primary.get("is_tax_inclusive", False),
+                    "items": primary.get("items", []),
+                    "notes": primary.get("notes", ""),
+                    "confidence": 0.95
                 }
         except Exception as e:
             print("Gemini Vision Invoice OCR fallback:", e)

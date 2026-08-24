@@ -1250,6 +1250,32 @@ async def upload_product_image(
     return {"image_url": f"/upload_images/{filename}"}
 
 
+@router.post("/products/{product_id}/fetch-image")
+async def fetch_single_product_image(
+    product_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """
+    On-demand single product image fetch.
+    Allows user/admin to explicitly fetch an image for a specific product on-demand.
+    """
+    from src.models.inventory import Product
+    from src.services.rag_enricher import _google_search_images_async
+    
+    stmt = select(Product).where(Product.id == product_id, Product.tenant_id == ctx.tenant_id)
+    res = await db.execute(stmt)
+    prod = res.scalars().first()
+    if not prod:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    img_url = await _google_search_images_async(prod.barcode or "", prod.name or "")
+    if img_url:
+        prod.image_url = img_url
+        await db.commit()
+        return {"success": True, "image_url": img_url, "message": "Image fetched successfully"}
+    return {"success": False, "image_url": prod.image_url, "message": "No suitable image found"}
+
 
 # ==========================================
 # Public Storefront Endpoints

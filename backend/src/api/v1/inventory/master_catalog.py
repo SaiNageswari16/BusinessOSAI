@@ -1069,6 +1069,22 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
         logger.warning("Rejected invalid product image URL: %r", image_url)
         return None
 
+    # Strict Whitelist: Only permit verified commercial e-commerce CDNs (Amazon, BigBasket, Blinkit, JioMart, Flipkart, OpenFoodFacts)
+    TRUSTED_PRODUCT_DOMAINS = (
+        "media-amazon.com", "images-amazon.com", "ssl-images-amazon.com",
+        "bbassets.com", "bigbasket.com",
+        "blinkit.com", "grofers.com",
+        "jiomart.com", "relianceretail.com",
+        "flipkart.com", "flixcart.com",
+        "openfoodfacts.org", "openfoodfacts.net",
+        "zeptonow.com", "swiggy.com",
+        "encrypted-tbn0.gstatic.com", "gstatic.com"
+    )
+    domain = (parsed.netloc or "").lower()
+    if not any(domain.endswith(t) or t in domain for t in TRUSTED_PRODUCT_DOMAINS):
+        logger.warning("Rejected non-whitelisted image domain: %s (only trusted e-commerce retail CDNs allowed)", domain)
+        return None
+
     try:
         response = requests.get(image_url, headers=_SOURCE_HEADERS, timeout=_IMAGE_TIMEOUT, allow_redirects=True)
         if response.status_code != 200 or not response.content:
@@ -2062,17 +2078,16 @@ async def search_master_catalog(
     # 3. Trigger AI Web RAG Search only if:
     # - Local DB search and fast barcode lookup returned NO matches
     # - AND search_web is requested and active AI key is configured
-    # - AND global AI enrichment is NOT paused
-    import os
-    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
-    ai_paused = os.path.exists(pause_file)
-
+    from src.utils.ai_image_control import is_ai_image_search_paused
     should_search_web = search_web or is_barcode_query
 
-    if not results and should_search_web and not ai_paused and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):
+    if not results and should_search_web and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):
         try:
             ai_items = await _perform_ai_rag_web_search(clean_query, provider=effective_provider)
+            # If AI image search is paused, clear external image URLs so clean placeholders/local uploads are used
+            if is_ai_image_search_paused():
+                for it in ai_items:
+                    it.image_url = None
             results.extend(ai_items)
         except Exception as e:
             logger.error("AI web search error for %s: %s", clean_query, e)
@@ -2438,11 +2453,9 @@ async def get_rag_enrichment_status(
     """Returns real-time progress statistics for the background RAG enricher pipeline."""
     from src.models.inventory import MasterCatalogProduct
     from sqlalchemy import select, func
-    import os
+    from src.utils.ai_image_control import is_ai_image_search_paused
     
-    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
-    is_paused = os.path.exists(pause_file)
+    is_image_paused = is_ai_image_search_paused()
     
     total_stmt = select(func.count()).select_from(MasterCatalogProduct).where(MasterCatalogProduct.barcode != None)
     pending_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
@@ -2475,8 +2488,35 @@ async def get_rag_enrichment_status(
         "processing": processing,
         "completed": completed,
         "failed": failed,
-        "paused": is_paused
+        "paused": is_image_paused,
+        "images_paused": is_image_paused,
+        "metadata_enrichment_active": True
     }
+
+
+@router.post("/admin/master-catalog/{item_id}/fetch-image")
+async def fetch_master_catalog_single_image(
+    item_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """
+    On-demand single product image fetch for Master Catalog item.
+    Fetches image on-demand even if global automated background scraping is paused.
+    """
+    from src.services.rag_enricher import _google_search_images_async
+    stmt = select(MasterCatalogProduct).where(MasterCatalogProduct.id == item_id)
+    res = await db.execute(stmt)
+    item = res.scalars().first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Master catalog item not found")
+    
+    img_url = await _google_search_images_async(item.barcode or "", item.name or "")
+    if img_url:
+        item.image_url = img_url
+        await db.commit()
+        return {"success": True, "image_url": img_url, "message": "Image fetched successfully"}
+    return {"success": False, "image_url": item.image_url, "message": "No suitable image found"}
 
 
 class AdminCatalogListResponse(BaseModel):

@@ -283,20 +283,12 @@ class RAGEnricherService:
     async def _inventory_worker_loop(cls):
         """
         Low-frequency fallback worker for user inventory items. Runs every 60s to prevent API waste.
+        Always gathers text metadata, descriptions & specifications.
         """
-        import os
-        pause_file = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            ".rag_enricher_paused",
-        )
         semaphore = asyncio.Semaphore(2)
 
         while cls._should_run:
             try:
-                if os.path.exists(pause_file):
-                    await asyncio.sleep(30.0)
-                    continue
-
                 batch = await cls._fetch_pending_inventory_batch()
                 if not batch:
                     await asyncio.sleep(60.0)  # Check only once per minute
@@ -326,21 +318,12 @@ class RAGEnricherService:
     async def _master_worker_loop(cls):
         """
         Worker 2: BACKGROUND PRIORITY — Enriches Master Catalog products (MasterCatalogProduct table).
-        Runs concurrently in parallel without slowing down inventory enrichment.
+        Runs concurrently in parallel to populate product descriptions, specifications, brands, and categories.
         """
-        import os
-        pause_file = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            ".rag_enricher_paused",
-        )
         semaphore = asyncio.Semaphore(3)
 
         while cls._should_run:
             try:
-                if os.path.exists(pause_file):
-                    await asyncio.sleep(5.0)
-                    continue
-
                 batch = await cls._fetch_pending_master_batch()
                 if not batch:
                     await asyncio.sleep(8.0)
@@ -379,6 +362,8 @@ class RAGEnricherService:
                             Product.barcode.isnot(None),
                             func.length(func.trim(Product.barcode)) >= 5,
                             or_(
+                                Product.short_description == None,
+                                Product.short_description == "",
                                 Product.image_url == None,
                                 Product.image_url == "",
                                 Product.image_url.like("/static/%"),
@@ -445,9 +430,9 @@ class RAGEnricherService:
         All HTTP (AI search + image search) is awaited. Never blocks the event loop.
         """
         async with semaphore:
-            logger.info("[RAG Enricher - %s] Enriching '%s' (barcode: %s)...", target_type.upper(), name, barcode)
+            logger.info("[RAG Enricher - %s] Enriching metadata for '%s' (barcode: %s)...", target_type.upper(), name, barcode)
 
-            # 1. AI RAG search (already async in master_catalog)
+            # 1. AI RAG search for text metadata (short/long descriptions, brand, category, specs, prices, HSN)
             success = False
             err_msg = None
             ai_item = None
@@ -464,29 +449,31 @@ class RAGEnricherService:
                 err_msg = str(ex)
                 logger.warning("[RAG Enricher] AI search failed for '%s' (%s): %s", name, barcode, ex)
 
-            # 2. Image sourcing: AI result URL first, then Google/DDG/Bing async waterfall
+            # 2. Image sourcing: ONLY executed when AI image search is ACTIVE (not paused)
             cached_image_url = ""
-            if success and ai_item:
-                raw_img = (ai_item.image_url or "").strip()
-                _BAD = ("/static/", "/images/default", "N/A", "n/a", "/uploads/")
-                if any(raw_img.startswith(p) for p in _BAD):
-                    raw_img = ""
+            from src.utils.ai_image_control import is_ai_image_search_paused
+            if not is_ai_image_search_paused():
+                if success and ai_item:
+                    raw_img = (ai_item.image_url or "").strip()
+                    _BAD = ("/static/", "/images/default", "N/A", "n/a", "/uploads/")
+                    if any(raw_img.startswith(p) for p in _BAD):
+                        raw_img = ""
 
-                if raw_img.startswith("http"):
-                    cached_image_url = await _cache_image_async(raw_img, barcode)
+                    if raw_img.startswith("http"):
+                        cached_image_url = await _cache_image_async(raw_img, barcode)
 
-                # Fallback: async Google -> DDG -> Bing image search
-                if not cached_image_url:
-                    cached_image_url = await _google_search_images_async(
-                        barcode, ai_item.name or name
-                    )
+                    # Fallback: async Google -> DDG -> Bing image search
+                    if not cached_image_url:
+                        cached_image_url = await _google_search_images_async(
+                            barcode, ai_item.name or name
+                        )
+                else:
+                    # AI search failed — try image search with product name
+                    cached_image_url = await _google_search_images_async(barcode, name)
+                    if cached_image_url:
+                        logger.info("[RAG Enricher] Image-only fallback found image for '%s' (%s): %s", name, barcode, cached_image_url)
             else:
-                # AI search failed — still try to get an image using the product name alone.
-                # This means even failed products get a photo populated silently.
-                logger.debug("[RAG Enricher] AI failed for %s — trying image-only search with name '%s'", barcode, name)
-                cached_image_url = await _google_search_images_async(barcode, name)
-                if cached_image_url:
-                    logger.info("[RAG Enricher] Image-only fallback found image for '%s' (%s): %s", name, barcode, cached_image_url)
+                logger.info("[RAG Enricher] AI Image Search is PAUSED — skipping image scraping for '%s' (%s). Text details enriched.", name, barcode)
 
             # 3. Persist results to DB (isolated session)
             await cls._write_enrichment_result(

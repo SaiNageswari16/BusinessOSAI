@@ -3631,6 +3631,12 @@ export const inventoryApi = {
   resumeAiImageSearch: () =>
     request<{ paused: boolean; message: string }>("POST", "/inventory/master-catalog/ai-image-search/resume"),
 
+  fetchMasterCatalogImage: (itemId: string) =>
+    request<{ success: boolean; image_url: string; message: string }>("POST", `/inventory/master-catalog/admin/master-catalog/${itemId}/fetch-image`),
+
+  fetchProductImage: (productId: string) =>
+    request<{ success: boolean; image_url: string; message: string }>("POST", `/inventory/products/${productId}/fetch-image`),
+
   adminGetMasterCatalogList: (params?: { page?: number; page_size?: number; search?: string; rag_status?: string }) =>
     request<{ items: any[]; total: number; page: number; page_size: number }>("GET", "/inventory/master-catalog/admin/list", undefined, params as Record<string, any>),
 
