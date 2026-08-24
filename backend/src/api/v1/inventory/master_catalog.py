@@ -1780,24 +1780,35 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
         identity = consensus["identity"]
 
         if not identity:
-            # 1. Always prioritize Gemini with Live Google Search Grounding for barcode lookups
-            if _is_valid_key(settings.gemini_api_key):
+            # 1. If active provider is Claude, prioritize Claude web search
+            if active_provider == "claude" and _is_valid_key(settings.anthropic_api_key):
+                try:
+                    identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
+                    if identity:
+                        logger.info("Resolved barcode %s through Claude Web Search", query)
+                except Exception as c_ex:
+                    logger.warning("[RAG] Claude search error for %s: %s", query, c_ex)
+
+            # 2. If not resolved and Gemini key exists, try Gemini with Google Search Grounding
+            if not identity and _is_valid_key(settings.gemini_api_key):
                 try:
                     legacy_results = await _deprecated_perform_ai_rag_web_search(query, provider="gemini")
                     if legacy_results:
                         logger.info("Resolved barcode %s through Gemini Google Search grounding", query)
                         return legacy_results
                 except Exception as g_ex:
-                    logger.warning("[RAG Fallback] Gemini grounding failed for %s: %s", query, g_ex)
+                    logger.warning("[RAG Fallback] Gemini grounding failed for %s (Quota/Rate limit or error): %s", query, g_ex)
 
-            # 2. Fallback: Claude web search
+            # 3. Fallback: Claude web search if Gemini hit 429 or failed
             if not identity and _is_valid_key(settings.anthropic_api_key):
                 try:
                     identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
+                    if identity:
+                        logger.info("Resolved barcode %s through fallback Claude Web Search", query)
                 except Exception as c_ex:
                     logger.warning("[RAG Fallback] Claude search error for %s: %s", query, c_ex)
 
-            # 3. Fallback: Gemini direct scraper
+            # 4. Fallback: Gemini direct scraper
             if not identity and _is_valid_key(settings.gemini_api_key):
                 try:
                     identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
