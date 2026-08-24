@@ -784,31 +784,16 @@ async def create_product(
         res = await db.execute(stmt)
         existing_prod = res.scalars().first()
 
+    # Extract only valid columns that exist on the Product DB model
+    valid_cols = {c.name for c in Product.__table__.columns}
+    product_data = {k: v for k, v in data.items() if k in valid_cols}
+
     if existing_prod:
-        added_stock = data.get("initial_stock") or 1
+        added_stock = product_data.get("initial_stock") or 1
         existing_prod.initial_stock = (existing_prod.initial_stock or 0) + added_stock
-        if data.get("mrp") is not None:
-            existing_prod.mrp = data["mrp"]
-        if data.get("selling_price") is not None:
-            existing_prod.selling_price = data["selling_price"]
-        if data.get("purchase_price") is not None:
-            existing_prod.purchase_price = data["purchase_price"]
-        if data.get("wholesale_price") is not None:
-            existing_prod.wholesale_price = data["wholesale_price"]
-        if data.get("b2b_price") is not None:
-            existing_prod.b2b_price = data["b2b_price"]
-        if data.get("min_wholesale_qty") is not None:
-            existing_prod.min_wholesale_qty = data["min_wholesale_qty"]
-        if data.get("tax_percent") is not None:
-            existing_prod.tax_percent = data["tax_percent"]
-        if data.get("is_tax_inclusive") is not None:
-            existing_prod.is_tax_inclusive = data["is_tax_inclusive"]
-        if data.get("hsn_code"):
-            existing_prod.hsn_code = data["hsn_code"]
-        if data.get("specifications") is not None:
-            existing_prod.specifications = data["specifications"]
-        if data.get("supplier"):
-            existing_prod.supplier = data["supplier"]
+        for k, v in product_data.items():
+            if k not in ("id", "tenant_id", "initial_stock") and v is not None:
+                setattr(existing_prod, k, v)
         if brand_id:
             existing_prod.brand_id = brand_id
 
@@ -816,13 +801,13 @@ async def create_product(
         await db.refresh(existing_prod, ["category", "brand", "uom"])
         product = existing_prod
     else:
-        if not data.get("sku"):
+        if not product_data.get("sku"):
             prefix = re.sub(r'[^A-Za-z0-9]', '', name[:4].upper()) if name else "PROD"
-            data["sku"] = f"SKU-{prefix}-{uuid.uuid4().hex[:6].upper()}"
+            product_data["sku"] = f"SKU-{prefix}-{uuid.uuid4().hex[:6].upper()}"
 
         product = Product(
             tenant_id=ctx.tenant_id,
-            **data
+            **product_data
         )
         db.add(product)
         await db.flush()
@@ -930,8 +915,10 @@ async def update_product(
     if "status" in updates and updates["status"]:
         updates["status"] = _parse_status(updates["status"])
         
+    valid_cols = {c.name for c in Product.__table__.columns}
     for key, value in updates.items():
-        setattr(product, key, value)
+        if key in valid_cols and key not in ("id", "tenant_id"):
+            setattr(product, key, value)
 
     # Cache in global master catalog if it has a barcode and doesn't exist yet
     if product.barcode and product.barcode.strip():
