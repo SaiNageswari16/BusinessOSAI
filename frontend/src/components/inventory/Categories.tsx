@@ -1,18 +1,16 @@
 import { useRef, useState, useEffect } from "react";
+import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { 
-  Search, Plus, FolderTree, Edit2, Archive, X, Upload, Download, 
-  Layers, ArrowUpDown, ChevronRight, CheckCircle2, Trash2
-} from "lucide-react";
+import { Search, Filter, Plus, FolderTree, Edit2, ChevronDown, Archive, X, Upload, Download } from "lucide-react";
 import { inventoryApi, InventoryCategory } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function Categories() {
+    const { currency, formatCurrency } = useCurrency();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All Status");
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,6 +35,7 @@ export function Categories() {
       const res = await inventoryApi.getCategories();
       const items = Array.isArray(res) ? res : (res?.items || []);
       setCategories(items);
+
     } catch (error) {
       console.error("Failed to load categories:", error);
     } finally {
@@ -44,11 +43,7 @@ export function Categories() {
     }
   };
 
-  const filtered = categories.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) || (c.category_code && c.category_code.toLowerCase().includes(search.toLowerCase()));
-    const matchesStatus = statusFilter === "All Status" || (statusFilter === "Active" ? c.status === "active" : c.status !== "active");
-    return matchesSearch && matchesStatus;
-  });
+  const filtered = categories.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -105,77 +100,80 @@ export function Categories() {
     link.click();
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsImporting(true);
 
-    if (file.name.endsWith('.csv')) {
+    const processData = async (rows: any[]) => {
+      try {
+        if (rows.length === 0) {
+          alert("The file is empty.");
+          return;
+        }
+
+        const getVal = (row: any, possibleKeys: string[]) => {
+          for (const k of possibleKeys) {
+            if (row[k] !== undefined && row[k] !== null) return row[k].toString().trim();
+          }
+          return "";
+        };
+
+        const newCats = [];
+        for (const row of rows) {
+          const name = getVal(row, ["Category Name", "Name", "Category"]);
+          if (!name) continue;
+
+          newCats.push({
+            name,
+            category_code: getVal(row, ["Category Code", "Code", "ID"]) || undefined,
+            description: getVal(row, ["Description", "Desc"]),
+            status: getVal(row, ["Status"]).toLowerCase() === 'inactive' ? 'inactive' : 'active'
+          });
+        }
+
+        if (newCats.length > 0) {
+          const res = await inventoryApi.bulkCreateCategories(newCats);
+          alert(`Import complete! Created ${res.created_count} categories. Skipped ${res.skipped_count} duplicates.\n\nErrors:\n${res.errors.join('\\n')}`);
+          await loadData();
+        } else {
+          alert("No valid categories found to import. Check your headers.");
+        }
+      } catch (error: any) {
+        console.error("Import failed:", error);
+        alert("Import failed: " + (error.detail || error.message || "Unknown error"));
+      } finally {
+        setIsImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+
+    if (file.name.endsWith(".csv")) {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        complete: async (results: any) => {
-          try {
-            const parsed = results.data as any[];
-            let count = 0;
-            for (const row of parsed) {
-              const name = row['Category Name'] || row['name'] || row['Name'];
-              if (name) {
-                await inventoryApi.createCategory({
-                  name,
-                  category_code: row['Category Code'] || row['category_code'] || '',
-                  description: row['Description'] || row['description'] || '',
-                  status: (row['Status'] || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active'
-                });
-                count++;
-              }
-            }
-            alert(`Successfully imported ${count} categories!`);
-            await loadData();
-          } catch (err) {
-            console.error(err);
-            alert("Error importing CSV file.");
-          } finally {
-            setIsImporting(false);
-            if (fileInputRef.current) fileInputRef.current.value = "";
-          }
-        },
-        error: () => {
+        transformHeader: (h: string) => h.trim().replace(/^[\u200B\u200C\u200D\u20FE\uFEFF]/, ""),
+        complete: (results: any) => processData(results.data),
+        error: (error: any) => {
           setIsImporting(false);
-          alert("Failed to parse CSV file.");
+          alert("Failed to parse CSV: " + error.message);
           if (fileInputRef.current) fileInputRef.current.value = "";
         }
       });
-    } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+    } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
       const reader = new FileReader();
-      reader.onload = async (evt) => {
+      reader.onload = (evt) => {
         try {
           const bstr = evt.target?.result;
           const wb = XLSX.read(bstr, { type: 'binary' });
           const wsname = wb.SheetNames[0];
           const ws = wb.Sheets[wsname];
-          const data: any[] = XLSX.utils.sheet_to_json(ws);
-          let count = 0;
-          for (const row of data) {
-            const name = row['Category Name'] || row['name'] || row['Name'];
-            if (name) {
-              await inventoryApi.createCategory({
-                name,
-                category_code: row['Category Code'] || row['category_code'] || '',
-                description: row['Description'] || row['description'] || '',
-                status: (row['Status'] || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active'
-              });
-              count++;
-            }
-          }
-          alert(`Successfully imported ${count} categories!`);
-          await loadData();
-        } catch (err) {
-          console.error(err);
-          alert("Error importing Excel file.");
-        } finally {
+          const data = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          processData(data);
+        } catch (error: any) {
           setIsImporting(false);
+          alert("Failed to parse Excel file: " + error.message);
           if (fileInputRef.current) fileInputRef.current.value = "";
         }
       };
@@ -236,336 +234,181 @@ export function Categories() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* ── Page Header ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-3">
-            <h1 className="text-[26px] font-black text-slate-900 tracking-tight leading-none">
-              Categories & Sub-categories
-            </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
-              {categories.length} Total
-            </span>
-          </div>
-          <p className="text-[13px] font-medium text-slate-500 mt-1.5 leading-normal">
-            Manage product category hierarchies, parent groups, and nested sub-categories.
-          </p>
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Categories & Sub-categories</h2>
+          <p className="text-sm text-muted-foreground">Manage product category hierarchies (Parent Categories & Sub-categories).</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap gap-2">
           <input type="file" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" ref={fileInputRef} onChange={handleImport} className="hidden" />
-          <Button 
-            variant="outline" 
-            size="sm"
-            className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
-            onClick={() => fileInputRef.current?.click()} 
-            disabled={isImporting}
-          >
-            <Upload className="size-3.5 mr-1.5 text-slate-500" /> {isImporting ? "Importing..." : "Import File"}
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
+            <Upload className="size-4 mr-2" />
+            {isImporting ? "Importing..." : "Import File"}
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
-            className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
-            onClick={handleExport}
-          >
-            <Download className="size-3.5 mr-1.5 text-slate-500" /> Export
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="size-4 mr-2" />
+            Export
           </Button>
           {categories.length > 0 && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleDeleteAll} 
-              className="h-9 text-xs font-semibold text-rose-700 hover:bg-rose-50 border-rose-200 rounded-lg shadow-2xs"
-            >
-              <Trash2 className="size-3.5 mr-1.5 text-rose-600" /> Delete All
+            <Button variant="destructive" onClick={handleDeleteAll} className="bg-rose-600 hover:bg-rose-700 text-white font-bold">
+              <Archive className="size-4 mr-2" /> Delete All Categories
             </Button>
           )}
-          <Button 
-            size="sm"
-            onClick={openCreateModal} 
-            className="h-9 px-3.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="size-4 mr-1.5" /> Add Category
-          </Button>
+          <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Add Category</Button>
         </div>
       </div>
 
-      {/* ── Search & Filters Bar ── */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-        <div className="relative flex-1 w-full max-w-md">
-          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search categories by name or code..."
-            className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50/80 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 font-medium"
+      <div className="flex gap-4 items-center">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <input 
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30" 
+            placeholder="Search categories & sub-categories..." 
           />
         </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 px-2.5 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          >
-            <option value="All Status">All Status</option>
-            <option value="Active">Active Only</option>
-            <option value="Inactive">Inactive Only</option>
-          </select>
-        </div>
       </div>
 
-      {/* ── Categories Columns & Rows Table ── */}
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center p-16 bg-white rounded-2xl border border-slate-200/80">
-          <div className="size-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
-          <p className="text-sm font-semibold text-slate-600">Loading categories...</p>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center p-14 border border-dashed rounded-2xl bg-slate-50/50">
-          <FolderTree className="size-12 mx-auto text-slate-400 mb-3" />
-          <h3 className="text-base font-bold text-slate-800">No categories found</h3>
-          <p className="text-xs text-slate-500 mt-1 mb-4">Click 'Add Category' to create your first product category.</p>
-          <Button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg h-9">
-            <Plus className="size-4 mr-1.5" /> Add Category
-          </Button>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200/80 bg-slate-50/75 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 select-none">
-                  <th className="py-3 px-4">Category Name & Hierarchy</th>
-                  <th className="py-3 px-4">Category Code</th>
-                  <th className="py-3 px-4">Description</th>
-                  <th className="py-3 px-4">Sub-Categories</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {filtered.map((category) => {
+      <div className="space-y-4 max-w-4xl">
+        {isLoading ? (
+          <div className="p-8 text-center text-muted-foreground">Loading categories...</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">No categories found.</div>
+        ) : (
+          (() => {
+            // Group parent & sub-categories
+            const parentCats = filtered.filter(c => !c.parent_id);
+            const displayParents = parentCats.length > 0 ? parentCats : filtered;
+
+            return (
+              <div className="space-y-3">
+                {displayParents.map((category) => {
                   const subCats = categories.filter(c => c.parent_id === category.id);
                   const isParent = !category.parent_id;
-                  const parentName = category.parent_id ? categories.find(p => p.id === category.parent_id)?.name : null;
 
                   return (
-                    <tr 
-                      key={category.id} 
-                      className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
-                      onClick={() => handleEdit(category)}
-                    >
-                      {/* Name & Hierarchy */}
-                      <td className="py-3.5 px-4">
+                    <Card key={category.id} className="p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition-all">
+                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                         <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "size-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 border",
-                            isParent ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-purple-50 text-purple-600 border-purple-100"
-                          )}>
-                            <FolderTree className="size-4.5" />
-                          </div>
-                          <div>
-                            <div className="font-extrabold text-slate-900 text-[13px] leading-snug group-hover:text-blue-600 transition-colors">
-                              {category.name}
-                            </div>
-                            <div className="inline-flex items-center gap-1 text-[10.5px] font-semibold mt-0.5">
+                          <FolderTree className="size-5 text-indigo-600 shrink-0" />
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-bold text-slate-900">{category.name}</h3>
                               {isParent ? (
-                                <span className="px-2 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-bold text-[9.5px]">
+                                <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
                                   Main Category
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.2 rounded-full bg-purple-50 text-purple-700 border border-purple-200/80 font-bold text-[9.5px]">
-                                  Sub of {parentName || "Parent"}
+                                <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-bold">
+                                  Sub-category of {categories.find(p => p.id === category.parent_id)?.name || "Parent"}
                                 </span>
                               )}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Code */}
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-700 text-xs">
-                        {category.category_code || "—"}
-                      </td>
-
-                      {/* Description */}
-                      <td className="py-3.5 px-4 text-slate-500 max-w-xs truncate font-medium">
-                        {category.description || "No description provided"}
-                      </td>
-
-                      {/* Sub-Categories */}
-                      <td className="py-3.5 px-4">
-                        {isParent ? (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">
-                              {subCats.length} Sub-items
-                            </span>
-                            {subCats.slice(0, 2).map(s => (
-                              <span key={s.id} className="text-[10.5px] bg-slate-50 border border-slate-200 px-1.5 py-0.2 rounded text-slate-600 truncate max-w-[100px]">
-                                {s.name}
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${category.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
+                                {category.status === 'active' ? 'Active' : 'Inactive'}
                               </span>
-                            ))}
-                            {subCats.length > 2 && (
-                              <span className="text-[10px] text-slate-400 font-bold">+{subCats.length - 2} more</span>
-                            )}
+                            </div>
+                            <span className="text-xs text-muted-foreground font-mono mt-0.5">{category.category_code || 'N/A'}</span>
                           </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3.5 px-4">
-                        <span className={cn(
-                          "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold",
-                          category.status === "active" 
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80" 
-                            : "bg-rose-50 text-rose-700 border border-rose-200/80"
-                        )}>
-                          <span className={cn(
-                            "size-1.5 rounded-full",
-                            category.status === "active" ? "bg-emerald-500" : "bg-rose-500"
-                          )} />
-                          {category.status === "active" ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          {isParent && (
-                            <button
-                              onClick={() => openCreateSubModal(category.id)}
-                              className="h-8 px-2 rounded-lg text-blue-600 bg-blue-50/80 hover:bg-blue-100 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
-                              title="Add Sub-category"
-                            >
-                              <Plus className="size-3" /> Sub-item
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleEdit(category)}
-                            className="size-8 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition cursor-pointer"
-                            title="Edit Category"
-                          >
-                            <Edit2 className="size-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(category.id)}
-                            className="size-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center transition cursor-pointer"
-                            title="Delete Category"
-                          >
-                            <Archive className="size-3.5" />
-                          </button>
                         </div>
-                      </td>
-                    </tr>
+
+                        <div className="flex items-center gap-2">
+                          {isParent && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="h-8 text-xs font-bold text-indigo-600 border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100"
+                              onClick={() => openCreateSubModal(category.id)}
+                            >
+                              <Plus className="size-3.5 mr-1" /> Add Sub-category
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDelete(category.id)}><Archive className="size-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-slate-100" onClick={() => handleEdit(category)}><Edit2 className="size-4" /></Button>
+                        </div>
+                      </div>
+
+                      {/* Sub-categories nested under Parent */}
+                      {subCats.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-100 pl-4 sm:pl-6 space-y-2">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
+                            Sub-Categories ({subCats.length}):
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                            {subCats.map(sub => (
+                              <div key={sub.id} className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2 text-xs">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></span>
+                                  <span className="font-semibold text-slate-800 truncate">{sub.name}</span>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button onClick={() => handleEdit(sub)} className="p-1 text-slate-400 hover:text-indigo-600"><Edit2 className="size-3" /></button>
+                                  <button onClick={() => handleDelete(sub.id)} className="p-1 text-slate-400 hover:text-rose-600"><Archive className="size-3" /></button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </Card>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            );
+          })()
+        )}
+      </div>
 
-          {/* Footer */}
-          <div className="px-4 py-3 border-t border-slate-200/80 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500 font-medium">
-            <span>Showing {filtered.length} of {categories.length} categories</span>
-            <span className="font-semibold text-slate-700">Click any row to edit specifications</span>
-          </div>
-        </div>
-      )}
-
-      {/* ── CREATE / EDIT MODAL ── */}
+      {/* CREATE MODAL */}
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-black/40 backdrop-blur-xs" />
-            <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border">
-              <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <FolderTree className="w-5 h-5 text-blue-600" />
-                  {editingId ? "Edit Category" : "Add New Category"}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col">
+              <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
+                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <FolderTree className="w-5 h-5 text-indigo-600" />
+                  {editingId ? "Edit Category" : "Add Category"}
                 </h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer">
-                  <X className="w-5 h-5" />
-                </button>
+                <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5" /></button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Category Name <span className="text-red-500">*</span></label>
-                  <input
-                    required
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    placeholder="e.g. Beverages, Electronics"
-                    className="w-full h-10 px-3 text-xs bg-slate-50/80 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold"
-                  />
-                </div>
+              <div className="p-6 overflow-y-auto">
+                <form id="category-form" onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Name *</label>
+                    <input required type="text" name="name" value={formData.name} onChange={handleInputChange} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Category Code</label>
+                    <input type="text" name="category_code" value={formData.category_code} onChange={handleInputChange} placeholder="Leave blank to auto-generate" className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono placeholder:font-sans" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Parent Category (Optional)</label>
+                    <select name="parent_id" value={formData.parent_id} onChange={handleInputChange} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white">
+                      <option value="">None (Top-Level Category)</option>
+                      {categories.filter(c => c.id !== editingId).map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description</label>
+                    <textarea name="description" value={formData.description} onChange={handleInputChange} rows={3} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"></textarea>
+                  </div>
+                  <div className="flex items-center gap-3 mt-4">
+                    <input type="checkbox" name="status" id="status" checked={formData.status === 'active'} onChange={(e) => setFormData(prev => ({...prev, status: e.target.checked ? 'active' : 'inactive'}))} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
+                    <label htmlFor="status" className="text-sm font-medium text-slate-700">Active</label>
+                  </div>
+                </form>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Category Code</label>
-                  <input
-                    type="text"
-                    name="category_code"
-                    value={formData.category_code}
-                    onChange={handleInputChange}
-                    placeholder="e.g. CAT-BEV-001"
-                    className="w-full h-10 px-3 text-xs font-mono bg-slate-50/80 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Parent Category (Optional)</label>
-                  <select
-                    name="parent_id"
-                    value={formData.parent_id}
-                    onChange={handleInputChange}
-                    className="w-full h-10 px-3 text-xs bg-slate-50/80 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
-                  >
-                    <option value="">None (Top-Level Category)</option>
-                    {categories.filter(c => !c.parent_id && c.id !== editingId).map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
-                  <textarea
-                    name="description"
-                    value={formData.description}
-                    onChange={handleInputChange}
-                    rows={3}
-                    placeholder="Brief description of this category..."
-                    className="w-full p-3 text-xs bg-slate-50/80 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none font-medium"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="status"
-                    name="status"
-                    checked={formData.status === 'active'}
-                    onChange={handleInputChange}
-                    className="size-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                  />
-                  <label htmlFor="status" className="text-xs font-bold text-slate-700 cursor-pointer">Active Category</label>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setIsModalOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" size="sm" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
-                    {isSubmitting ? "Saving..." : editingId ? "Update Category" : "Create Category"}
-                  </Button>
-                </div>
-              </form>
+              <div className="p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex justify-end gap-3 shrink-0">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+                <button type="submit" form="category-form" disabled={isSubmitting} className="px-8 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg transition-all">
+                  {isSubmitting ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

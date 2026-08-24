@@ -192,206 +192,167 @@ export function ExpiryManagement() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* ── Page Header ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-3">
-            <h1 className="text-[26px] font-black text-slate-900 tracking-tight leading-none">
-              Expiry Management
-            </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
-              Live Monitoring
-            </span>
-          </div>
-          <p className="text-[13px] font-medium text-slate-500 mt-1.5 leading-normal">
-            Monitor FMCG, Pharma, and Food products nearing expiration date cohorts and manage clearance write-offs.
-          </p>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Expiry Management</h2>
+          <p className="text-sm text-muted-foreground">Monitor FMCG, Pharma, and Food products nearing expiration.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm"
-            className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
-            onClick={loadSummary}
-          >
-            Refresh Data
-          </Button>
-        </div>
+        <Button variant="outline" onClick={loadSummary}>
+          Refresh
+        </Button>
       </div>
 
-      {/* ── 3 Expiry Buckets Cards ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div
-          className={`p-5 rounded-2xl border transition-all cursor-pointer bg-white shadow-2xs ${
-            activeBucket === "expired" ? "border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10" : "border-slate-200/80 hover:border-rose-300"
-          }`}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card
+          className={`p-6 border-t-4 border-t-rose-500 cursor-pointer transition ${activeBucket === "expired" ? "ring-2 ring-rose-300" : ""}`}
           onClick={() => loadBucket("expired")}
         >
-          <div className="flex justify-between items-start mb-3">
-            <span className="text-xs font-black uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200/80">
-              Already Expired
-            </span>
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="font-bold text-rose-500">Already Expired</h3>
             <CalendarX className="size-5 text-rose-500" />
           </div>
           {loadingSummary ? (
-            <Loader2 className="size-6 animate-spin text-slate-400" />
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
           ) : (
-            <div className="text-2xl font-black text-slate-900">
+            <div className="text-3xl font-bold font-mono">
               {summary?.expired?.units ?? summary?.expired?.count ?? 0}
-              <span className="text-xs font-semibold text-slate-400 font-sans ml-1.5">units</span>
+              <span className="text-sm text-muted-foreground font-sans ml-2">units</span>
             </div>
           )}
-          <p className="text-xs font-medium text-slate-500 mt-1.5">
-            {summary?.expired?.count ?? 0} batches require immediate disposal.
+          <p className="text-xs text-muted-foreground mt-2">
+            {summary?.expired?.count ?? 0} batches require immediate write-off and disposal.
           </p>
-          <Button variant="outline" size="sm" className="w-full mt-4 h-8 text-xs font-bold text-rose-600 border-rose-200 bg-rose-50/60 hover:bg-rose-100 rounded-lg">
+          <Button variant="outline" size="sm" className="w-full mt-4 text-rose-500 border-rose-200 bg-rose-50 hover:bg-rose-100">
             <Ban className="size-3 mr-1" /> Review Write-offs
           </Button>
-        </div>
+        </Card>
 
-        <div
-          className={`p-5 rounded-2xl border transition-all cursor-pointer bg-white shadow-2xs ${
-            activeBucket === "expiring_30" ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/10" : "border-slate-200/80 hover:border-amber-300"
-          }`}
+        <Card
+          className={`p-6 border-t-4 border-t-amber-500 cursor-pointer transition ${activeBucket === "expiring_30" ? "ring-2 ring-amber-300" : ""}`}
           onClick={() => loadBucket("expiring_30")}
         >
-          <div className="flex justify-between items-start mb-3">
-            <span className="text-xs font-black uppercase tracking-wider text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/80">
-              Expiring in 30 Days
-            </span>
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="font-bold text-amber-500">Expiring in 30 Days</h3>
             <AlertTriangle className="size-5 text-amber-500" />
           </div>
           {loadingSummary ? (
-            <Loader2 className="size-6 animate-spin text-slate-400" />
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
           ) : (
-            <div className="text-2xl font-black text-slate-900">
+            <div className="text-3xl font-bold font-mono">
               {summary?.expiring_30?.units ?? summary?.expiring_30?.count ?? 0}
-              <span className="text-xs font-semibold text-slate-400 font-sans ml-1.5">units</span>
+              <span className="text-sm text-muted-foreground font-sans ml-2">units</span>
             </div>
           )}
-          <p className="text-xs font-medium text-slate-500 mt-1.5">
-            {summary?.expiring_30?.count ?? 0} batches — clearance discount recommended.
+          <p className="text-xs text-muted-foreground mt-2">
+            {summary?.expiring_30?.count ?? 0} batches — recommend discount campaigns.
           </p>
-          <Button variant="outline" size="sm" className="w-full mt-4 h-8 text-xs font-bold text-amber-700 border-amber-200 bg-amber-50/60 hover:bg-amber-100 rounded-lg">
+          <Button variant="outline" size="sm" className="w-full mt-4 text-amber-600 border-amber-200 bg-amber-50 hover:bg-amber-100">
             <Tag className="size-3 mr-1" /> Apply Discount
           </Button>
-        </div>
+        </Card>
 
-        <div
-          className={`p-5 rounded-2xl border transition-all cursor-pointer bg-white shadow-2xs ${
-            activeBucket === "expiring_90" ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/10" : "border-slate-200/80 hover:border-blue-300"
-          }`}
+        <Card
+          className={`p-6 border-t-4 border-t-blue-500 cursor-pointer transition ${activeBucket === "expiring_90" ? "ring-2 ring-blue-300" : ""}`}
           onClick={() => loadBucket("expiring_90")}
         >
-          <div className="flex justify-between items-start mb-3">
-            <span className="text-xs font-black uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200/80">
-              Expiring in 90 Days
-            </span>
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="font-bold text-blue-500">Expiring in 90 Days</h3>
             <CalendarX className="size-5 text-blue-500" />
           </div>
           {loadingSummary ? (
-            <Loader2 className="size-6 animate-spin text-slate-400" />
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
           ) : (
-            <div className="text-2xl font-black text-slate-900">
+            <div className="text-3xl font-bold font-mono">
               {summary?.expiring_90?.units ?? summary?.expiring_90?.count ?? 0}
-              <span className="text-xs font-semibold text-slate-400 font-sans ml-1.5">units</span>
+              <span className="text-sm text-muted-foreground font-sans ml-2">units</span>
             </div>
           )}
-          <p className="text-xs font-medium text-slate-500 mt-1.5">
-            {summary?.expiring_90?.count ?? 0} batches in active monitoring.
+          <p className="text-xs text-muted-foreground mt-2">
+            {summary?.expiring_90?.count ?? 0} batches in normal clearance tracking.
           </p>
-          <Button variant="outline" size="sm" className="w-full mt-4 h-8 text-xs font-bold text-blue-700 border-blue-200 bg-blue-50/60 hover:bg-blue-100 rounded-lg">
+          <Button variant="outline" size="sm" className="w-full mt-4 text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100">
             <ListChecks className="size-3 mr-1" /> View Cohort
           </Button>
-        </div>
+        </Card>
       </div>
 
-      {/* ── Active Bucket DataTable ── */}
       {activeBucket && (
-        <div className="space-y-3 pt-2">
-          {/* Search bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-            <div className="relative flex-1 w-full max-w-md">
-              <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                value={search} 
-                onChange={e => setSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50/80 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 font-medium"
-                placeholder="Search batch, product, SKU..." 
-              />
-            </div>
+        <Card className="overflow-hidden">
+          <div className="p-4 border-b flex items-center justify-between gap-3">
+            <h3 className="font-bold capitalize flex items-center gap-2">
+              {activeBucket && (() => {
+                const Icon = bucketActions[activeBucket].icon;
+                return <Icon className="size-4" />;
+              })()}
+              {activeBucket === "expired" && "Already Expired"}
+              {activeBucket === "expiring_30" && "Expiring in 30 Days"}
+              {activeBucket === "expiring_90" && "Expiring in 90 Days"}
+            </h3>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">
-                {activeBucket === "expired" ? "Expired Batches" : activeBucket === "expiring_30" ? "30-Day Cohort" : "90-Day Cohort"}
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => setActiveBucket(null)} className="h-8 px-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-lg">
-                <X className="size-3.5 mr-1" /> Close View
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  className="h-9 pl-9 pr-3 text-sm rounded-md border bg-card focus:ring-1 focus:ring-primary/30 w-64"
+                  placeholder="Search batch, product, SKU..." />
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setActiveBucket(null)}>
+                <X className="size-4" />
               </Button>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
-            {loadingList ? (
-              <div className="flex justify-center p-12"><Loader2 className="size-8 animate-spin text-blue-600" /></div>
-            ) : filtered.length === 0 ? (
-              <div className="p-12 text-center text-xs font-semibold text-slate-500">
-                No batches match this bucket criteria. ✓ All inventory is currently healthy.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="border-b border-slate-200/80 bg-slate-50/75 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 select-none">
-                    <tr>
-                      <th className="px-4 py-3">Batch Number</th>
-                      <th className="px-4 py-3">Product Name & SKU</th>
-                      <th className="px-4 py-3">Warehouse</th>
-                      <th className="px-4 py-3 text-right">Remaining Qty</th>
-                      <th className="px-4 py-3">Mfg Date</th>
-                      <th className="px-4 py-3">Expiry Date</th>
-                      <th className="px-4 py-3">Days Remaining</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filtered.map(b => (
-                      <tr key={b.id} className="hover:bg-slate-50/80 transition-colors group">
-                        <td className="py-3.5 px-4 font-mono font-bold text-blue-600">{b.batch_number}</td>
-                        <td className="py-3.5 px-4">
-                          <div className="font-extrabold text-slate-900 text-[13px]">{b.product_name || "—"}</div>
-                          {b.sku && <div className="text-[10.5px] font-mono text-slate-400">SKU: {b.sku}</div>}
-                        </td>
-                        <td className="py-3.5 px-4 font-bold text-slate-700">{b.warehouse_name || "Main Warehouse"}</td>
-                        <td className="py-3.5 px-4 text-right font-black text-slate-900">{b.remaining_quantity} Units</td>
-                        <td className="py-3.5 px-4 text-slate-500 font-medium">{b.manufacturing_date || "—"}</td>
-                        <td className="py-3.5 px-4 text-slate-800 font-bold">{b.expiry_date || "—"}</td>
-                        <td className={`py-3.5 px-4 font-mono font-bold ${daysColor(b.days_to_expiry)}`}>
-                          {b.days_to_expiry !== null ? (b.days_to_expiry < 0 ? `${b.days_to_expiry}d ago` : `+${b.days_to_expiry}d`) : "—"}
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => setDiscountBatch(b)}
-                              className="h-8 px-2.5 rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
-                            >
-                              <Tag className="size-3" /> Discount
-                            </button>
-                            <button
-                              onClick={() => setWriteOffBatch(b)}
-                              className="h-8 px-2.5 rounded-lg text-rose-700 bg-rose-50 hover:bg-rose-100 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
-                            >
-                              <Ban className="size-3" /> Write-off
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+          {loadingList ? (
+            <div className="flex justify-center p-12"><Loader2 className="size-8 animate-spin text-muted-foreground" /></div>
+          ) : filtered.length === 0 ? (
+            <div className="p-12 text-center text-sm text-muted-foreground">
+              No batches match this bucket. ✓ You're clear.
+            </div>
+          ) : (
+            <table className="w-full text-sm text-left">
+              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
+                <tr>
+                  <th className="px-6 py-4">Batch</th>
+                  <th className="px-6 py-4">Product</th>
+                  <th className="px-6 py-4">Warehouse</th>
+                  <th className="px-6 py-4 text-right">Qty</th>
+                  <th className="px-6 py-4">Mfg Date</th>
+                  <th className="px-6 py-4">Expiry</th>
+                  <th className="px-6 py-4">Days</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filtered.map(b => (
+                  <tr key={b.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-6 py-4 font-mono font-bold">{b.batch_number}</td>
+                    <td className="px-6 py-4">
+                      <div className="font-bold">{b.product_name || "—"}</div>
+                      {b.sku && <div className="text-[10px] font-mono text-muted-foreground">SKU {b.sku}</div>}
+                    </td>
+                    <td className="px-6 py-4 text-xs">{b.warehouse_name || "—"}</td>
+                    <td className="px-6 py-4 text-right font-mono font-bold">{b.remaining_quantity}</td>
+                    <td className="px-6 py-4 text-xs">{b.manufacturing_date || "—"}</td>
+                    <td className="px-6 py-4 text-xs">{b.expiry_date || "—"}</td>
+                    <td className={`px-6 py-4 font-mono ${daysColor(b.days_to_expiry)}`}>
+                      {b.days_to_expiry !== null ? (b.days_to_expiry < 0 ? `${b.days_to_expiry}d ago` : `+${b.days_to_expiry}d`) : "—"}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setDiscountBatch(b)}>
+                          <Tag className="size-3 mr-1" /> Discount
+                        </Button>
+                        <Button size="sm" variant="outline" className="text-rose-600 border-rose-200 hover:bg-rose-50" onClick={() => setWriteOffBatch(b)}>
+                          <Ban className="size-3 mr-1" /> Write-off
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
       )}
 
       {/* Discount modal */}

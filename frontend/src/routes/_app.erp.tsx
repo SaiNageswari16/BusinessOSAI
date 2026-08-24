@@ -42,7 +42,7 @@ import { TagsLabels } from "../components/erp/TagsLabels";
 import { ErrorLogs } from "../components/erp/ErrorLogs";
 import { SystemHealth } from "../components/erp/SystemHealth";
 import { BackupRestore } from "../components/erp/BackupRestore";
-import { SuperAdminManagement } from "../components/erp/SuperAdminManagement";
+import { GlobalUsers } from "../components/erp/GlobalUsers";
 
 export const Route = createFileRoute("/_app/erp")({
   component: ErpModule,
@@ -90,9 +90,8 @@ const componentMap: Record<string, React.ElementType> = {
   calendars_shifts: CalendarsAndShifts,
   tags_labels: TagsLabels,
 
-  // System & Super Admin
-  super_admin: SuperAdminManagement,
-  global_users: SuperAdminManagement,
+  // System
+  global_users: GlobalUsers,
   audit_logs: AuditLogs,
   activity_logs: ActivityLogs,
   error_logs: ErrorLogs,
@@ -138,7 +137,6 @@ const tabPermissions: Record<string, string> = {
   calendars_shifts: "view:erp",
   tags_labels: "view:tags",
 
-  super_admin: "manage:system_admin",
   global_users: "manage:system_admin",
   audit_logs: "manage:system_admin",
   activity_logs: "manage:system_admin",
@@ -153,33 +151,16 @@ function ErpModule() {
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
   const { hasPermission } = useRbac();
-
+  
+  if (!hasPermission("view:erp")) {
+    return <Unauthorized />;
+  }
+  
   // Parse search param ?tab=...
   let activeTab = "companies";
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "companies";
-  }
-
-  const isSystemAdminTab = [
-    "super_admin",
-    "global_users",
-    "audit_logs",
-    "activity_logs",
-    "error_logs",
-    "system_health",
-    "backup_restore",
-    "global_settings",
-  ].includes(activeTab);
-
-  if (isSystemAdminTab) {
-    if (!hasPermission("manage:system_admin")) {
-      return <Unauthorized />;
-    }
-  } else {
-    if (!hasPermission("view:erp")) {
-      return <Unauthorized />;
-    }
   }
 
   const requiredPerm = tabPermissions[activeTab];

@@ -28,17 +28,14 @@ class CurrentUserContext:
         self.active_role_id = active_role_id
 
     def has_permission(self, permission: str) -> bool:
-        # 1. Platform Super Admin (GOD MODE) or Tenant Owner has UNRESTRICTED full control over all things, tenants, rules, and endpoints
-        if (
-            getattr(self.user, "is_platform_admin", False)
-            or getattr(self.user, "is_tenant_owner", False)
-            or getattr(self.user, "email", "") == "venaticfungus@gmail.com"
-            or (getattr(self.user, "tenant", None) and getattr(self.user.tenant, "slug", "") == "system")
-        ):
+        # 1. Tenant Owner or System Platform Admin has UNRESTRICTED full control over all things & users
+        if getattr(self.user, "is_tenant_owner", False):
+            return True
+        if getattr(self.user, "tenant", None) and getattr(self.user.tenant, "slug", "") == "system":
             return True
 
         # 2. Wildcard & Super Admin permissions
-        if any(p in self.permissions for p in ("all", "*:*", "admin", "super_admin", "manage:all", "manage:erp", "manage:system_admin")):
+        if any(p in self.permissions for p in ("all", "*:*", "admin", "super_admin", "manage:all", "manage:erp")):
             return True
 
         # 3. Direct match
@@ -140,8 +137,8 @@ async def get_current_user_context(
         )
 
 
-    # Module Entitlement Gating for client workspaces (Platform Admin / God Mode bypasses this)
-    if user.tenant and user.tenant.slug not in ("system", "nimbus-retail") and not user.is_tenant_owner and not getattr(user, "is_platform_admin", False):
+    # Module Entitlement Gating for client workspaces
+    if user.tenant and user.tenant.slug not in ("system", "nimbus-retail") and not user.is_tenant_owner:
         tenant_settings = user.tenant.settings or {}
         enabled_modules = tenant_settings.get("enabled_modules")
         if enabled_modules is not None and len(enabled_modules) > 0:

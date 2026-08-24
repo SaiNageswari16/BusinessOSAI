@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Search, Plus, Edit2, Archive, X, Download, Columns, ChevronLeft, ChevronRight, MoreVertical, RotateCcw, ListOrdered, CheckCircle2, XCircle, Cuboid } from "lucide-react";
-import { inventoryApi, InventoryUOM, downloadCsv } from "../../lib/api-client";
+import { inventoryApi, InventoryUOM } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -156,105 +156,103 @@ export function UnitsOfMeasure() {
     setIsModalOpen(true);
   };
 
-  const handleExport = () => {
-    if (uoms.length === 0) {
-      toast.info("No units to export.");
-      return;
-    }
-    const headers = ["Unit Name", "Abbreviation", "Unit Type", "Conversion Rate", "Base Unit", "Status"];
-    const rows = filtered.map(u => [
-      u.name,
-      u.abbreviation,
-      u.unit_type || "Count",
-      u.conversion_rate || 1,
-      u.base_unit ? "Yes" : "No",
-      u.status || "active"
-    ]);
-    downloadCsv(`uom_export_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
-  };
-
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
+
   // Metrics
   const activeCount = uoms.filter(u => u.status === 'active').length;
   const baseCount = uoms.filter(u => u.base_unit).length;
 
   return (
-    <div className="space-y-5">
-      {/* ── Page Header ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-3">
-            <h1 className="text-[26px] font-black text-slate-900 tracking-tight leading-none">
-              Units of Measure
-            </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
-              {uoms.length} Units
-            </span>
-          </div>
-          <p className="text-[13px] font-medium text-slate-500 mt-1.5 leading-normal">
-            Configure measurement units, conversion ratios, symbols, and packaging dimensions.
-          </p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Units of Measure (UoM)</h2>
+          <p className="text-sm text-muted-foreground">Manage and organize measurement units used across your inventory.</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="border-slate-200 bg-white">
+            <Download className="size-4 mr-2" /> Import Units
+          </Button>
           <Button 
             variant="outline" 
-            size="sm"
-            className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
-            onClick={handleExport}
+            className={`border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-opacity ${selectedIds.length === 0 ? 'opacity-50 pointer-events-none' : ''}`}
+            onClick={handleDeleteSelected}
           >
-            <Download className="size-3.5 mr-1.5 text-slate-500" /> Export
+            <Archive className="size-4 mr-2" /> Delete Selected
           </Button>
-          {selectedIds.length > 0 && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleDeleteSelected} 
-              className="h-9 text-xs font-semibold text-rose-700 hover:bg-rose-50 border-rose-200 rounded-lg shadow-2xs"
-            >
-              <Archive className="size-3.5 mr-1.5 text-rose-600" /> Delete ({selectedIds.length})
-            </Button>
-          )}
-          <Button 
-            size="sm"
-            onClick={openCreateModal} 
-            className="h-9 px-3.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="size-4 mr-1.5" /> Add Unit
+          <Button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700 text-white border-0">
+            <Plus className="size-4 mr-2" /> Add Unit
           </Button>
         </div>
       </div>
 
-      {/* ── Search & Filters Bar ── */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-        <div className="relative flex-1 w-full max-w-md">
-          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      {/* Top Metrics Row */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+            <ListOrdered className="size-6 text-blue-500" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-500">Total Units</p>
+            <p className="text-2xl font-bold text-slate-900">{uoms.length}</p>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center">
+            <CheckCircle2 className="size-6 text-emerald-500" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-500">Active Units</p>
+            <p className="text-2xl font-bold text-slate-900">{activeCount}</p>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center">
+            <XCircle className="size-6 text-rose-500" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-500">Inactive Units</p>
+            <p className="text-2xl font-bold text-slate-900">{uoms.length - activeCount}</p>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center">
+            <Cuboid className="size-6 text-purple-500" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-500">Base Units</p>
+            <p className="text-2xl font-bold text-slate-900">{baseCount}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters Row */}
+      <div className="flex flex-wrap gap-4 items-center">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50/80 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 font-medium" 
-            placeholder="Search unit name or abbreviation..." 
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-white focus:ring-1 focus:ring-blue-500 outline-none shadow-sm" 
+            placeholder="Search unit name or code..." 
           />
         </div>
         
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <select 
-            value={statusFilter} 
-            onChange={e => setStatusFilter(e.target.value)} 
-            className="h-9 px-2.5 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          >
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-bold text-slate-500 uppercase">Status</span>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="h-10 px-3 py-2 text-sm rounded-lg border bg-white outline-none focus:ring-1 focus:ring-blue-500 shadow-sm min-w-[140px]">
             <option>All Status</option>
             <option>Active</option>
             <option>Inactive</option>
           </select>
-          
-          <select 
-            value={typeFilter} 
-            onChange={e => setTypeFilter(e.target.value)} 
-            className="h-9 px-2.5 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[120px]"
-          >
+        </div>
+        
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-bold text-slate-500 uppercase">Unit Type</span>
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="h-10 px-3 py-2 text-sm rounded-lg border bg-white outline-none focus:ring-1 focus:ring-blue-500 shadow-sm min-w-[140px]">
             <option>All Types</option>
             <option>Count</option>
             <option>Weight</option>
@@ -262,111 +260,120 @@ export function UnitsOfMeasure() {
             <option>Length</option>
             <option>Packaging</option>
           </select>
+        </div>
 
-          <select 
-            value={baseUnitFilter} 
-            onChange={e => setBaseUnitFilter(e.target.value)} 
-            className="h-9 px-2.5 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          >
-            <option value="All">All Units</option>
-            <option value="Yes">Base Units Only</option>
-            <option value="No">Converted Units</option>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-bold text-slate-500 uppercase">Base Unit</span>
+          <select value={baseUnitFilter} onChange={e => setBaseUnitFilter(e.target.value)} className="h-10 px-3 py-2 text-sm rounded-lg border bg-white outline-none focus:ring-1 focus:ring-blue-500 shadow-sm min-w-[140px]">
+            <option>All</option>
+            <option>Yes</option>
+            <option>No</option>
           </select>
+        </div>
+
+        <div className="flex flex-col gap-1 justify-end h-full mt-4">
+          <Button variant="ghost" onClick={handleClearFilters} className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 h-10 border border-teal-100 bg-teal-50/50">
+            <RotateCcw className="size-4 mr-2" /> Clear Filters
+          </Button>
         </div>
       </div>
 
-      {/* ── Table Section ── */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+      {/* Table Section */}
+      <div className="bg-white rounded-xl border shadow-sm flex flex-col overflow-hidden">
+        {/* Table Header Tools */}
+        <div className="p-4 border-b flex justify-end items-center bg-white">
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="h-9">
+              <Columns className="size-4 mr-2" /> Columns
+            </Button>
+            <Button variant="outline" size="sm" className="h-9">
+              <Download className="size-4 mr-2" /> Export
+            </Button>
+          </div>
+        </div>
+
+        {/* The Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="border-b border-slate-200/80 bg-slate-50/75 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 select-none">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-slate-500 bg-slate-50/50 border-b">
               <tr>
-                <th className="p-3.5 w-10 text-center">
-                  <input type="checkbox" checked={selectedIds.length === paginated.length && paginated.length > 0} onChange={toggleSelectAll} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                <th className="p-4 w-12 text-center">
+                  <input type="checkbox" checked={selectedIds.length === paginated.length && paginated.length > 0} onChange={toggleSelectAll} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
                 </th>
-                <th className="px-4 py-3">Unit Name</th>
-                <th className="px-4 py-3">Abbr / Symbol</th>
-                <th className="px-4 py-3">Unit Type</th>
-                <th className="px-4 py-3">Conversion Rate</th>
-                <th className="px-4 py-3">Base Unit</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-6 py-4 font-bold">Unit Name</th>
+                <th className="px-6 py-4 font-bold">Unit Code</th>
+                <th className="px-6 py-4 font-bold">Unit Type</th>
+                <th className="px-6 py-4 font-bold">Base Unit</th>
+                <th className="px-6 py-4 font-bold">Conversion Rate</th>
+                <th className="px-6 py-4 font-bold">Status</th>
+                <th className="px-6 py-4 font-bold">Used In Products</th>
+                <th className="px-6 py-4 font-bold">Created On</th>
+                <th className="px-6 py-4 font-bold text-center">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
+            <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Loading units of measure...</td></tr>
+                <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Loading units...</td></tr>
               ) : paginated.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No units found.</td></tr>
+                <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">No units found.</td></tr>
               ) : (
                 paginated.map((uom) => (
-                  <tr key={uom.id} className="hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => handleEdit(uom)}>
-                    <td className="p-3.5 text-center" onClick={e => e.stopPropagation()}>
+                  <tr key={uom.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4 text-center">
                       <input 
                         type="checkbox" 
                         checked={selectedIds.includes(uom.id)} 
                         onChange={() => toggleSelect(uom.id)} 
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
                       />
                     </td>
-                    <td className="py-3.5 px-4">
-                      <div className="font-extrabold text-slate-900 text-[13px] group-hover:text-blue-600 transition-colors">
-                        {uom.name}
-                      </div>
-                      {uom.description && (
-                        <div className="text-[11px] text-slate-400 truncate max-w-xs">{uom.description}</div>
-                      )}
+                    <td className="px-6 py-4 font-bold text-slate-900">{uom.name}</td>
+                    <td className="px-6 py-4 font-semibold text-blue-600 bg-blue-50/30">
+                      {uom.abbreviation}
                     </td>
-                    <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200/80 text-[11px]">
-                        {uom.abbreviation || "—"} {uom.unit_symbol ? `(${uom.unit_symbol})` : ''}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80">
-                        {uom.unit_type}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-bold text-slate-800">
-                      1 : {uom.conversion_rate || 1}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {uom.base_unit ? (
-                        <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200/80">
-                          Base Unit
+                    <td className="px-6 py-4">
+                      {uom.unit_type ? (
+                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-md ${
+                          uom.unit_type === 'Count' ? 'bg-blue-50 text-blue-600' :
+                          uom.unit_type === 'Weight' ? 'bg-purple-50 text-purple-600' :
+                          uom.unit_type === 'Volume' ? 'bg-orange-50 text-orange-600' :
+                          uom.unit_type === 'Length' ? 'bg-indigo-50 text-indigo-600' :
+                          uom.unit_type === 'Packaging' ? 'bg-teal-50 text-teal-600' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>
+                          {uom.unit_type}
                         </span>
                       ) : (
-                        <span className="text-slate-400 font-normal">Derived</span>
+                        <span className="text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${uom.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80' : 'bg-slate-100 text-slate-600'}`}>
-                        <span className={`size-1.5 rounded-full ${uom.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                    <td className="px-6 py-4">
+                      <span className={`text-[11px] font-bold px-2 py-1 rounded-sm ${uom.base_unit ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                        {uom.base_unit ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-medium text-slate-700">
+                      {uom.conversion_rate} {(!uom.base_unit && uom.unit_symbol) ? uom.unit_symbol : ''}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`text-[11px] font-bold px-2 py-1 rounded-sm ${uom.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
                         {uom.status === 'active' ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => handleEdit(uom)}
-                          className="size-8 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition cursor-pointer"
-                          title="Edit Unit"
-                        >
-                          <Edit2 className="size-3.5" />
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`Delete unit "${uom.name}"?`)) return;
-                            try {
-                              await inventoryApi.deleteUOM(uom.id);
-                              await loadData();
-                            } catch { alert("Failed to delete unit."); }
-                          }}
-                          className="size-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center transition cursor-pointer"
-                          title="Delete Unit"
-                        >
-                          <Archive className="size-3.5" />
-                        </button>
+                    <td className="px-6 py-4 font-medium text-slate-600">
+                      {uom.products_count?.toLocaleString() || 0}
+                    </td>
+                    <td className="px-6 py-4 text-slate-500 text-xs">
+                      {formatDate(uom.created_at)}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleEdit(uom)}>
+                          <Edit2 className="size-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600">
+                          <MoreVertical className="size-4" />
+                        </Button>
                       </div>
                     </td>
                   </tr>

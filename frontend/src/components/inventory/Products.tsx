@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle, Gift } from "lucide-react";
+
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { useTenant } from "../../contexts/tenant-context";
@@ -14,7 +15,6 @@ import { RealBarcodeSvg, SingleBarcodeLabelCard } from "../../lib/barcode-svg";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
 import { FreeQtySettingsModal } from "./FreeQtySettingsModal";
-import { cn } from "@/lib/utils";
 
 // ── Types ───────────────────────────────────────────────────────────
 interface MasterResult {
@@ -267,7 +267,7 @@ function BarcodePrintDrawer({
 
   const handlePrint = () => {
     if (printItems.length === 0) return toast.warning("Select at least one product with a barcode.");
-
+    
     let styleEl = document.getElementById("barcode-print-style-tag");
     if (!styleEl) {
       styleEl = document.createElement("style");
@@ -862,7 +862,7 @@ function ImportPreviewModal({
 //  MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════
 export function Products() {
-  const { currency, formatCurrency } = useCurrency();
+    const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
@@ -903,7 +903,7 @@ export function Products() {
   const [hsnCodes, setHsnCodes] = useState<Array<{ hsn_code: string; description: string; gst_rate: number }>>([]);
 
   useEffect(() => {
-    inventoryApi.getHsnCodes().then(res => setHsnCodes(res || [])).catch(() => { });
+    inventoryApi.getHsnCodes().then(res => setHsnCodes(res || [])).catch(() => {});
   }, []);
 
 
@@ -912,12 +912,12 @@ export function Products() {
   // ── Column visibility ────────────────────────────────────────────
   const [localVisibleColumns, setLocalVisibleColumns] = useState<string[]>(() => {
     const saved = localStorage.getItem("products_local_visible_columns");
-    if (saved) try { return JSON.parse(saved); } catch { }
+    if (saved) try { return JSON.parse(saved); } catch {}
     return localVisibleDefault;
   });
   const [masterVisibleColumns, setMasterVisibleColumns] = useState<string[]>(() => {
     const saved = localStorage.getItem("products_master_visible_columns");
-    if (saved) try { return JSON.parse(saved); } catch { }
+    if (saved) try { return JSON.parse(saved); } catch {}
     return masterVisibleDefault;
   });
   const [isColumnsMenuOpen, setIsColumnsMenuOpen] = useState(false);
@@ -1077,10 +1077,10 @@ export function Products() {
       setIsLoading(false);
     }
 
-    inventoryApi.getCategories().then((res) => setCategories(Array.isArray(res) ? res : (res?.items || []))).catch(() => { });
-    inventoryApi.getBrands().then((res) => setBrands(Array.isArray(res) ? res : (res?.items || []))).catch(() => { });
-    inventoryApi.getUOMs().then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => { });
-    inventoryApi.getWarehouses().then((res) => setWarehouses(Array.isArray(res) ? res : [])).catch(() => { });
+    inventoryApi.getCategories().then((res) => setCategories(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    inventoryApi.getBrands().then((res) => setBrands(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    inventoryApi.getUOMs().then((res) => setUoms(Array.isArray(res) ? res : (res?.items || []))).catch(() => {});
+    inventoryApi.getWarehouses().then((res) => setWarehouses(Array.isArray(res) ? res : [])).catch(() => {});
   };
 
   useEffect(() => { checkAiStatus(); }, []);
@@ -1836,7 +1836,7 @@ export function Products() {
     const selectedCatObj = categories.find(c => c.id === currentForm.category_id);
     const activeParentId = selectedCatObj ? (selectedCatObj.parent_id || selectedCatObj.id) : "";
     const activeSubId = selectedCatObj && selectedCatObj.parent_id ? selectedCatObj.id : "";
-
+    
     const mainCategories = categories.filter(c => !c.parent_id);
     const subCategories = categories.filter(c => c.parent_id && c.parent_id === activeParentId);
 
@@ -1857,7 +1857,7 @@ export function Products() {
             <h2 className="text-xl font-bold tracking-tight">{editingProductId ? "Edit Product" : "Create Product"}</h2>
             <button type="button" onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); setActiveModalTab("basic"); }} className="p-1.5 rounded-lg hover:bg-muted"><X className="size-5" /></button>
           </div>
-
+          
           <div className="flex flex-1 overflow-hidden">
             {/* Sidebar */}
             <div className="w-72 bg-slate-50 border-r flex flex-col overflow-y-auto shrink-0 p-4">
@@ -1870,8 +1870,9 @@ export function Products() {
                       key={tab.id}
                       type="button"
                       onClick={() => setActiveModalTab(tab.id)}
-                      className={`w-full text-left p-3 rounded-xl flex gap-3 transition-colors ${isActive ? "bg-indigo-50 border border-indigo-100" : "hover:bg-muted border border-transparent"
-                        }`}
+                      className={`w-full text-left p-3 rounded-xl flex gap-3 transition-colors ${
+                        isActive ? "bg-indigo-50 border border-indigo-100" : "hover:bg-muted border border-transparent"
+                      }`}
                     >
                       <div className={`shrink-0 p-2 rounded-lg ${isActive ? "bg-indigo-100 text-indigo-700" : "bg-white border text-slate-500"}`}>
                         <Icon className="size-5" />
@@ -1896,13 +1897,13 @@ export function Products() {
             {/* Form Area */}
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden bg-white">
               <div className="flex-1 overflow-y-auto p-8">
-
+                
                 {activeModalTab === "basic" && (
                   <div className="space-y-6 max-w-3xl">
                     <div>
                       <h3 className="text-lg font-bold text-slate-900">Basic Details</h3>
                       <p className="text-sm text-slate-500 mb-6">Add the essential details to identify your product.</p>
-
+                      
                       <div className="p-4 border border-dashed rounded-xl flex items-center justify-between bg-slate-50/50 mb-6">
                         <div className="flex items-center gap-4">
                           {currentForm.image_url ? (
@@ -2302,11 +2303,11 @@ export function Products() {
                         <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">2. Retail & Consumer Pricing</span>
                         <span className="text-[11px] text-slate-500">Standard walk-in counter sales prices and packaging MRP.</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Retail Selling Price *</label>
-                          <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
-                            <span className="pl-3 pr-1 text-slate-400 font-bold text-sm select-none">{currency.symbol}</span>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
                             <input
                               type="number"
                               step="any"
@@ -2315,21 +2316,22 @@ export function Products() {
                               name="selling_price"
                               value={(currentForm as any).selling_price ?? ""}
                               onChange={handleFormChange}
-                              placeholder="0.00"
-                              className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-black text-slate-900 outline-none"
+                              placeholder=""
+                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                             />
-                            <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
-                              <select
-                                name="is_tax_inclusive"
-                                value={(currentForm as any).is_tax_inclusive !== false ? "true" : "false"}
-                                onChange={(e) => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: e.target.value === "true" }))}
-                                className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
-                              >
-                                <option value="true">With GST</option>
-                                <option value="false">Without GST</option>
-                              </select>
-                            </div>
                           </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Retail Tax Mode</label>
+                          <select
+                            name="is_tax_inclusive"
+                            value={(currentForm as any).is_tax_inclusive !== false ? "true" : "false"}
+                            onChange={(e) => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: e.target.value === "true" }))}
+                            className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                          >
+                            <option value="true">With GST</option>
+                            <option value="false">Without GST</option>
+                          </select>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">MRP (Max Retail Price)</label>
@@ -2380,11 +2382,11 @@ export function Products() {
                             <span className="text-xs font-bold text-indigo-900">Wholesale Tier</span>
                             <span className="text-[10px] bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">Bulk Volume Rate</span>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Wholesale Price</label>
-                              <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
-                                <span className="pl-3 pr-1 text-slate-400 font-bold text-xs select-none">{currency.symbol}</span>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
                                 <input
                                   type="number"
                                   step="any"
@@ -2393,20 +2395,21 @@ export function Products() {
                                   name="wholesale_price"
                                   value={(currentForm as any).wholesale_price ?? ""}
                                   onChange={handleFormChange}
-                                  placeholder="0.00"
-                                  className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-bold text-slate-800 outline-none"
+                                  placeholder=""
+                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                 />
-                                <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
-                                  <select
-                                    value={(currentForm as any).wholesale_is_tax_inclusive !== false ? "true" : "false"}
-                                    onChange={(e) => setCurrentForm(prev => ({ ...prev, wholesale_is_tax_inclusive: e.target.value === "true" }))}
-                                    className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
-                                  >
-                                    <option value="true">With GST</option>
-                                    <option value="false">Without GST</option>
-                                  </select>
-                                </div>
                               </div>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
+                              <select
+                                value={(currentForm as any).wholesale_is_tax_inclusive !== false ? "true" : "false"}
+                                onChange={(e) => setCurrentForm(prev => ({ ...prev, wholesale_is_tax_inclusive: e.target.value === "true" }))}
+                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                              >
+                                <option value="true">With GST</option>
+                                <option value="false">Without GST</option>
+                              </select>
                             </div>
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min Wholesale Qty</label>
@@ -2430,11 +2433,11 @@ export function Products() {
                             <span className="text-xs font-bold text-indigo-900">B2B Business Tier</span>
                             <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-medium">GST Clients</span>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">B2B Price</label>
-                              <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
-                                <span className="pl-3 pr-1 text-slate-400 font-bold text-xs select-none">{currency.symbol}</span>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
                                 <input
                                   type="number"
                                   step="any"
@@ -2443,20 +2446,21 @@ export function Products() {
                                   name="b2b_price"
                                   value={(currentForm as any).b2b_price ?? ""}
                                   onChange={handleFormChange}
-                                  placeholder="0.00"
-                                  className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-bold text-slate-800 outline-none"
+                                  placeholder=""
+                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                 />
-                                <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
-                                  <select
-                                    value={(currentForm as any).b2b_is_tax_inclusive !== false ? "true" : "false"}
-                                    onChange={(e) => setCurrentForm(prev => ({ ...prev, b2b_is_tax_inclusive: e.target.value === "true" }))}
-                                    className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
-                                  >
-                                    <option value="true">With GST</option>
-                                    <option value="false">Without GST</option>
-                                  </select>
-                                </div>
                               </div>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
+                              <select
+                                value={(currentForm as any).b2b_is_tax_inclusive !== false ? "true" : "false"}
+                                onChange={(e) => setCurrentForm(prev => ({ ...prev, b2b_is_tax_inclusive: e.target.value === "true" }))}
+                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                              >
+                                <option value="true">With GST</option>
+                                <option value="false">Without GST</option>
+                              </select>
                             </div>
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min B2B Qty</label>
@@ -2480,11 +2484,11 @@ export function Products() {
                             <span className="text-xs font-bold text-indigo-900">Distributor / Stockist Tier</span>
                             <span className="text-[10px] bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full font-medium">Dealer & Stockist Rate</span>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Distributor Price</label>
-                              <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
-                                <span className="pl-3 pr-1 text-slate-400 font-bold text-xs select-none">{currency.symbol}</span>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
                                 <input
                                   type="number"
                                   step="any"
@@ -2493,20 +2497,21 @@ export function Products() {
                                   name="distributor_price"
                                   value={(currentForm as any).distributor_price ?? ""}
                                   onChange={handleFormChange}
-                                  placeholder="0.00"
-                                  className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-bold text-slate-800 outline-none"
+                                  placeholder=""
+                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                 />
-                                <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
-                                  <select
-                                    value={(currentForm as any).distributor_is_tax_inclusive !== false ? "true" : "false"}
-                                    onChange={(e) => setCurrentForm(prev => ({ ...prev, distributor_is_tax_inclusive: e.target.value === "true" }))}
-                                    className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
-                                  >
-                                    <option value="true">With GST</option>
-                                    <option value="false">Without GST</option>
-                                  </select>
-                                </div>
                               </div>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
+                              <select
+                                value={(currentForm as any).distributor_is_tax_inclusive !== false ? "true" : "false"}
+                                onChange={(e) => setCurrentForm(prev => ({ ...prev, distributor_is_tax_inclusive: e.target.value === "true" }))}
+                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                              >
+                                <option value="true">With GST</option>
+                                <option value="false">Without GST</option>
+                              </select>
                             </div>
                             <div>
                               <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min Distributor Qty</label>
@@ -2532,11 +2537,11 @@ export function Products() {
                         <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 block">4. Purchase & Sourcing Costs</span>
                         <span className="text-[11px] text-slate-500">Cost price paid to vendors for margin tracking and procurement.</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Purchase / Cost Price</label>
-                          <div className="relative flex items-center rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 overflow-hidden transition-all shadow-2xs">
-                            <span className="pl-3 pr-1 text-slate-400 font-bold text-sm select-none">{currency.symbol}</span>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
                             <input
                               type="number"
                               step="any"
@@ -2545,21 +2550,22 @@ export function Products() {
                               name="purchase_price"
                               value={(currentForm as any).purchase_price ?? ""}
                               onChange={handleFormChange}
-                              placeholder="0.00"
-                              className="w-full h-11 py-2 pr-2 text-sm bg-transparent font-semibold focus:ring-0 outline-none"
+                              placeholder=""
+                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                             />
-                            <div className="border-l border-slate-200 bg-slate-50/90 shrink-0 h-11 flex items-center px-1">
-                              <select
-                                name="is_purchase_tax_inclusive"
-                                value={(currentForm as any).is_purchase_tax_inclusive !== false ? "true" : "false"}
-                                onChange={(e) => setCurrentForm(prev => ({ ...prev, is_purchase_tax_inclusive: e.target.value === "true" }))}
-                                className="h-full bg-transparent px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
-                              >
-                                <option value="true">With GST</option>
-                                <option value="false">Without GST</option>
-                              </select>
-                            </div>
                           </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Purchase Tax Mode</label>
+                          <select
+                            name="is_purchase_tax_inclusive"
+                            value={(currentForm as any).is_purchase_tax_inclusive !== false ? "true" : "false"}
+                            onChange={(e) => setCurrentForm(prev => ({ ...prev, is_purchase_tax_inclusive: e.target.value === "true" }))}
+                            className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                          >
+                            <option value="true">With GST</option>
+                            <option value="false">Without GST</option>
+                          </select>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Preferred Supplier / Vendor</label>
@@ -2721,7 +2727,7 @@ export function Products() {
                         className="w-full p-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
                       />
                     </div>
-
+                    
                     <div>
                       <label className="block text-sm font-semibold text-slate-900 mb-1.5">Long Description</label>
                       <textarea
@@ -2750,7 +2756,7 @@ export function Products() {
                 )}
 
               </div>
-
+              
               {/* Footer */}
               <div className="p-5 border-t bg-slate-50 flex items-center justify-between shrink-0">
                 <Button type="button" variant="outline" className="h-11 px-6 rounded-xl font-semibold bg-white hover:bg-slate-100" onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); setActiveModalTab("basic"); }}>
@@ -2976,113 +2982,61 @@ export function Products() {
   return (
     <div className="space-y-6">
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-3">
-            <h1 className="text-[26px] font-black text-slate-900 tracking-tight leading-none">
-              Products
-            </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
-              {products.length} Items
-            </span>
-          </div>
-          <p className="text-[13px] font-medium text-slate-500 mt-1.5 leading-normal">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Products</h2>
+          <p className="text-sm text-muted-foreground">
             Manage your inventory products and browse the global master catalog.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex gap-2">
           <input type="file" accept=".csv,.xlsx,.xls" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
-          <Button
-            variant="outline"
-            size="sm"
-            className="hidden lg:flex h-9 text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-200 rounded-lg shadow-2xs"
-            onClick={handleDownloadSample}
-          >
-            <Download className="size-3.5 mr-1.5 text-emerald-600" /> Sample Excel
+          <Button variant="outline" className="hidden lg:flex text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-200" onClick={handleDownloadSample}>
+            <Download className="size-4 mr-2" /> Sample Excel
+          </Button>
+          <Button variant="outline" className="hidden lg:flex" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
+            <Upload className="size-4 mr-2" /> {isImporting ? "Importing..." : "Import File"}
+          </Button>
+          <Button variant="outline" onClick={handleExport} disabled={fuzzyLocalResults.length === 0}>
+            <Download className="size-4 mr-2" /> Export
           </Button>
           <Button
             variant="outline"
-            size="sm"
-            className="hidden lg:flex h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isImporting}
-          >
-            <Upload className="size-3.5 mr-1.5 text-slate-500" /> {isImporting ? "Importing..." : "Import File"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
-            onClick={handleExport}
-            disabled={fuzzyLocalResults.length === 0}
-          >
-            <Download className="size-3.5 mr-1.5 text-slate-500" /> Export
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
             onClick={() => setIsBarcodeDrawerOpen(true)}
-            className="h-9 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 border-indigo-200 rounded-lg shadow-2xs"
+            className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
           >
-            <Printer className="size-3.5 mr-1.5 text-indigo-600" /> Print Barcodes
+            <Printer className="size-4" /> Print Barcodes
           </Button>
           <Button
             variant="outline"
-            size="sm"
             onClick={() => {
               setFreeQtyTriggerProductId(undefined);
               setIsFreeQtyModalOpen(true);
             }}
-            className="h-9 text-xs font-semibold text-purple-700 hover:bg-purple-50 border-purple-200 rounded-lg shadow-2xs"
+            className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-semibold"
             title="Configure Promotional Free Quantity Schemes"
           >
-            <Gift className="size-3.5 mr-1.5 text-purple-600" /> Free Schemes
+            <Gift className="size-4" /> Free Schemes
           </Button>
-          <Button
-            size="sm"
-            onClick={openCreateModal}
-            className="h-9 px-3.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="size-4 mr-1.5" /> Create Product
-          </Button>
+          <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Create Product</Button>
         </div>
       </div>
 
-      {/* ── Segmented Sub-Tabs ───────────────────────────────────────── */}
-      <div className="inline-flex items-center p-1 bg-slate-100/90 border border-slate-200/80 rounded-xl shadow-2xs w-fit">
+      {/* ── Tabs ───────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-xl w-fit">
         <button
           onClick={() => { setActiveTab("inventory"); setSearch(""); setMasterResults([]); setSuggestions([]); setExactMatch(null); }}
-          className={cn(
-            "flex items-center gap-2 px-3.5 py-1.5 text-xs rounded-lg transition-all cursor-pointer",
-            activeTab === "inventory"
-              ? "bg-white text-blue-600 font-bold shadow-xs border border-slate-200/80"
-              : "text-slate-600 hover:text-slate-900 font-semibold"
-          )}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === "inventory" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <Store className={cn("size-3.5", activeTab === "inventory" ? "text-blue-600 stroke-[2.2]" : "text-slate-500")} />
-          <span>My Inventory</span>
-          <span className={cn(
-            "text-[10px] px-1.5 py-0.5 rounded-full font-bold",
-            activeTab === "inventory" ? "bg-blue-50 text-blue-700" : "bg-slate-200 text-slate-600"
-          )}>
-            {products.length}
-          </span>
+          <Store className="size-4" /> My Inventory
         </button>
         <button
           onClick={() => { setActiveTab("catalog"); setSearch(""); setMasterResults([]); setSuggestions([]); setExactMatch(null); }}
-          className={cn(
-            "flex items-center gap-2 px-3.5 py-1.5 text-xs rounded-lg transition-all cursor-pointer",
-            activeTab === "catalog"
-              ? "bg-white text-blue-600 font-bold shadow-xs border border-slate-200/80"
-              : "text-slate-600 hover:text-slate-900 font-semibold"
-          )}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === "catalog" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <Globe className={cn("size-3.5", activeTab === "catalog" ? "text-blue-600 stroke-[2.2]" : "text-slate-500")} />
-          <span>Master Catalog</span>
+          <Globe className="size-4" /> Master Catalog
           {masterResults.length > 0 && (
-            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold">
-              {uniqueMasterResults.length}
-            </span>
+            <span className="text-[10px] bg-indigo-500/10 text-indigo-600 px-1.5 py-0.5 rounded-full font-bold">{uniqueMasterResults.length}</span>
           )}
         </button>
       </div>

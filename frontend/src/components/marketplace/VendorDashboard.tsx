@@ -2,8 +2,10 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Store, TrendingUp, Package, DollarSign, Clock, Users, ArrowUpRight, ArrowDownRight, CheckCircle2, AlertTriangle } from "lucide-react";
 import { mockMarketplaceStats } from "@/data/mockMarketplaceData";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function VendorDashboard() {
+    const { currency, formatCurrency } = useCurrency();
   const stats = [
     { label: "Total Vendors", value: mockMarketplaceStats.totalVendors.toLocaleString(), change: "+12.5%", up: true, icon: Store, color: "text-blue-500", bg: "bg-blue-500/10" },
     { label: "Active Vendors", value: mockMarketplaceStats.activeVendors.toLocaleString(), change: "+8.2%", up: true, icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-500/10" },
@@ -50,7 +52,7 @@ export function VendorDashboard() {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold text-foreground">Gross Merchandise Value (GMV)</h2>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-primary">${(mockMarketplaceStats.monthlyGMV / 1000000).toFixed(1)}M This Month</span>
+              <span className="text-sm font-semibold text-primary">{currency.symbol}{(mockMarketplaceStats.monthlyGMV / 1000000).toFixed(1)}M This Month</span>
             </div>
           </div>
           <div className="h-64 flex items-end justify-between gap-2">
@@ -63,7 +65,7 @@ export function VendorDashboard() {
                   className="w-full bg-primary/20 hover:bg-primary/40 rounded-t-lg transition-colors relative"
                 >
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background border border-border px-2 py-1 rounded shadow-sm text-xs whitespace-nowrap z-10">
-                    ${(h * 0.12).toFixed(1)}M
+                    {currency.symbol}{(h * 0.12).toFixed(1)}M
                   </div>
                 </motion.div>
                 <span className="text-xs text-muted-foreground">Day {i * 4 + 1}</span>
