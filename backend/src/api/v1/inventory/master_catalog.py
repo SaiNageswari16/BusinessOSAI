@@ -1056,6 +1056,10 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
     Returning ``None`` is deliberate: callers must not persist an unverified
     remote URL as a product image.
     """
+    from src.utils.ai_image_control import is_ai_image_search_paused
+    if is_ai_image_search_paused():
+        return None
+
     if not image_url:
         return None
     if image_url.startswith("/images/"):
@@ -1577,6 +1581,10 @@ def _google_image_search_for_product(barcode: str, product_name: str = "") -> st
     """Fetch a product image URL from Google Images scraping or DuckDuckGo.
     Returns a raw image URL (not yet cached — callers must pass through _download_and_cache_product_image).
     """
+    from src.utils.ai_image_control import is_ai_image_search_paused
+    if is_ai_image_search_paused():
+        return ""
+
     query = f"{product_name} {barcode}".strip() if product_name else barcode
     # Try DuckDuckGo Image API (fast, no key needed)
     try:
@@ -2391,29 +2399,35 @@ async def trigger_rag_enrichment(
 
 
 @router.post("/enrich/pause", status_code=status.HTTP_200_OK)
+@router.post("/ai-image-search/pause", status_code=status.HTTP_200_OK)
 async def pause_rag_enrichment(
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos", "manage:system_admin"))]
 ):
-    """Pauses RAG enrichment worker by creating .rag_enricher_paused file."""
-    import os
-    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
-    with open(pause_file, "w") as f:
-        f.write("paused")
-    return {"message": "RAG Enrichment paused successfully."}
+    """Pauses RAG enrichment and AI web image scraping globally for all customers."""
+    from src.utils.ai_image_control import set_ai_image_search_paused
+    set_ai_image_search_paused(True)
+    return {"paused": True, "message": "AI Image Search & RAG Enrichment paused successfully across all workspaces."}
 
 
 @router.post("/enrich/resume", status_code=status.HTTP_200_OK)
+@router.post("/ai-image-search/resume", status_code=status.HTTP_200_OK)
 async def resume_rag_enrichment(
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos", "manage:system_admin"))]
 ):
-    """Resumes RAG enrichment worker by removing .rag_enricher_paused file."""
-    import os
-    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
-    if os.path.exists(pause_file):
-        os.remove(pause_file)
-    return {"message": "RAG Enrichment resumed successfully."}
+    """Resumes RAG enrichment and AI web image scraping globally."""
+    from src.utils.ai_image_control import set_ai_image_search_paused
+    set_ai_image_search_paused(False)
+    return {"paused": False, "message": "AI Image Search & RAG Enrichment resumed successfully."}
+
+
+@router.get("/ai-image-search/status", status_code=status.HTTP_200_OK)
+async def get_ai_image_search_status(
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos", "manage:system_admin"))]
+):
+    """Returns whether AI Image Search is currently paused."""
+    from src.utils.ai_image_control import is_ai_image_search_paused
+    paused = is_ai_image_search_paused()
+    return {"paused": paused, "status": "paused" if paused else "active"}
 
 
 @router.get("/enrich/status")

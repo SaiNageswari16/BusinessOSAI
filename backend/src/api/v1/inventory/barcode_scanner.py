@@ -227,6 +227,10 @@ class AddStockSchema(BaseModel):
 def _sync_search_product_image(query: str) -> str:
     """Sync search for a product image on Google/merchant CDNs and return image URL."""
     try:
+        from src.utils.ai_image_control import is_ai_image_search_paused
+        if is_ai_image_search_paused():
+            return "/static/uploads/products/default_product.jpg"
+
         clean_q = urllib.parse.quote(query.strip())
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -249,6 +253,10 @@ def _sync_search_product_image(query: str) -> str:
 async def _async_bg_enrich_product_image(barcode: str, product_name: str, brand: str = ""):
     """Non-blocking background AI agent that fetches a high-quality product image and updates PostgreSQL without delaying API response."""
     try:
+        from src.utils.ai_image_control import is_ai_image_search_paused
+        if is_ai_image_search_paused():
+            return
+
         from src.database.session import AsyncSessionLocal
         from sqlalchemy import update
         query = f"{brand} {product_name}".strip() or barcode

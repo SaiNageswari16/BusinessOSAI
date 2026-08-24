@@ -3617,10 +3617,19 @@ export const inventoryApi = {
     request<{ total: number; pending: number; processing: number; completed: number; failed: number; paused?: boolean }>("GET", "/inventory/master-catalog/enrich/status"),
 
   pauseRAGEnrichment: () =>
-    request<{ message: string }>("POST", "/inventory/master-catalog/enrich/pause"),
+    request<{ message: string; paused?: boolean }>("POST", "/inventory/master-catalog/enrich/pause"),
 
   resumeRAGEnrichment: () =>
-    request<{ message: string }>("POST", "/inventory/master-catalog/enrich/resume"),
+    request<{ message: string; paused?: boolean }>("POST", "/inventory/master-catalog/enrich/resume"),
+
+  getAiImageSearchStatus: () =>
+    request<{ paused: boolean; status: string }>("GET", "/inventory/master-catalog/ai-image-search/status"),
+
+  pauseAiImageSearch: () =>
+    request<{ paused: boolean; message: string }>("POST", "/inventory/master-catalog/ai-image-search/pause"),
+
+  resumeAiImageSearch: () =>
+    request<{ paused: boolean; message: string }>("POST", "/inventory/master-catalog/ai-image-search/resume"),
 
   adminGetMasterCatalogList: (params?: { page?: number; page_size?: number; search?: string; rag_status?: string }) =>
     request<{ items: any[]; total: number; page: number; page_size: number }>("GET", "/inventory/master-catalog/admin/list", undefined, params as Record<string, any>),

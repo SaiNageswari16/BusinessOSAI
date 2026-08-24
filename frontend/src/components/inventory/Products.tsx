@@ -911,6 +911,7 @@ export function Products() {
 
   useEffect(() => {
     inventoryApi.getHsnCodes().then(res => setHsnCodes(res || [])).catch(() => {});
+    inventoryApi.getAiImageSearchStatus().then(res => setAiPaused(res.paused)).catch(() => {});
   }, []);
 
 
@@ -1412,9 +1413,18 @@ export function Products() {
 
   const handleToggleAi = async () => {
     try {
-      if (aiPaused) { await inventoryApi.resumeRAGEnrichment(); setAiPaused(false); toast.success("AI Search resumed!"); }
-      else { await inventoryApi.pauseRAGEnrichment(); setAiPaused(true); toast.success("AI Search paused!"); }
-    } catch { toast.error("Failed to toggle AI search."); }
+      if (aiPaused) {
+        await inventoryApi.resumeAiImageSearch();
+        setAiPaused(false);
+        toast.success("AI Image Search & Web Sourcing resumed globally!");
+      } else {
+        await inventoryApi.pauseAiImageSearch();
+        setAiPaused(true);
+        toast.success("AI Image Search paused globally! Web image scraping is stopped.");
+      }
+    } catch {
+      toast.error("Failed to toggle AI image search.");
+    }
   };
 
   // ── Import from file (supports 42k+ rows, flexible column headers & chunking) ──────
@@ -3024,6 +3034,19 @@ export function Products() {
             title="Configure Promotional Free Quantity Schemes"
           >
             <Gift className="size-4" /> Free Schemes
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleToggleAi}
+            className={`flex items-center gap-2 font-semibold transition-colors ${
+              aiPaused
+                ? "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 shadow-xs"
+                : "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+            }`}
+            title={aiPaused ? "AI web image search is PAUSED globally (default placeholders used). Click to resume." : "AI web image search is ACTIVE. Click to pause."}
+          >
+            {aiPaused ? <Play className="size-4 text-amber-600 fill-amber-600" /> : <Pause className="size-4 text-emerald-600 fill-emerald-600" />}
+            <span>{aiPaused ? "Resume AI Images" : "Pause AI Images"}</span>
           </Button>
           <Button onClick={openCreateModal} className="gradient-brand text-white border-0"><Plus className="size-4 mr-2" /> Create Product</Button>
         </div>

@@ -72,6 +72,10 @@ async def _google_search_images_async(barcode: str, product_name: str = "") -> s
     All HTTP calls are async -- never blocks the event loop.
     """
     client = _get_http_client()
+    from src.utils.ai_image_control import is_ai_image_search_paused
+    if is_ai_image_search_paused():
+        return ""
+
     query = f"{product_name} {barcode}".strip() if product_name else barcode
 
     # Step 1: Google Web Search -> collect result page URLs
@@ -191,6 +195,10 @@ async def _cache_image_async(image_url: str, barcode: str) -> str:
     The blocking Pillow verification runs in a thread pool so it never blocks.
     Returns the local /images/<filename> path on success, or "".
     """
+    from src.utils.ai_image_control import is_ai_image_search_paused
+    if is_ai_image_search_paused():
+        return ""
+
     if not image_url or not image_url.startswith("http"):
         return ""
     try:
