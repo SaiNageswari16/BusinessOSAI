@@ -505,8 +505,15 @@ function QuickAddModal({
     try {
       await inventoryApi.createProduct({
         ...form,
+        sku: form.sku?.trim() || undefined,
         category_id: form.category_id || null,
+        brand_id: form.brand_id || null,
         uom_id: form.uom_id || null,
+        purchase_price: Number(form.purchase_price) || 0,
+        mrp: Number(form.mrp) || 0,
+        selling_price: Number(form.selling_price) || 0,
+        tax_percent: Number(form.tax_percent) || 0,
+        initial_stock: Number(form.initial_stock) || 0,
       });
       toast.success(`"${form.name}" added to your inventory!`);
       onSave();

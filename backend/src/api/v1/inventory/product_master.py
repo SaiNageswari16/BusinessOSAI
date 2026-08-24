@@ -815,6 +815,10 @@ async def create_product(
         await db.refresh(existing_prod, ["category", "brand", "uom"])
         product = existing_prod
     else:
+        if not data.get("sku"):
+            prefix = re.sub(r'[^A-Za-z0-9]', '', name[:4].upper()) if name else "PROD"
+            data["sku"] = f"SKU-{prefix}-{uuid.uuid4().hex[:6].upper()}"
+
         product = Product(
             tenant_id=ctx.tenant_id,
             **data
