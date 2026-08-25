@@ -1075,13 +1075,18 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
         logger.warning("Rejected invalid product image URL: %r", image_url)
         return None
 
-    DISALLOWED_DOMAINS = (
-        "facebook.com", "twitter.com", "instagram.com", "tiktok.com",
-        "pinterest.com", "reddit.com", "linkedin.com", "youtube.com"
+    ALLOWED_RETAIL_DOMAINS = (
+        "amazon.com", "media-amazon.com", "images-amazon.com", "ssl-images-amazon.com",
+        "bigbasket.com", "bbassets.com", "jiomart.com", "blinkit.com", "zepto.com",
+        "dmart.in", "walmartimages.com", "target.scene7.com", "instacart.com",
+        "flipkart.com", "fmcg-cdn.com", "wikimedia.org", "openfoodfacts.org",
+        "barcodelookup.com", "upcitemdb.com", "itemmaster.com", "gs1.org",
+        "digitallink.gs1.org", "grofers.com", "asianpaints.com", "bergerpaints.com",
+        "nerolac.com", "dulux.in", "indiamart.com", "tradeindia.com"
     )
     domain = (parsed.netloc or "").lower()
-    if any(d in domain for d in DISALLOWED_DOMAINS):
-        logger.warning("Rejected disallowed image domain: %s", domain)
+    if not any(d in domain for d in ALLOWED_RETAIL_DOMAINS):
+        logger.info("Skipped unverified image domain '%s' (only trusted retail CDNs allowed)", domain)
         return None
 
     try:
@@ -1423,16 +1428,19 @@ def _resolve_barcode_with_claude_web_search(barcode: str) -> Optional[dict]:
     if not _is_valid_key(settings.anthropic_api_key):
         return None
 
-    # Get search context using our fixed Yahoo/DDG snippet parser
+    # Get search context using our fixed Yahoo/DDG/Google snippet parser
     context = _fetch_web_search_context(barcode)
     context_text = context.get("text", "")
     if not context_text:
-        logger.warning("No search context found for barcode %s, Claude cannot resolve", barcode)
-        return None
+        # Try enriched search with product keywords
+        alt_snippets = _fetch_search_snippets(f"{barcode} product barcode india", "DuckDuckGo")
+        if alt_snippets:
+            context_text = "\n".join(alt_snippets)
 
     prompt = (
-        f"Identify the product for barcode '{barcode}' using the search context below.\n"
-        "Return ONLY a valid JSON object. No explanation, no markdown, no tool calls, no function calls.\n"
+        f"Identify the product for barcode '{barcode}'"
+        + (f" using the search context below:\n{context_text[:4000]}" if context_text else " based on your verified product knowledge (GS1/Indian FMCG catalog).")
+        + "\nReturn ONLY a valid JSON object. No explanation, no markdown, no tool calls, no function calls.\n"
         "JSON format (all fields required):\n"
         "{\n"
         '  "barcode": "' + barcode + '",\n'
@@ -1445,10 +1453,8 @@ def _resolve_barcode_with_claude_web_search(barcode: str) -> Optional[dict]:
         "}\n"
         "STRICT RULES:\n"
         "1. Output ONLY the JSON object above. Nothing else.\n"
-        "2. Do NOT use any tools, functions, or web_search calls.\n"
-        "3. If you cannot identify the product, return {}.\n"
-        "4. Complete the JSON fully — do not truncate.\n"
-        f"\nSearch context:\n{context_text[:4000]}"
+        "2. If you do not know this specific product barcode, return {}.\n"
+        "3. Complete the JSON fully — do not truncate.\n"
     )
 
     url = f"{settings.anthropic_base_url.rstrip('/')}/v1/messages"

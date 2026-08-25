@@ -77,12 +77,13 @@ async def _google_search_images_async(barcode: str, product_name: str = "") -> s
         return ""
 
     clean_name = (product_name or "").strip()
-    if not clean_name or clean_name.lower().startswith("unnamed") or len(clean_name) < 3:
+    _DUMMY_NAMES = ("test", "demo", "sample", "xyz", "asdf", "p1", "p2", "temp", "dummy", "item", "product", "new product", "null", "undefined")
+    if not clean_name or clean_name.lower() in _DUMMY_NAMES or clean_name.lower().startswith("unnamed") or len(clean_name) < 4:
         if not barcode or len(barcode) < 8:
             return ""
-        safe_query = f'"{barcode}" retail product pack'
+        safe_query = f'"{barcode}" FMCG packaged grocery retail product pack -clothing -lingerie -model -person -human'
     else:
-        safe_query = f'"{clean_name}" product photo pack -clothing -dress -shirt -shoes'
+        safe_query = f'"{clean_name}" retail packaged grocery product photo pack -clothing -dress -shirt -shoes -lingerie -model -person -human'
 
     # Step 1: Google Web Search -> collect result page URLs (safe=active strictly enforced)
     result_urls: list = []
@@ -300,17 +301,15 @@ class RAGEnricherService:
                     await asyncio.sleep(60.0)  # Check only once per minute
                     continue
 
-                logger.info("[RAG Enricher] Processing %d pending items...", len(batch))
-                tasks = [
-                    asyncio.create_task(
-                        cls._enrich_single_product(pid, barcode, name, "inventory", semaphore)
-                    )
-                    for pid, barcode, name in batch
-                ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for r in results:
-                    if isinstance(r, Exception):
-                        logger.debug("[RAG Enricher - Inventory Worker] Task exception: %s", r)
+                logger.info("[RAG Enricher] Processing %d pending items with rate-limit pacing...", len(batch))
+                for pid, barcode, name in batch:
+                    if not cls._should_run:
+                        break
+                    try:
+                        await cls._enrich_single_product(pid, barcode, name, "inventory", semaphore)
+                    except Exception as p_err:
+                        logger.debug("[RAG Enricher] Item enrichment error: %s", p_err)
+                    await asyncio.sleep(3.5)  # 3.5s delay guarantees < 15 requests/min (under Gemini free-tier limits)
 
             except asyncio.CancelledError:
                 break

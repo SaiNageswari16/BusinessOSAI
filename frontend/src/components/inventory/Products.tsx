@@ -1103,7 +1103,6 @@ export function Products() {
 
   useEffect(() => { checkAiStatus(); }, []);
   useEffect(() => {
-    setCurrentPage(1);
     loadData(search);
   }, [tenant?.id, currentPage, pageSize, sortBy, sortOrder]);
 
