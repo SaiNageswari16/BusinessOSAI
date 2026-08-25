@@ -924,11 +924,11 @@ export function RolesPermissions() {
   const rolePermissionCodes = selectedRole?.permissions.map((p) => p.code) ?? [];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Roles &amp; Permissions</h1>
+          <h1 className="text-base font-bold">Roles &amp; Permissions</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Configure role-based access control. Each role controls which portals and modules a user can access.
           </p>

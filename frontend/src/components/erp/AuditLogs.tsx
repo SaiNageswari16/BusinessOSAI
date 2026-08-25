@@ -103,13 +103,13 @@ export function AuditLogs() {
     : logs;
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <History className="size-6 text-primary" /> {isPlatformAdmin ? "SaaS Platform Audit Trail" : "System Audit Logs"}
+          <h2 className="text-base font-bold tracking-tight flex items-center gap-2">
+            <History className="size-5 text-primary" /> {isPlatformAdmin ? "SaaS Platform Audit Trail" : "System Audit Logs"}
           </h2>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs mt-0.5">
             {isPlatformAdmin 
               ? "Cross-tenant tracking of system modifications across all client environments." 
               : "Enterprise-grade tracking of system modifications."}
@@ -117,11 +117,11 @@ export function AuditLogs() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="h-9 gap-2" onClick={load} disabled={loading}>
-            <RefreshCw className={cn("size-4", loading && "animate-spin")} /> Refresh
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-semibold" onClick={load} disabled={loading}>
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} /> Refresh
           </Button>
-          <Button variant="outline" size="sm" className="h-9 gap-2">
-            <Download className="size-4" /> Export CSV
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-semibold">
+            <Download className="size-3.5" /> Export CSV
           </Button>
         </div>
       </div>

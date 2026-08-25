@@ -86,10 +86,10 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
   // ─── Payroll Analytics ──────────────────────────────────────────────────
   if (tab === "payroll_analytics" && payroll) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Payroll Analytics</h1>
-          <p className="text-sm text-muted-foreground">Department-wise payroll cost analysis and YoY trends.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Payroll Analytics</h2>
+          <p className="text-xs text-muted-foreground">Department-wise payroll cost analysis and YoY trends.</p>
         </div>
         <div className="grid grid-cols-3 gap-4">
           {[
@@ -135,7 +135,7 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
                         <div className="h-2 bg-muted rounded-full overflow-hidden">
                           <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${share}%` }} />
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{share}%</p>
+                        <p className="text-sm text-muted-foreground mt-1">{share}%</p>
                       </td>
                     </motion.tr>
                   );
@@ -151,10 +151,10 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
   // ─── Attrition Prediction ─────────────────────────────────────────────
   if (tab === "attrition_prediction" && attrition) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Attrition Prediction</h1>
-          <p className="text-sm text-muted-foreground">AI-driven early warning system for employee flight risk.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Attrition Prediction</h2>
+          <p className="text-xs text-muted-foreground">AI-driven early warning system for employee flight risk.</p>
         </div>
         <div className="glass-panel p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-sm text-amber-600 font-sans">
           ⚡ AI Model trained on tenure, performance, engagement, and compensation data. Scores are risk indicators.
@@ -202,10 +202,10 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
   // ─── Shift Optimization ────────────────────────────────────────────────
   if (tab === "shift_optimization" && shift) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Shift Optimization</h1>
-          <p className="text-sm text-muted-foreground">AI-recommended staffing levels by shift to maximize coverage efficiency.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Shift Optimization</h2>
+          <p className="text-xs text-muted-foreground">AI-recommended staffing levels by shift to maximize coverage efficiency.</p>
         </div>
         <div className="space-y-4">
           {shift.shifts.map((s, i) => (
@@ -238,10 +238,10 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
   // ─── Productivity Score ───────────────────────────────────────────────
   if (tab === "productivity_score" && productivity) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Productivity Score</h1>
-          <p className="text-sm text-muted-foreground">Composite productivity scores based on completed OKRs, tasks, and attendance.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Productivity Score</h2>
+          <p className="text-xs text-muted-foreground">Composite productivity scores based on completed OKRs, tasks, and attendance.</p>
         </div>
         <div className="space-y-3">
           {productivity.scores.map((emp, i) => (
@@ -275,10 +275,10 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
   // ─── Training Recommendation ──────────────────────────────────────────
   if (tab === "training_recommendation" && training) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Training Recommendations</h1>
-          <p className="text-sm text-muted-foreground">AI-powered learning suggestions based on skill gaps and appraisal objectives.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Training Recommendations</h2>
+          <p className="text-xs text-muted-foreground">AI-powered learning suggestions based on skill gaps and appraisal objectives.</p>
         </div>
         <div className="space-y-4">
           {training.recommendations.map((rec, i) => (
@@ -326,10 +326,10 @@ export function HRIntelligence({ tab = "attendance_analytics" }: Props) {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Attendance Analytics</h1>
-        <p className="text-sm text-muted-foreground">Attendance trends and tracking patterns across the organization.</p>
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance Analytics</h2>
+        <p className="text-xs text-muted-foreground">Attendance trends and tracking patterns across the organization.</p>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[

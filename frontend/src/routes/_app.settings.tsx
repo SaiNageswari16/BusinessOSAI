@@ -43,7 +43,7 @@ function SystemNotificationsTab() {
   const [subTab, setSubTab] = React.useState<"logs" | "settings">("logs");
   return (
     <div className="space-y-2">
-      <div className="px-6 pt-4 flex gap-4 border-b border-border/50 bg-card">
+      <div className="px-3 pt-2 flex gap-3 border-b border-border/50 bg-card">
         <button
           onClick={() => setSubTab("logs")}
           className={`px-3 py-2 text-sm font-bold border-b-2 bg-transparent border-none cursor-pointer transition-colors ${
@@ -138,7 +138,7 @@ function SettingsModule() {
 
   return (
     <div className="flex min-h-full flex-col bg-background">
-      <div className="flex-1 relative bg-background/50">
+      <div className="flex-1 relative bg-background/50 p-3">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

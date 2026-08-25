@@ -237,8 +237,8 @@ export function Categories() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Categories & Sub-categories</h2>
-          <p className="text-sm text-muted-foreground">Manage product category hierarchies (Parent Categories & Sub-categories).</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Categories & Sub-categories</h2>
+          <p className="text-sm text-muted-foreground mt-1">Manage product category hierarchies (Parent Categories & Sub-categories).</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <input type="file" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" ref={fileInputRef} onChange={handleImport} className="hidden" />

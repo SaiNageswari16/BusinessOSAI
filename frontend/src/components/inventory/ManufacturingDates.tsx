@@ -64,7 +64,7 @@ export function ManufacturingDates() {
           },
           total_units: lt_30d_units + lt_90d_units + lt_180d_units + gt_180d_units,
           total_batches: batches.length,
-        });
+        } as any);
       } catch {
         setCohorts(null);
       }
@@ -110,9 +110,7 @@ export function ManufacturingDates() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <CalendarClock className="size-6 text-primary" />
-            Manufacturing Dates
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Manufacturing Dates
           </h2>
           <p className="text-sm text-muted-foreground">Track batches by their manufacturing date cohorts — verify FIFO rotation and shelf-life compliance.</p>
         </div>

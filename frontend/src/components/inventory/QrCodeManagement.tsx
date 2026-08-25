@@ -226,9 +226,7 @@ export function QrCodeManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <QrCode className="size-6 text-primary" />
-            QR Code Management
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">QR Code Management
           </h2>
           <p className="text-sm text-muted-foreground">Create, track, and print QR codes for products, batches, serials, and locations.</p>
         </div>

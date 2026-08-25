@@ -181,7 +181,7 @@ export function LearningManagement({ tab = "training" }: Props) {
   // Courses
   if (tab === "courses" || tab === "training") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         {notification && (
           <div className={`fixed bottom-4 right-4 px-4 py-2.5 rounded-lg text-white font-sans text-xs shadow-lg z-50 ${notification.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
             {notification.message}
@@ -190,11 +190,11 @@ export function LearningManagement({ tab = "training" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Courses</h1>
-            <p className="text-sm text-muted-foreground font-sans">Learning catalog — technical, compliance, and soft-skill courses.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Courses</h2>
+            <p className="text-xs text-muted-foreground font-sans">Learning catalog — technical, compliance, and soft-skill courses.</p>
           </div>
-          <button onClick={() => setCourseOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <Plus className="size-4" /> Add Course
+          <button onClick={() => setCourseOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+            <Plus className="size-3.5" /> Add Course
           </button>
         </div>
 
@@ -283,7 +283,7 @@ export function LearningManagement({ tab = "training" }: Props) {
   // Certificates
   if (tab === "certificates") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         {notification && (
           <div className={`fixed bottom-4 right-4 px-4 py-2.5 rounded-lg text-white font-sans text-xs shadow-lg z-50 ${notification.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
             {notification.message}
@@ -292,11 +292,11 @@ export function LearningManagement({ tab = "training" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Certificates</h1>
-            <p className="text-sm text-muted-foreground font-sans">Professional certifications held by employees.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Certificates</h2>
+            <p className="text-xs text-muted-foreground font-sans">Professional certifications held by employees.</p>
           </div>
-          <button onClick={() => setCertificateOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <Award className="size-4" /> Upload Certificate
+          <button onClick={() => setCertificateOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+            <Award className="size-3.5" /> Upload Certificate
           </button>
         </div>
 
@@ -385,7 +385,7 @@ export function LearningManagement({ tab = "training" }: Props) {
   // Assessments
   if (tab === "assessments") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         {notification && (
           <div className={`fixed bottom-4 right-4 px-4 py-2.5 rounded-lg text-white font-sans text-xs shadow-lg z-50 ${notification.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
             {notification.message}
@@ -394,11 +394,11 @@ export function LearningManagement({ tab = "training" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Assessments</h1>
-            <p className="text-sm text-muted-foreground font-sans">Mandatory quizzes and skills evaluations.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Assessments</h2>
+            <p className="text-xs text-muted-foreground font-sans">Mandatory quizzes and skills evaluations.</p>
           </div>
-          <button onClick={() => setAssessmentOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <ClipboardList className="size-4" /> Add Assessment
+          <button onClick={() => setAssessmentOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+            <ClipboardList className="size-3.5" /> Add Assessment
           </button>
         </div>
 

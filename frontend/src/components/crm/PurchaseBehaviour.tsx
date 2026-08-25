@@ -56,13 +56,13 @@ export function PurchaseBehaviour() {
   const maxOrders = Math.max(...data.purchase_times.map(p => p.orders), 1);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Purchase Behaviour</h1>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Purchase Behaviour</h2>
           <p className="text-sm text-muted-foreground mt-1">Real buying frequency, customer segments, top spenders, and purchase timing from live order data.</p>
         </div>
-        <button onClick={load} className="flex items-center gap-2 px-3 py-1.5 bg-accent hover:bg-accent/80 rounded-lg text-sm text-muted-foreground transition-colors">
+        <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 bg-accent hover:bg-accent/80 rounded-lg text-xs font-semibold text-muted-foreground transition-colors">
           <RefreshCw className="size-3.5" /> Refresh
         </button>
       </div>

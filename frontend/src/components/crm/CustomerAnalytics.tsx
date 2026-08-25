@@ -67,13 +67,13 @@ export function CustomerAnalytics({ tab = "analytics" }: { tab?: string }) {
   const maxSegCount = Math.max(...data.segments.map(s => s.count), 1);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Customer Analytics</h1>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Analytics</h2>
           <p className="text-sm text-muted-foreground mt-1">Live revenue trends, order volume, and customer growth metrics from your CRM database.</p>
         </div>
-        <button onClick={load} className="flex items-center gap-2 px-3 py-1.5 bg-accent hover:bg-accent/80 rounded-lg text-sm text-muted-foreground transition-colors">
+        <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 bg-accent hover:bg-accent/80 rounded-lg text-xs font-semibold text-muted-foreground transition-colors">
           <RefreshCw className="size-3.5" /> Refresh
         </button>
       </div>

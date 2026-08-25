@@ -50,8 +50,7 @@ export function ProcurementForecast() {
   return (
     <div className="space-y-6 text-foreground pb-12">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Sparkles className="text-primary size-6 animate-pulse" /> AI Procurement Forecast
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">AI Procurement Forecast
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
           Predictive demand modeling, stockout risk analysis, and automated replenishment queues.

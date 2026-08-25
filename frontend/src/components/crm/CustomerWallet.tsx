@@ -127,11 +127,11 @@ export function CustomerWallet() {
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Customer Wallet</h1>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Wallet</h2>
+          <p className="text-xs text-muted-foreground">
             Manage stored-value wallet balances for your customers. Credit, debit, or adjust balances.
           </p>
         </div>

@@ -111,22 +111,22 @@ export function BusinessUnits() {
   const companyMap = Object.fromEntries(companies.map((c) => [c.id, c.name]));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Business Units</h2>
-          <p className="text-sm text-muted-foreground">Operational divisions that group departments and functions.</p>
+          <h2 className="text-base font-bold tracking-tight">Business Units</h2>
+          <p className="text-xs text-muted-foreground">Operational divisions that group departments and functions.</p>
         </div>
-        <Button className="gradient-brand text-white border-0 gap-2" onClick={() => { setEditUnit(null); setShowForm(true); }}>
-          <Plus className="size-4" /> Add Business Unit
+        <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditUnit(null); setShowForm(true); }}>
+          <Plus className="size-3.5" /> Add Business Unit
         </Button>
       </div>
 
-      <div className="flex gap-4 items-center">
+      <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
+            className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
             placeholder="Search business units..." />
         </div>
         <span className="text-xs text-muted-foreground">{units.length} units</span>

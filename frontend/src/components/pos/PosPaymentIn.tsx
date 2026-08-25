@@ -650,27 +650,27 @@ export function PosPaymentIn() {
       
       {/* LEFT PANE (Main Content) */}
       <div className={`flex-1 flex flex-col transition-all duration-300 ${isRecordingPayment ? "mr-[500px]" : "mr-0"}`}>
-        <div className="p-6 lg:p-8 h-full flex flex-col w-full overflow-y-auto">
+        <div className="space-y-6 h-full flex flex-col w-full overflow-y-auto">
           
           {/* Header */}
-          <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+          <div className="flex flex-wrap justify-between items-center gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Payment In & Customer Wallet Ledger</h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">Real-Time Debit / Credit</span>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">Payment In & Customer Wallet Ledger</h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">Real-Time Debit / Credit</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1">Full double-entry passbook, customer credit settlements, wallet top-ups, and live balance auditing.</p>
+              <p className="text-sm text-muted-foreground mt-1">Full double-entry passbook, customer credit settlements, wallet top-ups, and live balance auditing.</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button 
                 onClick={() => {
                   setPaymentNumber(`PAY-${Math.floor(1000 + Math.random() * 9000)}`);
                   setPaymentPurpose('settle_due');
                   setIsRecordingPayment(true);
                 }}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-xs flex items-center gap-2 text-sm transition-all hover:scale-[1.01]"
+                className="gradient-brand text-white font-semibold px-3 h-8 text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-all hover:opacity-90"
               >
-                <Plus className="w-4 h-4" /> Record Payment / Wallet Entry
+                <Plus className="w-3.5 h-3.5" /> Record Payment / Wallet Entry
               </button>
             </div>
           </div>

@@ -518,9 +518,7 @@ export function InventoryIntelligence() {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <BarChart3 className="size-6 text-primary" />
-            Inventory Intelligence
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Inventory Intelligence
           </h2>
           <p className="text-sm text-muted-foreground">
             AI-powered analysis · {h.total_products} products · {currency.symbol}{h.total_value.toLocaleString()} stock value · Generated {new Date(data.generated_at).toLocaleTimeString()}

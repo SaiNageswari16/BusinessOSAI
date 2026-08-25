@@ -51,8 +51,7 @@ export function CostAnalysis() {
   return (
     <div className="space-y-6 text-foreground pb-12">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <PiggyBank className="text-primary size-6" /> Cost & Budget Analysis
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Cost & Budget Analysis
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
           Intelligent breakdown of purchasing costs, category distribution, and return leakages.

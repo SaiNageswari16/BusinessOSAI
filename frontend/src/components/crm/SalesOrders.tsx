@@ -167,26 +167,24 @@ export function SalesOrders() {
 
   const filteredOrders = orders.filter(o => {
     return o.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           o.customer_name?.toLowerCase().includes(searchTerm.toLowerCase());
+           ((o as any).customer_name?.toLowerCase() || "").includes(searchTerm.toLowerCase());
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <ShoppingCart className="size-6 text-primary" /> Sales Orders
-          </h1>
-          <p className="text-sm text-muted-foreground">Manage B2B & Retail customer sales orders, extra charges, and team sales points.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Sales Orders</h2>
+          <p className="text-xs text-muted-foreground">Manage B2B & Retail customer sales orders, extra charges, and team sales points.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => toast.info('Exporting sales orders list…')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
-            <Download className="size-4" /> Export
+          <button onClick={() => toast.info('Exporting sales orders list…')} className="flex items-center gap-1.5 px-3 h-8 bg-background border border-border rounded-lg text-xs font-semibold hover:bg-accent transition-colors">
+            <Download className="size-3.5" /> Export
           </button>
           <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
             <DialogTrigger asChild>
-              <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-                <Plus className="size-4" /> Create Sales Order
+              <button className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+                <Plus className="size-3.5" /> Create Sales Order
               </button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto">
@@ -465,7 +463,7 @@ export function SalesOrders() {
                           <td className="px-6 py-4 font-mono font-bold text-primary flex items-center gap-2">
                             <Box className="size-4 text-primary" /> {o.order_number}
                           </td>
-                          <td className="px-6 py-4 font-medium">{o.customer_name || "Walk-in Customer"}</td>
+                          <td className="px-6 py-4 font-medium">{(o as any).customer_name || "Walk-in Customer"}</td>
                           <td className="px-6 py-4">
                             <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                               o.status === 'Delivered' ? 'bg-emerald-500/10 text-emerald-600' :
@@ -491,8 +489,8 @@ export function SalesOrders() {
                               onClick={() => {
                                 setNewOrder({
                                   order_number: o.order_number,
-                                  customer_name: o.customer_name || "",
-                                  subtotal: o.subtotal || 0,
+                                  customer_name: (o as any).customer_name || "",
+                                  subtotal: (o as any).subtotal || 0,
                                   total: o.total || 0,
                                   status: o.status || "Pending",
                                   payment_status: o.payment_status || "Unpaid"
@@ -516,7 +514,7 @@ export function SalesOrders() {
                                     <div className="text-lg font-black text-slate-900 mt-0.5">{o.order_number}</div>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs text-slate-500 font-mono">Customer: {o.customer_name || "Walk-in"}</span>
+                                    <span className="text-xs text-slate-500 font-mono">Customer: {(o as any).customer_name || "Walk-in"}</span>
                                     <Button size="sm" variant="outline" onClick={() => window.print()} className="h-8 text-xs font-bold rounded-lg">
                                       <Printer className="size-3.5 mr-1" /> Print Sales Invoice
                                     </Button>

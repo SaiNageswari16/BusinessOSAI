@@ -825,7 +825,7 @@ export function WhatsappCampaigns() {
                       estimated_value: 0,
                       created_at: new Date().toISOString(),
                       updated_at: new Date().toISOString()
-                    })}
+                    } as any)}
                     className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
                       isSelected ? "bg-slate-100 border-l-4 border-[#00a884]" : "hover:bg-slate-50"
                     }`}

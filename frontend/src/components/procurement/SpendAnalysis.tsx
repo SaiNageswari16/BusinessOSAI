@@ -42,8 +42,7 @@ export function SpendAnalysis() {
   return (
     <div className="space-y-6 text-foreground pb-12">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <BarChart3 className="text-primary size-6" /> Spend Analysis
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Spend Analysis
         </h2>
         <p className="text-sm text-muted-foreground mt-1">Interactive analytics for supplier spend and procurement value distribution.</p>
       </div>

@@ -65,8 +65,7 @@ export function SupplierContacts() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Users className="text-primary size-6" /> Supplier Contacts
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Supplier Contacts
           </h2>
           <p className="text-sm text-muted-foreground">Manage directory of sales, accounts, and support personnel.</p>
         </div>

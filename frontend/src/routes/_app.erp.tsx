@@ -90,8 +90,9 @@ const componentMap: Record<string, React.ElementType> = {
   calendars_shifts: CalendarsAndShifts,
   tags_labels: TagsLabels,
 
-  // System
+  // System & Super Admin
   global_users: GlobalUsers,
+  super_admin: GlobalUsers,
   audit_logs: AuditLogs,
   activity_logs: ActivityLogs,
   error_logs: ErrorLogs,
@@ -172,7 +173,7 @@ function ErpModule() {
 
   return (
     <div className="flex min-h-full flex-col bg-background">
-      <div className="flex-1 relative bg-background/50">
+      <div className="flex-1 relative bg-background/50 p-3">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}

@@ -70,15 +70,13 @@ export function ChurnPrediction({ tab = "churn_prediction" }: Props) {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <BrainCircuit className="size-7 text-primary" /> Churn Prediction
-          </h1>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Churn Prediction</h2>
           <p className="text-sm text-muted-foreground mt-1">Customers at risk of churning, computed from real purchase recency, frequency, and support data.</p>
         </div>
-        <button onClick={load} className="flex items-center gap-2 px-3 py-1.5 bg-accent hover:bg-accent/80 rounded-lg text-sm text-muted-foreground transition-colors">
+        <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 bg-accent hover:bg-accent/80 rounded-lg text-xs font-semibold text-muted-foreground transition-colors">
           <RefreshCw className="size-3.5" /> Refresh
         </button>
       </div>

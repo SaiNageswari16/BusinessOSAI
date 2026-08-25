@@ -784,9 +784,7 @@ export function SerialNumbers() {
       {/* Header with Explanation & Action Buttons */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Barcode className="size-6 text-indigo-600" />
-            Serial Numbers & Individual Item Tracking
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Serial Numbers & Individual Item Tracking
           </h2>
           <p className="text-sm text-muted-foreground">
             Unique 1-to-1 identifiers for high-value items, electronics, warranties, and RMA audits.

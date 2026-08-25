@@ -107,14 +107,14 @@ export function Geography() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Geography</h2>
-          <p className="text-sm text-muted-foreground">Countries, states, and cities master data. <span className="font-medium text-primary">{total} countries</span></p>
+          <h2 className="text-base font-bold tracking-tight">Geography</h2>
+          <p className="text-xs text-muted-foreground">Countries, states, and cities master data. <span className="font-medium text-primary">{total} countries</span></p>
         </div>
-        <Button className="gradient-brand text-white border-0" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
-          <Plus className="size-4 mr-2" /> Add Country
+        <Button size="sm" className="h-8 gradient-brand text-white border-0 text-xs font-semibold" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
+          <Plus className="size-3.5 mr-1.5" /> Add Country
         </Button>
       </div>
 

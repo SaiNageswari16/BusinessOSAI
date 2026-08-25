@@ -52,21 +52,21 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
 
   const exportPL = () => {
     if (!report) { toast.error("No P&L data to export"); return; }
-    const rows: (string | number)[][] = [];
+    const rows: string[][] = [];
     rows.push(["Category", "Account", "Amount"]);
-    report.income.forEach(l => rows.push(["Revenue", l.account_name, l.net]));
-    if (report.total_income) rows.push(["", "Total Revenue", report.total_income]);
-    report.cogs.forEach(l => rows.push(["COGS", l.account_name, l.net]));
-    if (report.gross_profit) rows.push(["", "Gross Profit", report.gross_profit]);
-    report.expenses.forEach(l => rows.push(["Expense", l.account_name, l.net]));
-    rows.push(["", "Net Profit", report.net_profit]);
+    report.income.forEach(l => rows.push(["Revenue", l.account_name, String(l.net)]));
+    if (report.total_income) rows.push(["", "Total Revenue", String(report.total_income)]);
+    report.cogs.forEach(l => rows.push(["COGS", l.account_name, String(l.net)]));
+    if (report.gross_profit) rows.push(["", "Gross Profit", String(report.gross_profit)]);
+    report.expenses.forEach(l => rows.push(["Expense", l.account_name, String(l.net)]));
+    rows.push(["", "Net Profit", String(report.net_profit)]);
     downloadCsv("profit_and_loss.csv", rows[0], rows.slice(1));
     toast.success("P&L exported");
   };
 
   const exportTB = () => {
     if (!trial) { toast.error("No Trial Balance data to export"); return; }
-    const rows = trial.entries.map(r => [r.account_code, r.account_name, r.debit, r.credit]);
+    const rows = trial.entries.map(r => [String(r.account_code), String(r.account_name), String(r.debit), String(r.credit)]);
     downloadCsv("trial_balance.csv", ["Account Code", "Account Name", "Debit", "Credit"], rows);
     toast.success("Trial Balance exported");
   };

@@ -568,17 +568,12 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
   }, [tickets, searchTerm, filterStatus, filterCategory]);
 
   return (
-    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+    <div className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Support Tickets</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
-              {tickets.length} Total Cases
-            </span>
-          </div>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Support Tickets</h2>
+          <p className="text-xs text-muted-foreground">
             Manage, triage, and resolve customer support cases and technical inquiries.
           </p>
         </div>
@@ -586,126 +581,126 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
           <button
             onClick={() => void fetchTickets()}
             disabled={loading}
-            className="p-2.5 rounded-xl border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            className="p-1.5 h-8 w-8 rounded-lg border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground flex items-center justify-center"
             title="Refresh tickets"
           >
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 gradient-brand text-white rounded-xl text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity"
           >
-            <Plus className="size-4" /> New Ticket
+            <Plus className="size-3.5" /> New Ticket
           </button>
         </div>
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 sm:p-5 rounded-2xl border border-border/60 bg-card shadow-sm relative overflow-hidden">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="glass-panel p-5 rounded-xl border border-border/50 bg-card">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Open Tickets</p>
-            <div className="size-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
+            <p className="text-sm font-medium text-muted-foreground">Open Tickets</p>
+            <div className="size-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
               <AlertCircle className="size-4" />
             </div>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-foreground mt-2">{metrics.open}</h3>
-          <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400 mt-1">Awaiting resolution</p>
+          <h3 className="text-2xl font-bold text-foreground mt-2">{metrics.open}</h3>
+          <p className="text-xs font-medium text-blue-600 dark:text-blue-400 mt-1">Awaiting resolution</p>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-2xl border border-border/60 bg-card shadow-sm relative overflow-hidden">
+        <div className="glass-panel p-5 rounded-xl border border-border/50 bg-card">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">High & Urgent</p>
-            <div className="size-8 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center">
+            <p className="text-sm font-medium text-muted-foreground">High & Urgent</p>
+            <div className="size-8 rounded-lg bg-rose-500/10 text-rose-600 flex items-center justify-center">
               <Flag className="size-4" />
             </div>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-rose-600 mt-2">{metrics.urgent}</h3>
-          <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 mt-1">Immediate triage needed</p>
+          <h3 className="text-2xl font-bold text-rose-600 mt-2">{metrics.urgent}</h3>
+          <p className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-1">Immediate triage needed</p>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-2xl border border-border/60 bg-card shadow-sm relative overflow-hidden">
+        <div className="glass-panel p-5 rounded-xl border border-border/50 bg-card">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">In Progress</p>
-            <div className="size-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+            <p className="text-sm font-medium text-muted-foreground">In Progress</p>
+            <div className="size-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
               <Clock className="size-4" />
             </div>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-foreground mt-2">{metrics.inProgress}</h3>
-          <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 mt-1">Actively being worked</p>
+          <h3 className="text-2xl font-bold text-foreground mt-2">{metrics.inProgress}</h3>
+          <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mt-1">Actively being worked</p>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-2xl border border-border/60 bg-card shadow-sm relative overflow-hidden">
+        <div className="glass-panel p-5 rounded-xl border border-border/50 bg-card">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resolved</p>
-            <div className="size-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+            <p className="text-sm font-medium text-muted-foreground">Resolved</p>
+            <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
               <CheckCircle2 className="size-4" />
             </div>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-emerald-600 mt-2">{metrics.resolved}</h3>
-          <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 mt-1">Successfully closed</p>
-        </div>
-      </div>
-
-      {/* Filter & Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 bg-card border border-border/60 rounded-2xl shadow-sm">
-        <div className="relative flex-1 min-w-[240px]">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search by subject, customer, ticket ID..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-8 py-2 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="size-3.5" />
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 hide-scrollbar">
-          {/* Status Pills */}
-          <div className="flex items-center bg-muted/50 p-1 rounded-xl border border-border/50">
-            {["All", "Open", "In Progress", "Resolved", "Closed"].map((st) => (
-              <button
-                key={st}
-                onClick={() => setFilterStatus(st)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                  filterStatus === st
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {st}
-              </button>
-            ))}
-          </div>
-
-          {/* Category Dropdown */}
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="h-9 px-3 bg-background border border-border rounded-xl text-xs font-semibold text-muted-foreground focus:outline-none"
-          >
-            <option value="All">All Categories</option>
-            <option value="Support">Support</option>
-            <option value="Billing">Billing</option>
-            <option value="Technical">Technical</option>
-            <option value="Logistics">Logistics</option>
-            <option value="Returns">Returns</option>
-            <option value="Complaint">Complaint</option>
-          </select>
+          <h3 className="text-2xl font-bold text-emerald-600 mt-2">{metrics.resolved}</h3>
+          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 mt-1">Successfully closed</p>
         </div>
       </div>
 
       {/* Tickets Table / List */}
-      <div className="bg-card rounded-2xl border border-border/60 shadow-sm">
-        <div className="overflow-x-visible">
+      <div className="glass-panel rounded-xl border border-border/50 overflow-hidden bg-card">
+        {/* Filter & Search Bar */}
+        <div className="p-4 border-b border-border/50 flex flex-col md:flex-row justify-between items-center gap-3">
+          <div className="relative flex-1 w-full max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search by subject, customer, ticket ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 bg-background/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+            {/* Status Pills */}
+            <div className="flex items-center bg-muted/50 p-1 rounded-lg border border-border/50">
+              {["All", "Open", "In Progress", "Resolved", "Closed"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setFilterStatus(st)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                    filterStatus === st
+                      ? "bg-primary text-primary-foreground shadow-sm font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+
+            {/* Category Dropdown */}
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="h-8 px-3 bg-background border border-border rounded-lg text-xs font-medium text-muted-foreground focus:outline-none"
+            >
+              <option value="All">All Categories</option>
+              <option value="Support">Support</option>
+              <option value="Billing">Billing</option>
+              <option value="Technical">Technical</option>
+              <option value="Logistics">Logistics</option>
+              <option value="Returns">Returns</option>
+              <option value="Complaint">Complaint</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
           {loading ? (
             <div className="py-16 text-center space-y-3">
               <Loader2 className="size-6 animate-spin mx-auto text-primary" />

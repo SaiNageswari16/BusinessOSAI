@@ -139,14 +139,14 @@ export function CurrencyManagement() {
   };
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Currency Management</h2>
-          <p className="text-sm text-muted-foreground">Configure currencies and exchange rates for multi-currency support across all receipts and invoices.</p>
+          <h2 className="text-base font-bold tracking-tight">Currency Management</h2>
+          <p className="text-xs text-muted-foreground">Configure currencies and exchange rates for multi-currency support across all receipts and invoices.</p>
         </div>
-        <Button className="gradient-brand text-white border-0 gap-2" onClick={() => { setEditCurrency(null); setShowForm(true); }}>
-          <Plus className="size-4" /> Add Currency
+        <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditCurrency(null); setShowForm(true); }}>
+          <Plus className="size-3.5" /> Add Currency
         </Button>
       </div>
 

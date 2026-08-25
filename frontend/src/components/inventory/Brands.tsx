@@ -166,8 +166,8 @@ export function Brands() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Brands</h2>
-          <p className="text-sm text-muted-foreground">Manage and organize product brands and manufacturers.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Brands</h2>
+          <p className="text-sm text-muted-foreground mt-1">Manage and organize product brands and manufacturers.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="border-slate-200">

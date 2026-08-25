@@ -68,8 +68,7 @@ export function CreditNotes() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <FileCheck className="text-primary size-6" /> Credit Notes
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Credit Notes
           </h2>
           <p className="text-sm text-muted-foreground">Track vendor credits for returns and discounts.</p>
         </div>

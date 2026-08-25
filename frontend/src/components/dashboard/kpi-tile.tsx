@@ -58,24 +58,30 @@ export function KpiTile({ label, value, change, hint, icon, spark, tone = "blue"
       transition={{ duration: 0.35, delay }}
       whileHover={{ y: -2 }}
     >
-      <Card className="group relative overflow-hidden p-4 border-border/60 hover:shadow-elegant transition-all">
+      <Card className="group relative overflow-hidden p-5 rounded-2xl border border-border/80 bg-card text-card-foreground shadow-xs hover:shadow-md hover:border-primary/40 transition-all duration-200">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider truncate">{label}</div>
-            <div className="mt-1.5 text-2xl font-bold tracking-tight tabular-nums">{displayValue}</div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px]">
-              <span className={cn("inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-semibold",
-                up ? "text-emerald-600 bg-emerald-500/10" : "text-rose-600 bg-rose-500/10")}>
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">{label}</div>
+            <div className="text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums font-heading text-foreground">{displayValue}</div>
+            <div className="pt-1 flex items-center gap-1.5 text-[11px] flex-wrap">
+              <span className={cn(
+                "inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full font-bold border",
+                up ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/20"
+              )}>
                 {up ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
-                {Math.abs(change)}%
+                {up ? `+${Math.abs(change)}%` : `-${Math.abs(change)}%`}
               </span>
               {hint && <span className="text-muted-foreground truncate">{hint}</span>}
             </div>
           </div>
-          {icon && <div className={cn("size-9 rounded-lg grid place-items-center shrink-0", t.icon)}>{icon}</div>}
+          {icon && (
+            <div className={cn("size-10 rounded-2xl flex items-center justify-center shrink-0 border shadow-2xs transition-transform duration-200 group-hover:scale-105", t.icon)}>
+              {icon}
+            </div>
+          )}
         </div>
         {spark && (
-          <div className="-mx-4 -mb-4 mt-3 h-12 opacity-80 group-hover:opacity-100 transition-opacity">
+          <div className="-mx-5 -mb-5 mt-4 h-12 opacity-75 group-hover:opacity-100 transition-opacity">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={spark}>
                 <defs>
@@ -84,7 +90,7 @@ export function KpiTile({ label, value, change, hint, icon, spark, tone = "blue"
                     <stop offset="100%" stopColor={t.chart} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <Area type="monotone" dataKey="v" stroke={t.chart} strokeWidth={1.8} fill={`url(#${id})`} />
+                <Area type="monotone" dataKey="v" stroke={t.chart} strokeWidth={2} fill={`url(#${id})`} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

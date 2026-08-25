@@ -55,13 +55,13 @@ export function ReturnsRefunds() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Returns & Refunds</h2>
-          <p className="text-sm text-slate-500 mt-1">Process customer sales returns, restore items to inventory, and issue cash or credit refunds.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Returns & Refunds</h2>
+          <p className="text-sm text-muted-foreground mt-1">Process customer sales returns, restore items to inventory, and issue cash or credit refunds.</p>
         </div>
-        <div className="flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg border border-amber-200 text-xs font-bold">
-          <ShieldCheck className="size-4" />
+        <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800 text-xs font-bold">
+          <ShieldCheck className="size-3.5" />
           Strict "Sales Return Only" Policy Enforced
         </div>
       </div>

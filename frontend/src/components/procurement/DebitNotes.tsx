@@ -64,8 +64,7 @@ export function DebitNotes() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <FileCheck className="text-primary size-6" /> Debit Notes
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Debit Notes
           </h2>
           <p className="text-sm text-muted-foreground">Generate debit notes for purchase returns or excess billing.</p>
         </div>

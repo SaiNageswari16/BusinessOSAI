@@ -14,10 +14,10 @@ export function VendorDashboard() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Marketplace Overview</h1>
-        <p className="text-sm text-muted-foreground">Monitor vendor performance, product approvals, and marketplace GMV.</p>
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Marketplace Overview</h2>
+        <p className="text-xs text-muted-foreground">Monitor vendor performance, product approvals, and marketplace GMV.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

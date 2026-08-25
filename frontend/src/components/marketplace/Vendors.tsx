@@ -15,11 +15,11 @@ export function Vendors() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Vendors</h1>
-          <p className="text-sm text-muted-foreground">Manage marketplace vendors, approvals, and performance.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Vendors</h2>
+          <p className="text-xs text-muted-foreground">Manage marketplace vendors, approvals, and performance.</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:w-64">

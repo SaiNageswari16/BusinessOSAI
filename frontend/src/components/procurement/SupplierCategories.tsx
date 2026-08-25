@@ -53,8 +53,7 @@ export function SupplierCategories() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Layers className="text-primary size-6" /> Supplier Categories
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Supplier Categories
           </h2>
           <p className="text-sm text-muted-foreground">Classify your vendor base into manageable groups.</p>
         </div>

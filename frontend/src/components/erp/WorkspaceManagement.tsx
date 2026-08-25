@@ -250,14 +250,14 @@ export function WorkspaceManagement() {
     : [];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Workspace Management</h2>
-          <p className="text-muted-foreground text-sm mt-1">Configure multi-environment workspaces, UI themes, and localization.</p>
+          <h2 className="text-base font-bold tracking-tight">Workspace Management</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">Configure multi-environment workspaces, UI themes, and localization.</p>
         </div>
-        <Button className="gradient-brand text-white border-0 gap-2" onClick={() => { setEditWorkspace(null); setShowModal(true); }}>
-          <Plus className="size-4" /> Create Workspace
+        <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditWorkspace(null); setShowModal(true); }}>
+          <Plus className="size-3.5" /> Create Workspace
         </Button>
       </div>
 

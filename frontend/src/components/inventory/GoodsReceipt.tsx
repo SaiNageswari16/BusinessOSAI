@@ -178,8 +178,7 @@ export function GoodsReceipt() {
           {/* List Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                <Package className="size-6 text-indigo-600" /> Goods Received Notes (GRN)
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Goods Received Notes (GRN)
               </h2>
               <p className="text-sm text-slate-500 mt-1">
                 Receive incoming stock shipments, calculate valuation, and post inventory arrivals.
@@ -250,9 +249,9 @@ export function GoodsReceipt() {
                                   receipt_number: grn.receipt_number,
                                   supplier: grn.supplier || "",
                                   reference_number: grn.reference_number || "",
-                                  warehouse: (grn as any).warehouse_id || "",
+                                  warehouse: (grn as any).warehouse_id || (grn as any).warehouse || "",
                                   notes: (grn as any).notes || "",
-                                  received_date: grn.created_at ? grn.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                  received_date: (grn as any).created_at ? (grn as any).created_at.slice(0, 10) : ((grn as any).receipt_date ? (grn as any).receipt_date.slice(0, 10) : new Date().toISOString().slice(0, 10)),
                                 });
                                 if (grn.items && grn.items.length > 0) {
                                   setItems(grn.items.map((it: any) => ({

@@ -73,8 +73,7 @@ export function SupplierPerformance() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Activity className="text-primary size-6" /> Supplier Performance
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Supplier Performance
           </h2>
           <p className="text-sm text-muted-foreground">Monitor KPIs like delivery accuracy, quality, and returns.</p>
         </div>

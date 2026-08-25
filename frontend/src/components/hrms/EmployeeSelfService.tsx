@@ -277,13 +277,13 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
       return "bg-red-500/10 text-red-500";
     };
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">My Leaves</h1>
-            <p className="text-sm text-muted-foreground">Your leave balances and entitlement stats.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">My Leaves</h2>
+            <p className="text-xs text-muted-foreground">Your leave balances and entitlement stats.</p>
           </div>
-          <Button onClick={() => setLeaveDialogOpen(true)} className="gradient-brand text-white border-0">Apply Leave Request</Button>
+          <Button onClick={() => setLeaveDialogOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white border-0">Apply Leave Request</Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {myBalances.length === 0 ? (
@@ -374,10 +374,10 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
   // ─── Render: My Payroll Tab ──────────────────────────────────────
   if (tab === "ess_payroll") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">My Payroll & Payslips</h1>
-          <p className="text-sm text-muted-foreground">Download compensation details and monthly payslips.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">My Payroll & Payslips</h2>
+          <p className="text-xs text-muted-foreground">Download compensation details and monthly payslips.</p>
         </div>
         <div className="glass-panel p-6 rounded-xl border">
           <h3 className="font-bold text-foreground mb-4">Current Compensation Details</h3>
@@ -442,10 +442,10 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
   // ─── Render: My Documents Tab ────────────────────────────────────
   if (tab === "ess_documents") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">My Documents</h1>
-          <p className="text-sm text-muted-foreground">Compliance contracts, agreements, and HR policy sign-offs.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">My Documents</h2>
+          <p className="text-xs text-muted-foreground">Compliance contracts, agreements, and HR policy sign-offs.</p>
         </div>
         <div className="space-y-3">
           {loading && <div className="flex justify-center py-6"><Loader2 className="size-6 animate-spin text-primary" /></div>}
@@ -477,10 +477,10 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
       { task: "H1 Feedback Questionnaire", due: "2026-07-15", priority: "Low", status: "Done" },
     ];
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">My Tasks</h1>
-          <p className="text-sm text-muted-foreground">Tasks assigned to you by the HR team.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">My Tasks</h2>
+          <p className="text-xs text-muted-foreground">Tasks assigned to you by the HR team.</p>
         </div>
         <div className="space-y-3">
           {tasks.map((t, i) => (
@@ -510,10 +510,10 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
       { id: 2, title: "Wellness Program: Gym Allowance", date: "2026-06-28", category: "Benefit", body: "Active full-time team members are eligible for up to $50 monthly gym reimbursement starting this quarter." },
     ];
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Announcements</h1>
-          <p className="text-sm text-muted-foreground">Official policy announcements and announcements.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Announcements</h2>
+          <p className="text-xs text-muted-foreground">Official policy announcements and announcements.</p>
         </div>
         <div className="space-y-4">
           {announcements.map((ann, i) => (
@@ -539,28 +539,28 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
   // ─── Render: My Attendance (Default) ─────────────────────────────
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto pb-20">
+    <div className="space-y-6 max-w-4xl mx-auto pb-20">
       <div className="flex justify-between items-start gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Hello, {emp?.full_name || user?.name || "Employee"}!</h1>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Hello, {emp?.full_name || user?.name || "Employee"}!</h2>
+          <p className="text-xs text-muted-foreground">
             {emp ? `${emp.employment_type} • Code: ${emp.employee_code}` : "Loading self service details..."}
           </p>
         </div>
 
         {emp && (
           <div className="flex gap-2">
-            <Button variant="outline" className="border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 font-medium h-10 px-4 shadow-sm" onClick={handleOpenMyVCard}>
-              <QrCode className="size-4 mr-2 text-indigo-500" /> My vCard & QR Pass
+            <Button variant="outline" className="border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 font-semibold text-xs h-8 px-3 shadow-sm" onClick={handleOpenMyVCard}>
+              <QrCode className="size-3.5 mr-1.5 text-indigo-500" /> My vCard & QR Pass
             </Button>
             {!todayRecord?.check_in ? (
-              <Button className="gradient-brand text-white border-0 h-10 px-6 font-semibold" onClick={handleClockIn} disabled={loading}>
-                {loading ? <Loader2 className="size-4 animate-spin" /> : <MapPin className="size-4 mr-2" />}
+              <Button className="gradient-brand text-white border-0 h-8 px-4 text-xs font-semibold" onClick={handleClockIn} disabled={loading}>
+                {loading ? <Loader2 className="size-3.5 animate-spin" /> : <MapPin className="size-3.5 mr-1.5" />}
                 Clock In
               </Button>
             ) : !todayRecord?.check_out ? (
-              <Button className="bg-red-600 hover:bg-red-700 text-white border-0 h-10 px-6 font-semibold" onClick={handleClockOut} disabled={loading}>
-                {loading ? <Loader2 className="size-4 animate-spin" /> : <Clock className="size-4 mr-2" />}
+              <Button className="bg-red-600 hover:bg-red-700 text-white border-0 h-8 px-4 text-xs font-semibold" onClick={handleClockOut} disabled={loading}>
+                {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Clock className="size-3.5 mr-1.5" />}
                 Clock Out
               </Button>
             ) : (

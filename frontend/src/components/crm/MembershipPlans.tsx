@@ -41,7 +41,7 @@ const blankPlan: Record<string, unknown> = {
 };
 
 export function MembershipPlans() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
@@ -90,18 +90,18 @@ export function MembershipPlans() {
     setSaving(true);
     try {
       const payload = {
-        name: form.name,
-        tier: form.tier,
-        description: form.description || null,
+        name: form.name as string,
+        tier: form.tier as string,
+        description: (form.description as string) || null,
         duration_months: Number(form.duration_months),
         price: Number(form.price),
-        currency: form.currency,
-        benefits: form.benefits,
+        currency: form.currency as string,
+        benefits: form.benefits as string[],
         discount_percentage: Number(form.discount_percentage),
         points_multiplier: Number(form.points_multiplier),
-        auto_renewal: form.auto_renewal,
-        is_active: form.is_active,
-        max_members: form.max_members || null,
+        auto_renewal: Boolean(form.auto_renewal),
+        is_active: Boolean(form.is_active),
+        max_members: form.max_members ? Number(form.max_members) : null,
       };
       if (editingId) {
         const updated = await crmMembershipsApi.updatePlan(editingId, payload);
@@ -200,7 +200,7 @@ export function MembershipPlans() {
   };
 
   const toggleBenefit = (benefit: string) => {
-    const current = form.benefits as string[];
+    const current = (form.benefits as string[]) || [];
     setForm({
       ...form,
       benefits: current.includes(benefit)
@@ -218,23 +218,23 @@ export function MembershipPlans() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Membership Plans</h1>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Membership Plans</h2>
+          <p className="text-xs text-muted-foreground">
             Define membership tiers, pricing, benefits and manage customer subscriptions.
           </p>
         </div>
         {activeTab === "plans" ? (
           <button onClick={() => { setEditingId(null); setForm(blankPlan); setShowForm(true); }}
-            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium">
-            <Plus className="size-4" /> New Plan
+            className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold">
+            <Plus className="size-3.5" /> New Plan
           </button>
         ) : (
           <button onClick={() => setShowSubForm(true)}
-            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium">
-            <Plus className="size-4" /> New Subscription
+            className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold">
+            <Plus className="size-3.5" /> New Subscription
           </button>
         )}
       </div>
@@ -502,15 +502,6 @@ export function MembershipPlans() {
           )}
         </>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
-  return (
-    <div className="glass-panel p-5 rounded-xl border border-border/50">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-bold flex gap-2 items-center"><span className="text-primary">{icon}</span>{value.toLocaleString()}</p>
     </div>
   );
 }

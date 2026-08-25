@@ -26,17 +26,17 @@ export function ErrorLogs() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Error Logs</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-base font-bold tracking-tight">Error Logs</h2>
+          <p className="text-xs text-muted-foreground">
             Failed operations and system errors.
             <span className="font-medium text-red-500 ml-1">{total} errors found</span>
           </p>
         </div>
-        <Button variant="outline" className="bg-background" onClick={load} disabled={loading}>
-          {loading ? <Loader2 className="size-4 animate-spin mr-2" /> : <RefreshCw className="size-4 mr-2" />}
+        <Button variant="outline" size="sm" className="bg-background h-8 text-xs font-semibold" onClick={load} disabled={loading}>
+          {loading ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <RefreshCw className="size-3.5 mr-1.5" />}
           Refresh
         </Button>
       </div>

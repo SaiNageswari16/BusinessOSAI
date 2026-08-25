@@ -179,8 +179,7 @@ export function StockTransfer() {
           {/* List Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                <ArrowRightLeft className="size-6 text-emerald-600" /> Stock Transfer Vouchers
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Stock Transfer Vouchers
               </h2>
               <p className="text-sm text-slate-500 mt-1">
                 Transfer stock seamlessly between warehouses, distribution hubs, and retail stores.
@@ -254,13 +253,13 @@ export function StockTransfer() {
                           movement_number: tr.movement_number,
                           source_location: tr.source_location || "",
                           destination_location: tr.destination_location || "",
-                          notes: tr.reference_note || "",
-                          transfer_date: tr.created_at ? tr.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                          notes: (tr as any).reference_note || (tr as any).notes || "",
+                          transfer_date: (tr as any).created_at ? (tr as any).created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
                           status: tr.status || "In Transit",
                         });
                         setItems([{
                           product_id: tr.product_id,
-                          product_name: tr.product_name,
+                          product_name: (tr as any).product_name || tr.product_id,
                           quantity: Number(tr.quantity) || 1,
                           unit_price: 150
                         }]);

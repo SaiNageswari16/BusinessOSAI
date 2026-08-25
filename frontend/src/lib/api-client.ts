@@ -336,6 +336,7 @@ export interface InventorySerial {
   batch_id: string | null;
   product_id: string | null;
   product_name: string | null;
+  sku?: string | null;
   warehouse_id: string | null;
   warehouse_name: string | null;
   manufacturing_date: string | null;

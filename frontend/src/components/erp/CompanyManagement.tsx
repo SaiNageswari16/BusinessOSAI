@@ -344,48 +344,48 @@ export function CompanyManagement() {
   return (
     <div className="flex h-full bg-background overflow-hidden">
       {/* Company List Sidebar */}
-      <div className="w-72 xl:w-88 flex flex-col border-r border-border bg-card/50 shrink-0 h-full">
-        <div className="p-5 border-b border-border bg-card sticky top-0 z-10">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="size-9 rounded-xl gradient-brand text-white grid place-items-center shadow-sm">
-              <Building2 className="size-5" />
+      <div className="w-72 xl:w-80 flex flex-col border-r border-border bg-card/50 shrink-0 h-full">
+        <div className="p-3 border-b border-border bg-card sticky top-0 z-10">
+          <div className="flex items-center gap-2.5 mb-1">
+            <div className="size-8 rounded-lg gradient-brand text-white grid place-items-center shadow-xs">
+              <Building2 className="size-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold tracking-tight leading-tight">Company Management</h2>
-              <p className="text-muted-foreground text-[11px]">Manage legal entities within your ERP.</p>
+              <h2 className="text-sm font-bold tracking-tight leading-tight">Company Management</h2>
+              <p className="text-muted-foreground text-[10px]">Manage legal entities within your ERP.</p>
             </div>
           </div>
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-1.5 mt-2.5">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground outline-none transition-all"
+                className="w-full h-8 pl-8 pr-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground outline-none transition-all"
                 placeholder="Search by name, GST..."
               />
             </div>
-            <Button variant="outline" size="sm" className="h-9 px-3 shrink-0"><Filter className="size-3.5 mr-1" /> Filters</Button>
+            <Button variant="outline" size="sm" className="h-8 px-2.5 shrink-0 text-xs"><Filter className="size-3 mr-1" /> Filters</Button>
           </div>
-          <div className="flex justify-between items-center mt-3">
+          <div className="flex justify-between items-center mt-2">
             <span className="text-[10px] font-semibold text-muted-foreground">
               Showing {filtered.length} of {total} companies
             </span>
             <div className="flex bg-muted rounded-md p-0.5 gap-0.5">
-              <button className="p-1.5 rounded-sm bg-background shadow-sm text-foreground"><List className="size-3" /></button>
-              <button className="p-1.5 rounded-sm text-muted-foreground hover:text-foreground"><LayoutGrid className="size-3" /></button>
+              <button className="p-1 rounded-sm bg-background shadow-xs text-foreground"><List className="size-3" /></button>
+              <button className="p-1 rounded-sm text-muted-foreground hover:text-foreground"><LayoutGrid className="size-3" /></button>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
           {loading ? (
             Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-24 rounded-xl border bg-muted/30 animate-pulse" />
+              <div key={i} className="h-20 rounded-xl border bg-muted/30 animate-pulse" />
             ))
           ) : filtered.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
-              <Building2 className="size-8 mx-auto mb-2 opacity-30" />
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              <Building2 className="size-6 mx-auto mb-1.5 opacity-30" />
               No companies found.
             </div>
           ) : (
@@ -397,24 +397,24 @@ export function CompanyManagement() {
                   key={company.id}
                   onClick={() => { setActiveCompanyId(company.id); setActiveTab("Overview"); }}
                   className={cn(
-                    "w-full text-left p-4 rounded-xl border transition-all relative flex flex-col gap-3 group",
+                    "w-full text-left p-2.5 rounded-xl border transition-all relative flex flex-col gap-2 group cursor-pointer",
                     isActive
-                      ? "bg-primary/5 border-primary/30 shadow-sm"
-                      : "bg-card hover:border-primary/20 hover:shadow-sm",
+                      ? "bg-primary/5 border-primary/30 shadow-xs"
+                      : "bg-card hover:border-primary/20 hover:shadow-xs",
                   )}
                 >
-                  <div className="flex gap-3 w-full">
-                    <div className="size-10 rounded-lg gradient-brand text-white grid place-items-center font-bold text-sm shrink-0">
+                  <div className="flex gap-2.5 w-full">
+                    <div className="size-8 rounded-lg gradient-brand text-white grid place-items-center font-bold text-xs shrink-0">
                       {initials}
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <h3 className={cn("font-bold text-sm tracking-tight truncate", isActive ? "text-primary" : "text-foreground")}>
+                      <h3 className={cn("font-bold text-xs tracking-tight truncate", isActive ? "text-primary" : "text-foreground")}>
                         {company.name}
                       </h3>
                       <p className="text-[10px] text-muted-foreground truncate">
                         {company.company_type ?? "Company"} • {company.industry ?? "General"}
                       </p>
-                      <div className="flex items-center gap-1.5 mt-1.5">
+                      <div className="flex items-center gap-1.5 mt-1">
                         <span className={`size-1.5 rounded-full ${company.status === "active" ? "bg-emerald-500" : "bg-rose-500"}`} />
                         <span className={cn("text-[10px] font-medium capitalize", company.status === "active" ? "text-emerald-600" : "text-rose-600")}>
                           {company.status}
@@ -422,7 +422,7 @@ export function CompanyManagement() {
                       </div>
                     </div>
                   </div>
-                  <div className="w-full text-[10px] font-mono text-muted-foreground pt-2 border-t flex justify-between items-center">
+                  <div className="w-full text-[10px] font-mono text-muted-foreground pt-1.5 border-t flex justify-between items-center">
                     <span>GST: {company.gst_number ?? "N/A"}</span>
                     <ChevronRight className={cn("size-3.5 transition-transform", isActive ? "text-primary translate-x-0.5" : "text-muted-foreground opacity-0 group-hover:opacity-100")} />
                   </div>
@@ -436,54 +436,54 @@ export function CompanyManagement() {
       {/* Detail Column */}
       <div className="flex-1 overflow-y-auto bg-muted/20 flex flex-col">
         {!activeCompany && !loading ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-5">
-            <div className="size-20 rounded-3xl bg-card border-2 border-dashed border-border flex items-center justify-center">
-              <Building2 className="size-10 opacity-20" />
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
+            <div className="size-16 rounded-2xl bg-card border-2 border-dashed border-border flex items-center justify-center">
+              <Building2 className="size-8 opacity-20" />
             </div>
             <div className="text-center">
-              <p className="font-bold text-foreground">No Company Selected</p>
+              <p className="font-bold text-foreground text-sm">No Company Selected</p>
               <p className="text-sm text-muted-foreground mt-1">Choose a company from the list or create one.</p>
             </div>
-            <Button className="gradient-brand text-white border-0 h-10 px-6" onClick={() => { setEditCompany(null); setShowForm(true); }}>
-              <Plus className="size-4 mr-2" /> Create First Company
+            <Button className="gradient-brand text-white border-0 h-9 px-4 text-xs" onClick={() => { setEditCompany(null); setShowForm(true); }}>
+              <Plus className="size-3.5 mr-1.5" /> Create First Company
             </Button>
           </div>
         ) : activeCompany && (
           <div className="flex flex-col h-full">
             {/* ── Top Action Bar ── */}
-            <div className="flex items-center justify-between px-8 py-4 bg-card border-b border-border sticky top-0 z-10">
-              <div className="flex items-center gap-3">
-                <div className="size-10 rounded-xl gradient-brand text-white grid place-items-center font-bold text-sm shrink-0 shadow-md">
+            <div className="flex items-center justify-between px-4 py-2 bg-card border-b border-border sticky top-0 z-10">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-lg gradient-brand text-white grid place-items-center font-bold text-xs shrink-0 shadow-xs">
                   {activeCompany.logo_initials ?? activeCompany.name.slice(0, 2).toUpperCase()}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-lg font-extrabold tracking-tight leading-tight">{activeCompany.name}</h1>
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${activeCompany.status === "active" ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600"}`}>
+                    <h1 className="text-sm font-extrabold tracking-tight leading-tight">{activeCompany.name}</h1>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-bold ${activeCompany.status === "active" ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600"}`}>
                       <span className={`size-1.5 rounded-full ${activeCompany.status === "active" ? "bg-emerald-500" : "bg-rose-500"}`} />
                       {activeCompany.status.charAt(0).toUpperCase() + activeCompany.status.slice(1)}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground">{activeCompany.company_type ?? "Company"} • {activeCompany.industry ?? "General"}</p>
+                  <p className="text-[10px] text-muted-foreground">{activeCompany.company_type ?? "Company"} • {activeCompany.industry ?? "General"}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-9 gap-2 font-semibold">
-                  <Download className="size-4" /> Export
+              <div className="flex items-center gap-1.5">
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 font-semibold text-xs px-2.5">
+                  <Download className="size-3.5" /> Export
                 </Button>
-                <Button variant="outline" size="sm" className="h-9 gap-2 font-semibold text-rose-600 hover:text-rose-700 hover:border-rose-300"
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 font-semibold text-xs text-rose-600 hover:text-rose-700 hover:border-rose-300 px-2.5"
                   onClick={() => { setDeleteCompany(activeCompany); }}>
-                  <Trash2 className="size-4" /> Delete
+                  <Trash2 className="size-3.5" /> Delete
                 </Button>
-                <Button variant="outline" size="sm" className="h-9 gap-2 font-semibold"
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 font-semibold text-xs px-2.5"
                   onClick={() => { setEditCompany(activeCompany); setShowForm(true); }}>
-                  <Edit2 className="size-4" /> Edit
+                  <Edit2 className="size-3.5" /> Edit
                 </Button>
-                <Button size="sm" className="h-9 gap-2 gradient-brand text-white border-0 font-semibold px-5"
+                <Button size="sm" className="h-8 gap-1.5 gradient-brand text-white border-0 font-semibold text-xs px-3.5"
                   onClick={() => { setEditCompany(null); setShowForm(true); }}>
-                  <Plus className="size-4" /> New Company
+                  <Plus className="size-3.5" /> New Company
                 </Button>
-                <Button variant="outline" size="icon" className="h-9 w-9"><MoreHorizontal className="size-4" /></Button>
+                <Button variant="outline" size="icon" className="h-8 w-8"><MoreHorizontal className="size-3.5" /></Button>
               </div>
             </div>
 
@@ -495,28 +495,28 @@ export function CompanyManagement() {
                 { label: "Phone", value: activeCompany.phone ?? "—", icon: Phone },
                 { label: "Website", value: activeCompany.website ?? "—", icon: ExternalLink, link: true },
               ].map(({ label, value, icon: Icon, link }) => (
-                <div key={label} className="px-6 py-3">
-                  <div className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1 flex items-center gap-1">
-                    {Icon && <Icon className="size-3" />} {label}
+                <div key={label} className="px-3 py-1.5">
+                  <div className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5 flex items-center gap-1">
+                    {Icon && <Icon className="size-2.5" />} {label}
                   </div>
                   {link ? (
-                    <a href={activeCompany.website ?? "#"} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary hover:underline truncate block">{value}</a>
+                    <a href={activeCompany.website ?? "#"} target="_blank" rel="noreferrer" className="text-xs font-semibold text-primary hover:underline truncate block">{value}</a>
                   ) : (
-                    <div className="text-sm font-semibold truncate">{value}</div>
+                    <div className="text-xs font-semibold truncate">{value}</div>
                   )}
                 </div>
               ))}
             </div>
 
             {/* ── Tabs Switcher ── */}
-            <div className="bg-card border-b border-border px-8">
+            <div className="bg-card border-b border-border px-4">
               <div className="flex gap-0 overflow-x-auto scrollbar-hide">
                 {["Overview", "Additional Info", "Tax & Finance", "Branches", "Contacts", "Documents"].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
                     className={cn(
-                      "relative py-4 px-4 text-sm font-bold border-b-2 whitespace-nowrap transition-all duration-200",
+                      "relative py-2 px-3 text-xs font-bold border-b-2 whitespace-nowrap transition-all duration-200 cursor-pointer",
                       activeTab === tab
                         ? "border-primary text-primary"
                         : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30",
@@ -524,7 +524,7 @@ export function CompanyManagement() {
                   >
                     {tab}
                     {tab === "Branches" && companyBranches.length > 0 && (
-                      <span className="ml-2 bg-primary text-primary-foreground text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
+                      <span className="ml-1.5 bg-primary text-primary-foreground text-[8.5px] font-extrabold px-1.5 py-0.2 rounded-full">
                         {companyBranches.length}
                       </span>
                     )}
@@ -534,33 +534,33 @@ export function CompanyManagement() {
             </div>
 
             {/* ── Tab Content Area ── */}
-            <div className="flex-1 overflow-y-auto p-8">
+            <div className="flex-1 overflow-y-auto p-4">
 
             <AnimatePresence mode="wait">
               {subLoading ? (
-                <div className="h-64 flex items-center justify-center">
-                  <Loader2 className="size-8 text-primary animate-spin" />
+                <div className="h-48 flex items-center justify-center">
+                  <Loader2 className="size-6 text-primary animate-spin" />
                 </div>
               ) : (
                 <motion.div
                   key={activeTab}
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
+                  exit={{ opacity: 0, y: -5 }}
                   transition={{ duration: 0.15 }}
                   className="h-full"
                 >
                   {/* OVERVIEW TAB */}
                   {activeTab === "Overview" && (
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                         {/* General Info Card */}
-                        <Card className="p-6 h-fit">
-                          <div className="flex items-center gap-2 mb-6 text-foreground">
+                        <Card className="p-3.5 h-fit">
+                          <div className="flex items-center gap-2 mb-3 text-foreground">
                             <Building2 className="size-4 text-primary" />
-                            <h3 className="font-bold">General Information</h3>
+                            <h3 className="font-bold text-sm">General Information</h3>
                           </div>
-                          <div className="grid grid-cols-2 gap-y-6 gap-x-4">
+                          <div className="grid grid-cols-2 gap-y-3 gap-x-3">
                             {[
                               { label: "GST Number", value: activeCompany.gst_number, mono: true },
                               { label: "Country", value: activeCompany.country },
@@ -574,24 +574,24 @@ export function CompanyManagement() {
                               { label: "Language", value: activeCompany.language },
                             ].map(({ label, value, mono }) => (
                               <div key={label}>
-                                <div className="text-[10px] font-semibold text-muted-foreground mb-1">{label}</div>
-                                <div className={cn("text-sm font-semibold", mono && "font-mono")}>{value ?? "—"}</div>
+                                <div className="text-[9px] font-semibold text-muted-foreground mb-0.5">{label}</div>
+                                <div className={cn("text-xs font-semibold", mono && "font-mono")}>{value ?? "—"}</div>
                               </div>
                             ))}
                             <div className="col-span-2">
-                              <div className="text-[10px] font-semibold text-muted-foreground mb-1">Address</div>
-                              <div className="text-sm font-medium">{activeCompany.address ?? "—"}</div>
+                              <div className="text-[9px] font-semibold text-muted-foreground mb-0.5">Address</div>
+                              <div className="text-xs font-medium">{activeCompany.address ?? "—"}</div>
                             </div>
                           </div>
                         </Card>
 
                         {/* Financial Card */}
-                        <Card className="p-6 h-fit bg-muted/5">
-                          <div className="flex items-center gap-2 mb-6 text-foreground">
+                        <Card className="p-3.5 h-fit bg-muted/5">
+                          <div className="flex items-center gap-2 mb-3 text-foreground">
                             <CreditCard className="size-4 text-primary" />
-                            <h3 className="font-bold">Financial & Operational Summary</h3>
+                            <h3 className="font-bold text-sm">Financial & Operational Summary</h3>
                           </div>
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-2">
                             {[
                               { label: "Currency", value: activeCompany.default_currency_code },
                               { label: "Timezone", value: activeCompany.timezone },
@@ -600,9 +600,9 @@ export function CompanyManagement() {
                               { label: "Business Type", value: activeCompany.company_type ?? "—" },
                               { label: "Status", value: activeCompany.status.charAt(0).toUpperCase() + activeCompany.status.slice(1) },
                             ].map(({ label, value }) => (
-                              <div key={label} className="bg-card border rounded-lg p-3">
-                                <div className="text-[10px] font-semibold text-muted-foreground mb-1">{label}</div>
-                                <div className="text-sm font-bold capitalize text-foreground">{value}</div>
+                              <div key={label} className="bg-card border rounded-lg p-2">
+                                <div className="text-[9px] font-semibold text-muted-foreground mb-0.5">{label}</div>
+                                <div className="text-xs font-bold capitalize text-foreground">{value}</div>
                               </div>
                             ))}
                           </div>
@@ -610,35 +610,35 @@ export function CompanyManagement() {
                       </div>
 
                       {/* Subscription Plan Banner */}
-                      <Card className="p-6 border-primary/20 bg-primary/5">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                          <div className="flex gap-4 items-center">
-                            <div className="size-12 rounded-lg bg-primary text-primary-foreground grid place-items-center shadow-md">
-                              <ShieldCheck className="size-6" />
+                      <Card className="p-3.5 border-primary/20 bg-primary/5">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                          <div className="flex gap-3 items-center">
+                            <div className="size-9 rounded-lg bg-primary text-primary-foreground grid place-items-center shadow-xs">
+                              <ShieldCheck className="size-5" />
                             </div>
                             <div>
-                              <div className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground mb-0.5">Subscription Plan</div>
-                              <div className="flex items-center gap-2">
-                                <h4 className="text-lg font-black">{activeCompany.plan ?? "Standard"} Plan</h4>
-                                <span className="bg-primary/20 text-primary px-2 py-0.5 rounded text-[10px] font-bold">Active</span>
+                              <div className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground mb-0.5">Subscription Plan</div>
+                              <div className="flex items-center gap-1.5">
+                                <h4 className="text-sm font-black">{activeCompany.plan ?? "Standard"} Plan</h4>
+                                <span className="bg-primary/20 text-primary px-1.5 py-0.2 rounded text-[9px] font-bold">Active</span>
                               </div>
                             </div>
                           </div>
-                          <div className="flex gap-8 text-sm">
+                          <div className="flex gap-5 text-xs">
                             <div>
-                              <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-semibold mb-1"><Users className="size-3.5" /> Users</div>
-                              <div className="font-mono font-bold text-sm">{totalUsers || "—"} <span className="text-muted-foreground">/ 50</span></div>
+                              <div className="flex items-center gap-1 text-muted-foreground text-[10px] font-semibold mb-0.5"><Users className="size-3" /> Users</div>
+                              <div className="font-mono font-bold text-xs">{totalUsers || "—"} <span className="text-muted-foreground">/ 50</span></div>
                             </div>
                             <div>
-                              <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-semibold mb-1"><Sparkles className="size-3.5" /> AI Credits</div>
-                              <div className="font-mono font-bold text-sm">18,500 <span className="text-muted-foreground">/ 50K</span></div>
+                              <div className="flex items-center gap-1 text-muted-foreground text-[10px] font-semibold mb-0.5"><Sparkles className="size-3" /> AI Credits</div>
+                              <div className="font-mono font-bold text-xs">18,500 <span className="text-muted-foreground">/ 50K</span></div>
                             </div>
                             <div>
-                              <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-semibold mb-1"><Building2 className="size-3.5" /> Branches</div>
-                              <div className="font-mono font-bold text-sm">{companyBranches.length || "—"} <span className="text-muted-foreground">/ 10</span></div>
+                              <div className="flex items-center gap-1 text-muted-foreground text-[10px] font-semibold mb-0.5"><Building2 className="size-3" /> Branches</div>
+                              <div className="font-mono font-bold text-xs">{companyBranches.length || "—"} <span className="text-muted-foreground">/ 10</span></div>
                             </div>
                           </div>
-                          <Button variant="outline" className="h-10 bg-background hover:bg-muted font-semibold">Manage Subscription</Button>
+                          <Button variant="outline" className="h-8 text-xs bg-background hover:bg-muted font-semibold px-3">Manage Subscription</Button>
                         </div>
                       </Card>
                     </div>
@@ -646,32 +646,32 @@ export function CompanyManagement() {
 
                   {/* ADDITIONAL INFO TAB */}
                   {activeTab === "Additional Info" && (
-                    <Card className="p-6">
-                      <h3 className="font-bold text-base mb-4 flex items-center gap-2"><Globe className="size-4 text-primary" /> Corporate & Metadata</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <Card className="p-3.5">
+                      <h3 className="font-bold text-sm mb-2.5 flex items-center gap-2"><Globe className="size-4 text-primary" /> Corporate & Metadata</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         <div>
-                          <div className="text-[10px] font-bold text-muted-foreground mb-1">Company Type / Legal entity</div>
-                          <div className="text-sm font-semibold">{activeCompany.company_type ?? "Not Set"}</div>
+                          <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Company Type / Legal entity</div>
+                          <div className="text-xs font-semibold">{activeCompany.company_type ?? "Not Set"}</div>
                         </div>
                         <div>
-                          <div className="text-[10px] font-bold text-muted-foreground mb-1">Industry Classification</div>
-                          <div className="text-sm font-semibold">{activeCompany.industry ?? "Not Set"}</div>
+                          <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Industry Classification</div>
+                          <div className="text-xs font-semibold">{activeCompany.industry ?? "Not Set"}</div>
                         </div>
                         <div>
-                          <div className="text-[10px] font-bold text-muted-foreground mb-1">Established / Inc. Date</div>
-                          <div className="text-sm font-semibold">{activeCompany.established_date ?? "Not Set"}</div>
+                          <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Established / Inc. Date</div>
+                          <div className="text-xs font-semibold">{activeCompany.established_date ?? "Not Set"}</div>
                         </div>
                         <div>
-                          <div className="text-[10px] font-bold text-muted-foreground mb-1">System Tenant ID</div>
-                          <div className="text-sm font-mono text-muted-foreground truncate">{activeCompany.tenant_id}</div>
+                          <div className="text-[9px] font-bold text-muted-foreground mb-0.5">System Tenant ID</div>
+                          <div className="text-xs font-mono text-muted-foreground truncate">{activeCompany.tenant_id}</div>
                         </div>
                         <div>
-                          <div className="text-[10px] font-bold text-muted-foreground mb-1">Active Plan Tier</div>
-                          <div className="text-sm font-semibold capitalize">{activeCompany.plan ?? "Starter"}</div>
+                          <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Active Plan Tier</div>
+                          <div className="text-xs font-semibold capitalize">{activeCompany.plan ?? "Starter"}</div>
                         </div>
                         <div>
-                          <div className="text-[10px] font-bold text-muted-foreground mb-1">Entity Status</div>
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold mt-1 ${activeCompany.status === "active" ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600"}`}>
+                          <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Entity Status</div>
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold mt-0.5 ${activeCompany.status === "active" ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600"}`}>
                             {activeCompany.status}
                           </span>
                         </div>
@@ -681,48 +681,48 @@ export function CompanyManagement() {
 
                   {/* TAX & FINANCE TAB */}
                   {activeTab === "Tax & Finance" && (
-                    <Card className="p-6 space-y-6">
+                    <Card className="p-3.5 space-y-3">
                       <div>
-                        <h3 className="font-bold text-base mb-4 flex items-center gap-2"><CreditCard className="size-4 text-primary" /> Tax Identifiers & FY</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <h3 className="font-bold text-sm mb-2.5 flex items-center gap-2"><CreditCard className="size-4 text-primary" /> Tax Identifiers & FY</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                           <div>
-                            <div className="text-[10px] font-bold text-muted-foreground mb-1">GST Registration Number</div>
-                            <div className="text-sm font-mono font-semibold">{activeCompany.gst_number ?? "Not Registered"}</div>
+                            <div className="text-[9px] font-bold text-muted-foreground mb-0.5">GST Registration Number</div>
+                            <div className="text-xs font-mono font-semibold">{activeCompany.gst_number ?? "Not Registered"}</div>
                           </div>
                           <div>
-                            <div className="text-[10px] font-bold text-muted-foreground mb-1">PAN Number</div>
-                            <div className="text-sm font-mono font-semibold">{activeCompany.pan_number ?? "Not Set"}</div>
+                            <div className="text-[9px] font-bold text-muted-foreground mb-0.5">PAN Number</div>
+                            <div className="text-xs font-mono font-semibold">{activeCompany.pan_number ?? "Not Set"}</div>
                           </div>
                           <div>
-                            <div className="text-[10px] font-bold text-muted-foreground mb-1">Corporate Registration No (CIN/LLPIN)</div>
-                            <div className="text-sm font-mono font-semibold">{activeCompany.registration_number ?? "Not Set"}</div>
+                            <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Corporate Registration No (CIN/LLPIN)</div>
+                            <div className="text-xs font-mono font-semibold">{activeCompany.registration_number ?? "Not Set"}</div>
                           </div>
                           <div>
-                            <div className="text-[10px] font-bold text-muted-foreground mb-1">Accounting Currency</div>
-                            <div className="text-sm font-semibold">{activeCompany.default_currency_code}</div>
+                            <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Accounting Currency</div>
+                            <div className="text-xs font-semibold">{activeCompany.default_currency_code}</div>
                           </div>
                           <div>
-                            <div className="text-[10px] font-bold text-muted-foreground mb-1">FY Start Month</div>
-                            <div className="text-sm font-semibold">Month {activeCompany.financial_year_start_month} (April to March default)</div>
+                            <div className="text-[9px] font-bold text-muted-foreground mb-0.5">FY Start Month</div>
+                            <div className="text-xs font-semibold">Month {activeCompany.financial_year_start_month} (April to March default)</div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="border-t pt-6">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Linked Tax Configurations</h4>
+                      <div className="border-t pt-3">
+                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Linked Tax Configurations</h4>
                         {companyTaxes.length === 0 ? (
-                          <div className="text-sm text-muted-foreground bg-muted/20 p-4 rounded-xl border border-dashed text-center">
+                          <div className="text-xs text-muted-foreground bg-muted/20 p-2.5 rounded-xl border border-dashed text-center">
                             No custom tax configurations linked to this company profile.
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             {companyTaxes.map((tax) => (
-                              <div key={tax.id} className="border rounded-xl p-3 flex justify-between items-center bg-card">
+                              <div key={tax.id} className="border rounded-xl p-2 flex justify-between items-center bg-card">
                                 <div>
-                                  <div className="font-semibold text-sm">{tax.name}</div>
-                                  <div className="text-[10px] text-muted-foreground uppercase">{tax.tax_type}</div>
+                                  <div className="font-semibold text-xs">{tax.name}</div>
+                                  <div className="text-[9px] text-muted-foreground uppercase">{tax.tax_type}</div>
                                 </div>
-                                <div className="text-lg font-black text-primary">{tax.rate_percent}%</div>
+                                <div className="text-base font-black text-primary">{tax.rate_percent}%</div>
                               </div>
                             ))}
                           </div>
@@ -733,39 +733,39 @@ export function CompanyManagement() {
 
                   {/* BRANCHES TAB */}
                   {activeTab === "Branches" && (
-                    <Card className="p-6">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-base flex items-center gap-2"><Building2 className="size-4 text-primary" /> Active Company Branches</h3>
+                    <Card className="p-3.5">
+                      <div className="flex justify-between items-center mb-2.5">
+                        <h3 className="font-bold text-sm flex items-center gap-2"><Building2 className="size-4 text-primary" /> Active Company Branches</h3>
                       </div>
                       {companyBranches.length === 0 ? (
-                        <div className="text-sm text-muted-foreground py-12 text-center bg-muted/20 rounded-xl border border-dashed">
+                        <div className="text-xs text-muted-foreground py-6 text-center bg-muted/20 rounded-xl border border-dashed">
                           No physical branches found for this entity. Add branches under the Branch Management tab.
                         </div>
                       ) : (
                         <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
+                          <table className="w-full text-xs">
                             <thead className="bg-muted/50 border-b">
                               <tr>
-                                <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground text-xs">Code</th>
-                                <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground text-xs">Branch Name</th>
-                                <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground text-xs">Location / City</th>
-                                <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground text-xs">Warehouse</th>
-                                <th className="px-4 py-2.5 text-right font-semibold text-muted-foreground text-xs">Status</th>
+                                <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[10px]">Code</th>
+                                <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[10px]">Branch Name</th>
+                                <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[10px]">Location / City</th>
+                                <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[10px]">Warehouse</th>
+                                <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground text-[10px]">Status</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y">
                               {companyBranches.map((branch) => (
                                 <tr key={branch.id} className="hover:bg-muted/10 transition-colors">
-                                  <td className="px-4 py-3 font-mono text-xs font-bold text-primary">{branch.code}</td>
-                                  <td className="px-4 py-3 font-semibold">{branch.name}</td>
-                                  <td className="px-4 py-3 text-muted-foreground">{branch.city ? `${branch.city}, ${branch.state || ""}` : branch.country ?? "—"}</td>
-                                  <td className="px-4 py-3 text-xs">
+                                  <td className="px-3 py-1.5 font-mono text-[11px] font-bold text-primary">{branch.code}</td>
+                                  <td className="px-3 py-1.5 font-semibold">{branch.name}</td>
+                                  <td className="px-3 py-1.5 text-muted-foreground">{branch.city ? `${branch.city}, ${branch.state || ""}` : branch.country ?? "—"}</td>
+                                  <td className="px-3 py-1.5 text-[11px]">
                                     {branch.has_warehouse ? (
-                                      <span className="text-emerald-600 font-semibold flex items-center gap-1"><CheckCircle className="size-3" /> Yes</span>
+                                      <span className="text-emerald-600 font-semibold flex items-center gap-1"><CheckCircle className="size-2.5" /> Yes</span>
                                     ) : <span className="text-muted-foreground">No</span>}
                                   </td>
-                                  <td className="px-4 py-3 text-right">
-                                    <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize",
+                                  <td className="px-3 py-1.5 text-right">
+                                    <span className={cn("inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-semibold capitalize",
                                       branch.status === "active" ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground")}>
                                       {branch.status}
                                     </span>
@@ -781,34 +781,34 @@ export function CompanyManagement() {
 
                   {/* CONTACTS TAB */}
                   {activeTab === "Contacts" && (
-                    <Card className="p-6">
-                      <h3 className="font-bold text-base mb-4 flex items-center gap-2"><Phone className="size-4 text-primary" /> Corporate Contact Details</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
+                    <Card className="p-3.5">
+                      <h3 className="font-bold text-sm mb-2.5 flex items-center gap-2"><Phone className="size-4 text-primary" /> Corporate Contact Details</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-2">
                           <div>
-                            <div className="text-[10px] font-bold text-muted-foreground mb-0.5">Primary Contact Email</div>
-                            <a href={`mailto:${activeCompany.email ?? ""}`} className="text-sm font-semibold text-primary hover:underline flex items-center gap-1.5">
-                              <Mail className="size-4 text-muted-foreground" /> {activeCompany.email ?? "No email configured"}
+                            <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Primary Contact Email</div>
+                            <a href={`mailto:${activeCompany.email ?? ""}`} className="text-xs font-semibold text-primary hover:underline flex items-center gap-1.5">
+                              <Mail className="size-3 text-muted-foreground" /> {activeCompany.email ?? "No email configured"}
                             </a>
                           </div>
                           <div>
-                            <div className="text-[10px] font-bold text-muted-foreground mb-0.5">Phone Number</div>
-                            <span className="text-sm font-semibold flex items-center gap-1.5">
-                              <Phone className="size-4 text-muted-foreground" /> {activeCompany.phone ?? "No phone configured"}
+                            <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Phone Number</div>
+                            <span className="text-xs font-semibold flex items-center gap-1.5">
+                              <Phone className="size-3 text-muted-foreground" /> {activeCompany.phone ?? "No phone configured"}
                             </span>
                           </div>
                           <div>
-                            <div className="text-[10px] font-bold text-muted-foreground mb-0.5">Website</div>
-                            <a href={activeCompany.website ?? "#"} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary hover:underline flex items-center gap-1.5">
-                              <ExternalLink className="size-4 text-muted-foreground" /> {activeCompany.website ?? "No website configured"}
+                            <div className="text-[9px] font-bold text-muted-foreground mb-0.5">Website</div>
+                            <a href={activeCompany.website ?? "#"} target="_blank" rel="noreferrer" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1.5">
+                              <ExternalLink className="size-3 text-muted-foreground" /> {activeCompany.website ?? "No website configured"}
                             </a>
                           </div>
                         </div>
 
                         <div>
-                          <div className="text-[10px] font-bold text-muted-foreground mb-1 flex items-center gap-1"><MapPin className="size-3" /> Registered Office Address</div>
-                          <div className="bg-muted/30 border p-4 rounded-xl text-sm font-medium leading-relaxed">
-                            <div className="font-bold mb-1">{activeCompany.legal_name}</div>
+                          <div className="text-[9px] font-bold text-muted-foreground mb-0.5 flex items-center gap-1"><MapPin className="size-2.5" /> Registered Office Address</div>
+                          <div className="bg-muted/30 border p-2.5 rounded-xl text-xs font-medium leading-relaxed">
+                            <div className="font-bold mb-0.5">{activeCompany.legal_name}</div>
                             {activeCompany.address && <div>{activeCompany.address}</div>}
                             {(activeCompany.city || activeCompany.state) && <div>{activeCompany.city}{activeCompany.city && activeCompany.state ? ", " : ""}{activeCompany.state}</div>}
                             {activeCompany.country && <div>{activeCompany.country}</div>}
@@ -820,30 +820,30 @@ export function CompanyManagement() {
 
                   {/* DOCUMENTS TAB */}
                   {activeTab === "Documents" && (
-                    <Card className="p-6">
-                      <h3 className="font-bold text-base mb-4 flex items-center gap-2"><FileText className="size-4 text-primary" /> Verified Compliance Documents</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card className="p-3.5">
+                      <h3 className="font-bold text-sm mb-2.5 flex items-center gap-2"><FileText className="size-4 text-primary" /> Verified Compliance Documents</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {[
                           { name: "Certificate of Incorporation", type: "COI", format: "PDF", date: "2026-01-15", status: "Verified" },
                           { name: "GSTIN Certificate (REG-06)", type: "GST", format: "PDF", date: "2026-02-10", status: "Verified" },
                           { name: "Company PAN Card Copy", type: "PAN", format: "PDF", date: "2026-01-20", status: "Verified" },
                           { name: "SaaS Subscription Agreement", type: "AGR", format: "PDF", date: "2026-07-04", status: "Active" },
                         ].map((doc) => (
-                          <div key={doc.name} className="border rounded-xl p-4 flex justify-between items-center bg-card hover:border-primary/20 transition-colors">
-                            <div className="flex items-center gap-3">
-                              <div className="size-10 rounded-lg bg-primary/10 text-primary grid place-items-center">
-                                <FileText className="size-5" />
+                          <div key={doc.name} className="border rounded-xl p-2.5 flex justify-between items-center bg-card hover:border-primary/20 transition-colors">
+                            <div className="flex items-center gap-2.5">
+                              <div className="size-8 rounded-lg bg-primary/10 text-primary grid place-items-center">
+                                <FileText className="size-4" />
                               </div>
                               <div>
-                                <div className="font-bold text-sm">{doc.name}</div>
-                                <div className="text-[10px] text-muted-foreground font-mono">Type: {doc.type} • {doc.format} • Uploaded {doc.date}</div>
+                                <div className="font-bold text-xs">{doc.name}</div>
+                                <div className="text-[9px] text-muted-foreground font-mono">Type: {doc.type} • {doc.format} • Uploaded {doc.date}</div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span className="bg-emerald-500/10 text-emerald-600 font-semibold px-2 py-0.5 rounded text-[10px]">
+                            <div className="flex items-center gap-2">
+                              <span className="bg-emerald-500/10 text-emerald-600 font-semibold px-1.5 py-0.2 rounded text-[9px]">
                                 {doc.status}
                               </span>
-                              <Button variant="ghost" size="icon" className="size-8"><Download className="size-4 text-muted-foreground hover:text-foreground" /></Button>
+                              <Button variant="ghost" size="icon" className="size-7"><Download className="size-3 text-muted-foreground hover:text-foreground" /></Button>
                             </div>
                           </div>
                         ))}

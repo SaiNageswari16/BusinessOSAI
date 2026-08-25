@@ -111,7 +111,7 @@ export const nav: NavGroup[] = [
         icon: Settings,
         permission: "manage:system_admin",
         subItems: [
-          { to: "/erp?tab=global_users", label: "Global Users", icon: Users, permission: "manage:system_admin" },
+          { to: "/erp?tab=global_users", label: "Global Users", icon: ShieldCheck, permission: "manage:system_admin" },
           { to: "/erp?tab=audit_logs", label: "Audit Logs", icon: History, permission: "manage:system_admin" },
           { to: "/erp?tab=activity_logs", label: "Activity Logs", icon: Activity, permission: "manage:system_admin" },
           { to: "/erp?tab=error_logs", label: "Error Logs", icon: Activity, permission: "manage:system_admin" },
@@ -278,7 +278,7 @@ export const nav: NavGroup[] = [
   {
     group: "POS", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
       { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/pos?tab=sales", label: "Sales", icon: Receipt },
+      { to: "/pos?tab=sales", label: "Sales Invoice", icon: Receipt },
       { to: "/pos?tab=sales_history", label: "Invoices History", icon: History },
       { to: "/pos?tab=payment_in", label: "Payment In", icon: Wallet },
       {

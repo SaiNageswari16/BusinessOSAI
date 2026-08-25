@@ -53,8 +53,7 @@ export function PurchaseOrders() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Truck className="text-primary size-6" /> Purchase Orders (PO)
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Purchase Orders (PO)
           </h2>
           <p className="text-sm text-muted-foreground">Manage official supplier orders, approvals, and dispatch status.</p>
         </div>

@@ -97,13 +97,13 @@ export function PosCustomers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">POS Customers</h2>
-          <p className="text-sm text-slate-500 mt-1">Manage your retail & B2B customer database, credit limits, and lifetime value.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">POS Customers</h2>
+          <p className="text-sm text-muted-foreground mt-1">Manage your retail & B2B customer database, credit limits, and lifetime value.</p>
         </div>
-        <Button onClick={() => setIsOpen(true)} className="gradient-brand text-white border-0 font-semibold shadow-sm">
-          <Plus className="size-4 mr-2" /> New Customer
+        <Button onClick={() => setIsOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white border-0 shadow-sm">
+          <Plus className="size-3.5 mr-1.5" /> New Customer
         </Button>
       </div>
 

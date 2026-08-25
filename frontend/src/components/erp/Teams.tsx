@@ -111,22 +111,22 @@ export function Teams() {
   const deptMap = Object.fromEntries(departments.map((d) => [d.id, d.name]));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Teams</h2>
-          <p className="text-sm text-muted-foreground">Small cross-functional teams within departments.</p>
+          <h2 className="text-base font-bold tracking-tight">Teams</h2>
+          <p className="text-xs text-muted-foreground">Small cross-functional teams within departments.</p>
         </div>
-        <Button className="gradient-brand text-white border-0 gap-2" onClick={() => { setEditTeam(null); setShowForm(true); }}>
-          <Plus className="size-4" /> Add Team
+        <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditTeam(null); setShowForm(true); }}>
+          <Plus className="size-3.5" /> Add Team
         </Button>
       </div>
 
-      <div className="flex gap-4 items-center">
+      <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
+            className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 outline-none"
             placeholder="Search teams..." />
         </div>
         <span className="text-xs text-muted-foreground">{teams.length} teams</span>

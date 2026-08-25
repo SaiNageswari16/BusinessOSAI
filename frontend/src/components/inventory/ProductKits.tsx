@@ -99,8 +99,8 @@ export function ProductKits() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Product Kits (BOM)</h2>
-          <p className="text-sm text-muted-foreground">Bill-of-Materials kits (used in manufacturing).</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Product Kits (BOM)</h2>
+          <p className="text-sm text-muted-foreground mt-1">Bill-of-Materials kits (used in manufacturing).</p>
         </div>
         <Button onClick={openCreate} className="gradient-brand text-white border-0">
           <Plus className="size-4 mr-2" /> Create Kit

@@ -53,8 +53,7 @@ export function VendorBills() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Receipt className="text-primary size-6" /> Purchase Invoices & Vendor Bills
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Purchase Invoices & Vendor Bills
           </h2>
           <p className="text-sm text-muted-foreground">Manage supplier purchase invoices linked to POs and GRNs.</p>
         </div>

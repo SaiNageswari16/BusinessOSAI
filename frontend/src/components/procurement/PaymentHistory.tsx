@@ -55,8 +55,7 @@ export function PaymentHistory() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <History className="text-primary size-6" /> Payments Out
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Payments Out
           </h2>
           <p className="text-sm text-slate-400">Comprehensive timeline of all vendor settlements.</p>
         </div>

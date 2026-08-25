@@ -66,17 +66,17 @@ export function Opportunities() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Opportunities</h1>
-          <p className="text-sm text-muted-foreground">List view of all active sales opportunities and potential revenue.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Opportunities</h2>
+          <p className="text-xs text-muted-foreground">List view of all active sales opportunities and potential revenue.</p>
         </div>
         <div className="flex gap-2">
           <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
             <DialogTrigger asChild>
-              <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-                <Plus className="size-4" /> Add Opportunity
+              <button className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+                <Plus className="size-3.5" /> Add Opportunity
               </button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">

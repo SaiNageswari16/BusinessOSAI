@@ -214,24 +214,24 @@ export function BranchManagement() {
   const companyMap = Object.fromEntries(companies.map((c) => [c.id, c.name]));
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Branch Management</h2>
-          <p className="text-muted-foreground text-sm mt-1">Manage physical locations, warehouses, and branch-level settings.</p>
+          <h2 className="text-base font-bold tracking-tight">Branch Management</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">Manage physical locations, warehouses, and branch-level settings.</p>
         </div>
-        <Button size="sm" className="h-9 gap-2 gradient-brand text-white border-0"
+        <Button size="sm" className="h-8 gap-1.5 gradient-brand text-white border-0 text-xs font-semibold"
           onClick={() => { setEditBranch(null); setShowForm(true); }}>
-          <Plus className="size-4" /> Add Branch
+          <Plus className="size-3.5" /> Add Branch
         </Button>
       </div>
 
-      <div className="flex gap-4 items-center">
+      <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input
             value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-10 pl-10 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
+            className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
             placeholder="Search branches..." />
         </div>
         <Button variant="outline" className="h-10 gap-2"><Filter className="size-4" /> Filters</Button>

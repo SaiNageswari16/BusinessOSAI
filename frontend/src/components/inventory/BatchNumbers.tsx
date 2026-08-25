@@ -1644,20 +1644,15 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
   };
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto pb-16">
+    <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200">
-              Inventory Lot Control
-            </span>
-            <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <Boxes className="text-indigo-600 w-6 h-6" /> Batch Numbers & Real-Life Pricing
-            </h2>
-          </div>
-          <p className="text-xs text-slate-500 font-medium mt-1">
-            Manage UOM rates, cost vs MRP pricing, manufacturing lots, thermal barcode labels, and QC quarantine.
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">
+            Batch Numbers
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage product batches, lot tracking, UOM rates, manufacturing & expiry dates, and QC status.
           </p>
         </div>
 
@@ -1665,18 +1660,17 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
           <Button
             variant="outline"
             onClick={handleExportCSV}
-            className="h-10 text-xs font-bold border-slate-300 rounded-xl gap-1.5"
           >
-            <Download className="w-4 h-4 text-slate-500" /> Export CSV
+            <Download className="size-4 mr-2" /> Export CSV
           </Button>
           <Button
             onClick={() => {
               setEditing(null);
               setModalOpen(true);
             }}
-            className="h-10 px-5 text-xs font-black text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl shadow-md shadow-indigo-600/20 flex items-center gap-1.5"
+            className="gradient-brand text-white border-0"
           >
-            <Plus className="w-4 h-4" /> Create New Batch
+            <Plus className="size-4 mr-2" /> Create New Batch
           </Button>
         </div>
       </div>

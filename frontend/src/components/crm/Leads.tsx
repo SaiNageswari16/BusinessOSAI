@@ -222,7 +222,7 @@ export function Leads() {
   };
 
   return (
-    <div className="p-6 min-h-[calc(100vh-6rem)] flex flex-col space-y-6">
+    <div className="p-4 min-h-[calc(100vh-6rem)] flex flex-col space-y-3">
 
       {/* Active Call Banner */}
       <AnimatePresence>
@@ -254,43 +254,43 @@ export function Leads() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Leads Management</h1>
-          <p className="text-sm text-muted-foreground">Track, qualify, convert — and call with AI.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Leads Management</h2>
+          <p className="text-xs text-muted-foreground">Track, qualify, convert — and call with AI.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search leads..."
-              className="w-64 pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none"
+              className="w-56 pl-8 pr-3 h-8 bg-background border border-border rounded-lg text-xs focus:outline-none"
             />
           </div>
           <button
             onClick={() => setShowFbSettings(true)}
-            className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-xs font-medium transition-colors ${
               fbConfigured
                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 hover:bg-emerald-500/15"
                 : "bg-muted border-border hover:bg-muted/80 text-muted-foreground"
             }`}
           >
-            <Facebook className="size-4 text-blue-600" />
+            <Facebook className="size-3.5 text-blue-600" />
             {fbConfigured ? "FB Connected" : "Connect FB Ads"}
           </button>
           <button
             onClick={handleFbImport}
             disabled={importingFb || !fbConfigured}
-            className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 dark:text-indigo-400 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-2.5 h-8 bg-indigo-50 border hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 dark:text-indigo-400 rounded-lg text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <RefreshCw className={`size-4 ${importingFb ? "animate-spin" : ""}`} />
+            <RefreshCw className={`size-3.5 ${importingFb ? "animate-spin" : ""}`} />
             {importingFb ? "Syncing..." : "Sync FB Ads"}
           </button>
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium"
+            className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold"
           >
-            <Plus className="size-4" /> Add Lead
+            <Plus className="size-3.5" /> Add Lead
           </button>
         </div>
       </div>

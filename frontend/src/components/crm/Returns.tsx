@@ -99,18 +99,18 @@ export function Returns() {
   const processedCount = returns.filter((r) => r.status === "Resolved" || r.status === "Closed").length;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Returns & Refunds</h1>
-          <p className="text-sm text-muted-foreground">Manage product returns, RMAs, and refund processing.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Returns & Refunds</h2>
+          <p className="text-xs text-muted-foreground">Manage product returns, RMAs, and refund processing.</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity"
           >
-            <Plus className="size-4" /> Create Return
+            <Plus className="size-3.5" /> Create Return
           </button>
         </div>
       </div>

@@ -95,8 +95,7 @@ export function PendingPayments() {
   return (
     <div className="space-y-6 text-foreground">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Clock className="text-primary size-6" /> Pending Vendor Payments
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Pending Vendor Payments
         </h2>
         <p className="text-sm text-muted-foreground">Manage accounts payable, dues, and vendor aging.</p>
       </div>

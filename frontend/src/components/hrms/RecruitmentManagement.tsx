@@ -991,20 +991,20 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
         <>
           {/* TAB 1: JOB OPENINGS */}
           {tab === "job_openings" && (
-            <div className="p-6 space-y-6">
+            <div className="space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h1 className="text-2xl font-bold text-foreground">Job Openings</h1>
-                  <p className="text-sm text-muted-foreground">
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Job Openings</h2>
+                  <p className="text-xs text-muted-foreground">
                     {jobs.filter((j) => j.status === "Open").length} active openings · {jobs.reduce((s, j) => s + j.applicants_count, 0)} total applicants
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => setCareersPortalOpen(true)} variant="outline" className="border-primary/30 text-primary gap-2 hover:bg-primary/5">
-                    <Globe className="size-4" /> Public Careers Portal
+                  <Button onClick={() => setCareersPortalOpen(true)} variant="outline" className="h-8 text-xs font-semibold border-primary/30 text-primary gap-1.5 hover:bg-primary/5">
+                    <Globe className="size-3.5" /> Public Careers Portal
                   </Button>
-                  <Button onClick={() => { setJobActionType("create"); setJdViewMode("preview"); setJobForm({ id: "", title: "", department: "Engineering", location: "Remote", type: "Full-Time", experience: "3-5 years", openings: 1, description: "", criteria: "", portals: ["Careers Page"] }); setPostJobOpen(true); }} className="gradient-brand text-white gap-2">
-                    <Plus className="size-4" /> Post Job
+                  <Button onClick={() => { setJobActionType("create"); setJdViewMode("preview"); setJobForm({ id: "", title: "", department: "Engineering", location: "Remote", type: "Full-Time", experience: "3-5 years", openings: 1, description: "", criteria: "", portals: ["Careers Page"] }); setPostJobOpen(true); }} className="h-8 text-xs font-semibold gradient-brand text-white gap-1.5">
+                    <Plus className="size-3.5" /> Post Job
                   </Button>
                 </div>
               </div>
@@ -1101,18 +1101,18 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
 
           {/* TAB 2: APPLICANTS */}
           {tab === "applicants" && (
-            <div className="p-6 space-y-6">
+            <div className="space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h1 className="text-2xl font-bold text-foreground">Applicants Directory</h1>
-                  <p className="text-sm text-muted-foreground">Monitor candidate matching thresholds and progress selection phases.</p>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Applicants Directory</h2>
+                  <p className="text-xs text-muted-foreground">Monitor candidate matching thresholds and progress selection phases.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => handleInjectSimulatedCandidate("LinkedIn")} className="gap-1 border-indigo-500/30 hover:bg-indigo-500/10">
-                    <Sparkles className="size-4 text-indigo-500" /> Inject LinkedIn Candidate
+                  <Button variant="outline" size="sm" onClick={() => handleInjectSimulatedCandidate("LinkedIn")} className="h-8 text-xs font-semibold gap-1 border-indigo-500/30 hover:bg-indigo-500/10">
+                    <Sparkles className="size-3.5 text-indigo-500" /> Inject LinkedIn Candidate
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleInjectSimulatedCandidate("Indeed")} className="gap-1 border-orange-500/30 hover:bg-orange-500/10">
-                    <Sparkles className="size-4 text-orange-500" /> Inject Indeed Candidate
+                  <Button variant="outline" size="sm" onClick={() => handleInjectSimulatedCandidate("Indeed")} className="h-8 text-xs font-semibold gap-1 border-orange-500/30 hover:bg-orange-500/10">
+                    <Sparkles className="size-3.5 text-orange-500" /> Inject Indeed Candidate
                   </Button>
                 </div>
               </div>
@@ -1241,14 +1241,14 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
 
           {/* TAB 3: INTERVIEWS */}
           {tab === "interviews" && (
-            <div className="p-6 space-y-6">
+            <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <div>
-                  <h1 className="text-2xl font-bold text-foreground">Interview Calendars</h1>
-                  <p className="text-sm text-muted-foreground">Manage candidate sessions and ensure zero scheduling overlaps.</p>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Interview Calendars</h2>
+                  <p className="text-xs text-muted-foreground">Manage candidate sessions and ensure zero scheduling overlaps.</p>
                 </div>
-                <Button onClick={() => setScheduleInterviewOpen(true)} className="gradient-brand text-white gap-2">
-                  <Plus className="size-4" /> Schedule Interview
+                <Button onClick={() => setScheduleInterviewOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white gap-1.5">
+                  <Plus className="size-3.5" /> Schedule Interview
                 </Button>
               </div>
 
@@ -1309,14 +1309,14 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
 
           {/* TAB 4: OFFER LETTERS */}
           {tab === "offer_letters" && (
-            <div className="p-6 space-y-6">
+            <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <div>
-                  <h1 className="text-2xl font-bold text-foreground">Offer Correspondence</h1>
-                  <p className="text-sm text-muted-foreground">Draft professional credentials, preview legal constructs, forward to email, and trace candidate responses.</p>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Offer Correspondence</h2>
+                  <p className="text-xs text-muted-foreground">Draft professional credentials, preview legal constructs, forward to email, and trace candidate responses.</p>
                 </div>
-                <Button onClick={() => setCreateOfferOpen(true)} className="gradient-brand text-white gap-2">
-                  <Plus className="size-4" /> Create Offer Letter
+                <Button onClick={() => setCreateOfferOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white gap-1.5">
+                  <Plus className="size-3.5" /> Create Offer Letter
                 </Button>
               </div>
 
@@ -1371,11 +1371,11 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
 
           {/* TAB 5: ONBOARDING */}
           {tab === "onboarding" && (
-            <div className="p-6 space-y-6">
+            <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <div>
-                  <h1 className="text-2xl font-bold text-foreground">Onboarding Orchestration</h1>
-                  <p className="text-sm text-muted-foreground">Monitor candidate checklist integration, assign compliance tasks, and configure hardware allocations.</p>
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Onboarding Orchestration</h2>
+                  <p className="text-xs text-muted-foreground">Monitor candidate checklist integration, assign compliance tasks, and configure hardware allocations.</p>
                 </div>
               </div>
 
@@ -2209,7 +2209,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
                   </div>
                   <div>
                     <h4 className="font-bold text-sm text-foreground">Enterprise Criteria Matching Evaluation</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Target Threshold: <span className="font-semibold">{jobs.find(j => j.id === selectedApplicant.job_id)?.threshold_score || 70}%</span> · 
                       Job Criteria terms: <span className="font-semibold">{jobs.find(j => j.id === selectedApplicant.job_id)?.criteria || "N/A"}</span>
                     </p>

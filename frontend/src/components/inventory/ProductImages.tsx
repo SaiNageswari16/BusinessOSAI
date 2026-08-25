@@ -97,7 +97,7 @@ export function ProductImages() {
   const categories = useMemo(() => {
     const set = new Set<string>();
     products.forEach((p) => {
-      const cat = p.category?.name || p.category_name;
+      const cat = (p as any).category?.name || p.category_name;
       if (cat) set.add(cat);
     });
     return Array.from(set);
@@ -112,7 +112,7 @@ export function ProductImages() {
         (p.sku && p.sku.toLowerCase().includes(search.toLowerCase())) ||
         (p.barcode && p.barcode.toLowerCase().includes(search.toLowerCase()));
 
-      const catName = p.category?.name || p.category_name || "";
+      const catName = (p as any).category?.name || p.category_name || "";
       const catMatch = selectedCategory === "all" || catName === selectedCategory;
 
       const hasImg = Boolean(p.image_url && p.image_url.trim() && !p.image_url.includes("placeholder"));
@@ -287,28 +287,20 @@ export function ProductImages() {
   return (
     <div className="space-y-6 font-sans text-slate-800">
       {/* Top Header & Bulk Upload Action */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-gradient-to-tr from-indigo-600 via-purple-600 to-emerald-500 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
-              <ImageIcon className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Product Media & Image Management</h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Manage high-res product photos, multi-angle gallery shots, and bulk match images by Barcode/SKU.
-              </p>
-            </div>
-          </div>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Product Media & Image Management</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage high-res product photos, multi-angle gallery shots, and bulk match images by Barcode/SKU.
+          </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Button
             onClick={loadData}
             variant="outline"
-            className="rounded-xl border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`size-4 mr-2 ${isLoading ? "animate-spin" : ""}`} /> Refresh
           </Button>
 
           <Button
@@ -317,9 +309,9 @@ export function ProductImages() {
               setBulkProgress(null);
               setIsBulkModalOpen(true);
             }}
-            className="px-5 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl shadow-lg shadow-indigo-600/20 transition-all flex items-center gap-2"
+            className="gradient-brand text-white border-0"
           >
-            <Zap className="w-4 h-4 text-amber-300" /> ⚡ Bulk Upload by Barcode / SKU
+            <Zap className="size-4 mr-2 text-amber-300" /> Bulk Upload by Barcode / SKU
           </Button>
         </div>
       </div>
@@ -452,7 +444,7 @@ export function ProductImages() {
                 <div className="aspect-square bg-slate-50 relative flex items-center justify-center p-3 border-b border-slate-100 overflow-hidden">
                   {hasImage ? (
                     <img
-                      src={product.image_url}
+                      src={product.image_url || undefined}
                       alt={product.name}
                       onError={(e) => {
                         e.currentTarget.src = "https://placehold.co/300x300/f8fafc/94a3b8?text=Image+Error";

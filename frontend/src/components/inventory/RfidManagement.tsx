@@ -242,9 +242,7 @@ export function RfidManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <RadioTower className="size-6 text-primary" />
-            RFID Management
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">RFID Management
           </h2>
           <p className="text-sm text-muted-foreground">Track RFID tags, monitor their lifecycle, and record scan events for inventory visibility.</p>
         </div>
