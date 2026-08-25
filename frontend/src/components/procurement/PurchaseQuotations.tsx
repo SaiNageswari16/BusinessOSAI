@@ -53,23 +53,23 @@ export function PurchaseQuotations() {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Network className="text-primary size-6" /> Request for Quotation (RFQ)
+            <Network className="text-primary size-6" /> Proforma & Request for Quotation (RFQ)
           </h2>
-          <p className="text-sm text-muted-foreground">Generate RFQs, compare multi-vendor bids, and award purchase contracts.</p>
+          <p className="text-sm text-muted-foreground">Generate vendor proformas, compare multi-vendor bids, and award purchase contracts.</p>
         </div>
         <Button onClick={() => setIsCreateMode(true)} className="gradient-brand text-white border-0 font-semibold rounded-lg shadow-sm">
-          <Plus className="size-4 mr-2" /> Generate RFQ
+          <Plus className="size-4 mr-2" /> Generate Proforma / RFQ
         </Button>
       </div>
 
       {loading ? (
         <div className="py-16 text-center text-muted-foreground">
           <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-2" />
-          Loading RFQs & quotations...
+          Loading Proforma & RFQs...
         </div>
       ) : quotations.length === 0 ? (
         <div className="bg-card border p-8 rounded-xl text-center text-muted-foreground font-semibold shadow-sm">
-          No RFQ quotations logged yet. Click "Generate RFQ" to onboard vendor quotes.
+          No Proforma or RFQ quotations logged yet. Click "Generate Proforma / RFQ" to onboard vendor quotes.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

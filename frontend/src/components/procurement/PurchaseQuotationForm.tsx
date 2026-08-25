@@ -328,21 +328,21 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
             onClick={onClose}
             className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all font-bold text-xs flex items-center gap-1"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to RFQs List
+            <ArrowLeft className="w-4 h-4" /> Back to Proformas & RFQs
           </button>
 
           <div>
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
-                Request for Quotation (RFQ)
+                Proforma / Request for Quotation (RFQ)
               </span>
               <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
-                Create & Sourcing RFQ Inquiries
+                Create Proforma & Sourcing RFQ Inquiries
               </h1>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1">
               <Info className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-              Upload external vendor quotes (PDF/Image) with AI OCR extraction or record manual bids.
+              Upload external vendor proformas & quotes (PDF/Image) with AI OCR extraction or record multi-vendor bids.
             </p>
           </div>
         </div>

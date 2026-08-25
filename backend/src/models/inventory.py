@@ -95,6 +95,11 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
         default=EntityStatus.ACTIVE,
     )
     
+    # Asian Paints & Colorant Specific Fields (Columns C, D, E)
+    base_name: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True) # Base Code/Name (e.g. Brilliant White)
+    product_base_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True) # Product Base Code (e.g. 912, 0W06)
+    size_l_kg: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True) # Size (L/Kg) (e.g. 0.05, 1, 4, 10, 20)
+    
     category: Mapped["ProductCategory"] = relationship(back_populates="products")
     brand: Mapped["Brand"] = relationship(back_populates="products")
     uom: Mapped["UnitOfMeasure"] = relationship(back_populates="products")
@@ -370,6 +375,11 @@ class MasterCatalogProduct(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     category: Mapped[str | None] = mapped_column(String(150), index=True)
     sub_category: Mapped[str | None] = mapped_column(String(150))
     instock_value: Mapped[float | None] = mapped_column(Numeric(15, 4), default=0.0)
+
+    # Asian Paints & Colorant Specific Fields (Columns C, D, E)
+    base_name: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True) # Base Code/Name (e.g. Brilliant White)
+    product_base_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True) # Product Base Code (e.g. 912, 0W06)
+    size_l_kg: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True) # Size (L/Kg) (e.g. 0.05, 1, 4, 10, 20)
 
     # UI / AI fields
     image_url: Mapped[str | None] = mapped_column(String(1024))

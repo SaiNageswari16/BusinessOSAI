@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle, Gift, Pause, Play } from "lucide-react";
+import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle, CheckCircle2, Gift, Pause, Play, Bot, FileSpreadsheet, HelpCircle } from "lucide-react";
 
 import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -42,6 +42,9 @@ const LOCAL_COLUMNS = [
   { id: "name", label: "Product Name" },
   { id: "sku", label: "SKU" },
   { id: "barcode", label: "Barcode" },
+  { id: "base_name", label: "Base Code/Name" },
+  { id: "product_base_code", label: "Product Base Code" },
+  { id: "size_l_kg", label: "Size (L/Kg)" },
   { id: "category", label: "Category" },
   { id: "brand", label: "Brand" },
   { id: "uom", label: "Unit (UOM)" },
@@ -64,6 +67,9 @@ const MASTER_COLUMNS = [
   { id: "name", label: "Product Name" },
   { id: "sku", label: "SKU" },
   { id: "barcode", label: "Barcode" },
+  { id: "base_name", label: "Base Code/Name" },
+  { id: "product_base_code", label: "Product Base Code" },
+  { id: "size_l_kg", label: "Size (L/Kg)" },
   { id: "category", label: "Category" },
   { id: "brand", label: "Brand" },
   { id: "mrp", label: "MRP" },
@@ -84,6 +90,7 @@ const esc = (v: any) => {
 const defaultFormData = () => ({
   name: "", brand: "", brand_id: "", sku: "", barcode: "", category_id: "",
   uom_id: "", warehouse: "", supplier: "",
+  base_name: "", product_base_code: "", size_l_kg: "",
   purchase_price: "" as any, mrp: "" as any, selling_price: "" as any,
   wholesale_price: "" as any, min_wholesale_qty: "" as any,
   b2b_price: "" as any, min_b2b_qty: "" as any,
@@ -106,8 +113,8 @@ const defaultFormData = () => ({
 
 
 
-const localVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "selling_price", "wholesale_price", "b2b_price", "min_wholesale_qty", "initial_stock", "status"];
-const masterVisibleDefault = ["image", "name", "sku", "barcode", "category", "brand", "mrp", "selling_price", "source"];
+const localVisibleDefault = ["image", "name", "sku", "barcode", "base_name", "product_base_code", "size_l_kg", "category", "brand", "mrp", "selling_price", "wholesale_price", "b2b_price", "min_wholesale_qty", "initial_stock", "status"];
+const masterVisibleDefault = ["image", "name", "sku", "barcode", "base_name", "product_base_code", "size_l_kg", "category", "brand", "mrp", "selling_price", "source"];
 
 // ── Column menu sub-component ───────────────────────────────────────
 function ColumnMenu({
@@ -897,8 +904,8 @@ export function Products() {
   const [pageSize, setPageSize] = useState(50);
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [sortBy, setSortBy] = useState<"name" | "sku" | "created_at" | "mrp" | "selling_price">("name");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sortBy, setSortBy] = useState<"name" | "sku" | "created_at" | "updated_at" | "mrp" | "selling_price">("updated_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   // ── Inventory data ───────────────────────────────────────────────
   const [products, setProducts] = useState<InventoryProduct[]>([]);
@@ -956,6 +963,9 @@ export function Products() {
   // ── Import preview state ────────────────────────────────────────
   const [previewItem, setPreviewItem] = useState<MasterResult | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isImportConfirmModalOpen, setIsImportConfirmModalOpen] = useState(false);
+  const [pendingImportData, setPendingImportData] = useState<{ items: any[]; fileName: string; isPaintCatalog: boolean } | null>(null);
+  const [enableAiForImport, setEnableAiForImport] = useState<boolean>(false);
 
   // ── Free Quantity & Promotional Schemes state ────────────────────
   const [isFreeQtyModalOpen, setIsFreeQtyModalOpen] = useState(false);
@@ -1211,6 +1221,9 @@ export function Products() {
         purchase_tax_percent: Number(currentForm.purchase_tax_percent) || 0,
         is_purchase_tax_inclusive: currentForm.is_purchase_tax_inclusive !== false,
         sub_category: currentForm.sub_category || "",
+        base_name: currentForm.base_name || "",
+        product_base_code: currentForm.product_base_code || "",
+        size_l_kg: currentForm.size_l_kg || "",
         item_code: currentForm.item_code || "",
         weighing_scale_code: currentForm.weighing_scale_code || "",
         conversion_factor: currentForm.conversion_factor || "",
@@ -1220,6 +1233,9 @@ export function Products() {
 
       const payload = {
         ...currentForm,
+        base_name: currentForm.base_name || null,
+        product_base_code: currentForm.product_base_code || null,
+        size_l_kg: currentForm.size_l_kg || null,
         purchase_price: Number(currentForm.purchase_price) || 0,
         mrp: Number(currentForm.mrp) || 0,
         selling_price: Number(currentForm.selling_price) || 0,
@@ -1269,6 +1285,9 @@ export function Products() {
       uom_id: product.uom_id || "",
       warehouse: product.warehouse || "",
       supplier: product.supplier || specs.preferred_supplier || "",
+      base_name: product.base_name || specs.base_name || "",
+      product_base_code: product.product_base_code || specs.product_base_code || "",
+      size_l_kg: product.size_l_kg || specs.size_l_kg || "",
       purchase_price: product.purchase_price ? product.purchase_price : "",
       mrp: product.mrp ? product.mrp : "",
       selling_price: product.selling_price ? product.selling_price : "",
@@ -1320,6 +1339,9 @@ export function Products() {
       uom_id: product.uom_id || "",
       warehouse: product.warehouse || "",
       supplier: product.supplier || specs.preferred_supplier || "",
+      base_name: product.base_name || specs.base_name || "",
+      product_base_code: product.product_base_code || specs.product_base_code || "",
+      size_l_kg: product.size_l_kg || specs.size_l_kg || "",
       purchase_price: product.purchase_price ? product.purchase_price : "",
       mrp: product.mrp ? product.mrp : "",
       selling_price: product.selling_price ? product.selling_price : "",
@@ -1461,17 +1483,42 @@ export function Products() {
             return "";
           };
 
-          const nameVal = findVal(
+          const baseNameVal = findVal(
+            ["Base Code/Name", "Base Code / Name", "BASE CODE/NAME", "Base Name", "base_name", "Base", "base", "BaseCode/Name", "BaseCode"],
+            ["base code/name", "base name", "base code"]
+          );
+
+          const productBaseCodeVal = findVal(
+            ["Product Base Code", "PRODUCT BASE CODE", "ProductBaseCode", "product_base_code", "base_code", "Base Code", "BaseCode"],
+            ["product base code", "base code"]
+          );
+
+          const sizeLKgVal = findVal(
+            ["Size (L/Kg)", "Size (L / Kg)", "Size (L/KG)", "SIZE (L/KG)", "Size", "size", "size_l_kg", "Pack Size", "pack_size", "Size (Litre/Kg)", "Size(L/Kg)"],
+            ["size (l/kg)", "size", "pack size"]
+          );
+
+          let nameVal = findVal(
             ["ITEMNAME", "Product Name", "product_name", "productname", "name", "Name", "Title", "title", "item_name", "itemname", "product", "item", "description", "item_description", "particulars", "material"],
             ["itemname", "name", "product", "desc", "title", "item", "particular"]
-          ) || "Unnamed Product";
+          );
+
+          // If product name is inherited from parent in price lists like Asian Paints
+          if ((!nameVal || (!isNaN(Number(nameVal)) && nameVal.length <= 4)) && row["_parent_product_name"]) {
+            const parts = [row["_parent_product_name"]];
+            if (baseNameVal) parts.push(baseNameVal);
+            if (sizeLKgVal) parts.push(sizeLKgVal + (isNaN(Number(sizeLKgVal)) ? "" : "L"));
+            nameVal = parts.join(" - ");
+          } else if (!nameVal) {
+            nameVal = "Unnamed Product";
+          }
 
           const barcodeVal = findVal(
             ["BARCODE", "BarCode", "barcode", "Barcode (EAN/UPC)", "barcode_number", "bar_code", "ean", "EAN", "upc", "UPC", "gtin", "GTIN", "item_code", "itemcode", "code", "Code", "scan_code"],
             ["barcode", "ean", "upc", "gtin", "code", "sku"]
           );
 
-          const skuVal = findVal(["SKU", "sku", "sku_code", "skucode", "product_code", "SEARCHCODE"], ["sku", "searchcode"]) || (barcodeVal ? `SKU-${barcodeVal}` : "");
+          const skuVal = findVal(["SKU", "sku", "sku_code", "skucode", "product_code", "SEARCHCODE", "Pack Code", "PACKCODE"], ["sku", "searchcode"]) || (barcodeVal ? `SKU-${barcodeVal}` : "");
 
           const isActiveRaw = findVal(["ISACTIVE", "is_active", "Active", "Status", "status"]);
           const isActive = isActiveRaw === "" ? true : (isActiveRaw.toLowerCase() === "true" || isActiveRaw === "1" || isActiveRaw.toLowerCase() === "active");
@@ -1482,28 +1529,36 @@ export function Products() {
           const minWholesaleVal = parseInt(findVal(["MINWHOLESALEQTY", "Min Wholesale Qty", "min_wholesale_qty", "Wholesale Min Qty"]), 10) || 1;
           const supplierVal = findVal(["PREFERREDSUPPLIER", "Preferred Supplier", "SUPPLIERNAME", "Supplier Name", "supplier", "Supplier"]);
 
+          const categoryVal = findVal(["CATEGORY", "Category", "category", "Category Name", "category_name", "Ctagory/Range/Type", "Ctagory"]) || row["_parent_category"] || "";
+
           return {
             name: nameVal,
             sku: skuVal,
             barcode: barcodeVal,
+            base_name: baseNameVal,
+            product_base_code: productBaseCodeVal,
+            size_l_kg: sizeLKgVal,
             short_description: findVal(["DESCRIPTION", "Short Description", "short_description", "description", "Description", "details"]),
-            purchase_price: parseFloat(findVal(["PURCHASEPRICEAFTERTAX", "PURCHASEPRICEBEFORETAX", "Purchase Price", "purchase_price", "purchaseprice", "cost_price", "cost", "Cost Price"])) || 0,
+            purchase_price: parseFloat(findVal(["PURCHASEPRICEAFTERTAX", "PURCHASEPRICEBEFORETAX", "Purchase Price", "Purchase Price/Cost Price", "purchase_price", "purchaseprice", "cost_price", "cost", "Cost Price"])) || 0,
             mrp: parseFloat(findVal(["MRP", "mrp", "retail_price", "list_price"])) || 0,
             selling_price: parseFloat(findVal(["SALESPRICEAFTERTAX", "SALESPRICEBEFORETAX", "Selling Price", "selling_price", "sellingprice", "price", "Price", "base_price"])) || 0,
             wholesale_price: wholesaleVal,
             min_wholesale_qty: minWholesaleVal,
             tax_percent: parseFloat(findVal(["SALESTAXPERCENT", "Tax (%)", "tax_percent", "tax", "Tax"])) || 0,
             discount_limit: parseFloat(findVal(["Discount Limit (%)", "discount_limit"])) || 0,
-            initial_stock: parseInt(findVal(["STOCK", "Quantity", "quantity", "stock", "initial_stock", "Stock", "qty"]), 10) || 0,
-            reorder_level: parseInt(findVal(["Reorder Level", "reorder_level"]), 10) || 10,
+            initial_stock: parseInt(findVal(["STOCK", "Quantity", "quantity", "stock", "initial_stock", "Stock", "qty", "Opening Stock"]), 10) || 0,
+            reorder_level: parseInt(findVal(["Reorder Level", "reorder_level", "Min. Stock Level"]), 10) || 10,
             status: isActive ? "active" : "inactive",
             supplier: supplierVal,
-            brand_name: findVal(["Brand", "brand", "Brand Name", "brand_name", "manufacturer"]),
-            category_name: findVal(["CATEGORY", "Category", "category", "Category Name", "category_name"]),
+            brand_name: findVal(["Brand", "brand", "Brand Name", "brand_name", "manufacturer"]) || (nameVal.toLowerCase().includes("asian paints") ? "Asian Paints" : ""),
+            category_name: categoryVal,
             sub_category_name: findVal(["Sub Category", "sub_category", "sub_category_name"]),
             uom_name: findVal(["SALESMEASURINGUNIT", "PURCHASEMEASURINGUNIT", "UOM", "uom", "Unit", "unit", "Unit of Measure", "uom_name"]),
             hsn_code: findVal(["HSN", "hsn", "HSN Code", "hsn_code", "hsncode", "tax_hsn", "HSN/SAC", "hsn/sac"]),
             specifications: {
+              base_name: baseNameVal,
+              product_base_code: productBaseCodeVal,
+              size_l_kg: sizeLKgVal,
               b2b_price: b2bVal,
               min_b2b_qty: minB2bVal,
               wholesale_price: wholesaleVal,
@@ -1521,39 +1576,66 @@ export function Products() {
         const validItems = items.filter(it => (it.name && it.name !== "Unnamed Product") || it.barcode || it.sku);
         if (!validItems.length) throw new Error("No valid products with Name or Barcode found in file.");
 
-        // Chunk into batches of 2,000 items to handle 42,000+ row imports reliably
-        const CHUNK_SIZE = 2000;
-        let totalCreated = 0;
-        let totalSkipped = 0;
-        let totalBrands = 0;
-        let totalCategories = 0;
-        let totalUoms = 0;
-
-        for (let i = 0; i < validItems.length; i += CHUNK_SIZE) {
-          const chunk = validItems.slice(i, i + CHUNK_SIZE);
-          const currentEnd = Math.min(i + CHUNK_SIZE, validItems.length);
-          toast.loading(`Importing rows ${i + 1} to ${currentEnd} of ${validItems.length}...`, { id: "bulk-import-progress" });
-
-          const res = await inventoryApi.masterImportProducts(chunk);
-          totalCreated += res.products_created;
-          totalSkipped += res.skipped_count;
-          totalBrands += res.brands_created;
-          totalCategories += res.categories_created;
-          totalUoms += res.uoms_created;
-        }
-
-        toast.success(
-          `Import Complete!\n\n${totalCreated} products imported into inventory.\n${totalSkipped} duplicates skipped.\nQueued for AI background enrichment (images & details)!`,
-          { id: "bulk-import-progress", duration: 8000 }
+        const isPaintOrInternal = validItems.some(
+          it => it.base_name || it.product_base_code || it.size_l_kg ||
+          (it.name && (it.name.toLowerCase().includes("asian paints") || it.name.toLowerCase().includes("paint") || it.name.toLowerCase().includes("enamel")))
         );
-        await loadData();
+
+        setPendingImportData({
+          items: validItems,
+          fileName: file.name,
+          isPaintCatalog: isPaintOrInternal
+        });
+        // Auto-recommend Fast Import without AI search for paint/internal sheets, or false by default to prevent unwanted quota drain
+        setEnableAiForImport(!isPaintOrInternal);
+        setIsImportConfirmModalOpen(true);
+        setIsImporting(false);
       } catch (error: any) {
-        toast.error("Import failed: " + (error.detail || error.message || "Unknown error"), { id: "bulk-import-progress" });
-      } finally {
+        toast.error("Import error: " + (error.detail || error.message || "Unknown error"));
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     };
+
+  const executeBulkImport = async (targetItems: any[], enableAi: boolean) => {
+    if (!targetItems?.length) return;
+    setIsImporting(true);
+    setIsImportConfirmModalOpen(false);
+
+    try {
+      const CHUNK_SIZE = 2000;
+      let totalCreated = 0;
+      let totalSkipped = 0;
+      let totalBrands = 0;
+      let totalCategories = 0;
+      let totalUoms = 0;
+
+      for (let i = 0; i < targetItems.length; i += CHUNK_SIZE) {
+        const chunk = targetItems.slice(i, i + CHUNK_SIZE);
+        const currentEnd = Math.min(i + CHUNK_SIZE, targetItems.length);
+        toast.loading(`Importing rows ${i + 1} to ${currentEnd} of ${targetItems.length}...`, { id: "bulk-import-progress" });
+
+        const res = await inventoryApi.masterImportProducts(chunk, enableAi);
+        totalCreated += res.products_created;
+        totalSkipped += res.skipped_count;
+        totalBrands += res.brands_created;
+        totalCategories += res.categories_created;
+        totalUoms += res.uoms_created;
+      }
+
+      toast.success(
+        `Import Complete!\n\n${totalCreated} products imported into inventory.\n${totalSkipped} duplicates skipped.\n${enableAi ? "✨ Queued for AI background enrichment (images & specs)." : "⚡ Fast Import: Background AI search skipped for internal barcodes."}`,
+        { id: "bulk-import-progress", duration: 8000 }
+      );
+      await loadData();
+    } catch (error: any) {
+      toast.error("Import failed: " + (error.detail || error.message || "Unknown error"), { id: "bulk-import-progress" });
+    } finally {
+      setIsImporting(false);
+      setPendingImportData(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
 
     if (file.name.endsWith(".csv")) {
@@ -1565,7 +1647,46 @@ export function Products() {
       reader.onload = (evt) => {
         try {
           const wb = XLSX.read(evt.target?.result as any, { type: 'binary' });
-          const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+          // Smart Header Row Detection (inspects top 15 rows)
+          let headerIdx = 0;
+          for (let i = 0; i < Math.min(15, rawRows.length); i++) {
+            const row = (rawRows[i] || []).map(c => String(c).toLowerCase().trim());
+            const hasItemOrProduct = row.some(c => c.includes('product') || c.includes('item') || c.includes('barcode') || c.includes('name'));
+            const hasPriceOrCode = row.some(c => c.includes('price') || c.includes('code') || c.includes('size') || c.includes('base'));
+            if (hasItemOrProduct && hasPriceOrCode) {
+              headerIdx = i;
+              break;
+            }
+          }
+
+          const headers = (rawRows[headerIdx] || []).map(h => String(h).trim());
+          const data: any[] = [];
+          let currentParentName = "";
+          let currentParentCat = "";
+
+          for (let i = headerIdx + 1; i < rawRows.length; i++) {
+            const r = rawRows[i];
+            if (!r || !r.length || r.every(c => c === "" || c === null || c === undefined)) continue;
+            const obj: Record<string, any> = {};
+            headers.forEach((h, colIdx) => {
+              if (h) obj[h] = r[colIdx] !== undefined ? r[colIdx] : "";
+            });
+            // Smart hierarchy inheritance for paint sheets
+            const rawName = String(obj["Product Name"] || obj["ITEM NAME"] || obj["item_name"] || obj["name"] || "").trim();
+            const rawCat = String(obj["Ctagory/Range/Type"] || obj["CATEGORY"] || obj["category"] || "").trim();
+            if (rawName.length > 5 && isNaN(Number(rawName))) {
+              currentParentName = rawName;
+              if (rawCat) currentParentCat = rawCat;
+            } else if (currentParentName && (!rawName || (!isNaN(Number(rawName)) && rawName.length <= 4))) {
+              obj["_parent_product_name"] = currentParentName;
+              if (!rawCat && currentParentCat) obj["_parent_category"] = currentParentCat;
+            }
+            data.push(obj);
+          }
+
           processData(data);
         } catch (err: any) { setIsImporting(false); alert("Excel error: " + err.message); }
       };
@@ -1578,7 +1699,7 @@ export function Products() {
 
   const handleExport = () => {
     if (fuzzyLocalResults.length === 0) return alert("No products to export.");
-    const headers = ["name", "brand", "sku", "barcode", "description", "purchase_price", "mrp", "selling_price", "tax_percent", "discount_limit", "initial_stock", "reorder_level", "status"];
+    const headers = ["name", "brand", "sku", "barcode", "base_name", "product_base_code", "size_l_kg", "description", "purchase_price", "mrp", "selling_price", "tax_percent", "discount_limit", "initial_stock", "reorder_level", "status"];
     const csv = [headers.join(","), ...fuzzyLocalResults.map(p => headers.map(h => esc((p as any)[h])).join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -1588,7 +1709,7 @@ export function Products() {
 
   const handleDownloadSample = () => {
     const headers = [
-      "ITEM NAME", "BarCode", "CATEGORY", "SUB CATEGORY", "BarCode.1", "Brand", "Item CODE", "Unit", "Stock Alert",
+      "ITEM NAME", "BarCode", "Base Code/Name", "Product Base Code", "Size (L/Kg)", "CATEGORY", "SUB CATEGORY", "BarCode.1", "Brand", "Item CODE", "Unit", "Stock Alert",
       "DESCRIPTION", "DESCRIPTI ON HTML", "CONVERSION FACTOR", "WEIGHING SCALE ITEM CODE", "HSN",
       "MRP", "B2B PRICE", "MIN B2B QTY", "WHOLESALE PRICE", "MIN WHOLESALE QTY", "SALES PRICE",
       "Sales Tax inclusive/Exclusive", "SALES TAX NAME", "SALES PRICE AFTER TAX", "Disc1(%)", "Disc1(Rs)", "SALES MEASURING UNIT",
@@ -1603,7 +1724,33 @@ export function Products() {
 
     const sampleRows = [
       [
-        "CHOKINO MILKEA", "9999179361009", "Beverages", "Milk Drinks", "", "Nestle", "ITM-001", "MILLI", "10",
+        "ASIAN PAINTS APCOLITE PREMIUM GLOSS ENAMEL", "9181709900210", "Brilliant White", "912", "1L", "Paints & Finishes", "Enamels", "", "Asian Paints", "AP-0026", "LITRE", "10",
+        "Apcolite Premium Gloss Enamel provides a long lasting, mirror-like gloss finish for wood and metal.", "", "1", "101", "32089090",
+        238, 190.00, 5, 175.00, 10, 201.69,
+        "Exclusive", "GST@18", 238, 5, 0, "Litre",
+        155.00, "Exclusive", "GST@18", "18", 182.90,
+        "Litre", 40, 40, "2026-01-01", "2029-12-31", "Main Warehouse",
+        "Rack P-1", "Yes", "Yes", "MRP: 238", "Asian Paints Dealer Network", "2026-01-10",
+        "INV-AP99", "2026-01-10", "Yes", "No", "No",
+        "Yes", "No", "No", "", "",
+        "", "", "1", "", "",
+        "ASIAN PAINTS APCOLITE ENAMEL 1L", "paint, enamel, gloss, asian paints", "", "Asian Paints Dealer Network"
+      ],
+      [
+        "ASIAN PAINTS APCOLITE PREMIUM GLOSS ENAMEL", "9181709900240", "Blazing White", "0W06", "4L", "Paints & Finishes", "Enamels", "", "Asian Paints", "AP-0026-4L", "LITRE", "5",
+        "Apcolite Premium Gloss Enamel - 4 Litre pack", "", "1", "102", "32089090",
+        911, 750.00, 2, 700.00, 4, 772.03,
+        "Exclusive", "GST@18", 911, 5, 0, "Litre",
+        595.00, "Exclusive", "GST@18", "18", 702.10,
+        "Litre", 25, 25, "2026-01-01", "2029-12-31", "Main Warehouse",
+        "Rack P-2", "Yes", "Yes", "MRP: 911", "Asian Paints Dealer Network", "2026-01-10",
+        "INV-AP99", "2026-01-10", "Yes", "No", "No",
+        "Yes", "No", "No", "", "",
+        "", "", "2", "", "",
+        "ASIAN PAINTS APCOLITE ENAMEL 4L", "paint, enamel, gloss, asian paints, 4l", "", "Asian Paints Dealer Network"
+      ],
+      [
+        "CHOKINO MILKEA", "9999179361009", "", "", "200ml", "Beverages", "Milk Drinks", "", "Nestle", "ITM-001", "MILLI", "10",
         "Delicious chocolate milk drink", "", "1", "101", "04029990",
         100, 70.00, 5, 65.00, 10, 76.27,
         "Exclusive", "GST@18", 90, 5, 0, "Qty",
@@ -1612,11 +1759,11 @@ export function Products() {
         "Rack A-1", "Yes", "Yes", "MRP: 100", "Global Beverages Ltd", "2026-01-10",
         "INV-9901", "2026-01-10", "Yes", "No", "No",
         "Yes", "No", "Yes", "BAT-2026-01", "2026-12-31",
-        "BAT-2026-01", "2026-12-31", "1", "", "",
+        "BAT-2026-01", "2026-12-31", "3", "", "",
         "CHOKINO MILKEA 200ML", "milk, chocolate, drink", "straw", "Global Beverages Ltd"
       ],
       [
-        "KIT TOWEL", "9997898492653", "Home & Living", "Towels", "", "Bombay Dyeing", "ITM-002", "BAGS", "5",
+        "KIT TOWEL", "9997898492653", "", "", "Standard", "Home & Living", "Towels", "", "Bombay Dyeing", "ITM-002", "BAGS", "5",
         "100% Cotton premium bath towel", "", "1", "102", "63026000",
         60, 42.00, 10, 38.00, 20, 49,
         "Inclusive", "GST@5", 49, 0, 0, "Qty",
@@ -1625,11 +1772,11 @@ export function Products() {
         "Shelf B-2", "Yes", "Yes", "MRP: 60", "Textile Hub", "2026-02-15",
         "INV-9902", "2026-02-15", "Yes", "No", "No",
         "Yes", "No", "No", "", "",
-        "", "", "2", "", "",
+        "", "", "4", "", "",
         "KIT TOWEL COTTON", "towel, cotton, bath", "", "Textile Hub"
       ],
       [
-        "GORAL Premium Toothbrush No. 616", "9992008087019", "Personal Care", "Oral Care", "", "Goral", "ITM-003", "GRAMS", "20",
+        "GORAL Premium Toothbrush No. 616", "9992008087019", "", "", "Standard", "Personal Care", "Oral Care", "", "Goral", "ITM-003", "GRAMS", "20",
         "Ultra soft bristles for deep cleaning", "", "1", "103", "96032100",
         100, 50.00, 12, 45.00, 24, 59,
         "Inclusive", "GST@18", 59, 10, 0, "Qty",
@@ -1638,7 +1785,7 @@ export function Products() {
         "Aisle 3", "Yes", "Yes", "MRP: 100", "Goral Health Care", "2026-03-10",
         "INV-9903", "2026-03-10", "Yes", "No", "No",
         "Yes", "No", "No", "", "",
-        "", "", "3", "", "",
+        "", "", "5", "", "",
         "GORAL TOOTHBRUSH 616", "toothbrush, oral, hygiene", "", "Goral Health Care"
       ]
     ];
@@ -1647,7 +1794,7 @@ export function Products() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Item Details");
     XLSX.writeFile(wb, "Itm_Details_Sample.xlsx");
-    toast.success("Sample Excel downloaded with all 58 columns matching your catalog structure!");
+    toast.success("Sample Excel downloaded with all catalog columns including Asian Paints Base Code/Name, Product Base Code & Size!");
   };
 
   // ── Open create modal helper ────────────────────────────────────
@@ -2658,6 +2805,49 @@ export function Products() {
                       </div>
                     </div>
 
+                    {/* Paint & Colorant Specific Attributes (Asian Paints Columns C, D, E) */}
+                    <div className="p-4 bg-indigo-50/60 rounded-2xl border border-indigo-200/80 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-900 block">Paint & Colorant Specifications</span>
+                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-semibold">Asian Paints & Hardware</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-900 mb-1.5">Base Code / Name (Col C)</label>
+                          <input
+                            type="text"
+                            name="base_name"
+                            value={(currentForm as any).base_name || ""}
+                            onChange={handleFormChange}
+                            placeholder="e.g. Brilliant White, Deep Base"
+                            className="w-full h-11 px-4 text-sm rounded-xl border border-indigo-200 bg-white font-medium focus:ring-2 focus:ring-indigo-500/20"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-900 mb-1.5">Product Base Code (Col D)</label>
+                          <input
+                            type="text"
+                            name="product_base_code"
+                            value={(currentForm as any).product_base_code || ""}
+                            onChange={handleFormChange}
+                            placeholder="e.g. 912, 0W06"
+                            className="w-full h-11 px-4 text-sm rounded-xl border border-indigo-200 bg-white font-mono focus:ring-2 focus:ring-indigo-500/20"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-900 mb-1.5">Size (L / Kg) (Col E)</label>
+                          <input
+                            type="text"
+                            name="size_l_kg"
+                            value={(currentForm as any).size_l_kg || ""}
+                            onChange={handleFormChange}
+                            placeholder="e.g. 0.05, 1, 4, 10, 20"
+                            className="w-full h-11 px-4 text-sm rounded-xl border border-indigo-200 bg-white font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500/20"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Dynamic Key-Value Custom Fields */}
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
                       <div className="flex items-center justify-between">
@@ -2831,6 +3021,12 @@ export function Products() {
             return <td key="sku" className="px-6 py-4 font-mono font-bold text-xs">{product.sku || '-'}</td>;
           case "barcode":
             return <td key="barcode" className="px-6 py-4 font-mono text-xs">{product.barcode || '-'}</td>;
+          case "base_name":
+            return <td key="base_name" className="px-6 py-4 text-xs font-semibold text-slate-800">{product.base_name || '-'}</td>;
+          case "product_base_code":
+            return <td key="product_base_code" className="px-6 py-4 text-xs font-mono font-medium text-slate-600">{product.product_base_code || '-'}</td>;
+          case "size_l_kg":
+            return <td key="size_l_kg" className="px-6 py-4 text-xs font-bold text-indigo-700">{product.size_l_kg || '-'}</td>;
           case "category":
             return <td key="category" className="px-6 py-4 text-xs font-medium">{product.category_name || (categories.find(c => c.id === product.category_id)?.name) || '-'}</td>;
           case "brand":
@@ -2944,6 +3140,12 @@ export function Products() {
               return <td key="sku" className="px-6 py-4 font-mono font-bold text-xs text-indigo-900">{item.sku_code || '-'}</td>;
             case "barcode":
               return <td key="barcode" className="px-6 py-4 font-mono text-xs text-indigo-750">{item.barcode || '-'}</td>;
+            case "base_name":
+              return <td key="base_name" className="px-6 py-4 text-xs font-semibold text-indigo-900">{item.base_name || '-'}</td>;
+            case "product_base_code":
+              return <td key="product_base_code" className="px-6 py-4 text-xs font-mono text-indigo-800">{item.product_base_code || '-'}</td>;
+            case "size_l_kg":
+              return <td key="size_l_kg" className="px-6 py-4 text-xs font-bold text-indigo-700">{item.size_l_kg || '-'}</td>;
             case "category":
               return <td key="category" className="px-6 py-4 text-xs text-indigo-800">{item.category_name || item.category || '-'}</td>;
             case "brand":
@@ -3341,6 +3543,187 @@ export function Products() {
         }))}
         initialTriggerProductId={freeQtyTriggerProductId}
       />
+
+      {/* ── Bulk Import Confirmation & AI Search Prompt Modal ───────── */}
+      <AnimatePresence>
+        {isImportConfirmModalOpen && pendingImportData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-xl w-full overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="flex items-center gap-3">
+                  <div className="size-11 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
+                    <FileSpreadsheet className="size-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Ready to Import Catalog</h2>
+                    <p className="text-xs text-slate-500">Review your file details and select AI background search preferences.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsImportConfirmModalOpen(false);
+                    setPendingImportData(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+                {/* File summary pill */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between">
+                  <div className="flex items-center gap-3 truncate">
+                    <FileText className="size-5 text-indigo-500 shrink-0" />
+                    <div className="truncate">
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{pendingImportData.fileName}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {pendingImportData.isPaintCatalog ? "Detected Paint / Shade Matrix Catalog" : "Standard Inventory Sheet"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold text-xs shrink-0 border border-indigo-100">
+                    {pendingImportData.items.length.toLocaleString()} Products
+                  </div>
+                </div>
+
+                {/* AI Search Prompt Question */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <Bot className="size-4 text-indigo-600" />
+                      Run AI Web Search in Background?
+                    </label>
+                    {pendingImportData.isPaintCatalog && (
+                      <span className="text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 font-semibold px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+                        Internal Codes Detected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Choose whether the background RAG worker should look up public barcode databases for images and specs.
+                  </p>
+
+                  {/* Option 1: Fast Import without AI search */}
+                  <div
+                    onClick={() => setEnableAiForImport(false)}
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      !enableAiForImport
+                        ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 shadow-xs"
+                        : "border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 size-5 rounded-full flex items-center justify-center border ${
+                        !enableAiForImport ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300 dark:border-slate-600"
+                      }`}>
+                        {!enableAiForImport && <CheckCircle2 className="size-3.5" />}
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                            <Zap className="size-3.5 text-amber-500 fill-amber-500" />
+                            Fast Import Only (Skip Background AI Search)
+                          </span>
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
+                            Recommended
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Imports all products, bases, sizes, prices, and stock immediately. Prevents web search lookups on internal barcodes (e.g. 9450...) and conserves AI quota.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Option 2: AI Web Search Enabled */}
+                  <div
+                    onClick={() => setEnableAiForImport(true)}
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      enableAiForImport
+                        ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 shadow-xs"
+                        : "border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 size-5 rounded-full flex items-center justify-center border ${
+                        enableAiForImport ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300 dark:border-slate-600"
+                      }`}>
+                        {enableAiForImport && <CheckCircle2 className="size-3.5" />}
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                            <Sparkles className="size-3.5 text-indigo-600" />
+                            Enable Background AI Auto-Enrichment
+                          </span>
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">
+                            Retail & FMCG
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Queues products in the background to search GS1 barcode registries, scrape official brand images, and extract specifications.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Admin reminder notice */}
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl text-[11px] text-slate-500 flex items-center gap-2 border border-slate-200/60 dark:border-slate-700/40">
+                  <HelpCircle className="size-4 text-slate-400 shrink-0" />
+                  <span>Admins can also pause or resume background AI search globally anytime using the AI Search toggle above the table.</span>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/80 flex items-center justify-between">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isImporting}
+                  onClick={() => {
+                    setIsImportConfirmModalOpen(false);
+                    setPendingImportData(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  className="h-10 px-5 rounded-xl font-semibold bg-white dark:bg-slate-900"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isImporting}
+                  onClick={() => executeBulkImport(pendingImportData.items, enableAiForImport)}
+                  className="h-10 px-6 rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all border-0 flex items-center gap-2"
+                >
+                  {isImporting ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Importing Products...
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="size-4" />
+                      Start Import ({pendingImportData.items.length.toLocaleString()})
+                    </>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

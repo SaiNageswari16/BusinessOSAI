@@ -89,6 +89,11 @@ class ProductBase(BaseModel):
     supplier: Optional[str] = Field(None, max_length=150)
     warehouse: Optional[str] = Field(None, max_length=150)
     
+    # Asian Paints & Colorant Specific Fields (Columns C, D, E)
+    base_name: Optional[str] = Field(None, max_length=150) # Base Code/Name (e.g. Brilliant White)
+    product_base_code: Optional[str] = Field(None, max_length=100) # Product Base Code (e.g. 912, 0W06)
+    size_l_kg: Optional[str] = Field(None, max_length=50) # Size (L/Kg) (e.g. 0.05, 1, 4, 10, 20)
+    
     status: Optional[str] = "active"
 
     @field_validator("category_id", "brand_id", "uom_id", mode="before")
@@ -222,6 +227,7 @@ class MasterProductImportItem(ProductBase):
 
 class MasterProductBulkCreate(BaseModel):
     items: List[MasterProductImportItem]
+    enable_ai_search: Optional[bool] = True
 
 class MasterProductBulkResponse(BaseModel):
     products_created: int
@@ -413,6 +419,11 @@ class MasterCatalogItem(BaseModel):
     sub_category: Optional[str] = None
     instock_value: Optional[float] = 0.0
 
+    # Asian Paints & Colorant Specific Fields (Columns C, D, E)
+    base_name: Optional[str] = None # Base Code/Name (e.g. Brilliant White)
+    product_base_code: Optional[str] = None # Product Base Code (e.g. 912, 0W06)
+    size_l_kg: Optional[str] = None # Size (L/Kg) (e.g. 0.05, 1, 4, 10, 20)
+
     # UI / AI fields
     image_url: Optional[str] = None
     short_description: Optional[str] = None
@@ -435,6 +446,9 @@ class MasterCatalogSaveToLocalRequest(BaseModel):
     sub_category_id: Optional[uuid.UUID] = None
     category_name: Optional[str] = None
     sub_category_name: Optional[str] = None
+    base_name: Optional[str] = None
+    product_base_code: Optional[str] = None
+    size_l_kg: Optional[str] = None
     short_description: Optional[str] = None
     specifications: Optional[str] = None
     image_url: Optional[str] = None

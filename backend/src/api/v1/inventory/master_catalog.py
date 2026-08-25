@@ -47,10 +47,13 @@ def _extract_json_from_text(text: str) -> dict | list:
     text = text.strip()
 
     # Strip Claude tool_call / function XML blocks entirely — they are not JSON
+    # Strip all XML-like tool call / function call artifacts from output
     # e.g. <tool_call><function=web_search>...</tool_call>
     text_clean = re.sub(r'<tool_call>[\s\S]*?</tool_call>', '', text, flags=re.IGNORECASE).strip()
     text_clean = re.sub(r'<function=[^>]+>[\s\S]*?</function>', '', text_clean, flags=re.IGNORECASE).strip()
+    text_clean = re.sub(r'<function>[\s\S]*?</function>', '', text_clean, flags=re.IGNORECASE).strip()
     text_clean = re.sub(r'<parameter=[^>]+>[\s\S]*?</parameter>', '', text_clean, flags=re.IGNORECASE).strip()
+    text_clean = re.sub(r'<query>[\s\S]*?</query>', '', text_clean, flags=re.IGNORECASE).strip()
     # Use cleaned text if it still has content, else fall back to original
     if text_clean:
         text = text_clean
@@ -94,7 +97,10 @@ def _extract_json_from_text(text: str) -> dict | list:
             except Exception:
                 pass
 
-    raise ValueError(f"Could not parse valid JSON from AI response text: {text[:200]}")
+    logger.debug("[AI Parser] Could not extract valid JSON from response: %s", text[:200])
+    return {}
+
+_clean_ai_json = _extract_json_from_text
 
 
 def _is_meaningless_product_name(name: Optional[str], query: str) -> bool:
@@ -1069,20 +1075,13 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
         logger.warning("Rejected invalid product image URL: %r", image_url)
         return None
 
-    # Strict Whitelist: Only permit verified commercial e-commerce CDNs (Amazon, BigBasket, Blinkit, JioMart, Flipkart, OpenFoodFacts)
-    TRUSTED_PRODUCT_DOMAINS = (
-        "media-amazon.com", "images-amazon.com", "ssl-images-amazon.com",
-        "bbassets.com", "bigbasket.com",
-        "blinkit.com", "grofers.com",
-        "jiomart.com", "relianceretail.com",
-        "flipkart.com", "flixcart.com",
-        "openfoodfacts.org", "openfoodfacts.net",
-        "zeptonow.com", "swiggy.com",
-        "encrypted-tbn0.gstatic.com", "gstatic.com"
+    DISALLOWED_DOMAINS = (
+        "facebook.com", "twitter.com", "instagram.com", "tiktok.com",
+        "pinterest.com", "reddit.com", "linkedin.com", "youtube.com"
     )
     domain = (parsed.netloc or "").lower()
-    if not any(domain.endswith(t) or t in domain for t in TRUSTED_PRODUCT_DOMAINS):
-        logger.warning("Rejected non-whitelisted image domain: %s (only trusted e-commerce retail CDNs allowed)", domain)
+    if any(d in domain for d in DISALLOWED_DOMAINS):
+        logger.warning("Rejected disallowed image domain: %s", domain)
         return None
 
     try:
@@ -1745,17 +1744,43 @@ def _call_enrichment_ai(provider: str, identity: dict, barcode: str, context: st
     )
     try:
         if provider == "gemini" and _is_valid_key(settings.gemini_api_key):
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model or 'gemini-3.6-flash'}:generateContent?key={settings.gemini_api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model or 'gemini-2.5-flash'}:generateContent?key={settings.gemini_api_key}"
 
-            response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}}, timeout=60)
-            text = response.json()["candidates"][0]["content"]["parts"][0]["text"] if response.status_code == 200 else "{}"
-        elif provider == "openai" and _is_valid_key(settings.openai_api_key):
-            response = requests.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"}, json={"model": settings.openai_model or "gpt-4o", "messages": [{"role": "user", "content": prompt}], "response_format": {"type": "json_object"}}, timeout=60)
+            response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}}, timeout=30)
+            if response.status_code == 429 and _is_valid_key(settings.anthropic_api_key):
+                logger.warning("[Gemini 429 Rate Limit] Switching to Claude for enrichment of barcode %s", barcode)
+                provider = "claude"
+            elif response.status_code == 200:
+                text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+            else:
+                text = "{}"
+        
+        if provider == "openai" and _is_valid_key(settings.openai_api_key):
+            response = requests.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"}, json={"model": settings.openai_model or "gpt-4o", "messages": [{"role": "user", "content": prompt}], "response_format": {"type": "json_object"}}, timeout=30)
             text = response.json()["choices"][0]["message"]["content"] if response.status_code == 200 else "{}"
         elif provider == "claude" and _is_valid_key(settings.anthropic_api_key):
-            response = requests.post(f"{settings.anthropic_base_url.rstrip('/')}/v1/messages", headers={"x-api-key": settings.anthropic_api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}, json={"model": settings.anthropic_model or "claude-3-5-sonnet-20241022", "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}, timeout=60)
-            text = next((block.get("text", "") for block in response.json().get("content", []) if block.get("type") == "text"), "{}") if response.status_code == 200 else "{}"
-        else:
+            response = requests.post(
+                f"{settings.anthropic_base_url.rstrip('/')}/v1/messages",
+                headers={
+                    "x-api-key": settings.anthropic_api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
+                    "max_tokens": 1500,
+                    "system": "You are a product database. Output ONLY a valid JSON object. Never use tool calls, function calls, or XML tags.",
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=30
+            )
+            text = "{}"
+            if response.status_code == 200:
+                blocks = response.json().get("content", [])
+                text = next((block.get("text", "") for block in blocks if block.get("type") == "text"), "{}")
+            else:
+                logger.warning("Claude enrichment API returned status %s for barcode %s: %s", response.status_code, barcode, response.text[:200])
+        elif provider != "gemini":
             return {}
         data = _extract_json_from_text(text)
         return data if isinstance(data, dict) else {}
@@ -2161,6 +2186,9 @@ async def bulk_import_master_catalog(
             category=item.category,
             sub_category=item.sub_category,
             instock_value=item.instock_value or 0.0,
+            base_name=item.base_name,
+            product_base_code=item.product_base_code,
+            size_l_kg=item.size_l_kg,
             image_url=item.image_url,
             short_description=item.short_description,
             specifications=item.specifications,
@@ -2218,6 +2246,9 @@ async def save_to_master_catalog(
         category=payload.category,
         sub_category=payload.sub_category,
         instock_value=payload.instock_value or 0.0,
+        base_name=payload.base_name,
+        product_base_code=payload.product_base_code,
+        size_l_kg=payload.size_l_kg,
         image_url=payload.image_url,
         short_description=payload.short_description,
         specifications=payload.specifications,
@@ -2316,6 +2347,9 @@ async def import_to_local_inventory(
         initial_stock=payload.initial_stock or 0,
         supplier=payload.supplier,
         warehouse=payload.warehouse,
+        base_name=payload.base_name,
+        product_base_code=payload.product_base_code,
+        size_l_kg=payload.size_l_kg,
         status=EntityStatus.ACTIVE
     )
     db.add(new_product)

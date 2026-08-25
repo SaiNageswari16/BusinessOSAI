@@ -2149,7 +2149,147 @@ async def extract_quotation_ocr(
     }
 
 
-# ─── Document OCR Extraction (PO & GRN) ────────────────────────────
+# ─── Document OCR Extraction (PO, GRN, PR, PINV) ───────────────────
+
+def _clean_ocr_json(text: str) -> dict:
+    """Safely extracts JSON from multimodal AI responses, stripping markdown blocks and XML tags."""
+    if not text or not text.strip():
+        return {}
+    import re, json as _json
+    clean = text.strip()
+    # Strip markdown code fences
+    clean = re.sub(r'^```(?:json)?\s*', '', clean, flags=re.MULTILINE)
+    clean = re.sub(r'```\s*$', '', clean, flags=re.MULTILINE).strip()
+    try:
+        return _json.loads(clean)
+    except Exception:
+        pass
+    # Regex fallback to extract outermost JSON object or array
+    match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', clean)
+    if match:
+        try:
+            return _json.loads(match.group(1).strip())
+        except Exception:
+            pass
+        try:
+            return _json.loads(match.group(1).strip() + "}")
+        except Exception:
+            pass
+    return {}
+
+
+def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str) -> dict:
+    """
+    Executes multimodal AI OCR across Gemini -> Claude (Anthropic) -> OpenAI.
+    Supports native PDFs and images. Never fails with single provider outage or 429 quota.
+    """
+    import base64
+    b64_data = base64.b64encode(contents).decode("utf-8")
+    is_pdf = filename.lower().endswith(".pdf")
+    mime_type = "application/pdf" if is_pdf else (
+        "image/png" if filename.lower().endswith(".png") else "image/jpeg"
+    )
+
+    # 1. Primary: Google Gemini (gemini-2.5-flash or gemini-1.5-flash)
+    if settings.gemini_api_key and settings.gemini_api_key.strip():
+        model = settings.gemini_model if settings.gemini_model and not settings.gemini_model.startswith("gemini-3.") else "gemini-2.5-flash"
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
+            body = {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": mime_type, "data": b64_data}}
+                    ]
+                }],
+                "generationConfig": {"responseMimeType": "application/json"}
+            }
+            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=35)
+            if res.status_code == 200:
+                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                parsed = _clean_ocr_json(raw_text)
+                if parsed:
+                    return parsed
+            else:
+                print(f"[OCR Gemini] returned status {res.status_code}: {res.text[:200]}")
+        except Exception as g_ex:
+            print(f"[OCR Gemini Error] {g_ex}")
+
+    # 2. Fallback: Anthropic Claude (Claude 3.5 Sonnet / Haiku - Superior at Indian GST Invoices & PDFs)
+    if getattr(settings, "anthropic_api_key", None) and settings.anthropic_api_key.strip():
+        try:
+            doc_block = {
+                "type": "document" if is_pdf else "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": mime_type,
+                    "data": b64_data
+                }
+            }
+            claude_model = getattr(settings, "anthropic_model", None) or "claude-3-5-sonnet-20241022"
+            base_url = getattr(settings, "anthropic_base_url", "https://api.anthropic.com").rstrip("/")
+            res = requests.post(
+                f"{base_url}/v1/messages",
+                headers={
+                    "x-api-key": settings.anthropic_api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": claude_model,
+                    "max_tokens": 4096,
+                    "system": "You are a professional accountant and OCR specialist. Output ONLY a valid JSON object matching the requested schema. No markdown backticks, no preamble.",
+                    "messages": [{
+                        "role": "user",
+                        "content": [doc_block, {"type": "text", "text": prompt}]
+                    }]
+                },
+                timeout=45
+            )
+            if res.status_code == 200:
+                blocks = res.json().get("content", [])
+                text = next((b.get("text", "") for b in blocks if b.get("type") == "text"), "")
+                parsed = _clean_ocr_json(text)
+                if parsed:
+                    return parsed
+            else:
+                print(f"[OCR Claude] returned status {res.status_code}: {res.text[:200]}")
+        except Exception as c_ex:
+            print(f"[OCR Claude Error] {c_ex}")
+
+    # 3. Fallback: OpenAI GPT-4o
+    if getattr(settings, "openai_api_key", None) and settings.openai_api_key.strip():
+        try:
+            image_url_val = f"data:{mime_type};base64,{b64_data}"
+            res = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": getattr(settings, "openai_model", None) or "gpt-4o",
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": image_url_val}}
+                        ]
+                    }],
+                    "response_format": {"type": "json_object"}
+                },
+                timeout=40
+            )
+            if res.status_code == 200:
+                text = res.json()["choices"][0]["message"]["content"]
+                parsed = _clean_ocr_json(text)
+                if parsed:
+                    return parsed
+        except Exception as o_ex:
+            print(f"[OCR OpenAI Error] {o_ex}")
+
+    return {}
+
 
 @router.post("/ocr/extract-po-document")
 async def extract_po_document_ocr(
@@ -2162,14 +2302,8 @@ async def extract_po_document_ocr(
     contents = await file.read()
     filename = file.filename.lower()
 
-    if settings.gemini_api_key and any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
-        try:
-            import base64, json as _json
-            b64_image = base64.b64encode(contents).decode("utf-8")
-            model = settings.gemini_model or "gemini-3.6-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
-
-            prompt = """
+    if any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
+        prompt = """
 You are an expert tax accountant and OCR specialist analyzing a Purchase Order / Tax Invoice document (supports multi-page PDFs with multiple invoices).
 Analyze every page and line item with 100% numerical precision.
 
@@ -2239,57 +2373,41 @@ CRITICAL RULES:
 
 Return ONLY raw valid JSON without markdown code blocks, backticks, or preamble.
 """
-            mime_type = "application/pdf" if filename.endswith(".pdf") else "image/jpeg"
-            body = {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {"inline_data": {"mime_type": mime_type, "data": b64_image}}
-                    ]
-                }]
+        parsed = _execute_multimodal_ai_ocr(prompt, contents, file.filename)
+        if parsed:
+            invoices = parsed.get("invoices") or []
+            if not invoices and isinstance(parsed, dict) and "items" in parsed:
+                invoices = [parsed]
+
+            primary = invoices[0] if invoices else parsed
+
+            return {
+                "filename": file.filename,
+                "extracted": True,
+                "invoices": invoices,
+                "total_invoices_found": len(invoices),
+                "po_number": primary.get("po_number") or primary.get("invoice_number"),
+                "invoice_number": primary.get("invoice_number") or primary.get("po_number"),
+                "supplier_name": primary.get("supplier_name"),
+                "supplier_gstin": primary.get("supplier_gstin"),
+                "supplier_phone": primary.get("supplier_phone"),
+                "supplier_address": primary.get("supplier_address"),
+                "buyer_name": primary.get("buyer_name"),
+                "buyer_gstin": primary.get("buyer_gstin"),
+                "buyer_address": primary.get("buyer_address"),
+                "delivery_date": primary.get("due_date") or primary.get("invoice_date"),
+                "due_date": primary.get("due_date") or primary.get("invoice_date"),
+                "invoice_date": primary.get("invoice_date"),
+                "is_tax_inclusive": primary.get("is_tax_inclusive", False),
+                "items": primary.get("items", []),
+                "taxable_amount": float(primary.get("taxable_amount", 0.0) or 0.0),
+                "total_tax_amount": float(primary.get("total_tax_amount", 0.0) or 0.0),
+                "grand_total": float(primary.get("grand_total", 0.0) or 0.0),
+                "tax_breakdown": primary.get("tax_breakdown", {}),
+                "bank_details": primary.get("bank_details", {}),
+                "notes": primary.get("notes", ""),
+                "confidence": 0.95
             }
-            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=35)
-            if res.status_code == 200:
-                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if raw_text.startswith("```"):
-                    raw_text = raw_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                parsed = _json.loads(raw_text)
-
-                invoices = parsed.get("invoices") or []
-                if not invoices and isinstance(parsed, dict) and "items" in parsed:
-                    invoices = [parsed]
-
-                primary = invoices[0] if invoices else {}
-
-                return {
-                    "filename": file.filename,
-                    "extracted": True,
-                    "invoices": invoices,
-                    "total_invoices_found": len(invoices),
-                    "po_number": primary.get("po_number") or primary.get("invoice_number"),
-                    "invoice_number": primary.get("invoice_number") or primary.get("po_number"),
-                    "supplier_name": primary.get("supplier_name"),
-                    "supplier_gstin": primary.get("supplier_gstin"),
-                    "supplier_phone": primary.get("supplier_phone"),
-                    "supplier_address": primary.get("supplier_address"),
-                    "buyer_name": primary.get("buyer_name"),
-                    "buyer_gstin": primary.get("buyer_gstin"),
-                    "buyer_address": primary.get("buyer_address"),
-                    "delivery_date": primary.get("due_date") or primary.get("invoice_date"),
-                    "due_date": primary.get("due_date") or primary.get("invoice_date"),
-                    "invoice_date": primary.get("invoice_date"),
-                    "is_tax_inclusive": primary.get("is_tax_inclusive", False),
-                    "items": primary.get("items", []),
-                    "taxable_amount": float(primary.get("taxable_amount", 0.0) or 0.0),
-                    "total_tax_amount": float(primary.get("total_tax_amount", 0.0) or 0.0),
-                    "grand_total": float(primary.get("grand_total", 0.0) or 0.0),
-                    "tax_breakdown": primary.get("tax_breakdown", {}),
-                    "bank_details": primary.get("bank_details", {}),
-                    "notes": primary.get("notes", ""),
-                    "confidence": 0.95
-                }
-        except Exception as e:
-            print("Gemini Vision PO OCR fallback:", e)
 
     return {"filename": file.filename, "extracted": False, "confidence": 0}
 
@@ -2305,14 +2423,8 @@ async def extract_grn_document_ocr(
     contents = await file.read()
     filename = file.filename.lower()
 
-    if settings.gemini_api_key and any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
-        try:
-            import base64, json as _json
-            b64_image = base64.b64encode(contents).decode("utf-8")
-            model = settings.gemini_model or "gemini-3.6-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
-
-            prompt = """
+    if any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
+        prompt = """
 Analyze this Goods Received Note / Delivery Challan document and extract the following fields as JSON:
 {
   "grn_number": "GRN-2026-XXXX",
@@ -2324,32 +2436,17 @@ Analyze this Goods Received Note / Delivery Challan document and extract the fol
 }
 Return ONLY valid JSON. No markdown, no backticks.
 """
-            mime_type = "application/pdf" if filename.endswith(".pdf") else "image/jpeg"
-            body = {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {"inline_data": {"mime_type": mime_type, "data": b64_image}}
-                    ]
-                }]
+        parsed = _execute_multimodal_ai_ocr(prompt, contents, file.filename)
+        if parsed:
+            return {
+                "filename": file.filename,
+                "extracted": True,
+                "grn_number": parsed.get("grn_number"),
+                "received_date": parsed.get("received_date"),
+                "items": parsed.get("items", []),
+                "notes": parsed.get("notes", ""),
+                "confidence": 0.90
             }
-            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=30)
-            if res.status_code == 200:
-                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if raw_text.startswith("```"):
-                    raw_text = raw_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                parsed = _json.loads(raw_text)
-                return {
-                    "filename": file.filename,
-                    "extracted": True,
-                    "grn_number": parsed.get("grn_number"),
-                    "received_date": parsed.get("received_date"),
-                    "items": parsed.get("items", []),
-                    "notes": parsed.get("notes", ""),
-                    "confidence": 0.90
-                }
-        except Exception as e:
-            print("Gemini Vision GRN OCR fallback:", e)
 
     return {"filename": file.filename, "extracted": False, "confidence": 0}
 
@@ -2365,14 +2462,8 @@ async def extract_pr_document_ocr(
     contents = await file.read()
     filename = file.filename.lower()
 
-    if settings.gemini_api_key and any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
-        try:
-            import base64, json as _json
-            b64_image = base64.b64encode(contents).decode("utf-8")
-            model = settings.gemini_model or "gemini-3.6-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
-
-            prompt = """
+    if any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
+        prompt = """
 Analyze this Purchase Requisition / Material Indent slip document and extract the following fields as JSON:
 {
   "pr_number": "PR-2026-XXXX",
@@ -2385,33 +2476,18 @@ Analyze this Purchase Requisition / Material Indent slip document and extract th
 }
 Return ONLY valid JSON. No markdown, no backticks.
 """
-            mime_type = "application/pdf" if filename.endswith(".pdf") else "image/jpeg"
-            body = {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {"inline_data": {"mime_type": mime_type, "data": b64_image}}
-                    ]
-                }]
+        parsed = _execute_multimodal_ai_ocr(prompt, contents, file.filename)
+        if parsed:
+            return {
+                "filename": file.filename,
+                "extracted": True,
+                "pr_number": parsed.get("pr_number"),
+                "department": parsed.get("department"),
+                "priority": parsed.get("priority"),
+                "purpose_justification": parsed.get("purpose_justification"),
+                "items": parsed.get("items", []),
+                "confidence": 0.88
             }
-            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=30)
-            if res.status_code == 200:
-                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if raw_text.startswith("```"):
-                    raw_text = raw_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                parsed = _json.loads(raw_text)
-                return {
-                    "filename": file.filename,
-                    "extracted": True,
-                    "pr_number": parsed.get("pr_number"),
-                    "department": parsed.get("department"),
-                    "priority": parsed.get("priority"),
-                    "purpose_justification": parsed.get("purpose_justification"),
-                    "items": parsed.get("items", []),
-                    "confidence": 0.88
-                }
-        except Exception as e:
-            print("Gemini Vision PR OCR fallback:", e)
 
     random_seq = int(datetime.utcnow().timestamp()) % 9000 + 1000
     return {
@@ -2440,14 +2516,8 @@ async def extract_invoice_document_ocr(
     contents = await file.read()
     filename = file.filename.lower()
 
-    if settings.gemini_api_key and any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
-        try:
-            import base64, json as _json
-            b64_image = base64.b64encode(contents).decode("utf-8")
-            model = settings.gemini_model or "gemini-3.6-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
-
-            prompt = """
+    if any(filename.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp"]):
+        prompt = """
 You are an expert tax accountant analyzing a Vendor Tax Invoice / Purchase Bill document (supports multi-page PDFs with multiple invoices).
 Analyze every page and line item with 100% numerical precision.
 
@@ -2501,46 +2571,30 @@ CRITICAL RULES:
 3. If multiple invoices / pages exist, extract ALL into the "invoices" array.
 Return ONLY valid JSON.
 """
-            mime_type = "application/pdf" if filename.endswith(".pdf") else "image/jpeg"
-            body = {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {"inline_data": {"mime_type": mime_type, "data": b64_image}}
-                    ]
-                }]
+        parsed = _execute_multimodal_ai_ocr(prompt, contents, file.filename)
+        if parsed:
+            invoices = parsed.get("invoices") or []
+            if not invoices and isinstance(parsed, dict) and "items" in parsed:
+                invoices = [parsed]
+
+            primary = invoices[0] if invoices else parsed
+
+            return {
+                "filename": file.filename,
+                "extracted": True,
+                "invoices": invoices,
+                "total_invoices_found": len(invoices),
+                "bill_number": primary.get("bill_number") or primary.get("invoice_number"),
+                "invoice_number": primary.get("invoice_number") or primary.get("bill_number"),
+                "supplier_name": primary.get("supplier_name"),
+                "supplier_gstin": primary.get("supplier_gstin"),
+                "total_amount": float(primary.get("grand_total", 0.0) or 0.0),
+                "due_date": primary.get("due_date") or primary.get("invoice_date"),
+                "is_tax_inclusive": primary.get("is_tax_inclusive", False),
+                "items": primary.get("items", []),
+                "notes": primary.get("notes", ""),
+                "confidence": 0.95
             }
-            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=35)
-            if res.status_code == 200:
-                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if raw_text.startswith("```"):
-                    raw_text = raw_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                parsed = _json.loads(raw_text)
-
-                invoices = parsed.get("invoices") or []
-                if not invoices and isinstance(parsed, dict) and "items" in parsed:
-                    invoices = [parsed]
-
-                primary = invoices[0] if invoices else {}
-
-                return {
-                    "filename": file.filename,
-                    "extracted": True,
-                    "invoices": invoices,
-                    "total_invoices_found": len(invoices),
-                    "bill_number": primary.get("bill_number") or primary.get("invoice_number"),
-                    "invoice_number": primary.get("invoice_number") or primary.get("bill_number"),
-                    "supplier_name": primary.get("supplier_name"),
-                    "supplier_gstin": primary.get("supplier_gstin"),
-                    "total_amount": float(primary.get("grand_total", 0.0) or 0.0),
-                    "due_date": primary.get("due_date") or primary.get("invoice_date"),
-                    "is_tax_inclusive": primary.get("is_tax_inclusive", False),
-                    "items": primary.get("items", []),
-                    "notes": primary.get("notes", ""),
-                    "confidence": 0.95
-                }
-        except Exception as e:
-            print("Gemini Vision Invoice OCR fallback:", e)
 
     random_seq = int(datetime.utcnow().timestamp()) % 9000 + 1000
     return {

@@ -3360,6 +3360,8 @@ export interface InventoryProduct {
   image_url: string | null;
   purchase_price: number; mrp: number; selling_price: number;
   wholesale_price?: number; min_wholesale_qty?: number;
+  b2b_price?: number; min_b2b_qty?: number;
+  base_name?: string | null; product_base_code?: string | null; size_l_kg?: string | null;
   tax_percent: number; discount_limit: number;
   initial_stock: number; stock?: number; reorder_level: number; safety_stock: number;
   supplier: string | null; warehouse: string | null;
@@ -3562,8 +3564,16 @@ export const inventoryApi = {
     request<PaginatedResponse<InventoryProduct>>("GET", "/inventory/products", undefined, params as Record<string, any>),
 
   createProduct: (data: Record<string, unknown>) => request<InventoryProduct>("POST", "/inventory/products", data),
-  masterImportProducts: (items: Record<string, unknown>[]) =>
-    request<{ products_created: number; brands_created: number; categories_created: number; uoms_created: number; skipped_count: number; errors: string[] }>("POST", "/inventory/products/master-import", { items }),
+  masterImportProducts: (payload: { items: Record<string, unknown>[]; enable_ai_search?: boolean } | Record<string, unknown>[], enable_ai_search?: boolean) => {
+    const body = Array.isArray(payload)
+      ? { items: payload, enable_ai_search: enable_ai_search ?? true }
+      : { items: payload.items, enable_ai_search: payload.enable_ai_search ?? true };
+    return request<{ products_created: number; brands_created: number; categories_created: number; uoms_created: number; skipped_count: number; errors: string[] }>(
+      "POST",
+      "/inventory/products/master-import",
+      body
+    );
+  },
   updateProduct: (id: string, data: Record<string, unknown>) => request<InventoryProduct>("PATCH", `/inventory/products/${id}`, data),
   deleteProduct: (id: string) => request<void>("DELETE", `/inventory/products/${id}`),
   uploadProductImage: (file: File) => {

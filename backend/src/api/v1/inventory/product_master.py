@@ -680,12 +680,12 @@ async def list_products(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=500),
+    page_size: int = Query(50, ge=1, le=5000),
     search: str | None = None,
     category_id: uuid.UUID | None = None,
     brand_id: uuid.UUID | None = None,
-    sort_by: str = Query("name"),
-    sort_order: str = Query("asc"),
+    sort_by: str = Query("updated_at"),
+    sort_order: str = Query("desc"),
 ):
     query = (
         select(Product)
@@ -711,20 +711,24 @@ async def list_products(
         
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
 
-    sort_col = Product.name
-    if sort_by == "sku":
+    sort_col = Product.updated_at
+    if sort_by == "name":
+        sort_col = Product.name
+    elif sort_by == "sku":
         sort_col = Product.sku
     elif sort_by == "created_at":
         sort_col = Product.created_at
+    elif sort_by == "updated_at":
+        sort_col = Product.updated_at
     elif sort_by == "mrp":
         sort_col = Product.mrp
     elif sort_by == "selling_price":
         sort_col = Product.selling_price
 
-    if sort_order.lower() == "desc":
-        order_clause = sort_col.desc()
-    else:
+    if sort_order.lower() == "asc":
         order_clause = sort_col.asc()
+    else:
+        order_clause = sort_col.desc()
 
     result = await db.execute(
         query.order_by(order_clause, Product.id.asc()).offset((page - 1) * page_size).limit(page_size)
@@ -1128,6 +1132,9 @@ async def master_import_products(
             reorder_level=item.reorder_level,
             safety_stock=item.safety_stock,
             supplier=item.supplier,
+            base_name=item.base_name,
+            product_base_code=item.product_base_code,
+            size_l_kg=item.size_l_kg,
             specifications=item.specifications,
             status=_parse_status(item.status) if item.status else EntityStatus.ACTIVE
         )
@@ -1165,8 +1172,9 @@ async def master_import_products(
                 if (not new_product.selling_price or new_product.selling_price == 0) and existing_mc.sale_price and existing_mc.sale_price > 0:
                     new_product.selling_price = existing_mc.sale_price
 
+            ai_enabled = payload.enable_ai_search is not False
+
             if not existing_mc:
-                # Products imported without images/specs are always queued for background AI enrichment
                 new_mc = MasterCatalogProduct(
                     id=uuid.uuid4(),
                     tenant_id=None,
@@ -1184,18 +1192,22 @@ async def master_import_products(
                     type="CGST + SGST",
                     category=item.category_name.strip() if item.category_name else "General",
                     sub_category=item.sub_category_name.strip() if item.sub_category_name else "General",
+                    base_name=item.base_name,
+                    product_base_code=item.product_base_code,
+                    size_l_kg=item.size_l_kg,
                     short_description=item.short_description or "",
-                    specifications="Imported from bulk Excel/CSV upload — pending AI enrichment",
-                    source="AI_WEB_SEARCH",
-                    ai_search_done=False,
-                    rag_status="pending",
+                    specifications="Imported from bulk Excel/CSV upload",
+                    source="EXCEL_IMPORT" if not ai_enabled else "AI_WEB_SEARCH",
+                    ai_search_done=not ai_enabled,
+                    rag_status="pending" if ai_enabled else "skipped",
+                    rag_error=None if ai_enabled else "AI background search disabled during import"
                 )
                 db.add(new_mc)
             elif not existing_mc.ai_search_done:
                 # Already queued — leave it
                 pass
 
-            else:
+            elif ai_enabled:
                 # Re-queue if item was imported with minimal info
                 needs_enrichment = not (item.short_description and item.mrp and item.mrp > 0)
                 if needs_enrichment:
@@ -1275,6 +1287,21 @@ async def fetch_single_product_image(
         await db.commit()
         return {"success": True, "image_url": img_url, "message": "Image fetched successfully"}
     return {"success": False, "image_url": prod.image_url, "message": "No suitable image found"}
+
+
+@router.post("/products/enrich-pending")
+async def trigger_enrich_pending_products(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+):
+    """
+    Trigger background RAG text & metadata enrichment for all uploaded products lacking details.
+    """
+    from src.services.rag_enricher import RagEnricher
+    await RagEnricher.start()
+    return {
+        "success": True,
+        "message": "Background enrichment active. Descriptions, specifications, brands, and categories are being automatically gathered and appended."
+    }
 
 
 # ==========================================

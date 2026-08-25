@@ -76,20 +76,26 @@ async def _google_search_images_async(barcode: str, product_name: str = "") -> s
     if is_ai_image_search_paused():
         return ""
 
-    query = f"{product_name} {barcode}".strip() if product_name else barcode
+    clean_name = (product_name or "").strip()
+    if not clean_name or clean_name.lower().startswith("unnamed") or len(clean_name) < 3:
+        if not barcode or len(barcode) < 8:
+            return ""
+        safe_query = f'"{barcode}" retail product pack'
+    else:
+        safe_query = f'"{clean_name}" product photo pack -clothing -dress -shirt -shoes'
 
-    # Step 1: Google Web Search -> collect result page URLs
+    # Step 1: Google Web Search -> collect result page URLs (safe=active strictly enforced)
     result_urls: list = []
     try:
         resp = await client.get(
             "https://www.google.com/search",
-            params={"q": query, "num": 8, "hl": "en"},
+            params={"q": safe_query, "num": 8, "hl": "en", "safe": "active"},
         )
         if resp.status_code == 200:
             raw_links = re.findall(r'/url\?q=(https?://[^&"]+)', resp.text)
             _SKIP = ("google.com", "google.co.", "youtube.com", "facebook.com",
                      "twitter.com", "instagram.com", "linkedin.com", "pinterest.com",
-                     "accounts.google", "support.google")
+                     "accounts.google", "support.google", "reddit.com", "tiktok.com")
             for link in raw_links:
                 decoded = (link
                            .replace("%3A", ":").replace("%2F", "/")
@@ -119,7 +125,7 @@ async def _google_search_images_async(barcode: str, product_name: str = "") -> s
             )
             if og:
                 img_url = og.group(1).strip()
-                if img_url.startswith("http"):
+                if img_url.startswith("http") and not any(bad in img_url.lower() for bad in ["logo", "icon", "avatar", "profile", "banner"]):
                     cached = await _cache_image_async(img_url, barcode)
                     if cached:
                         logger.info("[ImageSearch] Google og:image for barcode %s from %s", barcode, url)
@@ -132,7 +138,7 @@ async def _google_search_images_async(barcode: str, product_name: str = "") -> s
             )
             if tw:
                 img_url = tw.group(1).strip()
-                if img_url.startswith("http"):
+                if img_url.startswith("http") and not any(bad in img_url.lower() for bad in ["logo", "icon", "avatar", "profile", "banner"]):
                     cached = await _cache_image_async(img_url, barcode)
                     if cached:
                         logger.info("[ImageSearch] Google twitter:image for barcode %s", barcode)
@@ -140,18 +146,18 @@ async def _google_search_images_async(barcode: str, product_name: str = "") -> s
         except Exception as e:
             logger.debug("[ImageSearch] Page fetch error for %s: %s", url, e)
 
-    # Step 3: DuckDuckGo Images API (no API key needed)
+    # Step 3: DuckDuckGo Images API with Strict SafeSearch (kp=1)
     try:
         token_resp = await client.get(
             "https://duckduckgo.com/",
-            params={"q": query},
+            params={"q": safe_query, "kp": "1"},
         )
         vqd_match = re.search(r'vqd=["\']([\w-]+)["\']', token_resp.text)
         if vqd_match:
             vqd = vqd_match.group(1)
             img_resp = await client.get(
                 "https://duckduckgo.com/i.js",
-                params={"q": query, "vqd": vqd, "f": ",,,", "p": "1"},
+                params={"q": safe_query, "vqd": vqd, "f": ",,,", "p": "1", "kp": "1"},
                 headers={**_HEADERS, "Referer": "https://duckduckgo.com/"},
             )
             if img_resp.status_code == 200:
@@ -161,16 +167,16 @@ async def _google_search_images_async(barcode: str, product_name: str = "") -> s
                     if img_url.startswith("http"):
                         cached = await _cache_image_async(img_url, barcode)
                         if cached:
-                            logger.info("[ImageSearch] DuckDuckGo image for barcode %s", barcode)
+                            logger.info("[ImageSearch] DuckDuckGo SafeSearch image for barcode %s", barcode)
                             return cached
     except Exception as e:
         logger.debug("[ImageSearch] DuckDuckGo failed for %s: %s", barcode, e)
 
-    # Step 4: Bing Images scraping
+    # Step 4: Bing Images scraping with Strict SafeSearch (adlt=strict)
     try:
         bing = await client.get(
             "https://www.bing.com/images/search",
-            params={"q": query, "first": 1},
+            params={"q": safe_query, "first": 1, "adlt": "strict"},
         )
         if bing.status_code == 200:
             murls = re.findall(r'murl&quot;:&quot;(https?://[^&]+?)&quot;', bing.text)
@@ -180,12 +186,12 @@ async def _google_search_images_async(barcode: str, product_name: str = "") -> s
                 if any(ext in murl.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
                     cached = await _cache_image_async(murl, barcode)
                     if cached:
-                        logger.info("[ImageSearch] Bing image for barcode %s", barcode)
+                        logger.info("[ImageSearch] Bing SafeSearch image for barcode %s", barcode)
                         return cached
     except Exception as e:
         logger.debug("[ImageSearch] Bing failed for %s: %s", barcode, e)
 
-    logger.debug("[ImageSearch] No image found for barcode %s", barcode)
+    logger.debug("[ImageSearch] No safe image found for barcode %s", barcode)
     return ""
 
 
@@ -436,23 +442,37 @@ class RAGEnricherService:
             success = False
             err_msg = None
             ai_item = None
-            try:
-                from src.api.v1.inventory.master_catalog import _perform_ai_rag_web_search
-                provider = settings.ai_provider or "gemini"
-                results = await _perform_ai_rag_web_search(barcode, provider=provider)
-                if results:
-                    ai_item = results[0]
-                    success = True
-                else:
-                    err_msg = "AI returned no results."
-            except Exception as ex:
-                err_msg = str(ex)
-                logger.warning("[RAG Enricher] AI search failed for '%s' (%s): %s", name, barcode, ex)
+            from src.api.v1.inventory.master_catalog import _perform_ai_rag_web_search
+            provider = settings.ai_provider or "gemini"
+            results = []
+
+            # Step 1A: Try barcode resolution first
+            if barcode and len(barcode.strip()) >= 5:
+                try:
+                    results = await _perform_ai_rag_web_search(barcode.strip(), provider=provider)
+                except Exception as b_ex:
+                    logger.debug("[RAG Enricher] Barcode %s not found in public registry (%s)", barcode, b_ex)
+
+            # Step 1B: Fallback to product name if barcode returned nothing (e.g. internal store SKU/barcodes)
+            if not results and name and name.strip() and name.strip() != barcode:
+                try:
+                    logger.info("[RAG Enricher] Resolving metadata by product name '%s'...", name.strip())
+                    results = await _perform_ai_rag_web_search(name.strip(), provider=provider)
+                except Exception as n_ex:
+                    logger.warning("[RAG Enricher] Name search failed for '%s': %s", name, n_ex)
+                    err_msg = str(n_ex)
+
+            if results:
+                ai_item = results[0]
+                success = True
+            elif not err_msg:
+                err_msg = f"No product match found for {name or barcode}"
 
             # 2. Image sourcing: ONLY executed when AI image search is ACTIVE (not paused)
             cached_image_url = ""
             from src.utils.ai_image_control import is_ai_image_search_paused
             if not is_ai_image_search_paused():
+                # Only look for product images if the product identity was authentically resolved
                 if success and ai_item:
                     raw_img = (ai_item.image_url or "").strip()
                     _BAD = ("/static/", "/images/default", "N/A", "n/a", "/uploads/")
@@ -462,16 +482,16 @@ class RAGEnricherService:
                     if raw_img.startswith("http"):
                         cached_image_url = await _cache_image_async(raw_img, barcode)
 
-                    # Fallback: async Google -> DDG -> Bing image search
-                    if not cached_image_url:
+                    # Safe fallback: search Google/DDG ONLY when we have an authoritative resolved product name
+                    resolved_name = (ai_item.name or "").strip()
+                    if not cached_image_url and resolved_name and len(resolved_name) > 3 and not resolved_name.lower().startswith("unnamed"):
                         cached_image_url = await _google_search_images_async(
-                            barcode, ai_item.name or name
+                            barcode, resolved_name
                         )
                 else:
-                    # AI search failed — try image search with product name
-                    cached_image_url = await _google_search_images_async(barcode, name)
-                    if cached_image_url:
-                        logger.info("[RAG Enricher] Image-only fallback found image for '%s' (%s): %s", name, barcode, cached_image_url)
+                    # When product identity is unconfirmed (e.g. internal / non-standard barcodes),
+                    # do NOT scrape arbitrary web images to avoid pulling irrelevant/corrupt images from unrelated stores.
+                    cached_image_url = ""
             else:
                 logger.info("[RAG Enricher] AI Image Search is PAUSED — skipping image scraping for '%s' (%s). Text details enriched.", name, barcode)
 
@@ -486,6 +506,8 @@ class RAGEnricherService:
                 ai_item=ai_item,
                 cached_image_url=cached_image_url,
             )
+            # Gentle pacing to respect AI provider limits
+            await asyncio.sleep(2.0)
 
 
     @classmethod
@@ -528,6 +550,7 @@ class RAGEnricherService:
                                 local_prod.selling_price = ai_item.sale_price
                             if ai_item.short_description and not local_prod.short_description:
                                 local_prod.short_description = ai_item.short_description
+                        local_prod.updated_at = datetime.utcnow()
                         await session.commit()
                         logger.info("[RAG Enricher - Inventory Worker] Enriched local product '%s' (%s) | image=%s", local_prod.name, barcode, cached_image_url or "none")
                     return

@@ -834,6 +834,9 @@ class ExcelImportItemSchema(BaseModel):
     brand_name: Optional[str] = None
     category_name: Optional[str] = None
     package_size: Optional[str] = None
+    base_name: Optional[str] = None
+    product_base_code: Optional[str] = None
+    size_l_kg: Optional[str] = None
     mrp: float = 0.0
     selling_price: float = 0.0
     gst: float = 0.0
@@ -889,6 +892,12 @@ async def import_products_from_excel(
                 existing_prod.brand_id = uuid.UUID(brand_id)
             if item.package_size:
                 existing_prod.short_description = item.package_size.strip()
+            if item.base_name:
+                existing_prod.base_name = item.base_name.strip()
+            if item.product_base_code:
+                existing_prod.product_base_code = item.product_base_code.strip()
+            if item.size_l_kg:
+                existing_prod.size_l_kg = item.size_l_kg.strip()
             updated_count += 1
         else:
             new_kwargs = dict(
@@ -901,6 +910,9 @@ async def import_products_from_excel(
                 selling_price=item.selling_price,
                 tax_percent=item.gst,
                 initial_stock=item.initial_stock,
+                base_name=item.base_name.strip() if item.base_name else None,
+                product_base_code=item.product_base_code.strip() if item.product_base_code else None,
+                size_l_kg=item.size_l_kg.strip() if item.size_l_kg else (item.package_size.strip() if item.package_size else None),
                 short_description=item.package_size.strip() if item.package_size else None,
                 image_url="/static/uploads/products/default_product.jpg"
             )

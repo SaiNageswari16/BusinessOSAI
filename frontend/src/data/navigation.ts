@@ -225,10 +225,10 @@ export const nav: NavGroup[] = [
         subItems: [
           { to: "/procurement?tab=purchase_requests", label: "Raise PR (Requisition)", icon: Package },
           { to: "/procurement?tab=purchase_approvals", label: "PR Approval (Manager)", icon: ShieldCheck },
-          { to: "/procurement?tab=purchase_quotations", label: "Request for Quotation (RFQ)", icon: Network },
+          { to: "/procurement?tab=purchase_quotations", label: "Proforma / Quotations (RFQ)", icon: Network },
           { to: "/procurement?tab=purchase_orders", label: "Purchase Orders (PO)", icon: Truck },
+          { to: "/procurement?tab=vendor_bills", label: "Purchase Invoices & Bills", icon: Receipt },
           { to: "/procurement?tab=goods_received_notes", label: "Goods Received Notes (GRN)", icon: Boxes },
-          { to: "/procurement?tab=vendor_bills", label: "Purchase Invoices & Bills", icon: CreditCard },
           { to: "/procurement?tab=purchase_returns", label: "Purchase Returns", icon: ArrowRightLeft },
         ]
       },
@@ -253,9 +253,9 @@ export const nav: NavGroup[] = [
         permission: "view:procurement",
         subItems: [
           { to: "/procurement?tab=purchase_requests", label: "Purchase Requests", icon: Package },
-          { to: "/procurement?tab=purchase_quotations", label: "Purchase Quotations (RFQ)", icon: Network },
+          { to: "/procurement?tab=purchase_quotations", label: "Proforma / Quotations (RFQ)", icon: Network },
           { to: "/procurement?tab=purchase_orders", label: "Purchase Orders", icon: Truck },
-          { to: "/procurement?tab=purchase_approvals", label: "Purchase Approvals", icon: ShieldCheck },
+          { to: "/procurement?tab=vendor_bills", label: "Purchase Invoices", icon: Receipt },
           { to: "/procurement?tab=goods_received_notes", label: "Goods Received Notes (GRN)", icon: Boxes },
           { to: "/procurement?tab=purchase_returns", label: "Purchase Returns", icon: ArrowRightLeft },
         ]

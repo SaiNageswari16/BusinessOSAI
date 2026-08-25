@@ -61,6 +61,72 @@ interface ProcurementDocumentFormProps {
   initialData?: any;
 }
 
+export const findMatchingInventoryProduct = (
+  name: string,
+  sku?: string,
+  barcode?: string,
+  hsn?: string,
+  productList: any[] = []
+): any | undefined => {
+  if (!name && !sku && !barcode) return undefined;
+  const cleanName = (name || "").toLowerCase().trim();
+  const cleanSku = (sku || "").toLowerCase().trim();
+  const cleanBarcode = (barcode || "").trim();
+
+  // 1. Exact Barcode Match
+  if (cleanBarcode) {
+    const bMatch = productList.find(p => (p.barcode || "").trim() === cleanBarcode);
+    if (bMatch) return bMatch;
+  }
+
+  // 2. Exact SKU Match
+  if (cleanSku) {
+    const sMatch = productList.find(p => (p.sku || "").toLowerCase().trim() === cleanSku);
+    if (sMatch) return sMatch;
+  }
+
+  if (!cleanName) return undefined;
+
+  // 3. Exact Name Match
+  const exactName = productList.find(p => p.name?.toLowerCase().trim() === cleanName);
+  if (exactName) return exactName;
+
+  // 4. Normalized Alphanumeric Match
+  const normName = cleanName.replace(/[^a-z0-9]/g, "");
+  if (normName.length >= 4) {
+    const normMatch = productList.find(p => {
+      const pNorm = (p.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return pNorm === normName;
+    });
+    if (normMatch) return normMatch;
+  }
+
+  // 5. Significant Token Overlap (e.g. AP APEX AB2 1 LT -> ASIAN PAINTS APEX AB2 1L)
+  const noise = new Set(["lt", "ltr", "litre", "litres", "kg", "kgs", "gm", "gms", "ml", "no", "nos", "pcs", "box", "pack"]);
+  const queryTokens = cleanName.split(/[\s\-/,()]+/).filter(t => t.length >= 2 && !noise.has(t));
+  if (queryTokens.length >= 2) {
+    let bestMatch: any = null;
+    let bestScore = 0;
+    for (const p of productList) {
+      const pTokens = (p.name || "").toLowerCase().split(/[\s\-/,()]+/).filter((t: string) => t.length >= 2);
+      let matchCount = 0;
+      for (const q of queryTokens) {
+        if (pTokens.some((pt: string) => pt === q || pt.includes(q) || q.includes(pt))) {
+          matchCount++;
+        }
+      }
+      const score = matchCount / queryTokens.length;
+      if (score >= 0.65 && score > bestScore) {
+        bestScore = score;
+        bestMatch = p;
+      }
+    }
+    if (bestMatch) return bestMatch;
+  }
+
+  return undefined;
+};
+
 export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData }: ProcurementDocumentFormProps) {
     const { currency, formatCurrency } = useCurrency();
   // Master data
@@ -69,6 +135,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [activeSearchRowId, setActiveSearchRowId] = useState<string | null>(null);
 
   // Form State
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
@@ -76,9 +143,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [originalRefNo, setOriginalRefNo] = useState<string>("");
   const [docDate, setDocDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState<string>(
-    new Date(Date.now() + 86400000 * 30).toISOString().slice(0, 10)
+    new Date().toISOString().slice(0, 10)
   );
-  const [paymentTerms, setPaymentTerms] = useState<string>("30");
+  const [paymentTerms, setPaymentTerms] = useState<string>("0");
   const [barcodeInput, setBarcodeInput] = useState<string>("");
   const [notes, setNotes] = useState<string>(
     docType === "PR"
@@ -113,8 +180,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [isExtracting, setIsExtracting] = useState(false);
   const [ocrResult, setOcrResult] = useState<any>(null);
   const [selectedOcrInvoiceIdx, setSelectedOcrInvoiceIdx] = useState<number>(0);
-  // PO status update state (only relevant for docType === "PO" when editing)
-  const [currentPoStatus, setCurrentPoStatus] = useState<string>("Draft");
+  // PO / PINV status update state
+  const [currentPoStatus, setCurrentPoStatus] = useState<string>(docType === "PINV" ? "Received" : "Draft");
   // GRN received date state
   const [receivedDate, setReceivedDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
@@ -125,7 +192,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         const supps = await inventoryApi.getSuppliers().catch(() => []);
         setSuppliers(supps || []);
 
-        const prods = await inventoryApi.getProducts().catch(() => ({ items: [] }));
+        const prods = await inventoryApi.getProducts({ page_size: 5000 }).catch(() => ({ items: [] }));
         setProducts(prods.items || []);
 
         const prs = await inventoryApi.getPurchaseRequests().catch(() => []);
@@ -146,10 +213,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           if (initialData.items && initialData.items.length > 0) {
             setItems(initialData.items.map((it: any, idx: number) => {
               const pName = it.product_name || it.name || "";
-              const foundProd = (prods.items || []).find((p: any) => 
-                (it.product_id && p.id === it.product_id) || 
-                (pName && p.name?.toLowerCase().trim() === pName.toLowerCase().trim())
-              );
+              const foundProd = (it.product_id ? (prods.items || []).find((p: any) => p.id === it.product_id) : undefined) ||
+                findMatchingInventoryProduct(pName, it.sku, it.barcode, it.hsn_code, prods.items || []);
               const price = Number(it.unit_price || it.estimated_unit_cost || it.cost_price || it.mrp || it.selling_price || it.price) 
                 || (foundProd ? (Number((foundProd as any).cost_price) || Number((foundProd as any).selling_price) || Number(foundProd.mrp) || Number((foundProd as any).wholesale_price) || 0) : 0);
               const mrpVal = Number(it.mrp) || (foundProd ? Number(foundProd.mrp) : 0) || price;
@@ -452,17 +517,31 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           toast.success(`Purchase Order ${docNumber} created as ${currentPoStatus || "Draft"}!`);
         }
       } else {
-        // PINV: Purchase Invoice / Vendor Bill — FIX: use linkedPoId instead of products[0]?.id
-        if (!linkedPoId) {
-          return toast.error("Please select a linked Purchase Order for this vendor bill.");
+        // PINV: Purchase Invoice / Vendor Bill
+        let poIdToUse = linkedPoId;
+        if (!poIdToUse) {
+          const createdPo = await inventoryApi.createPurchaseOrder({
+            po_number: `PO-${docNumber.replace(/^PINV-/, '')}`,
+            supplier_id: selectedSupplierId,
+            delivery_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+            status: currentPoStatus || "Received",
+            items: items.map((it) => ({
+              product_id: it.product_id || products[0]?.id,
+              quantity: Number(it.quantity),
+              unit_price: Number(it.unit_price),
+              tax_percent: Number(it.tax_rate),
+            })),
+          });
+          poIdToUse = createdPo.id;
         }
+
         await inventoryApi.createVendorBill({
           bill_number: docNumber,
-          purchase_order_id: linkedPoId,
+          purchase_order_id: poIdToUse,
           total_amount: roundedTotal,
           due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
         });
-        toast.success(`Purchase Invoice ${docNumber} recorded successfully!`);
+        toast.success(`Purchase Invoice ${docNumber} recorded successfully (Status: ${currentPoStatus || "Received"})!`);
       }
 
       if (onSaved) onSaved();
@@ -506,16 +585,16 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     if (data.items && data.items.length > 0) {
       setItems(data.items.map((it: any) => {
         const pName = it.product_name || "Extracted Item";
-        const foundProd = products.find((p) => p.name?.toLowerCase().trim() === pName.toLowerCase().trim());
+        const foundProd = findMatchingInventoryProduct(pName, it.sku, it.barcode, it.hsn_code, products);
         // Default to tax-exclusive base rate so financial totals tally to 100% precision
-        const unitPrice = Number(it.unit_price) || Number(it.tax_exclusive_rate) || (foundProd ? Number(foundProd.cost_price || foundProd.selling_price || 0) : 0);
-        const grossPrice = Number(it.tax_inclusive_rate) || Number(it.rate) || unitPrice;
+        const unitPrice = Number(it.unit_price) || Number(it.tax_exclusive_rate) || (foundProd ? Number((foundProd as any).cost_price || (foundProd as any).purchase_price || foundProd.selling_price || 0) : 0);
+        const grossPrice = Number(it.tax_inclusive_rate) || Number(it.rate) || (foundProd ? Number(foundProd.mrp) : 0) || unitPrice;
         return {
           id: Math.random().toString(36).substring(2, 9),
           product_id: foundProd?.id,
-          product_name: pName,
+          product_name: foundProd ? foundProd.name : pName,
           hsn_code: it.hsn_code || foundProd?.hsn_code || "32091090",
-          uom: it.uom || "Nos",
+          uom: it.uom || (foundProd as any)?.uom_name || "Nos",
           batch_number: it.batch_number || `B-${Math.floor(100 + Math.random() * 900)}`,
           mrp: grossPrice,
           quantity: Number(it.quantity) || 1,
@@ -530,6 +609,28 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     }
     if (data.notes) {
       setNotes(data.notes);
+    }
+  };
+
+  const handleQuickAddLineToInventory = async (item: ProcurementItem) => {
+    if (!item.product_name || !item.product_name.trim()) {
+      return toast.error("Please enter a product name first");
+    }
+    try {
+      const created = await inventoryApi.createProduct({
+        name: item.product_name.trim(),
+        hsn_code: item.hsn_code || "32091090",
+        purchase_price: Number(item.unit_price) || 0,
+        mrp: Number(item.mrp) || Number(item.unit_price) || 0,
+        selling_price: Number(item.mrp) || Number(item.unit_price) || 0,
+        tax_percent: Number(item.tax_rate) || 18,
+        status: "active"
+      });
+      setProducts(prev => [created, ...prev]);
+      updateItem(item.id, "product_id", created.id);
+      toast.success(`"${created.name}" created in inventory and linked!`);
+    } catch (err: any) {
+      toast.error("Failed to add product to inventory: " + (err.detail || err.message || "Unknown error"));
     }
   };
 
@@ -760,7 +861,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             <ScanLine className="w-4 h-4 text-indigo-600" />
           </div>
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-            Upload Document for {docType === "PO" ? "Purchase Order" : "GRN"} ({docType === "PO" ? "PO" : "Goods Received Note"})
+            Upload Document for {docType === "PO" ? "Purchase Order (PO)" : docType === "PINV" ? "Purchase Invoice (Tax Invoice / Bill)" : "Goods Received Note (GRN)"}
           </h2>
           <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
             OCR Auto-Extract
@@ -1207,35 +1308,74 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-3 py-2 text-center font-bold text-slate-400">{idx + 1}</td>
 
-                      {/* Product Selector with Autocomplete Search */}
-                      <td className="px-3 py-2 relative">
-                        <select
-                          value={item.product_id || ""}
-                          onChange={(e) => updateItem(item.id, "product_id", e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value="">-- Catalog Product / Search Below --</option>
-                          {products.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.sku || p.barcode || "Item"})
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          placeholder="Search or type item name..."
-                          value={item.product_name}
-                          onChange={(e) => {
-                            updateItem(item.id, "product_name", e.target.value);
-                            const matching = products.find(
-                              (p) => p.name.toLowerCase() === e.target.value.toLowerCase()
+                      {/* Product Selector / Smart Inventory Mapping */}
+                      <td className="px-3 py-2 min-w-[260px]">
+                        {item.product_id ? (
+                          (() => {
+                            const linkedProd = products.find((p) => p.id === item.product_id);
+                            return (
+                              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2 flex items-center justify-between gap-2 shadow-2xs">
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-bold text-slate-900 truncate flex items-center gap-1.5">
+                                    <Package className="size-3.5 text-emerald-600 shrink-0" />
+                                    <span className="truncate">{item.product_name || linkedProd?.name}</span>
+                                  </div>
+                                  <div className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1 mt-0.5">
+                                    <CheckCircle className="size-3 text-emerald-600 shrink-0" />
+                                    <span>Linked to Inventory</span>
+                                    {linkedProd?.sku && (
+                                      <span className="font-mono text-slate-500 font-normal">
+                                        ({linkedProd.sku})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => updateItem(item.id, "product_id", undefined)}
+                                  className="text-[10px] text-slate-400 hover:text-rose-600 font-semibold px-1.5 py-0.5 rounded hover:bg-white/60 transition-colors shrink-0 cursor-pointer"
+                                  title="Unlink from this inventory product"
+                                >
+                                  Change
+                                </button>
+                              </div>
                             );
-                            if (matching) {
-                              updateItem(item.id, "product_id", matching.id);
-                            }
-                          }}
-                          className="w-full mt-1 bg-transparent text-[11px] font-semibold text-slate-700 outline-none border-b border-dashed border-slate-300 focus:border-blue-500"
-                        />
+                          })()
+                        ) : (
+                          <div className="space-y-1.5">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="Type item name or search catalog..."
+                                value={item.product_name}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  updateItem(item.id, "product_name", val);
+                                  const match = findMatchingInventoryProduct(val, undefined, undefined, item.hsn_code, products);
+                                  if (match) {
+                                    updateItem(item.id, "product_id", match.id);
+                                    if (match.hsn_code && !item.hsn_code) updateItem(item.id, "hsn_code", match.hsn_code);
+                                  }
+                                }}
+                                className="w-full bg-white border border-slate-300 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-400"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-1 px-0.5">
+                              <span className="text-[10px] text-amber-600 font-semibold flex items-center gap-1">
+                                <AlertCircle className="size-3 text-amber-500 shrink-0" />
+                                Not in Inventory
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleQuickAddLineToInventory(item)}
+                                className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-2 py-0.5 rounded flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
+                                title="Add this item to inventory immediately"
+                              >
+                                <Plus className="size-2.5" /> Add to Inventory
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* HSN */}
@@ -1511,7 +1651,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             Cancel
           </button>
 
-          {docType === "PO" && (
+          {(docType === "PO" || docType === "PINV") && (
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-500">Status:</span>
               <select
@@ -1519,12 +1659,24 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 onChange={(e) => setCurrentPoStatus(e.target.value)}
                 className="h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
               >
-                <option value="Draft">Draft PO</option>
-                <option value="Sent">Sent / Issued</option>
-                <option value="Partially Received">Partially Received</option>
-                <option value="Fully Received">Fully Received</option>
-                <option value="Billed">Billed / Closed</option>
-                <option value="Cancelled">Cancelled</option>
+                {docType === "PINV" ? (
+                  <>
+                    <option value="Received">Received / Full Delivery</option>
+                    <option value="Partially Received">Partially Received</option>
+                    <option value="Paid">Paid / Settled</option>
+                    <option value="Pending Payment">Pending Payment</option>
+                    <option value="Draft">Draft Invoice</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="Draft">Draft PO</option>
+                    <option value="Sent">Sent / Issued</option>
+                    <option value="Partially Received">Partially Received</option>
+                    <option value="Fully Received">Fully Received</option>
+                    <option value="Billed">Billed / Closed</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </>
+                )}
               </select>
             </div>
           )}

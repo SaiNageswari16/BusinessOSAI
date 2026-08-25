@@ -1024,14 +1024,6 @@ export function PosInvoicesHistory() {
         </div>
       )}
 
-      {/* Full A4 Printable Invoice Modal */}
-      <FullInvoicePrinter
-        invoice={fullInvoiceModalData}
-        isOpen={isFullInvoiceOpen}
-        onClose={() => setIsFullInvoiceOpen(false)}
-        autoPrint={autoPrintFullInvoice}
-      />
-
       {/* Collect / Settle Payment Modal */}
       {isSettleModalOpen && settlingInvoice && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
