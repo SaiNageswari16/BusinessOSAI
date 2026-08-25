@@ -34,12 +34,15 @@ interface ProcurementItem {
   product_id?: string;
   product_name: string;
   hsn_code?: string;
+  uom?: string;
   batch_number?: string;
   expiry_date?: string;
   mfg_date?: string;
   mrp: number;
   quantity: number;
   unit_price: number;
+  tax_inclusive_rate?: number;
+  tax_exclusive_rate?: number;
   discount_value: number;
   discount_type: "percent" | "amount";
   tax_rate: number;
@@ -83,8 +86,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       : "1. Goods once supplied will be inspected against PO specifications.\n2. All disputes subject to local jurisdiction."
   );
 
-  // Line items
+  // Line items & Tax Mode
   const [items, setItems] = useState<ProcurementItem[]>([]);
+  const [isTaxInclusive, setIsTaxInclusive] = useState<boolean>(false);
 
   // Additional Charges & Rounding
   const [customCharges, setCustomCharges] = useState<AdditionalCharge[]>([]);
@@ -108,6 +112,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [ocrFile, setOcrFile] = useState<File | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const [ocrResult, setOcrResult] = useState<any>(null);
+  const [selectedOcrInvoiceIdx, setSelectedOcrInvoiceIdx] = useState<number>(0);
   // PO status update state (only relevant for docType === "PO" when editing)
   const [currentPoStatus, setCurrentPoStatus] = useState<string>("Draft");
   // GRN received date state
@@ -368,21 +373,31 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   let totalTax = 0;
 
   items.forEach((it) => {
-    const lineGross = it.quantity * it.unit_price;
+    const rawLine = it.quantity * it.unit_price;
     const dAmt =
       it.discount_type === "percent"
-        ? lineGross * (it.discount_value / 100)
-        : Math.min(it.discount_value, lineGross);
-    const lineTaxable = Math.max(0, lineGross - dAmt);
-    const lineTax = lineTaxable * (it.tax_rate / 100);
+        ? rawLine * (it.discount_value / 100)
+        : Math.min(it.discount_value, rawLine);
+    const lineEffective = Math.max(0, rawLine - dAmt);
 
-    subtotal += lineGross;
-    totalTax += lineTax;
+    if (isTaxInclusive) {
+      // Rates already include tax (Gross Pricing Mode)
+      const lineTaxable = lineEffective / (1 + (it.tax_rate || 0) / 100);
+      const lineTax = lineEffective - lineTaxable;
+      subtotal += lineTaxable;
+      totalTax += lineTax;
+    } else {
+      // Rates exclude tax (Base Pricing Mode)
+      const lineTaxable = lineEffective;
+      const lineTax = lineTaxable * ((it.tax_rate || 0) / 100);
+      subtotal += lineTaxable;
+      totalTax += lineTax;
+    }
   });
 
   const additionalChargesTotal = customCharges.reduce((acc, c) => acc + c.amount, 0);
   const rawTotal = subtotal + totalTax + additionalChargesTotal;
-  const roundedTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
+  const roundedTotal = autoRoundOff ? Math.round(rawTotal * 100) / 100 : rawTotal;
   const roundOffAmount = roundedTotal - rawTotal;
   const paidVal = typeof amountPaid === "number" ? amountPaid : 0;
   const balanceDue = Math.max(0, roundedTotal - paidVal);
@@ -459,6 +474,65 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     }
   };
 
+  // Helper to load a selected invoice (supports multi-page PDFs)
+  const applyOcrInvoice = (data: any) => {
+    if (!data) return;
+
+    if (data.po_number && docType === "PO") {
+      setDocNumber(data.po_number);
+    }
+    if (data.invoice_number || data.bill_number) {
+      if (docType === "PINV") setDocNumber(data.bill_number || data.invoice_number);
+      else if (docType === "PO" && !data.po_number) setDocNumber(data.invoice_number || data.bill_number);
+    }
+    if (data.supplier_name) {
+      const matchedSupplier = suppliers.find((s) =>
+        s.name.toLowerCase().includes(data.supplier_name.toLowerCase()) ||
+        data.supplier_name.toLowerCase().includes(s.name.toLowerCase())
+      );
+      if (matchedSupplier) {
+        setSelectedSupplierId(matchedSupplier.id);
+      }
+    }
+    if (data.delivery_date && docType === "PO") {
+      setDueDate(data.delivery_date);
+    }
+    if (data.due_date) {
+      setDueDate(data.due_date);
+    }
+    if (data.invoice_date) {
+      setDocDate(data.invoice_date);
+    }
+    if (data.items && data.items.length > 0) {
+      setItems(data.items.map((it: any) => {
+        const pName = it.product_name || "Extracted Item";
+        const foundProd = products.find((p) => p.name?.toLowerCase().trim() === pName.toLowerCase().trim());
+        // Default to tax-exclusive base rate so financial totals tally to 100% precision
+        const unitPrice = Number(it.unit_price) || Number(it.tax_exclusive_rate) || (foundProd ? Number(foundProd.cost_price || foundProd.selling_price || 0) : 0);
+        const grossPrice = Number(it.tax_inclusive_rate) || Number(it.rate) || unitPrice;
+        return {
+          id: Math.random().toString(36).substring(2, 9),
+          product_id: foundProd?.id,
+          product_name: pName,
+          hsn_code: it.hsn_code || foundProd?.hsn_code || "32091090",
+          uom: it.uom || "Nos",
+          batch_number: it.batch_number || `B-${Math.floor(100 + Math.random() * 900)}`,
+          mrp: grossPrice,
+          quantity: Number(it.quantity) || 1,
+          unit_price: unitPrice,
+          tax_inclusive_rate: Number(it.tax_inclusive_rate) || grossPrice,
+          tax_exclusive_rate: Number(it.tax_exclusive_rate) || unitPrice,
+          discount_value: 0,
+          discount_type: "percent",
+          tax_rate: Number(it.tax_percent) || foundProd?.tax_percent || 18,
+        };
+      }));
+    }
+    if (data.notes) {
+      setNotes(data.notes);
+    }
+  };
+
   // OCR Extraction Handlers
   const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -467,6 +541,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     setOcrFile(file);
     setIsExtracting(true);
     setOcrResult(null);
+    setSelectedOcrInvoiceIdx(0);
 
     try {
       let data: any = null;
@@ -481,50 +556,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       setOcrResult(data);
       toast.success(data.extracted ? "Document data extracted successfully via AI OCR!" : "Could not extract structured data. Please fill manually.");
 
-      // Auto-fill form fields from OCR result
-      if (data.extracted && data.po_number && docType === "PO") {
-        setDocNumber(data.po_number);
-      }
-      if (data.extracted && data.bill_number && docType === "PINV") {
-        setDocNumber(data.bill_number);
-      }
-      if (data.extracted && data.supplier_name) {
-        const matchedSupplier = suppliers.find((s) =>
-          s.name.toLowerCase().includes(data.supplier_name.toLowerCase()) ||
-          data.supplier_name.toLowerCase().includes(s.name.toLowerCase())
-        );
-        if (matchedSupplier) {
-          setSelectedSupplierId(matchedSupplier.id);
-        }
-      }
-      if (data.extracted && data.delivery_date && docType === "PO") {
-        setDueDate(data.delivery_date);
-      }
-      if (data.extracted && data.due_date && docType === "PINV") {
-        setDueDate(data.due_date);
-      }
-      if (data.extracted && data.items && data.items.length > 0) {
-        setItems(data.items.map((it: any) => {
-          const pName = it.product_name || "Extracted Item";
-          const foundProd = products.find((p) => p.name?.toLowerCase().trim() === pName.toLowerCase().trim());
-          return {
-            id: Math.random().toString(36).substring(2, 9),
-            product_id: foundProd?.id,
-            product_name: pName,
-            hsn_code: it.hsn_code || foundProd?.hsn_code || "2202",
-            batch_number: it.batch_number || `B-${Math.floor(100 + Math.random() * 900)}`,
-            mrp: it.unit_price || foundProd?.mrp || 0,
-            quantity: Number(it.quantity) || 1,
-            unit_price: Number(it.unit_price) || (foundProd ? Number(foundProd.cost_price || foundProd.selling_price || 0) : 0),
-            discount_value: 0,
-            discount_type: "percent",
-            tax_rate: Number(it.tax_percent) || foundProd?.tax_percent || 18,
-          };
-        }));
-      }
-      if (data.extracted && data.notes) {
-        setNotes(data.notes);
-      }
+      // Auto-fill form fields from OCR result (primary invoice or root)
+      const primary = (data.invoices && data.invoices.length > 0) ? data.invoices[0] : data;
+      applyOcrInvoice(primary);
     } catch (err: any) {
       toast.error(err.message || "Failed to extract document data");
     } finally {
@@ -536,6 +570,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const handleClearOcr = () => {
     setOcrFile(null);
     setOcrResult(null);
+    setSelectedOcrInvoiceIdx(0);
   };
 
   // PO Status Update Handler
@@ -790,40 +825,104 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           </div>
         </div>
 
-        {/* OCR Result Preview */}
+        {/* OCR Result Preview & Multi-Invoice Picker */}
         {ocrResult && ocrResult.extracted && (
-          <div className="mt-4 bg-slate-50 rounded-xl border border-slate-200 p-4">
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2">Extracted Data Preview</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              {ocrResult.po_number && (
-                <div><span className="text-slate-400 text-[10px]">PO Number:</span>
-                <p className="font-bold text-slate-800">{ocrResult.po_number}</p></div>
-              )}
-              {ocrResult.supplier_name && (
-                <div><span className="text-slate-400 text-[10px]">Supplier:</span>
-                <p className="font-bold text-slate-800">{ocrResult.supplier_name}</p></div>
-              )}
-              {ocrResult.delivery_date && (
-                <div><span className="text-slate-400 text-[10px]">Delivery Date:</span>
-                <p className="font-bold text-slate-800">{ocrResult.delivery_date}</p></div>
-              )}
-              {ocrResult.received_date && (
-                <div><span className="text-slate-400 text-[10px]">Received Date:</span>
-                <p className="font-bold text-slate-800">{ocrResult.received_date}</p></div>
-              )}
-              {ocrResult.items && (
-                <div className="col-span-2 sm:col-span-4">
-                  <span className="text-slate-400 text-[10px]">Items ({ocrResult.items.length}):</span>
-                  <ul className="mt-0.5 list-disc list-inside text-slate-700">
-                    {ocrResult.items.map((item: any, i: number) => (
-                      <li key={i} className="text-[11px]">
-                        {item.product_name || "Item"} — Qty: {item.quantity} × ₹{item.unit_price || 0}
-                        {item.tax_percent ? ` (GST ${item.tax_percent}%)` : ""}
-                      </li>
-                    ))}
-                  </ul>
+          <div className="mt-4 space-y-3">
+            {/* Multi-Invoice Selector if document has multiple invoices / pages */}
+            {ocrResult.invoices && ocrResult.invoices.length > 1 && (
+              <div className="p-4 bg-indigo-50/90 border border-indigo-200 rounded-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span className="text-xs font-black text-indigo-900 uppercase tracking-wider">
+                      {ocrResult.invoices.length} Invoices Detected in Document
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-indigo-700 font-semibold bg-indigo-100 px-2 py-0.5 rounded-full self-start sm:self-auto">
+                    Click to load specific invoice & line items
+                  </span>
                 </div>
-              )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {ocrResult.invoices.map((inv: any, i: number) => {
+                    const isSelected = selectedOcrInvoiceIdx === i;
+                    const invNo = inv.invoice_number || inv.po_number || `Page ${inv.page_number || i + 1}`;
+                    const invTotal = inv.grand_total || inv.total_amount || 0;
+                    const itemCount = inv.items?.length || 0;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOcrInvoiceIdx(i);
+                          applyOcrInvoice(inv);
+                          toast.success(`Loaded Invoice #${invNo} (${itemCount} items)`);
+                        }}
+                        className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between ${
+                          isSelected
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-400"
+                            : "bg-white text-slate-800 border-slate-200 hover:border-indigo-300 hover:bg-slate-50 shadow-xs"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs font-bold ${isSelected ? "text-white" : "text-slate-900"}`}>
+                            Invoice #{invNo}
+                          </span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                            isSelected ? "bg-indigo-700 text-indigo-100" : "bg-indigo-50 text-indigo-700"
+                          }`}>
+                            {itemCount} Items
+                          </span>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between text-xs">
+                          <span className={isSelected ? "text-indigo-200" : "text-slate-400"}>Total:</span>
+                          <span className={`font-black text-sm ${isSelected ? "text-white" : "text-emerald-600"}`}>
+                            ₹{Number(invTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Extracted Document Summary {ocrResult.invoices && ocrResult.invoices.length > 1 ? `(Viewing Invoice #${ocrResult.invoices[selectedOcrInvoiceIdx]?.invoice_number || selectedOcrInvoiceIdx + 1})` : ""}
+                </p>
+                {ocrResult.is_tax_inclusive && (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                    Tax-Inclusive Invoice Detected
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                {(ocrResult.po_number || ocrResult.invoice_number) && (
+                  <div>
+                    <span className="text-slate-400 text-[10px]">Doc Number:</span>
+                    <p className="font-bold text-slate-800">{ocrResult.po_number || ocrResult.invoice_number}</p>
+                  </div>
+                )}
+                {ocrResult.supplier_name && (
+                  <div>
+                    <span className="text-slate-400 text-[10px]">Supplier:</span>
+                    <p className="font-bold text-slate-800 truncate" title={ocrResult.supplier_name}>{ocrResult.supplier_name}</p>
+                  </div>
+                )}
+                {ocrResult.supplier_gstin && (
+                  <div>
+                    <span className="text-slate-400 text-[10px]">Supplier GSTIN:</span>
+                    <p className="font-mono font-bold text-blue-700">{ocrResult.supplier_gstin}</p>
+                  </div>
+                )}
+                {(ocrResult.grand_total || ocrResult.total_amount) && (
+                  <div>
+                    <span className="text-slate-400 text-[10px]">Invoice Total:</span>
+                    <p className="font-black text-emerald-600">₹{Number(ocrResult.grand_total || ocrResult.total_amount).toFixed(2)}</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1014,9 +1113,37 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       {/* Main Line Items Table Component (MyBillBook / POS Style) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-            <Package className="w-4 h-4 text-emerald-600" /> Line Items & Required Materials ({items.length})
-          </h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+              <Package className="w-4 h-4 text-emerald-600" /> Line Items & Required Materials ({items.length})
+            </h2>
+
+            {/* Tax Mode Switch */}
+            <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg border border-slate-300">
+              <button
+                type="button"
+                onClick={() => setIsTaxInclusive(false)}
+                className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${
+                  !isTaxInclusive
+                    ? "bg-white text-blue-700 shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Tax-Exclusive (+GST)
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsTaxInclusive(true)}
+                className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${
+                  isTaxInclusive
+                    ? "bg-white text-blue-700 shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Tax-Inclusive (Gross)
+              </button>
+            </div>
+          </div>
 
           {/* Barcode Search Box */}
           <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-sm w-full md:w-80 focus-within:ring-2 focus-within:ring-blue-500">
@@ -1044,7 +1171,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 <th className="px-3 py-3 w-20 text-right">MRP ({currency.symbol})</th>
                 <th className="px-3 py-3 w-20 text-right">Qty</th>
                 <th className="px-3 py-3 w-24 text-right">
-                  {docType === "PR" ? "Est. Price (₹)" : "Price/Item (₹)"}
+                  {docType === "PR" ? "Est. Price (₹)" : isTaxInclusive ? "Gross Rate (₹)" : "Price/Item (₹)"}
                 </th>
                 <th className="px-3 py-3 w-24 text-right">Discount</th>
                 <th className="px-3 py-3 w-24 text-right">GST Tax %</th>
@@ -1055,14 +1182,26 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             <tbody className="divide-y divide-slate-100">
               {items.length > 0 ? (
                 items.map((item, idx) => {
-                  const lineGross = item.quantity * item.unit_price;
+                  const rawLine = item.quantity * item.unit_price;
                   const dAmt =
                     item.discount_type === "percent"
-                      ? lineGross * (item.discount_value / 100)
-                      : Math.min(item.discount_value, lineGross);
-                  const lineTaxable = Math.max(0, lineGross - dAmt);
-                  const lineTax = lineTaxable * (item.tax_rate / 100);
-                  const lineAmount = lineTaxable + lineTax;
+                      ? rawLine * (item.discount_value / 100)
+                      : Math.min(item.discount_value, rawLine);
+                  const lineEffective = Math.max(0, rawLine - dAmt);
+
+                  let lineTaxable = 0;
+                  let lineTax = 0;
+                  let lineAmount = 0;
+
+                  if (isTaxInclusive) {
+                    lineAmount = lineEffective;
+                    lineTaxable = lineAmount / (1 + (item.tax_rate || 0) / 100);
+                    lineTax = lineAmount - lineTaxable;
+                  } else {
+                    lineTaxable = lineEffective;
+                    lineTax = lineTaxable * ((item.tax_rate || 0) / 100);
+                    lineAmount = lineTaxable + lineTax;
+                  }
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
@@ -1201,6 +1340,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                       {/* Line Amount */}
                       <td className="px-3 py-2 text-right font-black text-slate-900 text-xs">
                         {currency.symbol}{lineAmount.toFixed(2)}
+                        <div className="text-[10px] text-slate-400 font-normal">
+                          Tax: {currency.symbol}{lineTax.toFixed(2)}
+                        </div>
                       </td>
 
                       {/* Action */}
@@ -1262,8 +1404,15 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           </h2>
 
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between text-slate-600">
-              <span>Gross Subtotal Amount:</span>
+            <div className="flex justify-between items-center text-slate-600">
+              <div className="flex items-center gap-1.5">
+                <span>Subtotal (Taxable Value):</span>
+                {isTaxInclusive && (
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                    Tax-Inclusive
+                  </span>
+                )}
+              </div>
               <span className="font-bold text-slate-800">{currency.symbol}{subtotal.toFixed(2)}</span>
             </div>
 

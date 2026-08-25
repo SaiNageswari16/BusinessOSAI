@@ -2,7 +2,7 @@ import {
   Activity, AlertTriangle, Archive, AreaChart, ArrowDownToLine, ArrowRightLeft, Banknote, BarChart3, Barcode, Blocks,
   BookOpen, Boxes, BrainCircuit, Briefcase, BriefcaseBusiness, Building, Building2, Calculator, Calendar, CalendarClock,
   CalendarRange, CalendarX, ChartPie, ChartSpline, CircleDollarSign, ClipboardCheck, ClipboardList, Clock, Cog, Columns,
-  Combine, Compass, Component, Contact, CreditCard, Crosshair, Crown, Database, DoorOpen, Factory, FileCheck,
+  Combine, Compass, Component, Contact, CreditCard, Crosshair, Database, DoorOpen, Factory, FileCheck,
   FileText, Fingerprint, FlaskConical, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
   Heart, HeartHandshake, History, Image, Inbox, Laptop, Layers, LayoutDashboard, LibraryBig, LineChart,
   ListChecks, Lock, Map, MapPin, Megaphone, MessageSquare, MessagesSquare, Microscope, Monitor, Navigation,
@@ -58,7 +58,7 @@ export const nav: NavGroup[] = [
       {
         to: "/erp?tab=fiscal_years",
         label: "Financial Configuration",
-        icon: FileText,
+        icon: CreditCard,
         subItems: [
           { to: "/erp?tab=fiscal_years", label: "Fiscal Years", icon: Calendar },
           { to: "/erp?tab=cost_centers", label: "Cost Centers", icon: CreditCard },
@@ -85,9 +85,9 @@ export const nav: NavGroup[] = [
       {
         to: "/erp?tab=approval_workflows",
         label: "Workflow Engine",
-        icon: Workflow,
+        icon: Network,
         subItems: [
-          { to: "/erp?tab=approval_workflows", label: "Approval Workflows", icon: Workflow },
+          { to: "/erp?tab=approval_workflows", label: "Approval Workflows", icon: Network },
           { to: "/erp?tab=notification_templates", label: "Notification Templates", icon: Radio },
           { to: "/erp?tab=document_templates", label: "Document Templates", icon: Briefcase },
           { to: "/erp?tab=custom_fields", label: "Custom Fields", icon: Target },
@@ -97,7 +97,7 @@ export const nav: NavGroup[] = [
       {
         to: "/erp?tab=geography",
         label: "Master Data",
-        icon: Database,
+        icon: MapPin,
         subItems: [
           { to: "/erp?tab=geography", label: "Geography (Countries/States/Cities)", icon: MapPin },
           { to: "/erp?tab=locations", label: "Locations", icon: MapPin },
@@ -382,10 +382,12 @@ export const nav: NavGroup[] = [
           { to: "/marketplace?tab=vendors", label: "Vendors", icon: Store },
           { to: "/marketplace?tab=vendor_categories", label: "Vendor Categories", icon: FolderTree },
           { to: "/marketplace?tab=vendor_contracts", label: "Vendor Contracts", icon: FileCheck },
-          { to: "/marketplace?tab=vendor_wallet", label: "Wallet & Payouts", icon: CreditCard },
+          { to: "/marketplace?tab=vendor_wallet", label: "Vendor Wallet", icon: CreditCard },
+          { to: "/marketplace?tab=vendor_payouts", label: "Vendor Payouts", icon: Clock },
           { to: "/marketplace?tab=vendor_ratings", label: "Vendor Ratings", icon: Target },
           { to: "/marketplace?tab=vendor_performance", label: "Vendor Performance", icon: Activity },
-          { to: "/marketplace?tab=vendor_kyc", label: "KYC & Approvals", icon: ShieldCheck },
+          { to: "/marketplace?tab=vendor_kyc", label: "Vendor KYC", icon: ShieldCheck },
+          { to: "/marketplace?tab=vendor_approvals", label: "Vendor Approvals", icon: ShieldCheck },
         ]
       },
       {

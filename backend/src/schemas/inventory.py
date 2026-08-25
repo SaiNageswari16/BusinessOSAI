@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional, List, Any
 from datetime import datetime, date
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 # --- Enums from models ---
 from src.models import EntityStatus
@@ -21,6 +21,18 @@ class ProductCategoryBase(BaseModel):
     description: Optional[str] = None
     parent_id: Optional[uuid.UUID] = None
     status: Optional[str] = "active"
+
+    @field_validator("parent_id", mode="before")
+    @classmethod
+    def parse_parent_id(cls, v):
+        if not v or v == "" or str(v).lower() == "null" or str(v).lower() == "none":
+            return None
+        if isinstance(v, str):
+            try:
+                return uuid.UUID(v)
+            except Exception:
+                return None
+        return v
 
 
 class BrandBase(BaseModel):
@@ -45,7 +57,7 @@ class UnitOfMeasureBase(BaseModel):
 
 class ProductBase(BaseModel):
     name: str = Field(..., max_length=255)
-    sku: str = Field(..., max_length=100)
+    sku: Optional[str] = Field(None, max_length=100)
     barcode: Optional[str] = Field(None, max_length=100)
     
     category_id: Optional[uuid.UUID] = None
@@ -78,6 +90,38 @@ class ProductBase(BaseModel):
     warehouse: Optional[str] = Field(None, max_length=150)
     
     status: Optional[str] = "active"
+
+    @field_validator("category_id", "brand_id", "uom_id", mode="before")
+    @classmethod
+    def parse_optional_uuid(cls, v):
+        if not v or v == "" or str(v).lower() == "null" or str(v).lower() == "none":
+            return None
+        if isinstance(v, str):
+            try:
+                return uuid.UUID(v)
+            except Exception:
+                return None
+        return v
+
+    @field_validator("purchase_price", "mrp", "selling_price", "wholesale_price", "b2b_price", "tax_percent", "discount_limit", mode="before")
+    @classmethod
+    def parse_optional_float(cls, v):
+        if v is None or v == "":
+            return 0.0
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 0.0
+
+    @field_validator("initial_stock", "reorder_level", "safety_stock", "min_wholesale_qty", "min_b2b_qty", mode="before")
+    @classmethod
+    def parse_optional_int(cls, v):
+        if v is None or v == "":
+            return 0
+        try:
+            return int(float(v))
+        except (ValueError, TypeError):
+            return 0
 
 
 # ==========================================

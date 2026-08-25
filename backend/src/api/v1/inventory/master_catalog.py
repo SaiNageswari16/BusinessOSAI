@@ -1056,6 +1056,10 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
     Returning ``None`` is deliberate: callers must not persist an unverified
     remote URL as a product image.
     """
+    from src.utils.ai_image_control import is_ai_image_search_paused
+    if is_ai_image_search_paused():
+        return None
+
     if not image_url:
         return None
     if image_url.startswith("/images/"):
@@ -1063,6 +1067,22 @@ def _download_and_cache_product_image(image_url: str, barcode: str = None) -> Op
     parsed = urllib.parse.urlparse(image_url.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         logger.warning("Rejected invalid product image URL: %r", image_url)
+        return None
+
+    # Strict Whitelist: Only permit verified commercial e-commerce CDNs (Amazon, BigBasket, Blinkit, JioMart, Flipkart, OpenFoodFacts)
+    TRUSTED_PRODUCT_DOMAINS = (
+        "media-amazon.com", "images-amazon.com", "ssl-images-amazon.com",
+        "bbassets.com", "bigbasket.com",
+        "blinkit.com", "grofers.com",
+        "jiomart.com", "relianceretail.com",
+        "flipkart.com", "flixcart.com",
+        "openfoodfacts.org", "openfoodfacts.net",
+        "zeptonow.com", "swiggy.com",
+        "encrypted-tbn0.gstatic.com", "gstatic.com"
+    )
+    domain = (parsed.netloc or "").lower()
+    if not any(domain.endswith(t) or t in domain for t in TRUSTED_PRODUCT_DOMAINS):
+        logger.warning("Rejected non-whitelisted image domain: %s (only trusted e-commerce retail CDNs allowed)", domain)
         return None
 
     try:
@@ -1577,6 +1597,10 @@ def _google_image_search_for_product(barcode: str, product_name: str = "") -> st
     """Fetch a product image URL from Google Images scraping or DuckDuckGo.
     Returns a raw image URL (not yet cached — callers must pass through _download_and_cache_product_image).
     """
+    from src.utils.ai_image_control import is_ai_image_search_paused
+    if is_ai_image_search_paused():
+        return ""
+
     query = f"{product_name} {barcode}".strip() if product_name else barcode
     # Try DuckDuckGo Image API (fast, no key needed)
     try:
@@ -1756,24 +1780,35 @@ async def _perform_ai_rag_web_search(query_str: str, provider: str = "gemini") -
         identity = consensus["identity"]
 
         if not identity:
-            # 1. Always prioritize Gemini with Live Google Search Grounding for barcode lookups
-            if _is_valid_key(settings.gemini_api_key):
+            # 1. If active provider is Claude, prioritize Claude web search
+            if active_provider == "claude" and _is_valid_key(settings.anthropic_api_key):
+                try:
+                    identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
+                    if identity:
+                        logger.info("Resolved barcode %s through Claude Web Search", query)
+                except Exception as c_ex:
+                    logger.warning("[RAG] Claude search error for %s: %s", query, c_ex)
+
+            # 2. If not resolved and Gemini key exists, try Gemini with Google Search Grounding
+            if not identity and _is_valid_key(settings.gemini_api_key):
                 try:
                     legacy_results = await _deprecated_perform_ai_rag_web_search(query, provider="gemini")
                     if legacy_results:
                         logger.info("Resolved barcode %s through Gemini Google Search grounding", query)
                         return legacy_results
                 except Exception as g_ex:
-                    logger.warning("[RAG Fallback] Gemini grounding failed for %s: %s", query, g_ex)
+                    logger.warning("[RAG Fallback] Gemini grounding failed for %s (Quota/Rate limit or error): %s", query, g_ex)
 
-            # 2. Fallback: Claude web search
+            # 3. Fallback: Claude web search if Gemini hit 429 or failed
             if not identity and _is_valid_key(settings.anthropic_api_key):
                 try:
                     identity = await asyncio.to_thread(_resolve_barcode_with_claude_web_search, query)
+                    if identity:
+                        logger.info("Resolved barcode %s through fallback Claude Web Search", query)
                 except Exception as c_ex:
                     logger.warning("[RAG Fallback] Claude search error for %s: %s", query, c_ex)
 
-            # 3. Fallback: Gemini direct scraper
+            # 4. Fallback: Gemini direct scraper
             if not identity and _is_valid_key(settings.gemini_api_key):
                 try:
                     identity = await asyncio.to_thread(_resolve_barcode_with_gemini_web_search, query)
@@ -2054,17 +2089,16 @@ async def search_master_catalog(
     # 3. Trigger AI Web RAG Search only if:
     # - Local DB search and fast barcode lookup returned NO matches
     # - AND search_web is requested and active AI key is configured
-    # - AND global AI enrichment is NOT paused
-    import os
-    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
-    ai_paused = os.path.exists(pause_file)
-
+    from src.utils.ai_image_control import is_ai_image_search_paused
     should_search_web = search_web or is_barcode_query
 
-    if not results and should_search_web and not ai_paused and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):
+    if not results and should_search_web and (settings.gemini_api_key or settings.openai_api_key or settings.anthropic_api_key):
         try:
             ai_items = await _perform_ai_rag_web_search(clean_query, provider=effective_provider)
+            # If AI image search is paused, clear external image URLs so clean placeholders/local uploads are used
+            if is_ai_image_search_paused():
+                for it in ai_items:
+                    it.image_url = None
             results.extend(ai_items)
         except Exception as e:
             logger.error("AI web search error for %s: %s", clean_query, e)
@@ -2391,29 +2425,35 @@ async def trigger_rag_enrichment(
 
 
 @router.post("/enrich/pause", status_code=status.HTTP_200_OK)
+@router.post("/ai-image-search/pause", status_code=status.HTTP_200_OK)
 async def pause_rag_enrichment(
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos", "manage:system_admin"))]
 ):
-    """Pauses RAG enrichment worker by creating .rag_enricher_paused file."""
-    import os
-    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
-    with open(pause_file, "w") as f:
-        f.write("paused")
-    return {"message": "RAG Enrichment paused successfully."}
+    """Pauses RAG enrichment and AI web image scraping globally for all customers."""
+    from src.utils.ai_image_control import set_ai_image_search_paused
+    set_ai_image_search_paused(True)
+    return {"paused": True, "message": "AI Image Search & RAG Enrichment paused successfully across all workspaces."}
 
 
 @router.post("/enrich/resume", status_code=status.HTTP_200_OK)
+@router.post("/ai-image-search/resume", status_code=status.HTTP_200_OK)
 async def resume_rag_enrichment(
-    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))]
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos", "manage:system_admin"))]
 ):
-    """Resumes RAG enrichment worker by removing .rag_enricher_paused file."""
-    import os
-    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
-    if os.path.exists(pause_file):
-        os.remove(pause_file)
-    return {"message": "RAG Enrichment resumed successfully."}
+    """Resumes RAG enrichment and AI web image scraping globally."""
+    from src.utils.ai_image_control import set_ai_image_search_paused
+    set_ai_image_search_paused(False)
+    return {"paused": False, "message": "AI Image Search & RAG Enrichment resumed successfully."}
+
+
+@router.get("/ai-image-search/status", status_code=status.HTTP_200_OK)
+async def get_ai_image_search_status(
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos", "manage:system_admin"))]
+):
+    """Returns whether AI Image Search is currently paused."""
+    from src.utils.ai_image_control import is_ai_image_search_paused
+    paused = is_ai_image_search_paused()
+    return {"paused": paused, "status": "paused" if paused else "active"}
 
 
 @router.get("/enrich/status")
@@ -2424,11 +2464,9 @@ async def get_rag_enrichment_status(
     """Returns real-time progress statistics for the background RAG enricher pipeline."""
     from src.models.inventory import MasterCatalogProduct
     from sqlalchemy import select, func
-    import os
+    from src.utils.ai_image_control import is_ai_image_search_paused
     
-    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    pause_file = os.path.join(backend_dir, ".rag_enricher_paused")
-    is_paused = os.path.exists(pause_file)
+    is_image_paused = is_ai_image_search_paused()
     
     total_stmt = select(func.count()).select_from(MasterCatalogProduct).where(MasterCatalogProduct.barcode != None)
     pending_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
@@ -2461,8 +2499,35 @@ async def get_rag_enrichment_status(
         "processing": processing,
         "completed": completed,
         "failed": failed,
-        "paused": is_paused
+        "paused": is_image_paused,
+        "images_paused": is_image_paused,
+        "metadata_enrichment_active": True
     }
+
+
+@router.post("/admin/master-catalog/{item_id}/fetch-image")
+async def fetch_master_catalog_single_image(
+    item_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """
+    On-demand single product image fetch for Master Catalog item.
+    Fetches image on-demand even if global automated background scraping is paused.
+    """
+    from src.services.rag_enricher import _google_search_images_async
+    stmt = select(MasterCatalogProduct).where(MasterCatalogProduct.id == item_id)
+    res = await db.execute(stmt)
+    item = res.scalars().first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Master catalog item not found")
+    
+    img_url = await _google_search_images_async(item.barcode or "", item.name or "")
+    if img_url:
+        item.image_url = img_url
+        await db.commit()
+        return {"success": True, "image_url": img_url, "message": "Image fetched successfully"}
+    return {"success": False, "image_url": item.image_url, "message": "No suitable image found"}
 
 
 class AdminCatalogListResponse(BaseModel):

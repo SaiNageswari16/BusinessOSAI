@@ -372,17 +372,10 @@ export function useAuth() {
   return c;
 }
 
-export function resolvePostAuthRoute(user: AppUser, token?: TokenResponse): string {
+export function resolvePostAuthRoute(user: AppUser, token?: TokenResponse): "/change-password" | "/role-select" | "/dashboard" {
   if (user.mustChangePassword || token?.must_change_password) return "/change-password";
   if (token?.requires_role_selection || (user.roles.length > 1 && !token?.active_role_id && !user.activeRoleId)) {
     return "/role-select";
-  }
-  if (
-    user.isPlatformAdmin ||
-    user.permissions.includes("super_admin") ||
-    user.permissions.includes("manage:system_admin")
-  ) {
-    return "/erp?tab=global_users";
   }
   return "/dashboard";
 }

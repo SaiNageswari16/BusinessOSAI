@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Search, Plus, Edit2, Archive, X, Download, Filter, Columns, ChevronLeft, ChevronRight, MoreVertical, RotateCcw } from "lucide-react";
-import { inventoryApi, InventoryBrand, resolveImageUrl, downloadCsv } from "../../lib/api-client";
+import { inventoryApi, InventoryBrand, resolveImageUrl } from "../../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -156,210 +156,172 @@ export function Brands() {
 
 
 
-  const handleExport = () => {
-    if (brands.length === 0) {
-      alert("No brands to export.");
-      return;
-    }
-    const headers = ["Brand Name", "Category", "Manufacturer", "Status", "Description"];
-    const rows = filtered.map(b => [
-      b.name,
-      b.category || "",
-      b.manufacturer || "",
-      b.status || "active",
-      b.description || ""
-    ]);
-    downloadCsv(`brands_export_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
-  };
-
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
   return (
-    <div className="space-y-5">
-      {/* ── Page Header ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-3">
-            <h1 className="text-[26px] font-black text-slate-900 tracking-tight leading-none">
-              Brands
-            </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
-              {brands.length} Brands
-            </span>
-          </div>
-          <p className="text-[13px] font-medium text-slate-500 mt-1.5 leading-normal">
-            Manage product brands, manufacturers, distributors, and associated product lines.
-          </p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Brands</h2>
+          <p className="text-sm text-muted-foreground">Manage and organize product brands and manufacturers.</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="border-slate-200">
+            <Download className="size-4 mr-2" /> Import Brands
+          </Button>
           <Button 
             variant="outline" 
-            size="sm"
-            className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
-            onClick={handleExport}
+            className={`border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-opacity ${selectedIds.length === 0 ? 'opacity-50 pointer-events-none' : ''}`}
+            onClick={handleDeleteSelected}
           >
-            <Download className="size-3.5 mr-1.5 text-slate-500" /> Export
+            <Archive className="size-4 mr-2" /> Delete Selected
           </Button>
-          {selectedIds.length > 0 && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleDeleteSelected} 
-              className="h-9 text-xs font-semibold text-rose-700 hover:bg-rose-50 border-rose-200 rounded-lg shadow-2xs"
-            >
-              <Archive className="size-3.5 mr-1.5 text-rose-600" /> Delete ({selectedIds.length})
-            </Button>
-          )}
-          <Button 
-            size="sm"
-            onClick={openCreateModal} 
-            className="h-9 px-3.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="size-4 mr-1.5" /> Add Brand
+          <Button onClick={openCreateModal} className="bg-teal-600 hover:bg-teal-700 text-white border-0">
+            <Plus className="size-4 mr-2" /> Add Brand
           </Button>
         </div>
       </div>
 
-      {/* ── Search & Filters Bar ── */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-        <div className="relative flex-1 w-full max-w-md">
-          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      {/* Filters Row */}
+      <div className="flex flex-wrap gap-4 items-center bg-white p-4 rounded-xl border shadow-sm">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50/80 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 font-medium" 
-            placeholder="Search brands by name or manufacturer..." 
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-slate-50 focus:bg-white transition-colors focus:ring-1 focus:ring-teal-500 outline-none" 
+            placeholder="Search brands..." 
           />
         </div>
         
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <select 
-            value={statusFilter} 
-            onChange={e => setStatusFilter(e.target.value)} 
-            className="h-9 px-2.5 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          >
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Status</span>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="h-10 px-3 py-2 text-sm rounded-lg border bg-slate-50 outline-none focus:ring-1 focus:ring-teal-500">
             <option>All Status</option>
             <option>Active</option>
             <option>Inactive</option>
           </select>
-          
-          <select 
-            value={categoryFilter} 
-            onChange={e => setCategoryFilter(e.target.value)} 
-            className="h-9 px-2.5 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[130px]"
-          >
+        </div>
+        
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Category</span>
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="h-10 px-3 py-2 text-sm rounded-lg border bg-slate-50 outline-none focus:ring-1 focus:ring-teal-500 min-w-[150px]">
             <option>All Categories</option>
             <option>Electronics</option>
             <option>Food & Beverages</option>
             <option>Personal Care</option>
           </select>
+        </div>
 
-          <select 
-            value={manufacturerFilter} 
-            onChange={e => setManufacturerFilter(e.target.value)} 
-            className="h-9 px-2.5 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[130px]"
-          >
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Manufacturer Type</span>
+          <select value={manufacturerFilter} onChange={e => setManufacturerFilter(e.target.value)} className="h-10 px-3 py-2 text-sm rounded-lg border bg-slate-50 outline-none focus:ring-1 focus:ring-teal-500 min-w-[150px]">
             <option>All Types</option>
             <option>Manufacturer</option>
             <option>Distributor</option>
           </select>
         </div>
+
+        <div className="flex flex-col gap-1 justify-end h-full mt-4">
+          <Button variant="ghost" onClick={handleClearFilters} className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 h-10">
+            <RotateCcw className="size-4 mr-2" /> Clear Filters
+          </Button>
+        </div>
       </div>
 
-      {/* ── Table Section ── */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+      {/* Table Section */}
+      <div className="bg-white rounded-xl border shadow-sm flex flex-col">
+        {/* Table Header Tools */}
+        <div className="p-4 border-b flex justify-between items-center">
+          <span className="text-sm font-semibold text-slate-600">Total Brands: {filtered.length}</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="h-9">
+              <Columns className="size-4 mr-2" /> Columns
+            </Button>
+            <Button variant="outline" size="sm" className="h-9">
+              <Download className="size-4 mr-2" /> Export
+            </Button>
+          </div>
+        </div>
+
+        {/* The Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="border-b border-slate-200/80 bg-slate-50/75 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 select-none">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b">
               <tr>
-                <th className="p-3.5 w-10 text-center">
-                  <input type="checkbox" checked={selectedIds.length === paginated.length && paginated.length > 0} onChange={toggleSelectAll} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                <th className="p-4 w-12 text-center">
+                  <input type="checkbox" checked={selectedIds.length === paginated.length && paginated.length > 0} onChange={toggleSelectAll} className="rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
                 </th>
-                <th className="px-4 py-3">Brand Name & Logo</th>
-                <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3">Manufacturer Type</th>
-                <th className="px-4 py-3">Products</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-6 py-4 font-bold">Brand Name</th>
+                <th className="px-6 py-4 font-bold text-center">Logo</th>
+                <th className="px-6 py-4 font-bold">Category</th>
+                <th className="px-6 py-4 font-bold">Manufacturer Type</th>
+                <th className="px-6 py-4 font-bold">Status</th>
+                <th className="px-6 py-4 font-bold">Products</th>
+                <th className="px-6 py-4 font-bold">Created On</th>
+                <th className="px-6 py-4 font-bold text-center">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
+            <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Loading brands...</td></tr>
+                <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Loading brands...</td></tr>
               ) : paginated.length === 0 ? (
-                <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No brands found.</td></tr>
+                <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No brands found.</td></tr>
               ) : (
                 paginated.map((brand) => (
-                  <tr key={brand.id} className="hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => handleEdit(brand)}>
-                    <td className="p-3.5 text-center" onClick={e => e.stopPropagation()}>
+                  <tr key={brand.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4 text-center">
                       <input 
                         type="checkbox" 
                         checked={selectedIds.includes(brand.id)} 
                         onChange={() => toggleSelect(brand.id)} 
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+                        className="rounded border-slate-300 text-teal-600 focus:ring-teal-500" 
                       />
                     </td>
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="size-9 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-sm shrink-0 border border-slate-200/80 overflow-hidden">
-                          {brand.image_url ? (
-                            <img src={resolveImageUrl(brand.image_url)} alt={brand.name} className="size-full object-contain p-1" />
-                          ) : (
-                            <span className="text-xs font-black text-slate-700">{brand.name.slice(0, 2).toUpperCase()}</span>
-                          )}
-                        </div>
-                        <div>
-                          <div className="font-extrabold text-slate-900 text-[13px] leading-snug group-hover:text-blue-600 transition-colors">
-                            {brand.name}
-                          </div>
-                          {brand.description && (
-                            <div className="text-[11px] text-slate-400 truncate max-w-xs">{brand.description}</div>
-                          )}
-                        </div>
-                      </div>
+                    <td className="px-6 py-4 font-bold text-slate-900">{brand.name}</td>
+                    <td className="px-6 py-4 text-center">
+                      {brand.image_url ? (
+                        <img src={resolveImageUrl(brand.image_url)} alt={brand.name} className="h-8 w-auto mx-auto object-contain" />
+                      ) : (
+                        <span className="font-bold text-slate-900 text-lg">{brand.name}</span>
+                      )}
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td className="px-6 py-4">
                       {brand.category ? (
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80">
+                        <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${brand.category.includes("Electronics") ? "bg-blue-50 text-blue-600" : brand.category.includes("Food") ? "bg-green-50 text-green-600" : "bg-orange-50 text-orange-600"}`}>
                           {brand.category}
                         </span>
                       ) : (
-                        <span className="text-slate-400">—</span>
+                        <span className="text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4">
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200/80">
+                    <td className="px-6 py-4">
+                      <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-purple-50 text-purple-600">
                         {brand.manufacturer || "Manufacturer"}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 font-bold text-slate-700">
-                      {brand.products_count || 0} Products
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${brand.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80' : 'bg-slate-100 text-slate-600'}`}>
-                        <span className={`size-1.5 rounded-full ${brand.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                    <td className="px-6 py-4">
+                      <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${brand.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
                         {brand.status === 'active' ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => handleEdit(brand)}
-                          className="size-8 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition cursor-pointer"
-                          title="Edit Brand"
-                        >
-                          <Edit2 className="size-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(brand.id)}
-                          className="size-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center transition cursor-pointer"
-                          title="Delete Brand"
-                        >
-                          <Archive className="size-3.5" />
-                        </button>
+                    <td className="px-6 py-4 font-medium text-slate-600">
+                      {brand.products_count || 0}
+                    </td>
+                    <td className="px-6 py-4 text-slate-500 text-xs">
+                      {formatDate(brand.created_at)}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50" onClick={() => handleEdit(brand)}>
+                          <Edit2 className="size-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600">
+                          <MoreVertical className="size-4" />
+                        </Button>
                       </div>
                     </td>
                   </tr>

@@ -53,7 +53,6 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
-import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
 
 interface InvoiceItem {
   id: string;

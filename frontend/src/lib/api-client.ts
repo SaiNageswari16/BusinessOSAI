@@ -331,20 +331,19 @@ export interface InventoryBatch {
 
 export interface InventorySerial {
   id: string;
-  tenant_id?: string;
+  tenant_id: string;
   serial_number: string;
-  batch_id?: string | null;
-  product_id?: string | null;
-  product_name?: string | null;
-  sku?: string | null;
-  warehouse_id?: string | null;
-  warehouse_name?: string | null;
-  manufacturing_date?: string | null;
-  expiry_date?: string | null;
-  notes?: string | null;
+  batch_id: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  warehouse_id: string | null;
+  warehouse_name: string | null;
+  manufacturing_date: string | null;
+  expiry_date: string | null;
+  notes: string | null;
   status: string;
-  created_at?: string;
-  updated_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TraceabilityEvent {
@@ -422,7 +421,6 @@ export interface ProductRFID {
 
 export interface ExpirySummary {
   today: string;
-  total_batches_tracked?: number;
   expired: { count: number; units: number };
   expiring_30: { count: number; units: number };
   expiring_90: { count: number; units: number };
@@ -3372,53 +3370,42 @@ export interface InventoryProduct {
 export interface GoodsReceipt {
   id: string;
   receipt_number: string;
-  supplier?: string | null;
-  reference_number?: string | null;
-  notes?: string | null;
+  supplier: string | null;
+  reference_number: string | null;
+  notes: string | null;
   status: string;
-  items?: any[];
-  created_at?: string;
-  updated_at?: string;
+  items: any[];
 }
 
 export interface GoodsIssue {
   id: string;
   issue_number: string;
-  recipient?: string | null;
-  reference_number?: string | null;
-  notes?: string | null;
+  recipient: string | null;
+  reference_number: string | null;
+  notes: string | null;
   status: string;
-  items?: any[];
-  created_at?: string;
-  updated_at?: string;
+  items: any[];
 }
 
 export interface StockMovement {
   id: string;
   movement_number: string;
-  product_id?: string;
-  product_name?: string | null;
+  product_id: string;
   source_location: string;
   destination_location: string;
   quantity: number;
-  notes?: string | null;
-  reference_note?: string | null;
+  notes: string | null;
   status: string;
-  created_at?: string;
-  updated_at?: string;
 }
 
 export interface StockAdjustment {
   id: string;
   adjustment_number: string;
-  product_id?: string;
+  product_id: string;
   adjustment_type: string;
   quantity_changed: number;
-  reason?: string | null;
+  reason: string | null;
   status: string;
-  items?: any[];
-  created_at?: string;
-  updated_at?: string;
 }
 
 export interface CycleCount {
@@ -3630,10 +3617,25 @@ export const inventoryApi = {
     request<{ total: number; pending: number; processing: number; completed: number; failed: number; paused?: boolean }>("GET", "/inventory/master-catalog/enrich/status"),
 
   pauseRAGEnrichment: () =>
-    request<{ message: string }>("POST", "/inventory/master-catalog/enrich/pause"),
+    request<{ message: string; paused?: boolean }>("POST", "/inventory/master-catalog/enrich/pause"),
 
   resumeRAGEnrichment: () =>
-    request<{ message: string }>("POST", "/inventory/master-catalog/enrich/resume"),
+    request<{ message: string; paused?: boolean }>("POST", "/inventory/master-catalog/enrich/resume"),
+
+  getAiImageSearchStatus: () =>
+    request<{ paused: boolean; status: string }>("GET", "/inventory/master-catalog/ai-image-search/status"),
+
+  pauseAiImageSearch: () =>
+    request<{ paused: boolean; message: string }>("POST", "/inventory/master-catalog/ai-image-search/pause"),
+
+  resumeAiImageSearch: () =>
+    request<{ paused: boolean; message: string }>("POST", "/inventory/master-catalog/ai-image-search/resume"),
+
+  fetchMasterCatalogImage: (itemId: string) =>
+    request<{ success: boolean; image_url: string; message: string }>("POST", `/inventory/master-catalog/admin/master-catalog/${itemId}/fetch-image`),
+
+  fetchProductImage: (productId: string) =>
+    request<{ success: boolean; image_url: string; message: string }>("POST", `/inventory/products/${productId}/fetch-image`),
 
   adminGetMasterCatalogList: (params?: { page?: number; page_size?: number; search?: string; rag_status?: string }) =>
     request<{ items: any[]; total: number; page: number; page_size: number }>("GET", "/inventory/master-catalog/admin/list", undefined, params as Record<string, any>),
@@ -4507,116 +4509,6 @@ export const whitebooksApi = {
   gstFiling: gstFilingApi,
   settings: whitebooksSettingsApi,
 };
-
-// ─── SaaS System / Super Admin APIs ──────────────────────────────────────────
-
-export interface SystemTenant {
-  id: string;
-  slug: string;
-  name: string;
-  plan: string;
-  status: string;
-  created_at: string;
-  owner_name?: string | null;
-  owner_email?: string | null;
-  user_count: number;
-}
-
-export interface CreateSystemTenantPayload {
-  name: string;
-  slug?: string;
-  plan?: string;
-  status?: string;
-  max_users?: number;
-  max_branches?: number;
-  enabled_modules?: string[];
-  company_name?: string;
-  admin_name: string;
-  admin_email: string;
-  admin_password: string;
-}
-
-export interface SystemUser {
-  id: string;
-  tenant_name: string;
-  email: string;
-  full_name: string;
-  status: string;
-  is_tenant_owner: boolean;
-  is_platform_admin: boolean;
-  mfa_enabled: boolean;
-  created_at: string;
-}
-
-export interface CreateSystemUserPayload {
-  tenant_id: string;
-  email: string;
-  password: string;
-  full_name: string;
-  role_name?: string;
-  is_tenant_owner?: boolean;
-  is_platform_admin?: boolean;
-  phone?: string;
-  status?: string;
-}
-
-export interface SystemPendingApproval {
-  tenant_id: string;
-  tenant_slug: string;
-  tenant_name: string;
-  admin_name?: string | null;
-  admin_email?: string | null;
-  requested_modules: string[];
-  enabled_modules: string[];
-  status: string;
-  requested_at: string;
-}
-
-export interface SystemAuditLog {
-  id: string;
-  tenant_name: string;
-  user_name?: string | null;
-  user_email?: string | null;
-  module: string;
-  action: string;
-  ip_address?: string | null;
-  created_at: string;
-}
-
-export const systemAdminApi = {
-  listTenants: () => request<SystemTenant[]>("GET", "/system/tenants"),
-  createTenant: (payload: CreateSystemTenantPayload) =>
-    request<SystemTenant>("POST", "/system/tenants", payload),
-  updateTenantStatus: (tenantId: string, status: string) =>
-    request<{ message: string }>("PATCH", `/system/tenants/${tenantId}/status`, { status }),
-  deleteTenant: (tenantId: string) =>
-    request<{ message: string }>("DELETE", `/system/tenants/${tenantId}`),
-  updateTenantModules: (tenantId: string, enabled_modules: string[]) =>
-    request<{ message: string }>("PATCH", `/system/tenants/${tenantId}/modules`, { enabled_modules }),
-  purgeOrphanedTenants: () =>
-    request<{ message: string }>("POST", "/system/tenants/purge-orphans"),
-
-  listUsers: () => request<SystemUser[]>("GET", "/system/users"),
-  createUser: (payload: CreateSystemUserPayload) =>
-    request<SystemUser>("POST", "/system/users", payload),
-  updateUserStatus: (userId: string, status: string) =>
-    request<{ message: string }>("PATCH", `/system/users/${userId}/status`, { status }),
-  resetUserPassword: (userId: string, password: string) =>
-    request<{ message: string }>("POST", `/system/users/${userId}/reset-password`, { password }),
-  resetUserMfa: (userId: string) =>
-    request<{ message: string }>("POST", `/system/users/${userId}/reset-mfa`),
-  toggleSuperAdmin: (userId: string, is_platform_admin?: boolean) =>
-    request<{ message: string }>("PATCH", `/system/users/${userId}/super-admin`, { is_platform_admin }),
-  deleteUser: (userId: string) =>
-    request<{ message: string }>("DELETE", `/system/users/${userId}`),
-
-  listPendingApprovals: () => request<SystemPendingApproval[]>("GET", "/system/pending-approvals"),
-  approveTenant: (tenantId: string, approved_modules: string[]) =>
-    request<{ message: string }>("POST", `/system/tenants/${tenantId}/approve`, { approved_modules }),
-
-  listAuditLogs: () => request<SystemAuditLog[]>("GET", "/system/audit-logs"),
-};
-
 
 
 

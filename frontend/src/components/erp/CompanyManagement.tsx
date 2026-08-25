@@ -509,42 +509,27 @@ export function CompanyManagement() {
             </div>
 
             {/* ── Tabs Switcher ── */}
-            <div className="bg-card border-b border-slate-200/80 px-8">
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-                {[
-                  { id: "Overview", label: "Overview" },
-                  { id: "Additional Info", label: "Additional Info" },
-                  { id: "Tax & Finance", label: "Tax & Finance" },
-                  { id: "Branches", label: "Branches", count: companyBranches.length || 4 },
-                  { id: "Contacts", label: "Contacts", count: 3 },
-                  { id: "Documents", label: "Documents", count: 7 },
-                ].map((tab) => {
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={cn(
-                        "relative py-3.5 px-3 text-sm font-semibold whitespace-nowrap transition-all duration-150 flex items-center gap-1.5 border-b-2 -mb-[1px]",
-                        isActive
-                          ? "border-blue-600 text-blue-600 font-bold"
-                          : "border-transparent text-slate-500 hover:text-slate-800 font-medium"
-                      )}
-                    >
-                      {tab.label}
-                      {tab.count !== undefined && (
-                        <span className={cn(
-                          "inline-flex items-center justify-center text-[10.5px] font-bold min-w-[18px] h-[18px] px-1 rounded-full ml-1 leading-none shadow-2xs",
-                          isActive
-                            ? "bg-blue-600 text-white"
-                            : "bg-blue-600 text-white"
-                        )}>
-                          {tab.count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+            <div className="bg-card border-b border-border px-8">
+              <div className="flex gap-0 overflow-x-auto scrollbar-hide">
+                {["Overview", "Additional Info", "Tax & Finance", "Branches", "Contacts", "Documents"].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={cn(
+                      "relative py-4 px-4 text-sm font-bold border-b-2 whitespace-nowrap transition-all duration-200",
+                      activeTab === tab
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30",
+                    )}
+                  >
+                    {tab}
+                    {tab === "Branches" && companyBranches.length > 0 && (
+                      <span className="ml-2 bg-primary text-primary-foreground text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
+                        {companyBranches.length}
+                      </span>
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
 

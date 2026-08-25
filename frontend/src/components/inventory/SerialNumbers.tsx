@@ -780,69 +780,99 @@ export function SerialNumbers() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* ── Page Header ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-3">
-            <h1 className="text-[26px] font-black text-slate-900 tracking-tight leading-none">
-              Serial Numbers
-            </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
-              {serials.length} Serial Units
-            </span>
-          </div>
-          <p className="text-[13px] font-medium text-slate-500 mt-1.5 leading-normal">
+    <div className="space-y-6">
+      {/* Header with Explanation & Action Buttons */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Barcode className="size-6 text-indigo-600" />
+            Serial Numbers & Individual Item Tracking
+          </h2>
+          <p className="text-sm text-muted-foreground">
             Unique 1-to-1 identifiers for high-value items, electronics, warranties, and RMA audits.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex gap-2">
           <Button
             variant="outline"
-            size="sm"
             onClick={() => setBulkModalOpen(true)}
-            className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
           >
-            <Sparkles className="size-3.5 mr-1.5 text-blue-600" /> Bulk Generate
+            <Sparkles className="size-4 mr-2" /> Bulk Generate
           </Button>
           <Button
-            size="sm"
             onClick={() => {
               setEditing(null);
               setModalOpen(true);
             }}
-            className="h-9 px-3.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-all cursor-pointer"
+            className="gradient-brand text-white border-0"
           >
-            <Plus className="size-4 mr-1.5" /> New Serial
+            <Plus className="size-4 mr-2" /> New Serial
           </Button>
         </div>
       </div>
 
+      {/* Info Banner: Batch vs Serial Explanation */}
+      <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-4 flex items-start gap-3.5 text-xs text-indigo-950">
+        <Info className="size-5 text-indigo-600 shrink-0 mt-0.5" />
+        <div>
+          <strong className="font-bold text-indigo-900 block text-sm mb-0.5">
+            Module Guide: Batch Numbers vs Serial Numbers
+          </strong>
+          <span className="text-indigo-800">
+            • <strong>Batch/Lot Number</strong>: Identifies a group of items made together (e.g. 500 bottles of Batch #173 expiring 10/2028).<br />
+            • <strong>Serial Number</strong>: A unique barcode assigned to <em>one single physical unit</em> (e.g. SN-001) for warranty claims, customer invoices, and repair history.
+          </span>
+        </div>
+      </div>
+
       {error && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700 font-semibold">
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
-          <button onClick={load} className="ml-3 underline font-bold cursor-pointer">
+          <button onClick={load} className="ml-3 underline">
             Retry
           </button>
         </div>
       )}
 
-      {/* ── Search & Filters Bar ── */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-        <div className="relative flex-1 w-full max-w-md">
-          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      {/* KPI Cards */}
+      {!loading && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="p-4 bg-white shadow-sm border-slate-200">
+            <div className="text-[10px] uppercase font-bold text-slate-500">Total Registered Units</div>
+            <div className="text-2xl font-black text-slate-900 mt-1">{stats.total}</div>
+          </Card>
+          <Card className="p-4 bg-white shadow-sm border-slate-200">
+            <div className="text-[10px] uppercase font-bold text-slate-500">In Stock Available</div>
+            <div className="text-2xl font-black text-emerald-600 mt-1">{stats.inStock}</div>
+          </Card>
+          <Card className="p-4 bg-white shadow-sm border-slate-200">
+            <div className="text-[10px] uppercase font-bold text-slate-500">Sold to Customers</div>
+            <div className="text-2xl font-black text-blue-600 mt-1">{stats.sold}</div>
+          </Card>
+          <Card className="p-4 bg-white shadow-sm border-slate-200">
+            <div className="text-[10px] uppercase font-bold text-slate-500">In Transit / Branch Transfer</div>
+            <div className="text-2xl font-black text-amber-600 mt-1">{stats.transit}</div>
+          </Card>
+        </div>
+      )}
+
+      {/* Filters Bar */}
+      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+        <div className="relative w-full sm:max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50/80 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 font-medium"
+            className="w-full h-10 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500"
             placeholder="Search by serial number, product, SKU, warehouse..."
           />
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex gap-2 w-full sm:w-auto">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 px-2.5 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="h-10 px-3 text-sm rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 font-semibold"
           >
             <option value="">All Statuses</option>
             {STATUS_OPTS.map((s) => (
@@ -853,127 +883,125 @@ export function SerialNumbers() {
           </select>
           <Button
             variant="outline"
-            size="sm"
             onClick={load}
-            className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
+            className="h-10 border-slate-200 text-slate-600"
           >
             Refresh
           </Button>
         </div>
       </div>
 
-      {/* ── Table Content ── */}
+      {/* Table Content */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center p-16 bg-white rounded-2xl border border-slate-200/80">
-          <Loader2 className="size-8 animate-spin text-blue-600 mb-3" />
-          <p className="text-sm font-semibold text-slate-600">Loading serial numbers...</p>
+        <div className="flex justify-center p-12">
+          <Loader2 className="size-8 animate-spin text-indigo-600" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center p-14 border border-dashed rounded-2xl bg-slate-50/50">
+        <Card className="p-12 text-center bg-slate-50/50 border-dashed border-slate-300">
           <Barcode className="size-12 mx-auto text-slate-400 mb-3" />
-          <h3 className="text-base font-bold text-slate-800">
+          <h3 className="text-lg font-bold text-slate-800">
             No serial numbers {search || statusFilter ? "match this filter" : "found"}
           </h3>
-          <p className="text-xs text-slate-500 mt-1 mb-4">
-            Register individual item serials or bulk generate a sequence batch.
+          <p className="text-sm text-slate-500 mb-4">
+            Register individual item serials or bulk generate a batch.
           </p>
-          <div className="flex justify-center gap-2">
+          <div className="flex justify-center gap-3">
             <Button
               variant="outline"
-              size="sm"
               onClick={() => setBulkModalOpen(true)}
-              className="h-9 text-xs font-semibold text-slate-700 border-slate-200 rounded-lg"
+              className="border-indigo-300 text-indigo-700"
             >
-              <Sparkles className="size-3.5 mr-1.5 text-blue-600" /> Bulk Generate
+              <Sparkles className="size-4 mr-2" /> Bulk Generate Serials
             </Button>
             <Button
-              size="sm"
               onClick={() => {
                 setEditing(null);
                 setModalOpen(true);
               }}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg h-9"
+              className="gradient-brand text-white border-0"
             >
-              <Plus className="size-4 mr-1.5" /> Create Single Serial
+              <Plus className="size-4 mr-2" /> Create Single Serial
             </Button>
           </div>
-        </div>
+        </Card>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+        <Card className="overflow-hidden border border-slate-200 shadow-sm rounded-2xl">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="border-b border-slate-200/80 bg-slate-50/75 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 select-none">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase font-bold tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3">Serial Number</th>
-                  <th className="px-4 py-3">Product Name & SKU</th>
-                  <th className="px-4 py-3">Warehouse Storage</th>
-                  <th className="px-4 py-3">Mfg Date</th>
-                  <th className="px-4 py-3">Warranty Expiry</th>
-                  <th className="px-4 py-3">Lifecycle Status</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3.5">Serial Number</th>
+                  <th className="px-5 py-3.5">Product Name & SKU</th>
+                  <th className="px-5 py-3.5">Warehouse Storage</th>
+                  <th className="px-5 py-3.5">Mfg Date</th>
+                  <th className="px-5 py-3.5">Warranty Expiry</th>
+                  <th className="px-5 py-3.5">Lifecycle Status</th>
+                  <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((serial) => {
                   const Icon = STATUS_ICONS[serial.status] || Package;
                   return (
-                    <tr key={serial.id} className="hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => { setEditing(serial); setModalOpen(true); }}>
-                      <td className="py-3.5 px-4 font-mono font-bold text-blue-600">
-                        {serial.serial_number}
+                    <tr key={serial.id} className="hover:bg-slate-50/80 transition">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-indigo-700 text-sm">
+                            {serial.serial_number}
+                          </span>
+                        </div>
                       </td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-extrabold text-slate-900 text-[13px]">
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-slate-900">
                           {serial.product_name || "Unassigned"}
                         </div>
-                        <div className="text-[10.5px] text-slate-400 font-mono">
+                        <div className="text-xs text-slate-400 font-mono">
                           SKU: {serial.sku || "N/A"}
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 font-bold text-slate-700">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200/80">
-                          {serial.warehouse_name || "Main Warehouse"}
-                        </span>
+                      <td className="px-5 py-4 text-xs font-semibold text-slate-700">
+                        {serial.warehouse_name || "Main Warehouse"}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-500 font-medium">
+                      <td className="px-5 py-4 text-xs font-mono text-slate-600">
                         {serial.manufacturing_date ? String(serial.manufacturing_date).slice(0, 10) : "—"}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-800 font-bold">
+                      <td className="px-5 py-4 text-xs font-mono text-slate-600">
                         {serial.expiry_date ? String(serial.expiry_date).slice(0, 10) : "—"}
                       </td>
-                      <td className="py-3.5 px-4">
+                      <td className="px-5 py-4">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                            STATUS_STYLES[serial.status] || "bg-slate-100 text-slate-700 border border-slate-200/80"
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            STATUS_STYLES[serial.status] || "bg-slate-100 text-slate-700"
                           }`}
                         >
                           <Icon className="size-3" /> {serial.status}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => setPrintingSerial(serial)}
-                            className="size-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
-                            title="Print Barcode Label"
+                            className="p-1.5 rounded-lg text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                            title="Print Scannable Barcode Sticker"
                           >
-                            <Printer className="size-3.5" />
+                            <Printer className="size-4" />
                           </button>
                           <button
                             onClick={() => {
                               setEditing(serial);
                               setModalOpen(true);
                             }}
-                            className="size-8 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition cursor-pointer"
-                            title="Edit Serial"
+                            className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition"
+                            title="Edit"
                           >
-                            <Edit2 className="size-3.5" />
+                            <Edit2 className="size-4" />
                           </button>
                           <button
                             onClick={() => handleDelete(serial.id)}
-                            className="size-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center transition cursor-pointer"
-                            title="Delete Serial"
+                            className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"
+                            title="Delete"
                           >
-                            <Trash2 className="size-3.5" />
+                            <Trash2 className="size-4" />
                           </button>
                         </div>
                       </td>
@@ -983,12 +1011,7 @@ export function SerialNumbers() {
               </tbody>
             </table>
           </div>
-
-          <div className="px-4 py-3 border-t border-slate-200/80 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500 font-medium">
-            <span>Showing {filtered.length} of {serials.length} serial items</span>
-            <span className="font-semibold text-slate-700">Click any row to inspect warranty specifications</span>
-          </div>
-        </div>
+        </Card>
       )}
 
       {/* Single Serial Modal */}

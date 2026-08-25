@@ -218,100 +218,87 @@ export function BarcodeManagement() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* ── Page Header ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-3">
-            <h1 className="text-[26px] font-black text-slate-900 tracking-tight leading-none">
-              Barcode Labels
-            </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
-              {allProducts.length} Products
-            </span>
+    <div className="space-y-6">
+      {/* Header & Master Template Inherited Status */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-xl border border-slate-700">
+        <div>
+          <div className="flex items-center gap-2">
+            <ScanBarcode className="size-6 text-emerald-400" />
+            <h2 className="text-2xl font-black tracking-tight">Barcode Label Generator</h2>
           </div>
-          <p className="text-[13px] font-medium text-slate-500 mt-1.5 leading-normal">
-            Generate EAN-13 / Code 128 barcodes, print sticker sheets, and configure thermal label templates.
+          <p className="text-xs text-slate-300 mt-1">
+            Active Master Barcode Template: <strong className="text-emerald-300 font-bold">{activeTemplate.name || 'Retail Jewelry & Apparel Tag (50x25mm)'}</strong> ({activeTemplate.paperSize || '50x25mm'})
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => window.location.href = '/inventory?tab=print_templates&sub=barcodes'} 
-            className="h-9 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-slate-200 rounded-lg shadow-2xs"
-          >
-            <Settings2 className="size-3.5 mr-1.5 text-blue-600" /> Template Settings
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => window.location.href = '/inventory?tab=print_templates&sub=barcodes'} className="bg-slate-800 border-slate-600 text-white hover:bg-slate-700 text-xs font-bold">
+            <Settings2 className="size-3.5 mr-1.5 text-emerald-400" /> Template Settings
           </Button>
           <Button
-            size="sm"
             onClick={() => setIsPrintModalOpen(true)}
             disabled={printable.length === 0 || working}
-            className="h-9 px-3.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-all cursor-pointer"
+            className="bg-emerald-500 hover:bg-emerald-600 text-white border-0 text-xs font-bold shadow-lg shadow-emerald-500/20"
           >
-            <Printer className="size-4 mr-1.5" />
+            <Printer className="size-4 mr-2" />
             Print Barcodes {selected.size > 0 ? `(${selected.size} selected)` : `(all ${printable.length})`}
           </Button>
         </div>
       </div>
 
-      {/* ── Filter Cards ── */}
+      {/* Filter Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div 
-          className={`p-4 rounded-2xl border transition cursor-pointer bg-white shadow-2xs ${mode === "with" ? "border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/10" : "border-slate-200/80 hover:border-emerald-300"}`}
-          onClick={() => { setMode("with"); setSelected(new Set()); }}
-        >
-          <div className="text-[11px] uppercase font-bold text-slate-500">With Barcodes</div>
-          <div className="text-2xl font-black text-emerald-600 mt-1">{withBarcode.length}</div>
-          <div className="text-xs text-slate-500 font-medium mt-1">Ready for barcode label printing</div>
-        </div>
-        <div 
-          className={`p-4 rounded-2xl border transition cursor-pointer bg-white shadow-2xs ${mode === "without" ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/10" : "border-slate-200/80 hover:border-amber-300"}`}
-          onClick={() => { setMode("without"); setSelected(new Set()); }}
-        >
-          <div className="text-[11px] uppercase font-bold text-slate-500">Without Barcodes</div>
-          <div className="text-2xl font-black text-amber-600 mt-1">{withoutBarcode.length}</div>
-          <div className="text-xs text-slate-500 font-medium mt-1">Need EAN-13 code assignment</div>
-        </div>
-        <div 
-          className={`p-4 rounded-2xl border transition cursor-pointer bg-white shadow-2xs ${mode === "all" ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/10" : "border-slate-200/80 hover:border-blue-300"}`}
-          onClick={() => { setMode("all"); setSelected(new Set()); }}
-        >
-          <div className="text-[11px] uppercase font-bold text-slate-500">All Products</div>
-          <div className="text-2xl font-black text-blue-600 mt-1">{allProducts.length}</div>
-          <div className="text-xs text-slate-500 font-medium mt-1">Total catalog products</div>
-        </div>
+        <Card className={`p-4 cursor-pointer transition ${mode === "with" ? "ring-2 ring-emerald-500 bg-emerald-50/20" : ""}`}
+          onClick={() => { setMode("with"); setSelected(new Set()); }}>
+          <div className="text-xs uppercase font-bold text-muted-foreground">With Barcodes</div>
+          <div className="text-3xl font-bold text-emerald-600 mt-1">{withBarcode.length}</div>
+          <div className="text-xs text-muted-foreground mt-1">Ready for barcode label printing</div>
+        </Card>
+        <Card className={`p-4 cursor-pointer transition ${mode === "without" ? "ring-2 ring-amber-500 bg-amber-50/20" : ""}`}
+          onClick={() => { setMode("without"); setSelected(new Set()); }}>
+          <div className="text-xs uppercase font-bold text-muted-foreground">Without Barcodes</div>
+          <div className="text-3xl font-bold text-amber-600 mt-1">{withoutBarcode.length}</div>
+          <div className="text-xs text-muted-foreground mt-1">Need EAN-13 code assignment</div>
+        </Card>
+        <Card className={`p-4 cursor-pointer transition ${mode === "all" ? "ring-2 ring-blue-500 bg-blue-50/20" : ""}`}
+          onClick={() => { setMode("all"); setSelected(new Set()); }}>
+          <div className="text-xs uppercase font-bold text-muted-foreground">All Products</div>
+          <div className="text-3xl font-bold text-blue-600 mt-1">{allProducts.length}</div>
+          <div className="text-xs text-muted-foreground mt-1">Total catalog products</div>
+        </Card>
       </div>
 
-      {/* ── Search & Selection Controls ── */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
-        <div className="relative flex-1 w-full max-w-md">
-          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input 
-            value={search} 
-            onChange={e => setSearch(e.target.value)}
-            className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50/80 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 font-medium"
-            placeholder="Search by product name, SKU, or barcode..." 
-          />
+      {/* Search & Selection Controls */}
+      <Card className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
+              placeholder="Search by product name, SKU, or barcode..." />
+          </div>
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
+              className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30 appearance-none">
+              <option value="">All Categories</option>
+              {categories.map(c => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <select 
-            value={categoryFilter} 
-            onChange={e => setCategoryFilter(e.target.value)}
-            className="h-9 px-2.5 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[130px]"
-          >
-            <option value="">All Categories</option>
-            {categories.map(c => (
-              <option key={c.id} value={c.name}>{c.name}</option>
-            ))}
-          </select>
+        <div className="mt-3 text-xs text-muted-foreground flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ListChecks className="size-3.5" />
+            Showing <strong className="text-foreground">{filtered.length}</strong> of {allProducts.length} products
+          </div>
           {mode === "without" && filtered.some(i => !i.barcode) && (
-            <Button size="sm" onClick={handleBulkGenerate} disabled={working} className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-9 font-bold">
-              <Sparkles className="size-3.5 mr-1.5" /> Bulk Generate ({filtered.filter(i => !i.barcode).length})
+            <Button size="sm" onClick={handleBulkGenerate} disabled={working} className="bg-amber-600 hover:bg-amber-700 text-white text-xs">
+              <Sparkles className="size-3.5 mr-1.5" /> Bulk Generate All ({filtered.filter(i => !i.barcode).length})
             </Button>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Product Barcode Label Cards */}
       {loading ? (
