@@ -137,9 +137,9 @@ async def get_report_data(tab: str, db: AsyncSession = Depends(get_db)):
     if tab in ["sales_reports", "revenue_reports", "pos_reports", "branch_reports"]:
         avg_order = (total_revenue / total_pos) if total_pos > 0 else 0.0
         res["metrics"] = [
-            {"label": "Total Sales Revenue",    "value": f"${total_revenue:,.2f}", "change": f"{total_pos} transactions recorded", "isPositive": total_pos > 0, "icon": "trending-up"},
+            {"label": "Total Sales Revenue",    "value": f"₹{total_revenue:,.2f}", "change": f"{total_pos} transactions recorded", "isPositive": total_pos > 0, "icon": "trending-up"},
             {"label": "Total POS Transactions", "value": f"{total_pos}",            "change": "Live terminal sync",                  "isPositive": total_pos > 0, "icon": "shopping-cart"},
-            {"label": "Average Order Value",    "value": f"${avg_order:.2f}",       "change": "Per-transaction average",             "isPositive": total_pos > 0, "icon": "activity"},
+            {"label": "Average Order Value",    "value": f"₹{avg_order:.2f}",       "change": "Per-transaction average",             "isPositive": total_pos > 0, "icon": "activity"},
             {"label": "Active Products",        "value": f"{total_products}",       "change": "Catalog items tracked",              "isPositive": total_products > 0, "icon": "boxes"},
         ]
         tx_rows = await _rows(POSTransaction, POSTransaction.created_at.desc(), 20)
@@ -1395,3 +1395,86 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
         result["aiSummary"] = f"Financial statement: Net revenue ₹{sales_rev:,.2f} resulting in ₹{net_profit:,.2f} net profit after procurement and operating overheads."
 
     return result
+
+
+@router.post("/report-builder/generate")
+async def generate_custom_report(payload: dict, db: AsyncSession = Depends(get_db)):
+    """Generate dynamic custom report directly from live database tables."""
+    entity = payload.get("entity", "inventory")
+    filters = payload.get("filters") or {}
+    search = filters.get("search")
+
+    if entity in ("sales", "customers"):
+        stmt = select(POSTransaction).order_by(POSTransaction.created_at.desc()).limit(100)
+        tx_rows = (await db.execute(stmt)).scalars().all()
+        total_rev = sum(float(r.total_amount or 0) for r in tx_rows)
+        return {
+            "metrics": [
+                {"label": "Total Sales", "value": f"₹{total_rev:,.2f}", "change": f"{len(tx_rows)} transactions", "isPositive": True, "icon": "trending-up"},
+                {"label": "Average Order", "value": f"₹{(total_rev / max(1, len(tx_rows))):.2f}", "change": "Per transaction", "isPositive": True, "icon": "activity"},
+            ],
+            "chartConfig": {"type": "area", "keys": [{"key": "total", "color": "var(--primary)", "label": "Sales (₹)"}]},
+            "chartData": [{"name": r.created_at.strftime("%d %b %H:%M") if r.created_at else f"#{i+1}", "total": float(r.total_amount or 0)} for i, r in enumerate(reversed(tx_rows))] or [{"name": "No data", "total": 0}],
+            "tableColumns": [
+                {"header": "Transaction ID", "key": "tx_id"},
+                {"header": "Date", "key": "date"},
+                {"header": "Amount", "key": "total"},
+            ],
+            "tableData": [
+                {"tx_id": f"TXN-{str(r.id)[:8].upper()}", "date": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "—", "total": f"₹{float(r.total_amount or 0):.2f}"}
+                for r in tx_rows
+            ],
+            "aiSummary": f"Custom sales report: ₹{total_rev:,.2f} total revenue recorded across {len(tx_rows)} live transactions."
+        }
+
+    elif entity in ("purchases", "suppliers"):
+        stmt = select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc()).limit(100)
+        po_rows = (await db.execute(stmt)).scalars().all()
+        total_po = sum(float(r.total_amount or 0) for r in po_rows)
+        return {
+            "metrics": [
+                {"label": "Total Purchases", "value": f"₹{total_po:,.2f}", "change": f"{len(po_rows)} PO orders", "isPositive": True, "icon": "shopping-bag"},
+                {"label": "Average PO Value", "value": f"₹{(total_po / max(1, len(po_rows))):.2f}", "change": "Per purchase contract", "isPositive": True, "icon": "activity"},
+            ],
+            "chartConfig": {"type": "bar", "keys": [{"key": "total", "color": "var(--primary)", "label": "PO Value (₹)"}]},
+            "chartData": [{"name": r.po_number or f"PO-{i+1}", "total": float(r.total_amount or 0)} for i, r in enumerate(po_rows)] or [{"name": "No data", "total": 0}],
+            "tableColumns": [
+                {"header": "PO Number", "key": "po_no"},
+                {"header": "Date", "key": "date"},
+                {"header": "Status", "key": "status"},
+                {"header": "Total Value", "key": "total"},
+            ],
+            "tableData": [
+                {"po_no": r.po_number or f"PO-{str(r.id)[:6].upper()}", "date": r.order_date.strftime("%Y-%m-%d") if r.order_date else "—", "status": (r.status or "Draft").title(), "total": f"₹{float(r.total_amount or 0):.2f}"}
+                for r in po_rows
+            ],
+            "aiSummary": f"Custom procurement report: {len(po_rows)} purchase orders totalling ₹{total_po:,.2f}."
+        }
+
+    else:
+        # Default: Inventory / Batches / Products
+        stmt = select(Product).limit(100)
+        if search:
+            stmt = stmt.where(Product.name.ilike(f"%{search}%") | Product.barcode.ilike(f"%{search}%") | Product.sku.ilike(f"%{search}%"))
+        prod_rows = (await db.execute(stmt)).scalars().all()
+        total_sell = sum(float(r.selling_price or 0) for r in prod_rows)
+        return {
+            "metrics": [
+                {"label": "Total Products", "value": f"{len(prod_rows)}", "change": "Active catalog items", "isPositive": True, "icon": "boxes"},
+                {"label": "Total Inventory Value", "value": f"₹{total_sell:,.2f}", "change": "Sum of selling values", "isPositive": True, "icon": "trending-up"},
+            ],
+            "chartConfig": {"type": "bar", "keys": [{"key": "sell", "color": "var(--primary)", "label": "Selling Price (₹)"}]},
+            "chartData": [{"name": r.name[:14], "sell": float(r.selling_price or 0)} for r in prod_rows[:15]] or [{"name": "No products", "sell": 0}],
+            "tableColumns": [
+                {"header": "SKU", "key": "sku"},
+                {"header": "Product Name", "key": "name"},
+                {"header": "MRP", "key": "mrp"},
+                {"header": "Selling Price", "key": "sell"},
+            ],
+            "tableData": [
+                {"sku": r.sku or "—", "name": r.name, "mrp": f"₹{float(r.mrp or 0):.2f}", "sell": f"₹{float(r.selling_price or 0):.2f}"}
+                for r in prod_rows
+            ],
+            "aiSummary": f"Custom stock report: {len(prod_rows)} products tracked with ₹{total_sell:,.2f} total inventory selling value."
+        }
+

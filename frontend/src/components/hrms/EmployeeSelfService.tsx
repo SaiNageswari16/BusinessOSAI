@@ -79,14 +79,33 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
   };
 
   const handleDownloadMyVCard = () => {
-    if (!emp) return;
-    const downloadUrl = employeesApi.getVCardDownloadUrl(emp.id);
+    if (!emp && !vCardData) return;
+    const empName = vCardData?.full_name || emp?.full_name || "Employee";
+    const empCode = vCardData?.employee_code || emp?.employee_code || "EMP";
+    const vcardText = vCardData?.vcard_raw || [
+      "BEGIN:VCARD",
+      "VERSION:3.0",
+      `N:${empName};;;;`,
+      `FN:${empName}`,
+      `ORG:${vCardData?.company_name || "LazyMonkey AI"}`,
+      `TITLE:${vCardData?.designation || "Staff"}`,
+      `EMAIL;type=INTERNET;type=WORK:${vCardData?.email || emp?.email || ""}`,
+      `TEL;type=CELL;type=VOICE:${vCardData?.phone || emp?.phone || ""}`,
+      `NOTE:Employee ID: ${empCode}`,
+      "URL:https://lazymonkeyai.com",
+      "END:VCARD"
+    ].join("\r\n");
+
+    const blob = new Blob([vcardText], { type: "text/vcard;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = `${emp.employee_code}_${emp.full_name.replace(/\s+/g, "_")}.vcf`;
+    link.href = url;
+    link.download = `${empCode}_${empName.replace(/\s+/g, "_")}.vcf`;
     document.body.appendChild(link);
     link.click();
+    window.URL.revokeObjectURL(url);
     document.body.removeChild(link);
+    toast.success(`Downloaded vCard for ${empName}`);
   };
 
   const handleDownloadMyQrImage = () => {

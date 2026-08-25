@@ -374,25 +374,69 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     }
   };
 
+  const buildVCardString = (e: any, compName = "LazyMonkey AI", dName = "", desName = "") => {
+    const lines = [
+      "BEGIN:VCARD",
+      "VERSION:3.0",
+      `N:${e.full_name || ""};;;;`,
+      `FN:${e.full_name || ""}`,
+      `ORG:${compName}${dName ? ";" + dName : ""}`,
+      `TITLE:${desName || "Staff"}`,
+      `EMAIL;type=INTERNET;type=WORK:${e.email || ""}`,
+      `TEL;type=CELL;type=VOICE:${e.phone || ""}`,
+      `NOTE:Employee ID: ${e.employee_code || ""}`,
+      "URL:https://lazymonkeyai.com",
+      "END:VCARD"
+    ];
+    return lines.join("\r\n");
+  };
+
   const handleDownloadVCard = () => {
-    if (!selectedEmpForVCard) return;
-    const downloadUrl = employeesApi.getVCardDownloadUrl(selectedEmpForVCard.id);
+    if (!selectedEmpForVCard && !vCardData) return;
+    const empName = vCardData?.full_name || selectedEmpForVCard?.full_name || "Employee";
+    const empCode = vCardData?.employee_code || selectedEmpForVCard?.employee_code || "EMP";
+    const vcardText = vCardData?.vcard_raw || buildVCardString(
+      selectedEmpForVCard || vCardData,
+      vCardData?.company_name || companies[0]?.name || "LazyMonkey AI",
+      vCardData?.department || "",
+      vCardData?.designation || ""
+    );
+
+    const blob = new Blob([vcardText], { type: "text/vcard;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = `${selectedEmpForVCard.employee_code}_${selectedEmpForVCard.full_name.replace(/\s+/g, "_")}.vcf`;
+    link.href = url;
+    link.download = `${empCode}_${empName.replace(/\s+/g, "_")}.vcf`;
     document.body.appendChild(link);
     link.click();
+    window.URL.revokeObjectURL(url);
     document.body.removeChild(link);
+    toast.success(`Downloaded vCard for ${empName}`);
   };
 
   const handleBulkExportVCards = () => {
-    const downloadUrl = employeesApi.getBulkExportVCardUrl();
+    if (!employees || employees.length === 0) {
+      toast.error("No employees found to export.");
+      return;
+    }
+    const companyName = companies[0]?.name || "LazyMonkey AI";
+    const blocks = employees.map(emp => {
+      const dept = departments.find(d => d.id === emp.department_id)?.name || "";
+      const desig = designations.find(d => d.id === emp.designation_id)?.name || "";
+      return buildVCardString(emp, companyName, dept, desig);
+    });
+
+    const bulkText = blocks.join("\r\n\r\n");
+    const blob = new Blob([bulkText], { type: "text/vcard;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = "Employees_Company_Directory.vcf";
+    link.href = url;
+    link.download = `${companyName.replace(/\s+/g, "_")}_Employees_Directory.vcf`;
     document.body.appendChild(link);
     link.click();
+    window.URL.revokeObjectURL(url);
     document.body.removeChild(link);
+    toast.success(`Successfully exported ${employees.length} employee vCards!`);
   };
 
   const handleDownloadQrImage = () => {
@@ -405,6 +449,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     link.download = `${(vCardData.full_name || selectedEmpForVCard?.full_name || "Employee").replace(/\s+/g, "_")}_vCard_QR.png`;
     document.body.appendChild(link);
     link.click();
+    window.URL.revokeObjectURL(url);
     document.body.removeChild(link);
   };
 
@@ -457,7 +502,356 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   };
 
   const handlePrintCard = () => {
-    window.print();
+    const empName = vCardData?.full_name || selectedEmpForVCard?.full_name || "Employee";
+    const empCode = vCardData?.employee_code || selectedEmpForVCard?.employee_code || "EMP-001";
+    const designation = vCardData?.designation || designations.find(d => d.id === selectedEmpForVCard?.designation_id)?.name || "Corporate Staff";
+    const department = vCardData?.department || departments.find(d => d.id === selectedEmpForVCard?.department_id)?.name || "General Department";
+    const company = vCardData?.company_name || companies[0]?.name || "LazyMonkey AI";
+    const email = vCardData?.email || selectedEmpForVCard?.email || "";
+    const phone = vCardData?.phone || selectedEmpForVCard?.phone || "N/A";
+    const qrUrl = vCardData?.qr_code_data_url || "";
+    const initials = empName.split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase();
+
+    const printWindow = window.open("", "_blank", "width=850,height=1100");
+    if (!printWindow) {
+      alert("Please allow popups to print Employee Pass.");
+      return;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Employee Pass - ${empName} (${empCode})</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 12mm 15mm;
+            }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            }
+            body {
+              background: #ffffff;
+              color: #0f172a;
+              padding: 12px;
+            }
+            .page-container {
+              max-width: 720px;
+              margin: 0 auto;
+              border: 1px solid #cbd5e1;
+              border-radius: 16px;
+              padding: 24px;
+              background: #ffffff;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 2px solid #0f172a;
+              padding-bottom: 14px;
+              margin-bottom: 24px;
+            }
+            .header-left h1 {
+              font-size: 18pt;
+              font-weight: 900;
+              color: #0f172a;
+              letter-spacing: -0.5px;
+            }
+            .header-left p {
+              font-size: 8.5pt;
+              color: #64748b;
+              font-weight: 600;
+              margin-top: 2px;
+            }
+            .header-right {
+              text-align: right;
+            }
+            .badge-org {
+              display: inline-block;
+              background: #4f46e5;
+              color: #ffffff;
+              font-size: 8pt;
+              font-weight: 800;
+              padding: 4px 12px;
+              border-radius: 20px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .card-wrapper {
+              display: flex;
+              gap: 24px;
+              margin-bottom: 24px;
+            }
+            .id-badge {
+              width: 270px;
+              flex-shrink: 0;
+              border: 2px solid #4f46e5;
+              border-radius: 16px;
+              overflow: hidden;
+              background: #ffffff;
+            }
+            .badge-top {
+              background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+              color: #ffffff;
+              padding: 14px;
+              text-align: center;
+            }
+            .badge-top h3 {
+              font-size: 11pt;
+              font-weight: 800;
+            }
+            .badge-top span {
+              font-size: 7.5pt;
+              opacity: 0.9;
+              text-transform: uppercase;
+            }
+            .avatar-box {
+              width: 58px;
+              height: 58px;
+              background: #ffffff;
+              color: #4f46e5;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 15pt;
+              font-weight: 900;
+              margin: -29px auto 6px auto;
+              border: 3px solid #ffffff;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            }
+            .badge-body {
+              padding: 12px;
+              text-align: center;
+            }
+            .badge-name {
+              font-size: 12pt;
+              font-weight: 900;
+              color: #0f172a;
+            }
+            .badge-desig {
+              font-size: 8.5pt;
+              font-weight: 700;
+              color: #4f46e5;
+              margin-top: 2px;
+            }
+            .badge-code {
+              display: inline-block;
+              background: #f1f5f9;
+              color: #334155;
+              font-size: 8pt;
+              font-weight: 800;
+              padding: 3px 8px;
+              border-radius: 6px;
+              margin-top: 6px;
+              font-family: monospace;
+            }
+            .badge-qr {
+              margin: 10px auto;
+              background: #ffffff;
+              padding: 6px;
+              border: 1px dashed #cbd5e1;
+              border-radius: 10px;
+              display: inline-block;
+            }
+            .badge-qr img {
+              width: 125px;
+              height: 125px;
+              display: block;
+            }
+            .badge-footer-note {
+              font-size: 7pt;
+              color: #64748b;
+              line-height: 1.3;
+            }
+            .details-panel {
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+            }
+            .info-table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 9pt;
+            }
+            .info-table tr {
+              border-bottom: 1px solid #e2e8f0;
+            }
+            .info-table td {
+              padding: 8px 6px;
+            }
+            .info-label {
+              color: #64748b;
+              font-weight: 600;
+              width: 38%;
+              text-transform: uppercase;
+              font-size: 7.5pt;
+            }
+            .info-val {
+              color: #0f172a;
+              font-weight: 700;
+            }
+            .verification-box {
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              border-radius: 12px;
+              padding: 12px;
+              margin-top: 10px;
+            }
+            .verification-box h4 {
+              font-size: 8pt;
+              font-weight: 800;
+              color: #0f172a;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin-bottom: 3px;
+            }
+            .verification-box p {
+              font-size: 7.5pt;
+              color: #64748b;
+              line-height: 1.4;
+            }
+            .sign-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              margin-top: 20px;
+              padding-top: 14px;
+              border-top: 1px dashed #cbd5e1;
+            }
+            .sign-box {
+              text-align: center;
+            }
+            .sign-line {
+              width: 130px;
+              border-top: 1px solid #0f172a;
+              margin-bottom: 4px;
+            }
+            .sign-label {
+              font-size: 7.5pt;
+              font-weight: 700;
+              color: #64748b;
+              text-transform: uppercase;
+            }
+            .barcode-strip {
+              font-family: monospace;
+              font-size: 8pt;
+              letter-spacing: 2px;
+              color: #334155;
+              font-weight: bold;
+            }
+            @media print {
+              body { padding: 0; background: transparent; }
+              .page-container { border: none; padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page-container">
+            <div class="header">
+              <div class="header-left">
+                <h1>${company}</h1>
+                <p>Official Digital Employee Identity Pass & Credential Verification</p>
+              </div>
+              <div class="header-right">
+                <span class="badge-org">Verified Corporate Staff</span>
+                <div style="font-size: 7.5pt; color: #64748b; margin-top: 4px;">Issued: ${new Date().toLocaleDateString("en-IN", { dateStyle: "medium" })}</div>
+              </div>
+            </div>
+
+            <div class="card-wrapper">
+              <div class="id-badge">
+                <div class="badge-top">
+                  <h3>${company}</h3>
+                  <span>Digital Pass & NFC vCard</span>
+                </div>
+                <div class="avatar-box">${initials}</div>
+                <div class="badge-body">
+                  <div class="badge-name">${empName}</div>
+                  <div class="badge-desig">${designation}</div>
+                  <div class="badge-code">${empCode}</div>
+                  
+                  <div class="badge-qr">
+                    ${qrUrl ? `<img src="${qrUrl}" alt="vCard QR" />` : `<div style="width:125px;height:125px;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:8pt;">QR Code</div>`}
+                  </div>
+                  <div class="badge-footer-note">Scan with any smartphone camera to instantly save contact details</div>
+                </div>
+              </div>
+
+              <div class="details-panel">
+                <table class="info-table">
+                  <tr>
+                    <td class="info-label">Full Name</td>
+                    <td class="info-val">${empName}</td>
+                  </tr>
+                  <tr>
+                    <td class="info-label">Employee Code</td>
+                    <td class="info-val" style="font-family:monospace;">${empCode}</td>
+                  </tr>
+                  <tr>
+                    <td class="info-label">Designation</td>
+                    <td class="info-val">${designation}</td>
+                  </tr>
+                  <tr>
+                    <td class="info-label">Department</td>
+                    <td class="info-val">${department}</td>
+                  </tr>
+                  <tr>
+                    <td class="info-label">Official Email</td>
+                    <td class="info-val">${email || "—"}</td>
+                  </tr>
+                  <tr>
+                    <td class="info-label">Contact Phone</td>
+                    <td class="info-val">${phone}</td>
+                  </tr>
+                  <tr>
+                    <td class="info-label">Organization</td>
+                    <td class="info-val">${company}</td>
+                  </tr>
+                </table>
+
+                <div class="verification-box">
+                  <h4>Security & Usage Instructions</h4>
+                  <p>This digital badge represents valid employment authorization. Keep this card handy during office hours and client engagements. Scanning the QR code automatically transfers verified contact cards (.VCF) into mobile address books.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="sign-row">
+              <div class="sign-box">
+                <div class="sign-line"></div>
+                <div class="sign-label">Employee Signature</div>
+              </div>
+              <div style="text-align: center;">
+                <div class="barcode-strip">||| | |||| | |||||| || |</div>
+                <div style="font-size: 6.5pt; color: #94a3b8; text-transform: uppercase;">ID: ${empCode} · SEC-AUTH-VERIFIED</div>
+              </div>
+              <div class="sign-box">
+                <div class="sign-line"></div>
+                <div class="sign-label">Authorized Signatory</div>
+              </div>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 300);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   // ─── Render: Departments Tab ─────────────────────────────────────
