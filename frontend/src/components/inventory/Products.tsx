@@ -1448,6 +1448,49 @@ export function Products() {
     }
   };
 
+  const executeBulkImport = async (targetItems: any[], enableAi: boolean) => {
+    if (!targetItems?.length) {
+      toast.error("No items found to import.");
+      return;
+    }
+    setIsImporting(true);
+    setIsImportConfirmModalOpen(false);
+
+    try {
+      const CHUNK_SIZE = 2000;
+      let totalCreated = 0;
+      let totalSkipped = 0;
+      let totalBrands = 0;
+      let totalCategories = 0;
+      let totalUoms = 0;
+
+      for (let i = 0; i < targetItems.length; i += CHUNK_SIZE) {
+        const chunk = targetItems.slice(i, i + CHUNK_SIZE);
+        const currentEnd = Math.min(i + CHUNK_SIZE, targetItems.length);
+        toast.loading(`Importing rows ${i + 1} to ${currentEnd} of ${targetItems.length}...`, { id: "bulk-import-progress" });
+
+        const res = await inventoryApi.masterImportProducts(chunk, enableAi);
+        totalCreated += res.products_created;
+        totalSkipped += res.skipped_count;
+        totalBrands += res.brands_created;
+        totalCategories += res.categories_created;
+        totalUoms += res.uoms_created;
+      }
+
+      toast.success(
+        `Import Complete!\n\n${totalCreated} products imported into inventory.\n${totalSkipped} duplicates skipped.\n${enableAi ? "✨ Queued for AI background enrichment (images & specs)." : "⚡ Fast Import: Background AI search skipped for internal barcodes."}`,
+        { id: "bulk-import-progress", duration: 8000 }
+      );
+      await loadData();
+    } catch (error: any) {
+      toast.error("Import failed: " + (error.detail || error.message || "Unknown error"), { id: "bulk-import-progress" });
+    } finally {
+      setIsImporting(false);
+      setPendingImportData(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   // ── Import from file (supports 42k+ rows, flexible column headers & chunking) ──────
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1595,46 +1638,6 @@ export function Products() {
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     };
-
-  const executeBulkImport = async (targetItems: any[], enableAi: boolean) => {
-    if (!targetItems?.length) return;
-    setIsImporting(true);
-    setIsImportConfirmModalOpen(false);
-
-    try {
-      const CHUNK_SIZE = 2000;
-      let totalCreated = 0;
-      let totalSkipped = 0;
-      let totalBrands = 0;
-      let totalCategories = 0;
-      let totalUoms = 0;
-
-      for (let i = 0; i < targetItems.length; i += CHUNK_SIZE) {
-        const chunk = targetItems.slice(i, i + CHUNK_SIZE);
-        const currentEnd = Math.min(i + CHUNK_SIZE, targetItems.length);
-        toast.loading(`Importing rows ${i + 1} to ${currentEnd} of ${targetItems.length}...`, { id: "bulk-import-progress" });
-
-        const res = await inventoryApi.masterImportProducts(chunk, enableAi);
-        totalCreated += res.products_created;
-        totalSkipped += res.skipped_count;
-        totalBrands += res.brands_created;
-        totalCategories += res.categories_created;
-        totalUoms += res.uoms_created;
-      }
-
-      toast.success(
-        `Import Complete!\n\n${totalCreated} products imported into inventory.\n${totalSkipped} duplicates skipped.\n${enableAi ? "✨ Queued for AI background enrichment (images & specs)." : "⚡ Fast Import: Background AI search skipped for internal barcodes."}`,
-        { id: "bulk-import-progress", duration: 8000 }
-      );
-      await loadData();
-    } catch (error: any) {
-      toast.error("Import failed: " + (error.detail || error.message || "Unknown error"), { id: "bulk-import-progress" });
-    } finally {
-      setIsImporting(false);
-      setPendingImportData(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
 
 
     if (file.name.endsWith(".csv")) {
