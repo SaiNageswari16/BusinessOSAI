@@ -34,7 +34,6 @@ export const nav: NavGroup[] = [
   {
     group: "Workspace", theme: "indigo", icon: Package, items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view:dashboard" },
-      { to: "/portfolio", label: "Owner Portfolio", icon: Crown, badge: "PRO" },
       { to: "/dashboard?tab=lazymonkey_ai", label: "LazyMonkey AI", icon: Sparkles, badge: "OS", permission: "view:dashboard" },
     ]
   },
@@ -107,12 +106,12 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/erp?tab=super_admin",
+        to: "/erp?tab=global_users",
         label: "System Administration",
         icon: Settings,
         permission: "manage:system_admin",
         subItems: [
-          { to: "/erp?tab=super_admin", label: "Super Admin", icon: ShieldCheck, permission: "manage:system_admin" },
+          { to: "/erp?tab=global_users", label: "Global Users", icon: ShieldCheck, permission: "manage:system_admin" },
           { to: "/erp?tab=audit_logs", label: "Audit Logs", icon: History, permission: "manage:system_admin" },
           { to: "/erp?tab=activity_logs", label: "Activity Logs", icon: Activity, permission: "manage:system_admin" },
           { to: "/erp?tab=error_logs", label: "Error Logs", icon: Activity, permission: "manage:system_admin" },

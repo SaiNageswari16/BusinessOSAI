@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300..900;1,300..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -48,90 +49,91 @@
   --color-brand-purple: var(--brand-purple);
   --color-brand-cyan: var(--brand-cyan);
   --color-brand-green: var(--brand-green);
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-heading: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: oklch(1 0 0); /* Pure White */
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --radius: 0.875rem;
+  --background: oklch(0.985 0.005 260); /* Clean subtle cool-white */
+  --foreground: oklch(0.145 0.015 285);
+  --card: oklch(1 0 0); /* Pure White Card */
+  --card-foreground: oklch(0.145 0.015 285);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.20 0.02 250);
-  --primary: oklch(0.35 0.15 150); /* Shopcart Green */
+  --popover-foreground: oklch(0.145 0.015 285);
+  --primary: oklch(0.58 0.24 285); /* Modern Vibrant Purple #8442ff */
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.96 0.01 250);
-  --secondary-foreground: oklch(0.25 0.02 250);
-  --muted: oklch(0.96 0.01 250);
-  --muted-foreground: oklch(0.55 0.02 250);
-  --accent: oklch(0.94 0.02 250);
-  --accent-foreground: oklch(0.20 0.02 250);
-  --destructive: oklch(0.60 0.15 15);
+  --secondary: oklch(0.96 0.01 260);
+  --secondary-foreground: oklch(0.25 0.02 285);
+  --muted: oklch(0.955 0.008 260);
+  --muted-foreground: oklch(0.52 0.02 260);
+  --accent: oklch(0.94 0.02 285);
+  --accent-foreground: oklch(0.20 0.03 285);
+  --destructive: oklch(0.60 0.18 25);
   --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.92 0.01 250);
-  --input: oklch(0.92 0.01 250);
-  --ring: oklch(0.60 0.15 250);
-  --chart-1: oklch(0.65 0.15 250);
-  --chart-2: oklch(0.70 0.12 220);
-  --chart-3: oklch(0.60 0.15 280);
-  --chart-4: oklch(0.75 0.15 190);
-  --chart-5: oklch(0.80 0.12 160);
-  --sidebar: oklch(0.99 0.005 250);
-  --sidebar-foreground: oklch(0.20 0.02 250);
-  --sidebar-primary: oklch(0.60 0.15 250);
+  --border: oklch(0.92 0.008 260); /* Crisp subtle border #e8eaed */
+  --input: oklch(0.92 0.008 260);
+  --ring: oklch(0.58 0.24 285);
+  --chart-1: oklch(0.58 0.24 285);
+  --chart-2: oklch(0.65 0.20 250);
+  --chart-3: oklch(0.70 0.16 160);
+  --chart-4: oklch(0.75 0.16 55);
+  --chart-5: oklch(0.65 0.18 20);
+  --sidebar: oklch(0.99 0.004 260);
+  --sidebar-foreground: oklch(0.20 0.02 285);
+  --sidebar-primary: oklch(0.58 0.24 285);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.95 0.015 250);
-  --sidebar-accent-foreground: oklch(0.20 0.02 250);
-  --sidebar-border: oklch(0.92 0.01 250);
-  --sidebar-ring: oklch(0.60 0.15 250);
-  --brand-violet: oklch(0.65 0.20 280);
-  --brand-blue: oklch(0.65 0.20 250);
-  --brand-purple: oklch(0.65 0.20 300);
+  --sidebar-accent: oklch(0.95 0.015 285);
+  --sidebar-accent-foreground: oklch(0.20 0.03 285);
+  --sidebar-border: oklch(0.92 0.008 260);
+  --sidebar-ring: oklch(0.58 0.24 285);
+  --brand-violet: oklch(0.58 0.24 285);
+  --brand-blue: oklch(0.60 0.20 250);
+  --brand-purple: oklch(0.62 0.24 300);
   --brand-cyan: oklch(0.70 0.15 200);
-  --brand-green: oklch(0.70 0.15 160);
-  --glass-border: oklch(0.92 0.01 250);
+  --brand-green: oklch(0.70 0.16 160);
+  --glass-border: oklch(0.92 0.008 260);
 }
 
 .dark {
-  --background: oklch(0.12 0.01 250);
-  --foreground: oklch(0.97 0.005 250);
-  --card: oklch(0.15 0.015 250);
-  --card-foreground: oklch(0.97 0.005 250);
-  --popover: oklch(0.15 0.015 250);
-  --popover-foreground: oklch(0.97 0.005 250);
-  --primary: oklch(0.35 0.15 150);
-  --primary-foreground: oklch(0.12 0.01 250);
-  --secondary: oklch(0.22 0.02 250);
-  --secondary-foreground: oklch(0.97 0.005 250);
-  --muted: oklch(0.20 0.02 250);
-  --muted-foreground: oklch(0.65 0.02 250);
-  --accent: oklch(0.25 0.03 250);
-  --accent-foreground: oklch(0.97 0.005 250);
-  --destructive: oklch(0.65 0.15 15);
+  --background: oklch(0.12 0.015 285); /* Deep Indigo Night */
+  --foreground: oklch(0.97 0.005 285);
+  --card: oklch(0.155 0.018 285);
+  --card-foreground: oklch(0.97 0.005 285);
+  --popover: oklch(0.155 0.018 285);
+  --popover-foreground: oklch(0.97 0.005 285);
+  --primary: oklch(0.65 0.24 285);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.22 0.02 285);
+  --secondary-foreground: oklch(0.97 0.005 285);
+  --muted: oklch(0.20 0.02 285);
+  --muted-foreground: oklch(0.65 0.02 285);
+  --accent: oklch(0.25 0.04 285);
+  --accent-foreground: oklch(0.97 0.005 285);
+  --destructive: oklch(0.65 0.18 25);
   --destructive-foreground: oklch(0.97 0 0);
-  --border: oklch(1 0 0 / 8%);
+  --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.60 0.15 250);
-  --chart-1: oklch(0.60 0.15 280);
+  --ring: oklch(0.65 0.24 285);
+  --chart-1: oklch(0.65 0.24 285);
   --chart-2: oklch(0.65 0.20 250);
-  --chart-3: oklch(0.75 0.15 160);
-  --chart-4: oklch(0.75 0.15 45);
-  --chart-5: oklch(0.75 0.15 50);
-  --sidebar: oklch(0.14 0.015 250);
-  --sidebar-foreground: oklch(0.95 0.01 250);
-  --sidebar-primary: oklch(0.60 0.15 250);
-  --sidebar-primary-foreground: oklch(0.12 0.01 250);
-  --sidebar-accent: oklch(0.22 0.02 250);
-  --sidebar-accent-foreground: oklch(0.97 0.005 250);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.60 0.15 250);
-  --brand-violet: oklch(0.65 0.20 280);
+  --chart-3: oklch(0.75 0.16 160);
+  --chart-4: oklch(0.75 0.16 55);
+  --chart-5: oklch(0.70 0.18 25);
+  --sidebar: oklch(0.14 0.018 285);
+  --sidebar-foreground: oklch(0.95 0.01 285);
+  --sidebar-primary: oklch(0.65 0.24 285);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.22 0.02 285);
+  --sidebar-accent-foreground: oklch(0.97 0.005 285);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.65 0.24 285);
+  --brand-violet: oklch(0.65 0.24 285);
   --brand-blue: oklch(0.65 0.20 250);
-  --brand-purple: oklch(0.70 0.20 295);
+  --brand-purple: oklch(0.70 0.22 300);
   --brand-cyan: oklch(0.75 0.15 160);
-  --brand-green: oklch(0.75 0.15 160);
-  --glass-border: oklch(1 0 0 / 8%);
+  --brand-green: oklch(0.75 0.16 160);
+  --glass-border: oklch(1 0 0 / 9%);
 }
 
 @layer base {
@@ -173,23 +175,44 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.011em;
+  }
+
+  /* Cargoflow / Inter Tight Heading Style */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+
+  h1 {
+    letter-spacing: -0.035em;
   }
 }
 
+/* ─── Modern Card Surfaces ─────────────────────────────────────────── */
+@utility card-surface {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+}
+
 @utility glass {
-  background: color-mix(in oklab, var(--card) 70%, transparent);
+  background: color-mix(in oklab, var(--card) 75%, transparent);
   backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--glass-border);
 }
 
 @utility gradient-brand {
-  background-image: linear-gradient(135deg, #1d4ed8, #3b82f6);
+  background-image: linear-gradient(135deg, #8442ff, #6366f1);
 }
 
 @utility text-gradient-brand {
-  background-image: linear-gradient(135deg, #1d4ed8, #3b82f6);
+  background-image: linear-gradient(135deg, #8442ff, #6366f1);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -203,9 +226,58 @@
   box-shadow: 0 0 0 1px var(--glass-border), 0 8px 40px -12px color-mix(in oklab, var(--brand-violet) 30%, transparent);
 }
 
+/* ─── Modern Translucent Badge Pill Styles (Template Match) ────────── */
+@utility badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.025em;
+  border-width: 1px;
+}
+
+@utility badge-success {
+  background-color: color-mix(in oklab, #10b981 12%, transparent);
+  color: #059669;
+  border-color: color-mix(in oklab, #10b981 25%, transparent);
+}
+
+@utility badge-primary {
+  background-color: color-mix(in oklab, #8442ff 12%, transparent);
+  color: #7c3aed;
+  border-color: color-mix(in oklab, #8442ff 25%, transparent);
+}
+
+@utility badge-info {
+  background-color: color-mix(in oklab, #6366f1 12%, transparent);
+  color: #4f46e5;
+  border-color: color-mix(in oklab, #6366f1 25%, transparent);
+}
+
+@utility badge-warning {
+  background-color: color-mix(in oklab, #f59e0b 14%, transparent);
+  color: #d97706;
+  border-color: color-mix(in oklab, #f59e0b 28%, transparent);
+}
+
+@utility badge-danger {
+  background-color: color-mix(in oklab, #ef4444 12%, transparent);
+  color: #dc2626;
+  border-color: color-mix(in oklab, #ef4444 25%, transparent);
+}
+
+@utility badge-neutral {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  border-color: var(--border);
+}
+
 /* Print & Thermal Receipt Styles */
 @media print {
-  /* Hide all web UI elements when printing thermal receipts */
   body.printing-receipt > *:not(#printable-receipt-portal),
   body.printing-receipt #root > *:not(#printable-receipt-portal),
   header, nav, footer, .no-print, [data-no-print] {
@@ -221,7 +293,6 @@
     overflow: visible !important;
   }
 
-  /* Target 80mm / 58mm POS Thermal Receipt Printer Portal */
   #printable-receipt-portal {
     display: block !important;
     visibility: visible !important;
@@ -252,7 +323,6 @@
     print-color-adjust: exact !important;
   }
 
-  /* ── A4 Full Tax Invoice Print Portal ───────────────────────────── */
   body:has(#a4-invoice-portal) > *:not(#a4-invoice-portal),
   body:has(#a4-invoice-portal) #root,
   body.printing-a4-invoice > *:not(#a4-invoice-portal),
@@ -279,8 +349,6 @@
     print-color-adjust: exact !important;
   }
 
-  /* ── Barcode Labels Print Portal ─────────────────────────────────── */
-  /* When printing barcode labels, hide everything in body except #printable-barcode-portal */
   body:has(#printable-barcode-portal) > *:not(#printable-barcode-portal) {
     display: none !important;
   }
@@ -304,10 +372,8 @@
     print-color-adjust: exact !important;
   }
 
-  /* Ensure SVG barcode bars print cleanly without rounding */
   #printable-barcode-portal svg rect {
     shape-rendering: crispEdges !important;
     image-rendering: pixelated !important;
   }
 }
-

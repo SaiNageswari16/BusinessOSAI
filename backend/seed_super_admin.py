@@ -135,13 +135,13 @@ async def seed_super_admin(email: str, password: str, full_name: str) -> None:
         await db.commit()
 
         print("\n" + "=" * 65)
-        print("👑  GOD MODE PLATFORM SUPER ADMIN READY!")
+        print("[SUPER ADMIN] GOD MODE PLATFORM SUPER ADMIN READY!")
         print("=" * 65)
-        print(f"  • Email:         {user.email}")
-        print(f"  • Name:          {user.full_name}")
-        print(f"  • Workspace:     {tenant.name} (slug: {tenant.slug})")
-        print(f"  • God Mode:      ACTIVE (100% unrestricted platform privileges)")
-        print(f"  • Status:        ACTIVE")
+        print(f"  * Email:         {user.email}")
+        print(f"  * Name:          {user.full_name}")
+        print(f"  * Workspace:     {tenant.name} (slug: {tenant.slug})")
+        print(f"  * God Mode:      ACTIVE (100% unrestricted platform privileges)")
+        print(f"  * Status:        ACTIVE")
         print("=" * 65 + "\n")
 
 

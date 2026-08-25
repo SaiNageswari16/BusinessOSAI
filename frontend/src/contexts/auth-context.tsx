@@ -377,14 +377,12 @@ export function resolvePostAuthRoute(user: AppUser, token?: TokenResponse): stri
   if (token?.requires_role_selection || (user.roles.length > 1 && !token?.active_role_id && !user.activeRoleId)) {
     return "/role-select";
   }
-  // Platform Super Admins and Business Owners navigate straight to the Executive Portfolio & Admin Hub
   if (
     user.isPlatformAdmin ||
     user.permissions.includes("super_admin") ||
-    user.permissions.includes("manage:system_admin") ||
-    user.roles?.some((r) => r.name.toLowerCase().includes("super admin"))
+    user.permissions.includes("manage:system_admin")
   ) {
-    return "/portfolio";
+    return "/erp?tab=global_users";
   }
   return "/dashboard";
 }

@@ -42,7 +42,7 @@ import { TagsLabels } from "../components/erp/TagsLabels";
 import { ErrorLogs } from "../components/erp/ErrorLogs";
 import { SystemHealth } from "../components/erp/SystemHealth";
 import { BackupRestore } from "../components/erp/BackupRestore";
-import { SuperAdminManagement } from "../components/erp/SuperAdminManagement";
+import { GlobalUsers } from "../components/erp/GlobalUsers";
 
 export const Route = createFileRoute("/_app/erp")({
   component: ErpModule,
@@ -91,8 +91,8 @@ const componentMap: Record<string, React.ElementType> = {
   tags_labels: TagsLabels,
 
   // System & Super Admin
-  super_admin: SuperAdminManagement,
-  global_users: SuperAdminManagement,
+  global_users: GlobalUsers,
+  super_admin: GlobalUsers,
   audit_logs: AuditLogs,
   activity_logs: ActivityLogs,
   error_logs: ErrorLogs,
