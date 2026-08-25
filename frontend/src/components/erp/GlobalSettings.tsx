@@ -124,21 +124,21 @@ export function GlobalSettings() {
   const categorySetting = DEFAULT_SETTINGS.filter(s => s.category === activeCategory);
 
   return (
-    <div className="p-8 space-y-8 max-w-4xl mx-auto pb-20">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="p-4 space-y-4 max-w-4xl mx-auto pb-10">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Global Settings</h2>
-          <p className="text-muted-foreground text-sm mt-1">Configure system-wide preferences, security, and localization.</p>
+          <h2 className="text-base font-bold tracking-tight">Global Settings</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">Configure system-wide preferences, security, and localization.</p>
         </div>
-        <Button size="sm" className="h-9 gap-2 gradient-brand text-white border-0" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+        <Button size="sm" className="h-8 gap-1.5 gradient-brand text-white border-0 text-xs font-semibold" onClick={handleSave} disabled={saving}>
+          {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
           {saved ? "Saved!" : "Save Changes"}
         </Button>
       </div>
 
-      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-600 text-sm border border-red-500/20">{error}</div>}
+      {error && <div className="p-2.5 rounded-lg bg-red-500/10 text-red-600 text-xs border border-red-500/20">{error}</div>}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="md:col-span-1 space-y-1">
           {CATEGORIES.map((item) => (
             <button key={item.id} onClick={() => setActiveCategory(item.id)}

@@ -184,7 +184,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
 
   if (tab === "expenses") {
     const totalExpenses = bills.reduce((s, b) => s + b.total_amount, 0);
-    const paidExpenses = bills.reduce((s, b) => s + (b.amount_paid || 0), 0);
+    const paidExpenses = bills.reduce((s, b) => s + ((b as any).amount_paid || (b.status === 'paid' ? b.total_amount : 0)), 0);
     const expenseBreakdown = [
       { category: "Vendor Bills", amount: totalExpenses, pct: totalExpenses > 0 ? 100 : 0, color: "bg-red-500" },
     ];

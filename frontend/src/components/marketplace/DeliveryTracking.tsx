@@ -14,12 +14,10 @@ export function DeliveryTracking() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Truck className="size-6 text-primary" /> Live Delivery Tracking
-        </h1>
-        <p className="text-sm text-muted-foreground">Real-time visibility into all marketplace fleet operations and third-party logistics.</p>
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Live Delivery Tracking</h2>
+        <p className="text-xs text-muted-foreground">Real-time visibility into all marketplace fleet operations and third-party logistics.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

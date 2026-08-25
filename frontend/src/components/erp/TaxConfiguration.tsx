@@ -138,14 +138,14 @@ export function TaxConfiguration() {
   };
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Tax Configuration</h2>
-          <p className="text-sm text-muted-foreground">Define GST, VAT, TDS, and other tax rules for your companies.</p>
+          <h2 className="text-base font-bold tracking-tight">Tax Configuration</h2>
+          <p className="text-xs text-muted-foreground">Define GST, VAT, TDS, and other tax rules for your companies.</p>
         </div>
-        <Button className="gradient-brand text-white border-0 gap-2" onClick={() => { setEditTax(null); setShowForm(true); }}>
-          <Plus className="size-4" /> Add Tax Config
+        <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditTax(null); setShowForm(true); }}>
+          <Plus className="size-3.5" /> Add Tax Config
         </Button>
       </div>
 

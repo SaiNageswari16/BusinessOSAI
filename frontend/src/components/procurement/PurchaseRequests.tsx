@@ -56,8 +56,7 @@ export function PurchaseRequests() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Package className="text-primary size-6" /> Purchase Requests (PR)
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Purchase Requests (PR)
           </h2>
           <p className="text-sm text-muted-foreground">Manage internal departmental requests for materials and services.</p>
         </div>

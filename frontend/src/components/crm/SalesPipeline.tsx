@@ -63,15 +63,15 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Sales Pipeline</h1>
-          <p className="text-sm text-muted-foreground">Analyze conversion rates and revenue forecast across stages.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Sales Pipeline</h2>
+          <p className="text-xs text-muted-foreground">Analyze conversion rates and revenue forecast across stages.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
-            <Download className="size-4" /> Export Report
+          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-1.5 px-3 h-8 bg-background border border-border rounded-lg text-xs font-semibold hover:bg-accent transition-colors">
+            <Download className="size-3.5" /> Export Report
           </button>
         </div>
       </div>

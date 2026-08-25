@@ -180,19 +180,19 @@ export function CustomerGroups() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Customer Groups</h1>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Groups</h2>
+          <p className="text-xs text-muted-foreground">
             Organize customers into groups for targeted campaigns and reporting.
           </p>
         </div>
         <button
           onClick={() => { setEditingId(null); setForm(blankGroup); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium"
+          className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold"
         >
-          <Plus className="size-4" /> New Group
+          <Plus className="size-3.5" /> New Group
         </button>
       </div>
 
@@ -361,7 +361,7 @@ export function CustomerGroups() {
                                       <div>
                                         <p className="text-sm font-medium">{m.customer_name || "Unknown"}</p>
                                         {m.customer_email && <p className="text-xs text-muted-foreground">{m.customer_email}</p>}
-                                        <p className="text-xs text-muted-foreground mt-0.5">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
+                                        <p className="text-sm text-muted-foreground mt-1">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
                                       </div>
                                       <button onClick={() => handleRemoveMember(group.id, m.customer_id)}
                                         className="p-1 hover:bg-red-500/10 text-red-500 rounded-md">

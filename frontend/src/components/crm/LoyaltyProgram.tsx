@@ -198,11 +198,11 @@ export function LoyaltyProgram() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Loyalty Program</h1>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Loyalty Program</h2>
+          <p className="text-xs text-muted-foreground">
             Configure loyalty rules and manage points earned/redeemed by customers.
           </p>
         </div>

@@ -37,7 +37,7 @@ function PosSales() {
   const totalVal = rows.reduce((s, t) => s + t.total, 0);
 
   return (
-    <div className="p-8">
+    <div className="p-4">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">{title}</h2>
@@ -48,35 +48,35 @@ function PosSales() {
         )}
       </div>
       {rows.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-24 text-center">
-          <Clock className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <p className="text-slate-500 font-medium">No held orders at this time.</p>
-          <p className="text-slate-400 text-sm mt-1">Orders placed on hold from the terminal will appear here.</p>
+        <div className="bg-card rounded-2xl border border-border/70 p-24 text-center">
+          <Clock className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
+          <p className="text-muted-foreground font-medium">No held orders at this time.</p>
+          <p className="text-muted-foreground/70 text-xs mt-1">Orders placed on hold from the terminal will appear here.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+        <div className="bg-card rounded-2xl shadow-xs border border-border/70 overflow-hidden">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-muted/40 text-muted-foreground font-bold uppercase tracking-wider text-[11px] border-b border-border/60">
               <tr>
-                <th className="px-6 py-3">Receipt No</th>
-                <th className="px-6 py-3">Date & Time</th>
-                <th className="px-6 py-3">Customer</th>
-                <th className="px-6 py-3">Cashier</th>
-                <th className="px-6 py-3">Method</th>
-                <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-left">Receipt No</th>
+                <th className="px-4 py-3 text-left">Date & Time</th>
+                <th className="px-4 py-3 text-left">Customer</th>
+                <th className="px-4 py-3 text-left">Cashier</th>
+                <th className="px-4 py-3 text-left">Method</th>
+                <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-right">Total</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border/30 font-medium">
               {rows.slice(0, 20).map((t: any) => (
-                <tr key={t.id} className="hover:bg-slate-50 cursor-pointer">
-                  <td className="px-6 py-3 font-mono text-indigo-600 text-xs">{t.id}</td>
-                  <td className="px-6 py-3 text-slate-600">{new Date(t.date).toLocaleString()}</td>
-                  <td className="px-6 py-3 font-medium">{t.customerName}</td>
-                  <td className="px-6 py-3 text-slate-500">{t.cashier}</td>
-                  <td className="px-6 py-3"><span className="bg-slate-100 px-2 py-1 rounded text-xs font-semibold uppercase">{t.paymentMethod}</span></td>
-                  <td className="px-6 py-3"><span className={`px-2 py-1 rounded text-xs font-bold ${t.status === "Completed" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>{t.status}</span></td>
-                  <td className="px-6 py-3 text-right font-bold">{fmt(t.total)}</td>
+                <tr key={t.id} className="hover:bg-muted/30 transition-colors cursor-pointer">
+                  <td className="px-4 py-3 font-mono text-indigo-600 dark:text-indigo-400 font-bold text-xs">{t.id}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{new Date(t.date).toLocaleString()}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{t.customerName}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{t.cashier}</td>
+                  <td className="px-4 py-3"><span className="bg-muted/60 text-foreground px-2 py-0.5 rounded text-[10px] font-bold uppercase border border-border/40">{t.paymentMethod}</span></td>
+                  <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${t.status === "Completed" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : "bg-rose-500/10 text-rose-600 border-rose-500/20"}`}>{t.status}</span></td>
+                  <td className="px-4 py-3 text-right font-bold text-foreground">{fmt(t.total)}</td>
                 </tr>
               ))}
             </tbody>
@@ -92,45 +92,45 @@ function PosCustomersPlaceholder() {
   const view = useView();
 
   if (view === "walk_in") return (
-    <div className="p-8 max-w-2xl">
-      <h2 className="text-2xl font-bold mb-2">Walk-in Customer</h2>
-      <p className="text-slate-500 mb-8">Register a new walk-in customer or proceed as anonymous guest.</p>
-      <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 space-y-5">
-        <div className="grid grid-cols-2 gap-5">
-          <div><label className="text-sm font-bold text-slate-700 block mb-2">First Name</label><input className="w-full border-2 border-slate-200 rounded-lg p-3 focus:border-indigo-500 focus:outline-none" placeholder="Enter first name" /></div>
-          <div><label className="text-sm font-bold text-slate-700 block mb-2">Last Name</label><input className="w-full border-2 border-slate-200 rounded-lg p-3 focus:border-indigo-500 focus:outline-none" placeholder="Enter last name" /></div>
+    <div className="p-4 max-w-2xl">
+      <h2 className="text-2xl font-bold tracking-tight mb-2">Walk-in Customer</h2>
+      <p className="text-xs text-muted-foreground mb-6">Register a new walk-in customer or proceed as anonymous guest.</p>
+      <div className="bg-card p-6 rounded-2xl shadow-xs border border-border/70 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-bold text-foreground block mb-1.5">First Name</label><input className="w-full border border-border/70 rounded-xl p-2.5 text-xs bg-background focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Enter first name" /></div>
+          <div><label className="text-xs font-bold text-foreground block mb-1.5">Last Name</label><input className="w-full border border-border/70 rounded-xl p-2.5 text-xs bg-background focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Enter last name" /></div>
         </div>
-        <div><label className="text-sm font-bold text-slate-700 block mb-2">Mobile Number</label><input className="w-full border-2 border-slate-200 rounded-lg p-3 focus:border-indigo-500 focus:outline-none" placeholder="+91 XXXXX XXXXX" /></div>
-        <div><label className="text-sm font-bold text-slate-700 block mb-2">Email (Optional)</label><input className="w-full border-2 border-slate-200 rounded-lg p-3 focus:border-indigo-500 focus:outline-none" placeholder="customer@example.com" /></div>
-        <div className="flex gap-4 pt-2">
-          <button className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700">Register & Open Bill</button>
-          <button className="flex-1 bg-slate-100 text-slate-700 font-bold py-3 rounded-lg hover:bg-slate-200">Continue as Guest</button>
+        <div><label className="text-xs font-bold text-foreground block mb-1.5">Mobile Number</label><input className="w-full border border-border/70 rounded-xl p-2.5 text-xs bg-background focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="+91 XXXXX XXXXX" /></div>
+        <div><label className="text-xs font-bold text-foreground block mb-1.5">Email (Optional)</label><input className="w-full border border-border/70 rounded-xl p-2.5 text-xs bg-background focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="customer@example.com" /></div>
+        <div className="flex gap-3 pt-2">
+          <button className="flex-1 bg-indigo-600 text-white font-bold py-2.5 rounded-xl hover:bg-indigo-700 text-xs">Register & Open Bill</button>
+          <button className="flex-1 bg-muted text-foreground font-bold py-2.5 rounded-xl hover:bg-muted/80 text-xs">Continue as Guest</button>
         </div>
       </div>
     </div>
   );
 
   if (view === "search") return (
-    <div className="p-8">
-      <h2 className="text-2xl font-bold mb-6">Customer Search & Lookup</h2>
-      <div className="flex gap-4 mb-8">
-        <input type="text" placeholder="Search by Name, Phone, Email or Customer ID..." className="flex-1 border-2 border-slate-200 rounded-lg px-4 py-3 focus:border-indigo-500 focus:outline-none text-sm" />
-        <button className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-bold text-sm">Search</button>
+    <div className="p-4">
+      <h2 className="text-2xl font-bold tracking-tight mb-4">Customer Search & Lookup</h2>
+      <div className="flex gap-3 mb-6">
+        <input type="text" placeholder="Search by Name, Phone, Email or Customer ID..." className="flex-1 border border-border/70 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-xs bg-background" />
+        <button className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs">Search</button>
       </div>
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-            <tr><th className="px-6 py-3">Customer</th><th className="px-6 py-3">Phone</th><th className="px-6 py-3">Email</th><th className="px-6 py-3">Tier</th><th className="px-6 py-3">Points</th><th className="px-6 py-3">Action</th></tr>
+      <div className="bg-card rounded-2xl shadow-xs border border-border/70 overflow-hidden">
+        <table className="w-full text-xs text-left">
+          <thead className="bg-muted/40 text-muted-foreground font-bold uppercase tracking-wider text-[11px] border-b border-border/60">
+            <tr><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-left">Phone</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Tier</th><th className="px-4 py-3 text-left">Points</th><th className="px-4 py-3 text-center">Action</th></tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-border/30 font-medium">
             {posCustomers.filter(c => c.id !== "walk-in").map((c: any) => (
-              <tr key={c.id} className="hover:bg-slate-50">
-                <td className="px-6 py-4 font-medium">{c.name}</td>
-                <td className="px-6 py-4 text-slate-500">{c.phone}</td>
-                <td className="px-6 py-4 text-slate-500">{c.email}</td>
-                <td className="px-6 py-4"><span className="bg-amber-100 text-amber-700 px-2 py-1 rounded text-xs font-bold">{c.tier}</span></td>
-                <td className="px-6 py-4 font-bold text-emerald-600">{c.points} pts</td>
-                <td className="px-6 py-4"><button className="text-xs font-bold text-indigo-600 border border-indigo-200 bg-indigo-50 px-3 py-1 rounded hover:bg-indigo-100">Select</button></td>
+              <tr key={c.id} className="hover:bg-muted/30 transition-colors">
+                <td className="px-4 py-3 font-medium text-foreground">{c.name}</td>
+                <td className="px-4 py-3 text-muted-foreground">{c.phone}</td>
+                <td className="px-4 py-3 text-muted-foreground">{c.email}</td>
+                <td className="px-4 py-3"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">{c.tier}</span></td>
+                <td className="px-4 py-3 font-bold text-foreground">{c.points}</td>
+                <td className="px-4 py-3 text-center"><button className="text-xs text-indigo-600 hover:underline font-semibold">Select</button></td>
               </tr>
             ))}
           </tbody>
@@ -140,7 +140,7 @@ function PosCustomersPlaceholder() {
   );
 
   if (view === "loyalty") return (
-    <div className="p-8">
+    <div className="p-4">
       <h2 className="text-2xl font-bold mb-6">Loyalty & Rewards Program</h2>
       <div className="grid grid-cols-4 gap-6 mb-8">
         <div className="bg-gradient-to-br from-amber-100 to-amber-50 border border-amber-200 p-6 rounded-xl"><p className="text-amber-700 text-xs font-bold uppercase mb-1">Gold Members</p><h3 className="text-3xl font-black text-amber-800">142</h3></div>
@@ -169,7 +169,7 @@ function PosCustomersPlaceholder() {
   );
 
   if (view === "membership") return (
-    <div className="p-8">
+    <div className="p-4">
       <h2 className="text-2xl font-bold mb-6">Membership Plans</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {[
@@ -209,7 +209,7 @@ function PosCustomersPlaceholder() {
   );
 
   if (view === "wallet") return (
-    <div className="p-8">
+    <div className="p-4">
       <h2 className="text-2xl font-bold mb-6">Customer Wallets</h2>
       <div className="grid grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-xl border-l-4 border-l-indigo-600 border border-slate-200 shadow-sm"><p className="text-slate-500 text-sm">Total Wallet Balance</p><h3 className="text-2xl font-black mt-1">{fmt(45200)}</h3></div>
@@ -240,7 +240,7 @@ function PosCustomersPlaceholder() {
   );
 
   if (view === "gift_cards") return (
-    <div className="p-8">
+    <div className="p-4">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Issued Gift Cards</h2>
         <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">+ Issue New Gift Card</button>
@@ -264,7 +264,7 @@ function PosCustomersPlaceholder() {
   );
 
   if (view === "history") return (
-    <div className="p-8">
+    <div className="p-4">
       <h2 className="text-2xl font-bold mb-6">Customer Purchase History</h2>
       <div className="flex gap-4 mb-6">
         <select className="border border-slate-200 rounded-lg px-4 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -302,7 +302,7 @@ function PosCustomersPlaceholder() {
 
   // Default: all customers
   return (
-    <div className="p-8">
+    <div className="p-4">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Customers Database</h2>
         <input type="text" placeholder="Search by name, phone, or ID..." className="border border-slate-200 rounded-lg px-4 py-2 text-sm w-80 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
@@ -331,7 +331,7 @@ function PosPayments() {
   const view = useView();
 
   if (view === "cash") return (
-    <div className="p-8">
+    <div className="p-4">
       <h2 className="text-2xl font-bold mb-6">Cash Drawer — Denomination Breakdown</h2>
       <div className="flex gap-8">
         <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -1183,17 +1183,17 @@ function PosModule() {
   const params = new URLSearchParams(searchStr);
   const activeTab = params.get("tab") || "dashboard";
   const ActiveComponent = componentMap[activeTab] || PosDashboard;
-  const isTerminal = activeTab === "terminal";
+  const isFullBleed = activeTab === "terminal" || activeTab === "sales";
 
   return (
-    <div className={`flex min-h-full flex-col ${isTerminal ? "bg-slate-50" : "bg-background"}`}>
-      <div className={`flex-1 relative ${isTerminal ? "" : "bg-background/50"}`}>
+    <div className={`flex min-h-full flex-col ${isFullBleed ? "bg-slate-50" : "bg-background"}`}>
+      <div className={`flex-1 relative ${isFullBleed ? "" : "bg-background/50 p-3"}`}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: isTerminal ? 0 : 10 }}
+            initial={{ opacity: 0, y: isFullBleed ? 0 : 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: isTerminal ? 0 : -10 }}
+            exit={{ opacity: 0, y: isFullBleed ? 0 : -10 }}
             transition={{ duration: 0.2 }}
             className="min-h-full"
           >

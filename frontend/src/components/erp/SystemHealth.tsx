@@ -35,13 +35,13 @@ export function SystemHealth() {
   const dbStatus = health?.database?.status ?? "unknown";
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">System Health</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-base font-bold tracking-tight">System Health</h2>
+          <p className="text-xs text-muted-foreground">
             Real-time infrastructure and application monitoring.
-            {lastRefreshed && <span className="ml-1 text-xs">Last updated: {lastRefreshed.toLocaleTimeString()}</span>}
+            {lastRefreshed && <span className="ml-1 text-[10px]">Last updated: {lastRefreshed.toLocaleTimeString()}</span>}
           </p>
         </div>
         <Button variant="outline" className="bg-background" onClick={load} disabled={loading}>

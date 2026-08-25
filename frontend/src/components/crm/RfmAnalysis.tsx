@@ -81,10 +81,10 @@ export function RfmAnalysis() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">RFM Analysis</h1>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">RFM Analysis</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Segment customers by <strong>Recency</strong>, <strong>Frequency</strong>, and <strong>Monetary</strong> value computed from live purchase data.
             {data.total_customers_analysed > 0 && (
@@ -92,7 +92,7 @@ export function RfmAnalysis() {
             )}
           </p>
         </div>
-        <button onClick={load} className="flex items-center gap-2 px-3 py-1.5 bg-accent hover:bg-accent/80 rounded-lg text-sm text-muted-foreground transition-colors">
+        <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 bg-accent hover:bg-accent/80 rounded-lg text-xs font-semibold text-muted-foreground transition-colors">
           <RefreshCw className="size-3.5" /> Refresh
         </button>
       </div>

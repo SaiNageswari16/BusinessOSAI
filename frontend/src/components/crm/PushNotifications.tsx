@@ -58,20 +58,18 @@ export function PushNotifications() {
   const invCount = activeList.filter(n => n.category === "inventory").length;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Bell className="size-6 text-primary" /> Live Push Notifications Logs
-          </h1>
-          <p className="text-sm text-muted-foreground">Monitor real-time push alerts and logs generated dynamically by user form submissions globally.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Live Push Notifications Logs</h2>
+          <p className="text-xs text-muted-foreground">Monitor real-time push alerts and logs generated dynamically by user form submissions globally.</p>
         </div>
         <div className="flex gap-2">
           <button 
             onClick={() => loadNotifications()}
-            className="p-2 border hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer bg-card"
+            className="p-1.5 h-8 w-8 border hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer bg-card flex items-center justify-center"
           >
-            <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
           </button>
           <button 
             onClick={async () => {
@@ -79,7 +77,7 @@ export function PushNotifications() {
               loadNotifications();
               toast.success("Cleared all unread alerts!");
             }}
-            className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-accent text-sm font-medium transition-colors cursor-pointer bg-card"
+            className="flex items-center gap-1.5 px-3 h-8 border rounded-lg hover:bg-accent text-xs font-semibold transition-colors cursor-pointer bg-card"
           >
             Clear All Alerts
           </button>
@@ -132,7 +130,7 @@ export function PushNotifications() {
                   </div>
                   <div>
                     <p className="font-semibold text-foreground text-sm">{notif.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Category: {notif.category.toUpperCase()} · {timeStr}</p>
+                    <p className="text-sm text-muted-foreground mt-1">Category: {notif.category.toUpperCase()} · {timeStr}</p>
                   </div>
                 </div>
                 <span className="px-2 py-1 rounded-md text-xs font-semibold shrink-0 bg-emerald-500/10 text-emerald-600">

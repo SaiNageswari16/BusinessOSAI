@@ -178,8 +178,7 @@ export function StockAdjustment() {
           {/* List Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                <Sliders className="size-6 text-amber-600" /> Stock Adjustment & Audit Vouchers
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Stock Adjustment & Audit Vouchers
               </h2>
               <p className="text-sm text-slate-500 mt-1">
                 Reconcile physical stock counts, log inventory write-offs, damages, and audit variances.
@@ -257,10 +256,10 @@ export function StockAdjustment() {
                                   warehouse: (adj as any).warehouse_id || "",
                                   adjustment_type: adj.adjustment_type || "Write-Off",
                                   reason: adj.reason || "",
-                                  adjustment_date: adj.created_at ? adj.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                  adjustment_date: (adj as any).created_at ? (adj as any).created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
                                 });
-                                if (adj.items && adj.items.length > 0) {
-                                  setItems(adj.items.map((it: any) => ({
+                                if ((adj as any).items && (adj as any).items.length > 0) {
+                                  setItems((adj as any).items.map((it: any) => ({
                                     product_id: it.product_id,
                                     product_name: it.product_name,
                                     adjustment_type: adj.adjustment_type || "Write-Off",

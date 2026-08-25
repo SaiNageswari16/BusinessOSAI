@@ -507,7 +507,7 @@ function QuickAddModal({
         ...form,
         sku: form.sku?.trim() || undefined,
         category_id: form.category_id || null,
-        brand_id: form.brand_id || null,
+        brand: form.brand || null,
         uom_id: form.uom_id || null,
         purchase_price: Number(form.purchase_price) || 0,
         mrp: Number(form.mrp) || 0,
@@ -3001,8 +3001,8 @@ export function Products() {
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Products</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Products</h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Manage your inventory products and browse the global master catalog.
           </p>
         </div>

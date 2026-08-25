@@ -16,14 +16,14 @@ export function CustomerDocuments({ tab = "all_documents" }: Props) {
   const documents = mockCustomerDocuments;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Customer Documents</h1>
-          <p className="text-sm text-muted-foreground">Securely manage NDAs, contracts, and compliance documents.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Documents</h2>
+          <p className="text-xs text-muted-foreground">Securely manage NDAs, contracts, and compliance documents.</p>
         </div>
-        <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-          <Upload className="size-4" /> Upload Document
+        <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+          <Upload className="size-3.5" /> Upload Document
         </button>
       </div>
 

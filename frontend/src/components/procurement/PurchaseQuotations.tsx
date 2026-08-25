@@ -52,8 +52,7 @@ export function PurchaseQuotations() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Network className="text-primary size-6" /> Request for Quotation (RFQ)
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Request for Quotation (RFQ)
           </h2>
           <p className="text-sm text-muted-foreground">Generate RFQs, compare multi-vendor bids, and award purchase contracts.</p>
         </div>

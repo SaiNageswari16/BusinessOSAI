@@ -349,7 +349,7 @@ function ChartOfAccountsTab() {
       </div>
 
       {/* Table */}
-      <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
+      <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-48">
             <Loader2 className="size-8 animate-spin text-primary" />
@@ -361,39 +361,39 @@ function ChartOfAccountsTab() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] font-bold tracking-wider">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Code</th>
-                  <th className="px-5 py-3 font-medium">Account Name</th>
-                  <th className="px-5 py-3 font-medium">Type</th>
-                  <th className="px-5 py-3 font-medium">Sub-Type</th>
-                  <th className="px-5 py-3 font-medium text-right">Opening Balance</th>
-                  <th className="px-5 py-3 font-medium text-center">Status</th>
-                  <th className="px-5 py-3 font-medium text-center">Action</th>
+                  <th className="px-4 py-3 text-left">Code</th>
+                  <th className="px-4 py-3 text-left">Account Name</th>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-left">Sub-Type</th>
+                  <th className="px-4 py-3 text-right font-bold">Opening Balance</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border/30 font-medium">
                 {accounts.map((acc, i) => (
                   <React.Fragment key={acc.id}>
                     <motion.tr initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.025 }}
-                      className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                      <td className="px-5 py-3 font-mono text-xs text-primary font-semibold">{acc.code}</td>
-                      <td className="px-5 py-3 font-medium text-foreground">{acc.name}</td>
-                      <td className="px-5 py-3">
-                        <span className={`px-2 py-1 rounded-md text-xs font-medium capitalize ${ACCOUNT_TYPE_COLORS[acc.account_type] || "text-muted-foreground bg-muted/50"}`}>
+                      className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400 font-bold">{acc.code}</td>
+                      <td className="px-4 py-3 font-bold text-foreground">{acc.name}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold capitalize border ${ACCOUNT_TYPE_COLORS[acc.account_type] || "text-muted-foreground bg-muted border-border/40"}`}>
                           {acc.account_type}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-xs text-muted-foreground capitalize">{(acc.account_sub_type || "—").replace(/_/g, " ")}</td>
-                      <td className="px-5 py-3 text-right font-medium text-foreground">{fmt(acc.opening_balance)}</td>
-                      <td className="px-5 py-3 text-center">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${acc.is_active ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}`}>
+                      <td className="px-4 py-3 text-xs text-muted-foreground capitalize">{(acc.account_sub_type || "—").replace(/_/g, " ")}</td>
+                      <td className="px-4 py-3 text-right font-bold text-foreground">{fmt(acc.opening_balance)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${acc.is_active ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" : "bg-muted text-muted-foreground border-border/40"}`}>
                           {acc.is_active ? "Active" : "Inactive"}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-center">
-                        <button onClick={() => setSelectedAccount(acc)} className="text-primary hover:underline text-xs font-medium flex items-center gap-1">
+                      <td className="px-4 py-3 text-center">
+                        <button onClick={() => setSelectedAccount(acc)} className="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-semibold inline-flex items-center gap-1">
                           <Eye className="size-3" /> View
                         </button>
                       </td>
@@ -559,7 +559,7 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
         <button onClick={load} className="p-2 border border-border rounded-lg hover:bg-muted/50 transition-colors"><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /></button>
       </div>
 
-      <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
+      <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-48"><Loader2 className="size-8 animate-spin text-primary" /></div>
         ) : entries.length === 0 ? (
@@ -568,41 +568,41 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] font-bold tracking-wider">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Entry #</th>
-                  <th className="px-5 py-3 font-medium">Date</th>
-                  <th className="px-5 py-3 font-medium">Type</th>
-                  <th className="px-5 py-3 font-medium">Reference</th>
-                  <th className="px-5 py-3 font-medium">Description</th>
-                  <th className="px-5 py-3 font-medium text-right">Debit</th>
-                  <th className="px-5 py-3 font-medium text-right">Credit</th>
-                  <th className="px-5 py-3 font-medium text-center">Status</th>
-                  <th className="px-5 py-3 font-medium text-center">Action</th>
+                  <th className="px-4 py-3 text-left">Entry #</th>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-left">Reference</th>
+                  <th className="px-4 py-3 text-left">Description</th>
+                  <th className="px-4 py-3 text-right font-bold">Debit</th>
+                  <th className="px-4 py-3 text-right font-bold">Credit</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border/30 font-medium">
                 {entries.map((entry, i) => (
                   <motion.tr key={entry.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.025 }}
-                    className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                    <td className="px-5 py-3 font-mono text-xs text-primary font-semibold">{entry.entry_number}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{entry.entry_date}</td>
-                    <td className="px-5 py-3 text-xs capitalize text-muted-foreground">{entry.entry_type.replace(/_/g, " ")}</td>
-                    <td className="px-5 py-3 font-mono text-xs">{entry.reference || "—"}</td>
-                    <td className="px-5 py-3 text-foreground max-w-[200px] truncate">{entry.description || "—"}</td>
-                    <td className="px-5 py-3 text-right font-semibold text-emerald-500">{entry.total_debit > 0 ? fmt(entry.total_debit) : "—"}</td>
-                    <td className="px-5 py-3 text-right font-semibold text-red-400">{entry.total_credit > 0 ? fmt(entry.total_credit) : "—"}</td>
-                    <td className="px-5 py-3 text-center">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${statusStyle(entry.status)}`}>
+                    className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs text-indigo-600 dark:text-indigo-400 font-bold">{entry.entry_number}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{entry.entry_date}</td>
+                    <td className="px-4 py-3 text-xs capitalize text-muted-foreground">{entry.entry_type.replace(/_/g, " ")}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{entry.reference || "—"}</td>
+                    <td className="px-4 py-3 text-foreground max-w-[200px] truncate">{entry.description || "—"}</td>
+                    <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400">{entry.total_debit > 0 ? fmt(entry.total_debit) : "—"}</td>
+                    <td className="px-4 py-3 text-right font-bold text-rose-600 dark:text-rose-400">{entry.total_credit > 0 ? fmt(entry.total_credit) : "—"}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold capitalize border ${statusStyle(entry.status)}`}>
                         {entry.status}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-center flex items-center justify-center gap-1">
+                    <td className="px-4 py-3 text-center flex items-center justify-center gap-1">
                       {entry.status === "draft" && (
-                        <button onClick={() => handlePost(entry.id)} className="px-2 py-1 bg-primary/10 text-primary rounded text-xs font-medium hover:bg-primary/20 transition-colors">Post</button>
+                        <button onClick={() => handlePost(entry.id)} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-[11px] font-bold hover:bg-primary/20 transition-colors">Post</button>
                       )}
-                      <button onClick={() => handleView(entry.id)} className="p-1 hover:bg-muted/50 rounded transition-colors" title="View details"><Eye className="size-3.5 text-muted-foreground" /></button>
+                      <button onClick={() => handleView(entry.id)} className="p-1 hover:bg-muted rounded transition-colors" title="View details"><Eye className="size-3.5 text-muted-foreground" /></button>
                     </td>
                   </motion.tr>
                 ))}
@@ -742,41 +742,41 @@ function GeneralLedgerTab() {
       ) : (
         <div className="space-y-4">
           {glData.map((acct, idx) => (
-            <motion.div key={acct.account_id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} className="glass-panel rounded-xl border border-border/50 overflow-hidden">
-              <div className="p-4 bg-muted/20 border-b border-border/50 flex justify-between items-center">
+            <motion.div key={acct.account_id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
+              <div className="p-4 bg-muted/30 border-b border-border/60 flex justify-between items-center">
                 <div>
-                  <span className="font-mono text-xs text-primary mr-2">[{acct.account_code}]</span>
-                  <span className="font-semibold text-foreground">{acct.account_name}</span>
+                  <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400 font-bold mr-2">[{acct.account_code}]</span>
+                  <span className="font-bold text-foreground">{acct.account_name}</span>
                   <span className="text-xs text-muted-foreground ml-2 capitalize">({acct.account_type})</span>
                 </div>
-                <div className="text-sm text-right">
-                  <span className="text-muted-foreground">Opening: </span><span className="font-semibold">{fmt(acct.opening_balance)}</span>
-                  <span className="text-muted-foreground ml-3">Closing: </span><span className={`font-bold ${acct.closing_balance >= 0 ? "text-emerald-500" : "text-red-400"}`}>{fmt(acct.closing_balance)}</span>
+                <div className="text-xs text-right">
+                  <span className="text-muted-foreground">Opening: </span><span className="font-bold text-foreground">{fmt(acct.opening_balance)}</span>
+                  <span className="text-muted-foreground ml-3">Closing: </span><span className={`font-bold ${acct.closing_balance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{fmt(acct.closing_balance)}</span>
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-muted-foreground uppercase bg-muted/10 border-b border-border/50">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted/40 text-muted-foreground uppercase text-[11px] font-bold tracking-wider border-b border-border/60">
                     <tr>
-                      <th className="px-4 py-2 font-medium">Date</th>
-                      <th className="px-4 py-2 font-medium">Entry #</th>
-                      <th className="px-4 py-2 font-medium">Type</th>
-                      <th className="px-4 py-2 font-medium">Description</th>
-                      <th className="px-4 py-2 font-medium">Status</th>
-                      <th className="px-4 py-2 text-right font-medium">Debit</th>
-                      <th className="px-4 py-2 text-right font-medium">Credit</th>
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-left">Entry #</th>
+                      <th className="px-4 py-3 text-left">Type</th>
+                      <th className="px-4 py-3 text-left">Description</th>
+                      <th className="px-4 py-3 text-center">Status</th>
+                      <th className="px-4 py-3 text-right font-bold">Debit</th>
+                      <th className="px-4 py-3 text-right font-bold">Credit</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-border/30 font-medium">
                     {acct.lines?.map((line: any, i: number) => (
-                      <motion.tr key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }} className="border-b border-border/30 last:border-0 hover:bg-muted/10 transition-colors">
-                        <td className="px-4 py-2 text-xs text-muted-foreground">{line.entry_date}</td>
-                        <td className="px-4 py-2 text-xs font-mono text-primary">{line.entry_number}</td>
-                        <td className="px-4 py-2"><span className="px-2 py-0.5 bg-secondary/50 rounded text-xs">{line.entry_type}</span></td>
-                        <td className="px-4 py-2 text-xs text-muted-foreground">{line.description || line.reference || "—"}</td>
-                        <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${line.status === "posted" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>{line.status}</span></td>
-                        <td className="px-4 py-2 text-right text-sm font-medium text-emerald-500">{line.debit > 0 ? fmt(line.debit) : "—"}</td>
-                        <td className="px-4 py-2 text-right text-sm font-medium text-red-400">{line.credit > 0 ? fmt(line.credit) : "—"}</td>
+                      <motion.tr key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-3 text-muted-foreground">{line.entry_date}</td>
+                        <td className="px-4 py-3 font-mono text-indigo-600 dark:text-indigo-400 font-bold">{line.entry_number}</td>
+                        <td className="px-4 py-3"><span className="px-2 py-0.5 bg-muted rounded text-[10px] font-bold capitalize border border-border/40">{line.entry_type}</span></td>
+                        <td className="px-4 py-3 text-foreground">{line.description || line.reference || "—"}</td>
+                        <td className="px-4 py-3 text-center"><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold capitalize border ${line.status === "posted" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : "bg-amber-500/10 text-amber-600 border-amber-500/20"}`}>{line.status}</span></td>
+                        <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400">{line.debit > 0 ? fmt(line.debit) : "—"}</td>
+                        <td className="px-4 py-3 text-right font-bold text-rose-600 dark:text-rose-400">{line.credit > 0 ? fmt(line.credit) : "—"}</td>
                       </motion.tr>
                     ))}
                     {(!acct.lines || acct.lines.length === 0) && (
@@ -839,34 +839,34 @@ function OpeningBalancesTab() {
       {loading ? (
         <div className="flex items-center justify-center h-48"><Loader2 className="size-8 animate-spin text-primary" /></div>
       ) : (
-        <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] font-bold tracking-wider">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Code</th>
-                  <th className="px-6 py-4 font-medium">Account Name</th>
-                  <th className="px-6 py-4 font-medium">Type</th>
-                  <th className="px-6 py-4 text-right font-medium">Opening Balance</th>
-                  <th className="px-6 py-4 text-center font-medium">Action</th>
+                  <th className="px-4 py-3 text-left">Code</th>
+                  <th className="px-4 py-3 text-left">Account Name</th>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-right font-bold">Opening Balance</th>
+                  <th className="px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border/30 font-medium">
                 {balances.map((b, i) => (
-                  <motion.tr key={b.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                    <td className="px-6 py-3 font-mono text-primary text-xs">{b.code}</td>
-                    <td className="px-6 py-3 font-medium text-foreground">{b.name}</td>
-                    <td className="px-6 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${ACCOUNT_TYPE_COLORS[b.account_type] || "bg-muted text-muted-foreground"}`}>{b.account_type}</span></td>
-                    <td className="px-6 py-3 text-right">
+                  <motion.tr key={b.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3 font-mono text-indigo-600 dark:text-indigo-400 font-bold text-xs">{b.code}</td>
+                    <td className="px-4 py-3 font-bold text-foreground">{b.name}</td>
+                    <td className="px-4 py-3"><span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold capitalize border ${ACCOUNT_TYPE_COLORS[b.account_type] || "bg-muted text-muted-foreground border-border/40"}`}>{b.account_type}</span></td>
+                    <td className="px-4 py-3 text-right font-bold text-foreground">
                       <EditableCell value={b.opening_balance || 0} onSave={(val) => handleUpdate(b.id, "opening_balance", val)} saving={saving === b.id} />
                     </td>
-                    <td className="px-6 py-3 text-center">
-                      <button onClick={() => handleUpdate(b.id, "opening_balance", 0)} className="text-xs text-muted-foreground hover:text-red-400 transition-colors">Reset</button>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => handleUpdate(b.id, "opening_balance", 0)} className="text-xs text-muted-foreground hover:text-rose-500 font-semibold transition-colors">Reset</button>
                     </td>
                   </motion.tr>
                 ))}
                 {balances.length === 0 && (
-                  <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No accounts found.</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No accounts found.</td></tr>
                 )}
               </tbody>
             </table>

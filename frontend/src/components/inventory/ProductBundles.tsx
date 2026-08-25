@@ -15,7 +15,7 @@ interface BundleItemInput {
 }
 
 export function ProductBundles() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [data, setData] = useState<ProductBundle[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -107,8 +107,8 @@ export function ProductBundles() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Product Bundles</h2>
-          <p className="text-sm text-muted-foreground">Group multiple products into a sellable bundle package.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Product Bundles</h2>
+          <p className="text-sm text-muted-foreground mt-1">Group multiple products into a sellable bundle package.</p>
         </div>
         <Button onClick={openCreate} className="gradient-brand text-white border-0">
           <Plus className="size-4 mr-2" /> Create Bundle
@@ -116,49 +116,49 @@ export function ProductBundles() {
       </div>
 
       <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full h-10 pl-9 pr-4 text-sm rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
+          className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border bg-card focus:ring-1 focus:ring-primary/30"
           placeholder="Search bundles..." />
       </div>
 
       {isLoading ? (
-        <div className="p-10 text-center text-muted-foreground">Loading bundles...</div>
+        <div className="p-10 text-center text-muted-foreground text-xs">Loading bundles...</div>
       ) : filtered.length === 0 ? (
         <div className="p-12 text-center border border-dashed rounded-lg">
           <PackageCheck className="size-10 mx-auto mb-2 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground font-medium">No bundles yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Bundle related products together (e.g. "Laptop Kit" = laptop + bag + charger).</p>
+          <p className="text-xs text-muted-foreground font-semibold">No bundles yet</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Bundle related products together (e.g. "Laptop Kit" = laptop + bag + charger).</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((bundle) => (
-            <Card key={bundle.id} className="p-6 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="size-10 rounded-lg bg-emerald-500/10 text-emerald-600 grid place-items-center shrink-0">
-                    <PackageCheck className="size-5" />
+            <Card key={bundle.id} className="p-4 hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 grid place-items-center shrink-0">
+                    <PackageCheck className="size-4" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-bold text-lg leading-tight truncate">{bundle.name}</h3>
-                    <div className="text-xs text-muted-foreground font-mono mt-0.5">{bundle.sku}</div>
+                    <h3 className="font-bold text-sm leading-tight truncate">{bundle.name}</h3>
+                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{bundle.sku}</div>
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => openEdit(bundle)}>
-                    <Edit2 className="size-4" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => openEdit(bundle)}>
+                    <Edit2 className="size-3.5" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(bundle.id)}>
-                    <Trash2 className="size-4" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(bundle.id)}>
+                    <Trash2 className="size-3.5" />
                   </Button>
                 </div>
               </div>
 
-              <div className="bg-muted/30 rounded-lg p-3 border mb-4">
-                <div className="text-[10px] uppercase font-bold text-muted-foreground mb-2">
+              <div className="bg-muted/30 rounded-lg p-2.5 border mb-3">
+                <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1.5">
                   Items ({bundle.items.length})
                 </div>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                <div className="space-y-1 max-h-36 overflow-y-auto">
                   {bundle.items.length === 0 ? (
                     <span className="text-xs text-muted-foreground italic">No items</span>
                   ) : (
@@ -172,8 +172,8 @@ export function ProductBundles() {
                 </div>
               </div>
 
-              <div className="pt-2 border-t flex justify-between items-center">
-                <span className="text-xs text-muted-foreground">Bundle Price</span>
+              <div className="pt-2 border-t flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">Bundle Price</span>
                 <span className="font-bold text-emerald-600">{currency.symbol}{bundle.price.toFixed(2)}</span>
               </div>
             </Card>
@@ -189,48 +189,48 @@ export function ProductBundles() {
               className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.96 }}
-              className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
+              className="relative w-full max-w-lg bg-card rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto border"
             >
-              <div className="sticky top-0 bg-white flex items-center justify-between p-6 border-b border-slate-100 z-10">
-                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                  <PackageCheck className="w-5 h-5 text-emerald-600" />
+              <div className="sticky top-0 bg-card flex items-center justify-between p-4 border-b z-10">
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <PackageCheck className="w-4 h-4 text-emerald-600" />
                   {editingId ? "Edit Bundle" : "Create Bundle"}
                 </h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full">
-                  <X className="w-5 h-5" />
+                <button onClick={() => setIsModalOpen(false)} className="p-1 text-muted-foreground hover:bg-muted rounded-full">
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bundle Name *</label>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Bundle Name *</label>
                     <input required type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                      className="w-full border rounded-lg px-3 py-2 focus:ring-1 focus:ring-primary outline-none text-xs"
                       placeholder="e.g. Laptop Kit" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">SKU *</label>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">SKU *</label>
                     <input required type="text" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                      className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-mono" />
+                      className="w-full border rounded-lg px-3 py-2 focus:ring-1 focus:ring-primary outline-none text-xs font-mono" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description</label>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Description</label>
                   <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    rows={2} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none text-sm" />
+                    rows={2} className="w-full border rounded-lg px-3 py-2 focus:ring-1 focus:ring-primary outline-none text-xs" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bundle Price ({currency.symbol})</label>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Bundle Price ({currency.symbol})</label>
                   <input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
-                    className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none text-sm" />
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-1 focus:ring-primary outline-none text-xs" />
                 </div>
 
-                <div className="border-t pt-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Bundle Items</label>
+                <div className="border-t pt-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">Bundle Items</label>
                     <button type="button" onClick={addItemRow}
-                      className="text-xs font-semibold text-emerald-600 hover:text-emerald-500">
+                      className="text-xs font-semibold text-primary hover:underline">
                       + Add Item
                     </button>
                   </div>
@@ -244,16 +244,16 @@ export function ProductBundles() {
                             placeholder="Select product..."
                           />
                         </div>
-                        <div className="w-24">
+                        <div className="w-20">
                           <input type="number" min={1} value={item.quantity}
                             onChange={(e) => updateItem(i, "quantity", parseInt(e.target.value) || 1)}
-                            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                            className="w-full border rounded-lg px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
                             placeholder="Qty" />
                         </div>
                         {items.length > 1 && (
                           <button type="button" onClick={() => removeItemRow(i)}
-                            className="p-2.5 text-rose-500 hover:bg-rose-50 rounded-lg">
-                            <X className="size-4" />
+                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg">
+                            <X className="size-3.5" />
                           </button>
                         )}
                       </div>
@@ -261,13 +261,13 @@ export function ProductBundles() {
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3 pt-4 border-t">
+                <div className="flex justify-end gap-2 pt-3 border-t">
                   <button type="button" onClick={() => setIsModalOpen(false)}
-                    className="px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">
+                    className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted rounded-lg">
                     Cancel
                   </button>
                   <button type="submit" disabled={isSubmitting}
-                    className="px-8 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg">
+                    className="px-5 py-2 text-xs font-semibold text-white gradient-brand disabled:opacity-50 rounded-lg">
                     {isSubmitting ? 'Saving...' : (editingId ? 'Update' : 'Create')}
                   </button>
                 </div>

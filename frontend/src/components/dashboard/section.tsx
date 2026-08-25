@@ -16,7 +16,7 @@ export function Section({ title, subtitle, action, children, className, noCard }
     <>
       <div className="flex items-end justify-between mb-4 gap-3">
         <div>
-          <h2 className="text-sm font-semibold">{title}</h2>
+          <h2 className="text-base font-bold font-heading tracking-tight text-foreground">{title}</h2>
           {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
         {action}
@@ -25,5 +25,5 @@ export function Section({ title, subtitle, action, children, className, noCard }
     </>
   );
   if (noCard) return <section className={className}>{inner}</section>;
-  return <Card className={cn("p-5 border-border/60", className)}>{inner}</Card>;
+  return <Card className={cn("p-6 rounded-2xl border border-border/80 bg-card shadow-xs hover:shadow-sm transition-all", className)}>{inner}</Card>;
 }

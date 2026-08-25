@@ -123,7 +123,7 @@ export function PosInvoicesHistory() {
       }
 
       const updatedReceived = currentReceived + amountToCollect;
-      const newStatus = updatedReceived >= totalGrand - 0.01 ? "Paid" : "Partial";
+      const newStatus: "Paid" | "Partial" | "Unpaid" = updatedReceived >= totalGrand - 0.01 ? "Paid" : "Partial";
 
       const updatedInvoices = invoices.map((inv) => {
         if (inv.id === settlingInvoice.id || (inv.invoice_number && inv.invoice_number === settlingInvoice.invoice_number)) {
@@ -546,22 +546,22 @@ export function PosInvoicesHistory() {
   const pdfCount = invoices.filter((i) => i.print_status === "A4 PDF Generated").length;
 
   return (
-    <div className="p-6 md:p-8 space-y-6 mx-auto min-h-screen pb-24">
+    <div className="space-y-6 mx-auto min-h-screen pb-24">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Generated Invoices History</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Generated Invoices History</h2>
+          <p className="text-sm text-muted-foreground mt-1">
             View, track print status, and manage all store sales invoices in real-time
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <button
             onClick={loadInvoices}
-            className="bg-white hover:bg-slate-50 text-slate-700 font-semibold px-5 py-2.5 rounded-xl shadow-sm border border-slate-200 flex items-center gap-2 transition-all"
+            className="bg-white hover:bg-slate-50 text-slate-700 font-semibold px-3 h-8 text-xs rounded-lg shadow-sm border border-slate-200 flex items-center gap-1.5 transition-all"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
           </button>
         </div>
       </div>
@@ -660,22 +660,22 @@ export function PosInvoicesHistory() {
       </div>
 
       {/* Main Invoices Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider font-bold">
+            <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] tracking-wider font-bold">
               <tr>
-                <th className="px-4 py-3.5">Invoice #</th>
-                <th className="px-4 py-3.5">Date & Time</th>
-                <th className="px-4 py-3.5">Customer / Party</th>
-                <th className="px-4 py-3.5">Sales Representative</th>
-                <th className="px-4 py-3.5">Payment</th>
-                <th className="px-4 py-3.5">Print Status</th>
-                <th className="px-4 py-3.5 text-right font-bold">Total Amount</th>
-                <th className="px-4 py-3.5 text-center">Actions</th>
+                <th className="px-4 py-3 text-left">Invoice #</th>
+                <th className="px-4 py-3 text-left">Date & Time</th>
+                <th className="px-4 py-3 text-left">Customer / Party</th>
+                <th className="px-4 py-3 text-left">Sales Representative</th>
+                <th className="px-4 py-3 text-left">Payment</th>
+                <th className="px-4 py-3 text-left">Print Status</th>
+                <th className="px-4 py-3 text-right font-bold">Total Amount</th>
+                <th className="px-4 py-3 text-center">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium">
+            <tbody className="divide-y divide-border/30 font-medium">
               {loading ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">

@@ -290,20 +290,20 @@ export function Customers() {
     "w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Customers</h1>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customers</h2>
+          <p className="text-xs text-muted-foreground">
             Manage your customer relationships from one tenant-scoped source of truth.
           </p>
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center justify-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium"
+          className="flex items-center justify-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold"
         >
-          <UserPlus className="size-4" /> Add Customer
+          <UserPlus className="size-3.5" /> Add Customer
         </button>
       </div>
 
@@ -470,22 +470,22 @@ export function Customers() {
       {loading ? (
         <div className="py-16 text-center text-muted-foreground">Loading customers…</div>
       ) : (
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] font-bold tracking-wider">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium">Customer</th>
-                  <th className="text-left px-4 py-3 font-medium">Contact</th>
-                  <th className="text-left px-4 py-3 font-medium">Type</th>
-                  <th className="text-left px-4 py-3 font-medium">City</th>
-                  <th className="text-left px-4 py-3 font-medium">Status</th>
-                  <th className="text-left px-4 py-3 font-medium">Lifetime Value</th>
-                  <th className="text-left px-4 py-3 font-medium">Orders</th>
-                  <th className="text-right px-4 py-3 font-medium">Actions</th>
+                  <th className="px-4 py-3 text-left">Customer</th>
+                  <th className="px-4 py-3 text-left">Contact</th>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-left">City</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-right font-bold">Lifetime Value</th>
+                  <th className="px-4 py-3 text-right font-bold">Orders</th>
+                  <th className="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border/30 font-medium">
                 {filtered.map((customer) => (
                   <tr
                     key={customer.id}
@@ -497,12 +497,12 @@ export function Customers() {
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="size-9 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs">
+                        <div className="size-8 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
                           {customer.name.split(" ").slice(0, 2).map((p) => p[0]).join("")}
                         </div>
                         <div>
-                          <p className="font-medium">{customer.name}</p>
-                          {customer.company_name && <p className="text-xs text-muted-foreground">{customer.company_name}</p>}
+                          <p className="font-bold text-foreground">{customer.name}</p>
+                          {customer.company_name && <p className="text-[11px] text-muted-foreground">{customer.company_name}</p>}
                         </div>
                       </div>
                     </td>
@@ -510,31 +510,31 @@ export function Customers() {
                       {customer.email || customer.phone || "—"}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
                         <Tag className="size-3" />{customer.customer_type}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {customer.city || "—"}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={cn("rounded-md px-2 py-1 text-xs font-medium",
-                        customer.status === "Active" && "bg-emerald-500/10 text-emerald-600",
-                        customer.status === "Inactive" && "bg-muted text-muted-foreground",
-                        customer.status === "Blocked" && "bg-red-500/10 text-red-600",
-                        customer.status === "Pending" && "bg-yellow-500/10 text-yellow-600",
+                    <td className="px-4 py-3 text-center">
+                      <span className={cn("inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
+                        customer.status === "Active" && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+                        customer.status === "Inactive" && "bg-muted text-muted-foreground border-border/40",
+                        customer.status === "Blocked" && "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                        customer.status === "Pending" && "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
                       )}>
                         {customer.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-medium">{currency.symbol}{(customer.lifetime_value || 0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{customer.total_orders ?? 0}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={(e) => { e.stopPropagation(); openEdit(customer); }} className="p-1.5 hover:bg-muted rounded-md" title="Edit">
+                    <td className="px-4 py-3 text-right font-bold text-foreground">{currency.symbol}{(customer.lifetime_value || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-bold text-foreground">{customer.total_orders ?? 0}</td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); openEdit(customer); }} className="p-1 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground" title="Edit">
                           <Plus className="size-3.5 rotate-45" />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDelete(customer.id); }} className="p-1.5 hover:bg-red-500/10 text-red-500 rounded-md" title="Deactivate">
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(customer.id); }} className="p-1 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 rounded-md" title="Deactivate">
                           <X className="size-3.5" />
                         </button>
                       </div>

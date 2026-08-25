@@ -51,7 +51,7 @@ interface MasterCatalogItem {
 }
 
 export function MasterCatalogAdmin() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [items, setItems] = useState<MasterCatalogItem[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [page, setPage] = useState(1);
@@ -176,13 +176,7 @@ export function MasterCatalogAdmin() {
       {/* Header Row */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Database className="w-6 h-6 text-blue-600" />
-            Global Master Catalog (Admin View)
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-blue-600 border border-blue-500/20">
-              RAG Pipeline Control
-            </span>
-          </h1>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Global Master Catalog (Admin View)</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Monitor, pause, resume, and audit specifications across the global product master data catalog.
           </p>
@@ -193,21 +187,19 @@ export function MasterCatalogAdmin() {
       <Card className="bg-card border-border p-6 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-foreground ${
-              ragStatus.paused ? "bg-blue-50 border border-blue-200" : "bg-blue-50 border border-blue-200"
-            }`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-foreground ${ragStatus.paused ? "bg-blue-50 border border-blue-200" : "bg-blue-50 border border-blue-200"
+              }`}>
               {ragStatus.paused ? <Pause className="w-5 h-5 text-blue-600 animate-pulse" /> : <Play className="w-5 h-5 text-blue-600" />}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-foreground">RAG Sourcing Pipeline Status:</span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
-                  ragStatus.paused ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-blue-50 text-blue-700 border-blue-200"
-                }`}>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${ragStatus.paused ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-blue-50 text-blue-700 border-blue-200"
+                  }`}>
                   {ragStatus.paused ? "PAUSED" : "ACTIVE & RUNNING"}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="text-sm text-muted-foreground mt-1">
                 {ragStatus.paused ? "Background workers are idle. Click resume to restore parallel RAG web retrieval." : "Workers are actively pulling pending products in parallel batches."}
               </p>
             </div>
@@ -216,11 +208,10 @@ export function MasterCatalogAdmin() {
           <div className="flex items-center gap-2.5">
             <button
               onClick={handlePauseResume}
-              className={`h-9 px-4 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition ${
-                ragStatus.paused
+              className={`h-9 px-4 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition ${ragStatus.paused
                   ? "bg-blue-600 hover:bg-blue-700 border-blue-600 text-white"
                   : "bg-white hover:bg-gray-50 border-gray-200 text-gray-700"
-              }`}
+                }`}
             >
               {ragStatus.paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
               <span>{ragStatus.paused ? "Resume Pipeline" : "Pause Sourcing"}</span>
@@ -425,15 +416,14 @@ export function MasterCatalogAdmin() {
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="flex flex-col">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold w-max border ${
-                          item.ai_search_done
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold w-max border ${item.ai_search_done
                             ? "bg-blue-50 text-blue-700 border-blue-200"
                             : item.rag_status === "processing"
-                            ? "bg-blue-50 text-blue-700 border-blue-200 animate-pulse"
-                            : item.rag_status === "failed"
-                            ? "bg-blue-50 text-blue-700 border-blue-200"
-                            : "bg-slate-100 text-slate-600 border-border"
-                        }`}>
+                              ? "bg-blue-50 text-blue-700 border-blue-200 animate-pulse"
+                              : item.rag_status === "failed"
+                                ? "bg-blue-50 text-blue-700 border-blue-200"
+                                : "bg-slate-100 text-slate-600 border-border"
+                          }`}>
                           {item.ai_search_done ? "Completed" : item.rag_status === "processing" ? "Sourcing" : item.rag_status === "failed" ? "Failed" : "Pending"}
                         </span>
                         {item.rag_status === "failed" && item.rag_error && (
@@ -505,7 +495,7 @@ export function MasterCatalogAdmin() {
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              
+
               <span className="text-xs text-muted-foreground font-semibold">
                 Page {page} of {totalPages}
               </span>

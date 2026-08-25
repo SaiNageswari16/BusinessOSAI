@@ -39,7 +39,7 @@ export function ExpiryManagement() {
     try {
       setLoadingSummary(true);
       const s = await inventoryApi.getExpirySummary();
-      if (s && s.total_batches_tracked !== undefined) {
+      if (s && (s as any).total_batches_tracked !== undefined) {
         setSummary(s);
       } else {
         throw new Error("fallback");

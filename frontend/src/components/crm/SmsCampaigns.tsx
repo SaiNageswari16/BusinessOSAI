@@ -15,14 +15,14 @@ const smsCampaigns = [
 export function SmsCampaigns() {
     const { currency, formatCurrency } = useCurrency();
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">SMS Campaigns</h1>
-          <p className="text-sm text-muted-foreground">Send targeted marketing, OTP, and transactional SMS messages.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">SMS Campaigns</h2>
+          <p className="text-xs text-muted-foreground">Send targeted marketing, OTP, and transactional SMS messages.</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-          <Plus className="size-4" /> Create SMS
+        <button className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+          <Plus className="size-3.5" /> Create SMS
         </button>
       </div>
 
@@ -70,7 +70,7 @@ export function SmsCampaigns() {
             <div className="flex justify-between items-start mb-3">
               <div>
                 <h3 className="font-semibold text-foreground">{campaign.name}</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">{campaign.id} · {campaign.date}</p>
+                <p className="text-sm text-muted-foreground mt-1">{campaign.id} · {campaign.date}</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className={cn("px-2 py-1 rounded-md text-xs font-semibold",

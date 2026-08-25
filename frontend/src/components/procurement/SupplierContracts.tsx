@@ -66,8 +66,7 @@ export function SupplierContracts() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Briefcase className="text-primary size-6" /> Supplier Contracts
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Supplier Contracts
           </h2>
           <p className="text-sm text-muted-foreground">Manage SLA terms, pricing agreements, and renewals.</p>
         </div>

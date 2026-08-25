@@ -98,7 +98,7 @@ function OrganicPostCard({ post, onSelect }: { post: OrganicPost; onSelect: () =
         )}
       </div>
 
-      <div className="p-4 space-y-3 flex-grow flex flex-col justify-between">
+      <div className="space-y-6 flex-grow flex flex-col justify-between">
         <div>
           <p className="text-xs text-foreground/90 font-medium leading-relaxed line-clamp-2 mb-2">
             {post.message || "Published Meta Organic Post"}
@@ -179,7 +179,7 @@ function CampaignCard({ campaign, onSelect }: { campaign: FacebookCampaign; onSe
         </span>
       </div>
 
-      <div className="p-4 space-y-3 flex-grow flex flex-col justify-between">
+      <div className="space-y-6 flex-grow flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-1.5 min-w-0">
@@ -596,16 +596,16 @@ export function SocialMediaDashboard() {
   const totalReach = campaigns.reduce((sum, c) => sum + Number(c.reach || 0), 0);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Social Media Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Track your organic posts and paid ad performance in real time.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Social Media Dashboard</h2>
+          <p className="text-xs text-muted-foreground">Track your organic posts and paid ad performance in real time.</p>
         </div>
         <button
           onClick={() => { void loadPosts(); void loadCampaigns(); }}
-          className="flex items-center gap-2 px-3.5 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-semibold transition-colors"
+          className="flex items-center gap-1.5 px-3 h-8 bg-muted hover:bg-muted/80 rounded-lg text-xs font-semibold transition-colors"
         >
           <RefreshCw className="size-3.5" />
           Refresh Data

@@ -84,30 +84,30 @@ export function Deals({ tab = "all_deals" }: Props) {
   };
 
   return (
-    <div className="p-6 h-[calc(100vh-6rem)] flex flex-col space-y-6">
+    <div className="p-4 h-[calc(100vh-6rem)] flex flex-col space-y-3">
       <div className="flex justify-between items-center shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Deals Pipeline</h1>
-          <p className="text-sm text-muted-foreground">Interactive status board to manage active opportunities.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Deals Pipeline</h2>
+          <p className="text-xs text-muted-foreground">Interactive status board to manage active opportunities.</p>
         </div>
         <div className="flex gap-2">
           <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search deals..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-64 pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none"
+              className="w-56 pl-8 pr-3 h-8 bg-background border border-border rounded-lg text-xs focus:outline-none"
             />
           </div>
-          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm font-medium hover:bg-accent transition-colors">
-            <Filter className="size-4" /> Filter
+          <button onClick={() => toast.info('Feature coming soon!')} className="flex items-center gap-1.5 px-3 h-8 bg-background border border-border rounded-lg text-xs font-semibold hover:bg-accent transition-colors">
+            <Filter className="size-3.5" /> Filter
           </button>
           <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
             <DialogTrigger asChild>
-              <button className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-                <Plus className="size-4" /> Add Deal
+              <button className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+                <Plus className="size-3.5" /> Add Deal
               </button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">

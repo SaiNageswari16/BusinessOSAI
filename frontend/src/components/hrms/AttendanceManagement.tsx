@@ -366,14 +366,14 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   // ─── Render: Biometric Devices ──────────────────────────────────
   if (tab === "biometric") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Biometric Devices</h1>
-            <p className="text-sm text-muted-foreground">Fingerprint, access turnstile, and keycard scanners.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Biometric Devices</h2>
+            <p className="text-xs text-muted-foreground">Fingerprint, access turnstile, and keycard scanners.</p>
           </div>
-          <Button className="gradient-brand text-white border-0" onClick={handleSyncBiometric} disabled={syncingBiometrics}>
-            {syncingBiometrics ? <Loader2 className="size-4 animate-spin mr-2" /> : <RefreshCw className="size-4 mr-2" />}
+          <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0" onClick={handleSyncBiometric} disabled={syncingBiometrics}>
+            {syncingBiometrics ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <RefreshCw className="size-3.5 mr-1.5" />}
             Sync Active Devices
           </Button>
         </div>
@@ -412,17 +412,17 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   // ─── Render: Face Recognition Logs ──────────────────────────────
   if (tab === "face_recognition") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Face Recognition Logs</h1>
-            <p className="text-sm text-muted-foreground">Live matching metrics from tablet entrance cameras.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Face Recognition Logs</h2>
+            <p className="text-xs text-muted-foreground">Live matching metrics from tablet entrance cameras.</p>
           </div>
-          <div className="flex items-center gap-3">
-            <Button onClick={() => setFaceSimDialogOpen(true)} className="gradient-brand text-white border-0 h-9 font-medium">
-              <Camera className="size-4 mr-1.5" /> Simulate Face Match
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setFaceSimDialogOpen(true)} className="gradient-brand text-white border-0 h-8 text-xs font-semibold">
+              <Camera className="size-3.5 mr-1.5" /> Simulate Face Match
             </Button>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 text-emerald-600 rounded-full text-xs font-bold animate-pulse">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 rounded-full text-xs font-bold animate-pulse">
               <span className="size-2 rounded-full bg-emerald-500" /> Active Feed
             </span>
           </div>
@@ -518,10 +518,10 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     // Show entries containing latitude and longitude values
     const gpsRecords = attendance.filter(r => r.latitude || r.longitude);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">GPS / Geofenced Attendance</h1>
-          <p className="text-sm text-muted-foreground">Geofenced coordinates recorded for field or remote WFH staff.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">GPS / Geofenced Attendance</h2>
+          <p className="text-xs text-muted-foreground">Geofenced coordinates recorded for field or remote WFH staff.</p>
         </div>
 
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
@@ -618,17 +618,17 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     };
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Shift & Calendars Configuration</h1>
-            <p className="text-sm text-muted-foreground">Manage active work calendars, day schedules, and shift timings.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Shift & Calendars Configuration</h2>
+            <p className="text-xs text-muted-foreground">Manage active work calendars, day schedules, and shift timings.</p>
           </div>
           <Button 
-            className="gradient-brand text-white border-0" 
+            className="h-8 text-xs font-semibold gradient-brand text-white border-0" 
             onClick={() => setCalendarDialogOpen(true)}
           >
-            <Plus className="size-4 mr-2" /> New Shift Calendar
+            <Plus className="size-3.5 mr-1.5" /> New Shift Calendar
           </Button>
         </div>
 
@@ -827,14 +827,14 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   // ─── Render: Attendance Corrections ──────────────────────────────
   if (tab === "attendance_corrections") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Attendance Corrections</h1>
-            <p className="text-sm text-muted-foreground">Manage VPN proof records, missed logs, or clocking adjustments.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance Corrections</h2>
+            <p className="text-xs text-muted-foreground">Manage VPN proof records, missed logs, or clocking adjustments.</p>
           </div>
-          <Button className="gradient-brand text-white border-0" onClick={() => setCorrectionDialogOpen(true)}>
-            <Plus className="size-4 mr-2" /> Request Correction
+          <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0" onClick={() => setCorrectionDialogOpen(true)}>
+            <Plus className="size-3.5 mr-1.5" /> Request Correction
           </Button>
         </div>
 
@@ -934,11 +934,11 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
 
   // ─── Render: Daily Attendance (Default) ─────────────────────────
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Daily Attendance</h1>
-          <p className="text-sm text-muted-foreground">Timesheets log summary for today.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Daily Attendance</h2>
+          <p className="text-xs text-muted-foreground">Timesheets log summary for today.</p>
         </div>
         {(() => {
           const activeRole = user?.roles.find(r => r.id === user?.activeRoleId);
@@ -946,10 +946,10 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
           if (!isAdmin) return null;
           return (
             <div className="flex gap-2">
-              <Button variant="outline" className="h-9 border-emerald-500/20 text-emerald-600 hover:bg-emerald-500/10" onClick={handleClockIn}>
+              <Button variant="outline" className="h-8 text-xs font-semibold border-emerald-500/20 text-emerald-600 hover:bg-emerald-500/10" onClick={handleClockIn}>
                 WFH Clock In
               </Button>
-              <Button variant="outline" className="h-9 border-red-500/20 text-red-600 hover:bg-red-500/10" onClick={handleClockOut}>
+              <Button variant="outline" className="h-8 text-xs font-semibold border-red-500/20 text-red-600 hover:bg-red-500/10" onClick={handleClockOut}>
                 WFH Clock Out
               </Button>
             </div>

@@ -453,17 +453,17 @@ export function PaymentGateways() {
   const activeCount = gateways.filter((g) => g.isEnabled).length;
 
   return (
-    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+    <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Payment Gateways & Integrations</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-200 dark:border-emerald-900/30">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-200 dark:border-emerald-900/30">
               {activeCount} Active Gateway{activeCount !== 1 ? "s" : ""}
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground mt-1">
             Configure online checkout providers, domestic UPI aggregators, global card processors, and retail EDC swipers.
           </p>
         </div>

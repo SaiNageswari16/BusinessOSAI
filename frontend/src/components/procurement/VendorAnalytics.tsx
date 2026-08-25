@@ -27,8 +27,7 @@ export function VendorAnalytics() {
   return (
     <div className="space-y-6 text-foreground">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Trophy className="text-primary size-6" /> Vendor Performance Analytics
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Vendor Performance Analytics
         </h2>
         <p className="text-sm text-muted-foreground">Identify top performing suppliers and risk factors.</p>
       </div>

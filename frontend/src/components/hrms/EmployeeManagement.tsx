@@ -463,10 +463,10 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   // ─── Render: Departments Tab ─────────────────────────────────────
   if (tab === "departments") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Multi-Organizational Departments</h1>
-          <p className="text-sm text-muted-foreground">Manage departments mapped across parent companies and regional branches.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Multi-Organizational Departments</h2>
+          <p className="text-xs text-muted-foreground">Manage departments mapped across parent companies and regional branches.</p>
         </div>
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
         {!loading && (
@@ -502,10 +502,10 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   // ─── Render: Designations Tab ────────────────────────────────────
   if (tab === "designations") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Designations & Grade Scales</h1>
-          <p className="text-sm text-muted-foreground">Standardized seniority levels and designation models.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Designations & Grade Scales</h2>
+          <p className="text-xs text-muted-foreground">Standardized seniority levels and designation models.</p>
         </div>
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
         {!loading && (
@@ -545,10 +545,10 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   // ─── Render: Teams Tab ───────────────────────────────────────────
   if (tab === "teams") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Functional Teams</h1>
-          <p className="text-sm text-muted-foreground">Functional project squads mapped across branches.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Functional Teams</h2>
+          <p className="text-xs text-muted-foreground">Functional project squads mapped across branches.</p>
         </div>
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
         {!loading && (
@@ -576,10 +576,10 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   // ─── Render: Documents Tab ───────────────────────────────────────
   if (tab === "documents") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Compliance Documents</h1>
-          <p className="text-sm text-muted-foreground">Manage files, signed NDA contracts, and emergency cards.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Compliance Documents</h2>
+          <p className="text-xs text-muted-foreground">Manage files, signed NDA contracts, and emergency cards.</p>
         </div>
 
         <div className="flex gap-4 items-end bg-card p-5 border rounded-xl">
@@ -655,8 +655,8 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   // ─── Render: Employee Profile Tab ───────────────────────────────
   if (tab === "employee_profile") {
     return (
-      <div className="p-6 space-y-6">
-        <h1 className="text-2xl font-bold text-foreground">Employee Profile Cards</h1>
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Employee Profile Cards</h2>
         <div className="flex gap-4 items-end bg-card p-5 border rounded-xl">
           <div className="flex-1 space-y-1">
             <label className="text-xs font-bold text-muted-foreground uppercase">Choose Employee Profile</label>
@@ -717,21 +717,21 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
 
   // ─── Render: Employees Grid (Default) ────────────────────────────
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Employee Management</h1>
-          <p className="text-sm text-muted-foreground">{total} active employee directories linked to user login authentication.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Employee Management</h2>
+          <p className="text-xs text-muted-foreground">{total} active employee directories linked to user login authentication.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 shadow-sm" onClick={handleBulkExportVCards}>
-            <QrCode className="size-4 mr-2 text-indigo-500" /> Export All vCards
+          <Button variant="outline" className="h-8 text-xs font-semibold border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 shadow-sm" onClick={handleBulkExportVCards}>
+            <QrCode className="size-3.5 mr-1.5 text-indigo-500" /> Export All vCards
           </Button>
-          <Button variant="outline" onClick={() => setBulkDialogOpen(true)}>
+          <Button variant="outline" className="h-8 text-xs font-semibold" onClick={() => setBulkDialogOpen(true)}>
             Bulk Import CSV
           </Button>
-          <Button className="gradient-brand text-white border-0 animate-pulse-subtle" onClick={() => { setEditingEmployee(null); setAddDialogOpen(true); }}>
-            <Plus className="size-4 mr-2" /> Create Employee User
+          <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0 animate-pulse-subtle" onClick={() => { setEditingEmployee(null); setAddDialogOpen(true); }}>
+            <Plus className="size-3.5 mr-1.5" /> Create Employee User
           </Button>
         </div>
       </div>

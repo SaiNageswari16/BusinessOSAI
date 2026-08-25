@@ -261,7 +261,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
   // KPIs
   if (tab === "kpis") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         {notification && (
           <div className={`fixed bottom-4 right-4 px-4 py-2.5 rounded-lg text-white font-sans text-xs shadow-lg z-50 ${notification.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
             {notification.message}
@@ -270,11 +270,11 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">KPIs</h1>
-            <p className="text-sm text-muted-foreground">Key Performance Indicators across departments — Q2 2026.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">KPIs</h2>
+            <p className="text-xs text-muted-foreground">Key Performance Indicators across departments — Q2 2026.</p>
           </div>
-          <button onClick={() => setKpiOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <BarChart3 className="size-4" /> Add KPI
+          <button onClick={() => setKpiOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+            <BarChart3 className="size-3.5" /> Add KPI
           </button>
         </div>
 
@@ -348,7 +348,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
   // Appraisals
   if (tab === "appraisals") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         {notification && (
           <div className={`fixed bottom-4 right-4 px-4 py-2.5 rounded-lg text-white font-sans text-xs shadow-lg z-50 ${notification.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
             {notification.message}
@@ -357,11 +357,11 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Appraisals</h1>
-            <p className="text-sm text-muted-foreground">H1 2026 performance appraisal results and ratings.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Appraisals</h2>
+            <p className="text-xs text-muted-foreground">H1 2026 performance appraisal results and ratings.</p>
           </div>
-          <button onClick={() => setAppraisalOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <Plus className="size-4" /> Start Appraisal
+          <button onClick={() => setAppraisalOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+            <Plus className="size-3.5" /> Start Appraisal
           </button>
         </div>
 
@@ -477,11 +477,11 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
     const completedAppraisals = appraisals.filter(a => a.status === "Completed");
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Performance Reviews</h1>
-            <p className="text-sm text-muted-foreground">360-degree review feedback and manager notes.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Performance Reviews</h2>
+            <p className="text-xs text-muted-foreground">360-degree review feedback and manager notes.</p>
           </div>
         </div>
         <div className="space-y-4">
@@ -530,7 +530,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
   // Incentives
   if (tab === "incentives") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         {notification && (
           <div className={`fixed bottom-4 right-4 px-4 py-2.5 rounded-lg text-white font-sans text-xs shadow-lg z-50 ${notification.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
             {notification.message}
@@ -539,11 +539,11 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Incentives</h1>
-            <p className="text-sm text-muted-foreground">Performance-linked incentives and recognition awards.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Incentives</h2>
+            <p className="text-xs text-muted-foreground">Performance-linked incentives and recognition awards.</p>
           </div>
-          <button onClick={() => setIncentiveOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <Gift className="size-4" /> Award Incentive
+          <button onClick={() => setIncentiveOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+            <Gift className="size-3.5" /> Award Incentive
           </button>
         </div>
 
@@ -622,7 +622,7 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
 
   // Default: goals
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {notification && (
         <div className={`fixed bottom-4 right-4 px-4 py-2.5 rounded-lg text-white font-sans text-xs shadow-lg z-50 ${notification.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
           {notification.message}
@@ -631,11 +631,11 @@ export function PerformanceManagement({ tab = "goals" }: Props) {
 
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Goals (OKRs)</h1>
-          <p className="text-sm text-muted-foreground">Employee goal tracking for Q3 2026.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Goals (OKRs)</h2>
+          <p className="text-xs text-muted-foreground">Employee goal tracking for Q3 2026.</p>
         </div>
-        <button onClick={() => setGoalOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-          <Plus className="size-4" /> Set Goal
+        <button onClick={() => setGoalOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+          <Plus className="size-3.5" /> Set Goal
         </button>
       </div>
 

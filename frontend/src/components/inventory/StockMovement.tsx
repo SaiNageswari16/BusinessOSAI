@@ -62,8 +62,7 @@ export function StockMovement() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <History className="size-6 text-indigo-600" /> Stock Movement Audit & Activity Ledger
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Stock Movement Audit & Activity Ledger
           </h2>
           <p className="text-sm text-slate-500 mt-1">
             Complete real-time timeline stream of all warehouse stock transfers, movements, and inventory logs.

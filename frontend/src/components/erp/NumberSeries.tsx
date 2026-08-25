@@ -132,24 +132,24 @@ export function NumberSeries() {
   const companyMap = Object.fromEntries(companies.map((c) => [c.id, c.name]));
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Number Series</h2>
-          <p className="text-sm text-muted-foreground">Auto-incrementing document numbers for PO, SO, invoices, and more.</p>
+          <h2 className="text-base font-bold tracking-tight">Number Series</h2>
+          <p className="text-xs text-muted-foreground">Auto-incrementing document numbers for PO, SO, invoices, and more.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2 h-9" onClick={load}><RefreshCw className={cn("size-4", loading && "animate-spin")} /> Refresh</Button>
-          <Button className="gradient-brand text-white border-0 gap-2 h-9" onClick={() => { setEditNS(null); setShowForm(true); }}>
-            <Plus className="size-4" /> New Series
+          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs font-semibold" onClick={load}><RefreshCw className={cn("size-3.5", loading && "animate-spin")} /> Refresh</Button>
+          <Button size="sm" className="gradient-brand text-white border-0 gap-1.5 h-8 text-xs font-semibold" onClick={() => { setEditNS(null); setShowForm(true); }}>
+            <Plus className="size-3.5" /> New Series
           </Button>
         </div>
       </div>
 
       <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full h-10 pl-10 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
+          className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
           placeholder="Search by module or prefix..." />
       </div>
 

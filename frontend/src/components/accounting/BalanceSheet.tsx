@@ -26,14 +26,14 @@ export function BalanceSheet({ tab = "balance_sheet" }: Props) {
 
   const exportBS = () => {
     if (!report) { toast.error("No Balance Sheet data to export"); return; }
-    const rows: (string | number)[][] = [];
+    const rows: string[][] = [];
     rows.push(["Section", "Account Code", "Account Name", "Amount"]);
-    report.assets.forEach((r: any) => rows.push(["Assets", r.account_code, r.account_name, Math.abs(r.net)]));
-    rows.push(["", "", "Total Assets", report.total_assets]);
-    report.liabilities.forEach((r: any) => rows.push(["Liabilities", r.account_code, r.account_name, Math.abs(r.net)]));
-    rows.push(["", "", "Total Liabilities", report.total_liabilities]);
-    report.equity.forEach((r: any) => rows.push(["Equity", r.account_code, r.account_name, Math.abs(r.net)]));
-    rows.push(["", "", "Total Equity", report.total_equity]);
+    report.assets.forEach((r: any) => rows.push(["Assets", String(r.account_code), String(r.account_name), String(Math.abs(r.net))]));
+    rows.push(["", "", "Total Assets", String(report.total_assets)]);
+    report.liabilities.forEach((r: any) => rows.push(["Liabilities", String(r.account_code), String(r.account_name), String(Math.abs(r.net))]));
+    rows.push(["", "", "Total Liabilities", String(report.total_liabilities)]);
+    report.equity.forEach((r: any) => rows.push(["Equity", String(r.account_code), String(r.account_name), String(Math.abs(r.net))]));
+    rows.push(["", "", "Total Equity", String(report.total_equity)]);
     downloadCsv("balance_sheet.csv", rows[0], rows.slice(1));
     toast.success("Balance Sheet exported");
   };

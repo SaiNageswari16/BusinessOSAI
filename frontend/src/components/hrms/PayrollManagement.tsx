@@ -142,14 +142,14 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
   if (tab === "pay_grades") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Designation Pay Grades</h1>
-            <p className="text-sm text-muted-foreground">Define default salary structure templates mapped to designations.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Designation Pay Grades</h2>
+            <p className="text-xs text-muted-foreground">Define default salary structure templates mapped to designations.</p>
           </div>
-          <Button onClick={() => setGradeDialogOpen(true)} className="gradient-brand text-white border-0">
-            <Plus className="size-4 mr-1.5" /> Create Pay Grade
+          <Button onClick={() => setGradeDialogOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white border-0">
+            <Plus className="size-3.5 mr-1.5" /> Create Pay Grade
           </Button>
         </div>
 
@@ -368,10 +368,10 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
   if (tab === "payroll_processing") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Payroll Processing</h1><p className="text-sm text-muted-foreground">Process and finalize payroll cycles.</p></div>
-          <button onClick={() => setProcessDialogOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><CreditCard className="size-4" /> Process Employee Payroll</button>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Payroll Processing</h2><p className="text-xs text-muted-foreground">Process and finalize payroll cycles.</p></div>
+          <button onClick={() => setProcessDialogOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity"><CreditCard className="size-3.5" /> Process Employee Payroll</button>
         </div>
 
         {/* Processing checklist */}
@@ -442,9 +442,9 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
   if (tab === "pf") {
     const totalPF = structures.reduce((s, e) => s + e.pf_deduction * 2, 0);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Provident Fund (PF)</h1><p className="text-sm text-muted-foreground">Employee and employer PF contributions.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Provident Fund (PF)</h2><p className="text-xs text-muted-foreground">Employee and employer PF contributions.</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -493,9 +493,9 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
   if (tab === "esi") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">ESI (Employee State Insurance)</h1><p className="text-sm text-muted-foreground">ESI contributions — Employee 0.75% · Employer 3.25%.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">ESI (Employee State Insurance)</h2><p className="text-xs text-muted-foreground">ESI contributions — Employee 0.75% · Employer 3.25%.</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -533,9 +533,9 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
   if (tab === "tds") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">TDS on Salary</h1><p className="text-sm text-muted-foreground">Tax deducted at source from employee salaries.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">TDS on Salary</h2><p className="text-xs text-muted-foreground">Tax deducted at source from employee salaries.</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -573,9 +573,9 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
   if (tab === "payslips") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Payslips</h1><p className="text-sm text-muted-foreground">Monthly payslip generation and distribution.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Payslips</h2><p className="text-xs text-muted-foreground">Monthly payslip generation and distribution.</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -624,10 +624,10 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
   // Default: salary_structure
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold text-foreground">Salary Structure</h1><p className="text-sm text-muted-foreground">Salary components and allowances mapping.</p></div>
-        <button onClick={() => setStructDialogOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> Map Employee Salary</button>
+        <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Salary Structure</h2><p className="text-xs text-muted-foreground">Salary components and allowances mapping.</p></div>
+        <button onClick={() => setStructDialogOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-3.5" /> Map Employee Salary</button>
       </div>
 
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">

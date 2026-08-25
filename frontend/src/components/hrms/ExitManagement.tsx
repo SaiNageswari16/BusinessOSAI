@@ -239,8 +239,8 @@ export function ExitManagement({ tab = "resignation" }: Props) {
         )}
 
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Clearance Checklists</h1>
-          <p className="text-sm text-muted-foreground font-sans">Verify asset recovery and departmental approvals for outgoing staff.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Clearance Checklists</h2>
+          <p className="text-xs text-muted-foreground font-sans">Verify asset recovery and departmental approvals for outgoing staff.</p>
         </div>
 
         {uniqueEmployees.length === 0 ? (
@@ -310,11 +310,11 @@ export function ExitManagement({ tab = "resignation" }: Props) {
 
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Final Settlements (Full & Final)</h1>
-            <p className="text-sm text-muted-foreground font-sans">Full and Final (F&F) audit computations for released personnel.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Final Settlements (Full & Final)</h2>
+            <p className="text-xs text-muted-foreground font-sans">Full and Final (F&F) audit computations for released personnel.</p>
           </div>
-          <button onClick={() => setSettlementOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-            <Calculator className="size-4" /> Compute F&F
+          <button onClick={() => setSettlementOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+            <Calculator className="size-3.5" /> Compute F&F
           </button>
         </div>
 
@@ -428,8 +428,8 @@ export function ExitManagement({ tab = "resignation" }: Props) {
         )}
 
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Relieving & Experience Letters</h1>
-          <p className="text-sm text-muted-foreground font-sans">Generate and issue official work certificates for departing corporate members.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Relieving & Experience Letters</h2>
+          <p className="text-xs text-muted-foreground font-sans">Generate and issue official work certificates for departing corporate members.</p>
         </div>
 
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
@@ -484,7 +484,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
 
   // Default: resignation requests
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {notification && (
         <div className="fixed bottom-4 right-4 px-4 py-2.5 bg-emerald-600 text-white font-sans text-xs shadow-lg z-50 rounded-lg">
           {notification.message}
@@ -493,11 +493,11 @@ export function ExitManagement({ tab = "resignation" }: Props) {
 
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Resignation Requests</h1>
-          <p className="text-sm text-muted-foreground font-sans">Process formal resignation applications and set last working days.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Resignation Requests</h2>
+          <p className="text-xs text-muted-foreground font-sans">Process formal resignation applications and set last working days.</p>
         </div>
-        <button onClick={() => setResignOpen(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity">
-          <Plus className="size-4" /> File Resignation
+        <button onClick={() => setResignOpen(true)} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity">
+          <Plus className="size-3.5" /> File Resignation
         </button>
       </div>
 

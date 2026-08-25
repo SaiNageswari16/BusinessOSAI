@@ -177,7 +177,7 @@ function AdCard({ item, onUseForLeads }: { item: AdHistoryItem; onUseForLeads: (
       </div>
 
       {/* Content */}
-      <div className="p-4 space-y-3 flex-grow flex flex-col justify-between">
+      <div className="space-y-6 flex-grow flex flex-col justify-between">
         <div className="space-y-3">
           {item.caption && (
             <p className="text-xs text-foreground/80 leading-relaxed line-clamp-2">
@@ -280,7 +280,7 @@ function LeadSyncToast({ pageId }: { pageId: string }) {
       <Info className="size-4 text-blue-500 flex-shrink-0 mt-0.5" />
       <div>
         <p className="text-sm font-semibold">Page ID Copied!</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
+        <p className="text-sm text-muted-foreground mt-1">
           Select the <strong>Lead Form Sync</strong> tab on this dashboard to automatically import leads from forms linked to Page ID: <br />
           <code className="font-mono text-xs bg-muted px-1 rounded">{pageId}</code>.
         </p>
@@ -450,16 +450,13 @@ export function AdHistory() {
   const totalPages = Math.ceil(total / 12);
 
   return (
-    <div className="p-6 min-h-[calc(100vh-6rem)] flex flex-col space-y-6 bg-background">
+    <div className="p-4 min-h-[calc(100vh-6rem)] flex flex-col space-y-3 bg-background">
       {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <div className="size-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
-              <Megaphone className="size-4 text-white" />
-            </div>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">
             Facebook Marketing & Campaign Dashboard
-          </h1>
+          </h2>
           <p className="text-sm text-muted-foreground mt-1">
             Analyze campaigns insights, publish organic post history, and synchronize Lead Ads submissions.
           </p>
@@ -469,14 +466,14 @@ export function AdHistory() {
           <button
             onClick={handleRefresh}
             disabled={refreshing || campaignsLoading}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 h-8 rounded-lg border border-border bg-card text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`size-3.5 ${refreshing || campaignsLoading ? "animate-spin" : ""}`} />
             Refresh
           </button>
           <button
             onClick={() => navigate({ to: "/crm", search: { tab: "ad_generator" } })}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
+            className="flex items-center gap-1.5 px-3 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
           >
             <Sparkles className="size-3.5" />
             Create Ad Poster

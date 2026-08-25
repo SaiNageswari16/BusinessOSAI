@@ -50,8 +50,7 @@ export function GoodsReceivedNotes() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Boxes className="text-primary size-6" /> Goods Received Notes (GRN)
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Goods Received Notes (GRN)
           </h2>
           <p className="text-sm text-muted-foreground">Record inward delivered shipments, perform QC, and update stock.</p>
         </div>

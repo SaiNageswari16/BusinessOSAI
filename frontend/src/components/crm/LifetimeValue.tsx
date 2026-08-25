@@ -72,13 +72,13 @@ export function LifetimeValue({ tab = "ltv" }: { tab?: string }) {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Customer Lifetime Value (CLV)</h1>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Lifetime Value (CLV)</h2>
           <p className="text-sm text-muted-foreground mt-1">Real total revenue, profit, and engagement computed from live sales orders per customer.</p>
         </div>
-        <button onClick={load} className="flex items-center gap-2 px-3 py-1.5 bg-accent hover:bg-accent/80 rounded-lg text-sm text-muted-foreground transition-colors">
+        <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 bg-accent hover:bg-accent/80 rounded-lg text-xs font-semibold text-muted-foreground transition-colors">
           <RefreshCw className="size-3.5" /> Refresh
         </button>
       </div>
@@ -129,7 +129,7 @@ export function LifetimeValue({ tab = "ltv" }: { tab?: string }) {
                           <Building2 className="size-3" /> {c.company}
                         </p>
                       )}
-                      <p className="text-xs text-muted-foreground mt-0.5">Customer for {c.years} year{c.years !== 1 ? "s" : ""}</p>
+                      <p className="text-sm text-muted-foreground mt-1">Customer for {c.years} year{c.years !== 1 ? "s" : ""}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold text-foreground">{fmt(c.ltv)}</p>

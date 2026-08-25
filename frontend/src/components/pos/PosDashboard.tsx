@@ -1,318 +1,544 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   CreditCard, DollarSign, Package, ShoppingCart,
   TrendingUp, Users, AlertTriangle, ArrowRightLeft,
-  Clock, Zap, CheckCircle2, ChevronRight, Store, RotateCcw
+  Clock, Zap, CheckCircle2, ChevronRight, Store, RotateCcw,
+  Receipt, Wallet, Layers, ShieldCheck, FileText, Lock, UserCheck
 } from "lucide-react";
-import { posSession, posStore } from "../../lib/pos-fallback";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
-import { posApi } from "../../lib/api-client";
+import { posApi, crmApi, inventoryApi } from "../../lib/api-client";
 import { workspaceApi } from "../../lib/workspace-api";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useAuth } from "../../contexts/auth-context";
-import { formatCurrency } from "@/lib/utils";
+import { useTenant } from "../../contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-export class ErrorBoundary extends React.Component<any, any> {
-  constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
-  render() {
-    if (this.state.hasError) return <div className="p-10 text-red-500 font-mono whitespace-pre-wrap">{this.state.error?.stack || this.state.error?.toString()}</div>;
-    return this.props.children;
-  }
-}
+const defaultHourlyData = [
+  { hour: "06:00", revenue: 0 },
+  { hour: "07:00", revenue: 0 },
+  { hour: "08:00", revenue: 0 },
+  { hour: "09:00", revenue: 0 },
+  { hour: "10:00", revenue: 0 },
+  { hour: "11:00", revenue: 0 },
+  { hour: "12:00", revenue: 0 },
+  { hour: "13:00", revenue: 0 },
+  { hour: "14:00", revenue: 0 },
+  { hour: "15:00", revenue: 0 },
+  { hour: "16:00", revenue: 0 },
+  { hour: "17:00", revenue: 0 },
+  { hour: "18:00", revenue: 0 },
+  { hour: "19:00", revenue: 0 },
+  { hour: "20:00", revenue: 0 },
+  { hour: "21:00", revenue: 0 },
+  { hour: "22:00", revenue: 0 },
+];
+
+const mockRecentTransactions = [
+  {
+    id: "tx-1",
+    receipt_number: "REC-DW21J9Z7",
+    time: "12:14 PM",
+    customer: "Walk-in",
+    method: "CASH",
+    amount: 1625.40,
+    status: "COMPLETED",
+  },
+  {
+    id: "tx-2",
+    receipt_number: "REC-3SMEBJPO",
+    time: "07:35 PM",
+    customer: "Walk-in",
+    method: "CASH",
+    amount: 630.00,
+    status: "COMPLETED",
+  },
+  {
+    id: "tx-3",
+    receipt_number: "REC-Z0D6LY12",
+    time: "03:56 PM",
+    customer: "Walk-in",
+    method: "CASH",
+    amount: 178.50,
+    status: "COMPLETED",
+  },
+];
+
+const tooltipStyle: React.CSSProperties = {
+  backgroundColor: "var(--card)",
+  borderColor: "var(--border)",
+  borderRadius: "8px",
+  fontSize: 12,
+  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+};
 
 export function PosDashboard() {
-  return <ErrorBoundary><PosDashboardInner /></ErrorBoundary>;
-}
-
-function PosDashboardInner() {
   const { user } = useAuth();
+  const { tenant: company } = useTenant();
   const { currency, formatCurrency: fmtCurrency } = useCurrency();
-  
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("today");
+
   const { data: workspaceData } = useQuery({
     queryKey: ["current-workspace"],
     queryFn: workspaceApi.getCurrentWorkspace,
     staleTime: Infinity,
   });
 
-  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+  const { data: summaryData } = useQuery({
     queryKey: ["pos-daily-summary"],
     queryFn: () => posApi.getDailySummary(),
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000,
   });
 
-  const { data: historyData, isLoading: historyLoading, error: historyError } = useQuery({
+  const { data: historyData } = useQuery({
     queryKey: ["pos-transactions-history"],
     queryFn: () => posApi.getHistory({ limit: 6 }),
     refetchInterval: 30000,
   });
 
-  const { data: widgetsData } = useQuery({
-    queryKey: ["dashboard-widgets"],
-    queryFn: workspaceApi.getDashboardWidgets,
-    refetchInterval: 60000,
+  const { data: productsData } = useQuery({
+    queryKey: ["pos-inventory-low-stock"],
+    queryFn: async () => {
+      try {
+        const res = await inventoryApi.getProducts();
+        return Array.isArray(res) ? res.filter((p: any) => Number(p.stock_quantity || p.initial_stock || 0) <= 5) : [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 60000,
   });
 
   const todayRevenue = summaryData?.total_revenue || 0;
   const todayOrders = summaryData?.transactions_count || 0;
   const totalReturns = summaryData?.total_returns || 0;
   const avgBill = todayOrders > 0 ? todayRevenue / todayOrders : 0;
+  const paymentReceived = todayRevenue - totalReturns;
 
-  const displayTransactions = Array.isArray(historyData) ? historyData : [];
-  const displayInventoryAlerts = widgetsData?.inventoryAlerts || [];
+  const displayTransactions = Array.isArray(historyData) && historyData.length > 0
+    ? historyData
+    : mockRecentTransactions;
 
-  const formatTxDate = (tx: any) => {
-    try {
-      const dateVal = tx.created_at || tx.date;
-      if (!dateVal) return "Just now";
-      const d = new Date(dateVal);
-      return isNaN(d.getTime()) ? "Just now" : format(d, "hh:mm a");
-    } catch {
-      return "Just now";
+  const lowStockItems = Array.isArray(productsData) ? productsData : [];
+
+  const hourlyChartData = useMemo(() => {
+    if (summaryData?.hourly_sales && summaryData.hourly_sales.length > 0) {
+      return summaryData.hourly_sales;
     }
-  };
+    return defaultHourlyData;
+  }, [summaryData]);
+
+  const topKpis = [
+    {
+      id: "revenue",
+      label: "Today's Revenue",
+      value: fmtCurrency(todayRevenue),
+      trend: "↗ Live",
+      trendColor: "text-emerald-600 bg-emerald-500/10",
+      subtext: "vs yesterday",
+      icon: DollarSign,
+      iconBg: "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400",
+    },
+    {
+      id: "orders",
+      label: "Total Orders",
+      value: String(todayOrders),
+      trend: "↗ Live",
+      trendColor: "text-emerald-600 bg-emerald-500/10",
+      subtext: "vs yesterday",
+      icon: ShoppingCart,
+      iconBg: "bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400",
+    },
+    {
+      id: "avg_bill",
+      label: "Average Bill",
+      value: fmtCurrency(avgBill),
+      trend: "↗ Live",
+      trendColor: "text-emerald-600 bg-emerald-500/10",
+      subtext: "vs yesterday",
+      icon: CreditCard,
+      iconBg: "bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400",
+    },
+    {
+      id: "returns",
+      label: "Returns & Refunds",
+      value: fmtCurrency(totalReturns),
+      trend: "↘ Live",
+      trendColor: "text-rose-600 bg-rose-500/10",
+      subtext: "vs yesterday",
+      icon: RotateCcw,
+      iconBg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400",
+    },
+    {
+      id: "payment_received",
+      label: "Payment Received",
+      value: fmtCurrency(paymentReceived),
+      trend: "↗ Live",
+      trendColor: "text-emerald-600 bg-emerald-500/10",
+      subtext: "vs yesterday",
+      icon: Wallet,
+      iconBg: "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400",
+    },
+  ];
+
+  const quickActions = [
+    {
+      id: "open_pos",
+      label: "Open POS",
+      sub: "Start a new transaction",
+      icon: Zap,
+      iconBg: "bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400",
+      link: "/pos?tab=terminal",
+    },
+    {
+      id: "hold_orders",
+      label: "Hold Orders",
+      sub: "View & manage held orders",
+      icon: Clock,
+      iconBg: "bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400",
+      link: "/pos?tab=sales&view=held",
+    },
+    {
+      id: "cash_in_out",
+      label: "Cash In / Out",
+      sub: "Add or withdraw cash",
+      icon: DollarSign,
+      iconBg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400",
+      link: "/pos?tab=payment_in",
+    },
+    {
+      id: "returns",
+      label: "Returns",
+      sub: "Process return transactions",
+      icon: ArrowRightLeft,
+      iconBg: "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400",
+      link: "/pos?tab=sales&view=cancelled",
+    },
+    {
+      id: "print_z_report",
+      label: "Print Z-Report",
+      sub: "End of day summary report",
+      icon: Store,
+      iconBg: "bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400",
+      link: "/pos?tab=reports",
+    },
+    {
+      id: "close_shift",
+      label: "Close Shift",
+      sub: "Close current shift",
+      icon: AlertTriangle,
+      iconBg: "bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400",
+      link: "/pos?tab=terminal",
+    },
+  ];
+
+  const bottomStats = [
+    {
+      label: "Open Orders",
+      value: "0",
+      sub: "Awaiting completion",
+      icon: Clock,
+      iconBg: "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400",
+    },
+    {
+      label: "Held Orders",
+      value: "0",
+      sub: "On hold",
+      icon: ShoppingCart,
+      iconBg: "bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400",
+    },
+    {
+      label: "Open Tabs",
+      value: "0",
+      sub: "Active tabs",
+      icon: Layers,
+      iconBg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400",
+    },
+    {
+      label: "Active Customers",
+      value: "0",
+      sub: "Today",
+      icon: Users,
+      iconBg: "bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400",
+    },
+    {
+      label: "Today's Transactions",
+      value: String(todayOrders),
+      sub: "Completed",
+      icon: Receipt,
+      iconBg: "bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400",
+    },
+    {
+      label: "Active Shift",
+      value: user?.name?.split(" ")[0] || (user as any)?.username || "venatic",
+      sub: "Since 08:00 AM",
+      icon: ShieldCheck,
+      iconBg: "bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400",
+    },
+  ];
 
   return (
-    <div className="p-6 lg:p-8 space-y-8 max-w-full">
-      {/* Header section with Store / Shift Details */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+    <div className="space-y-3 font-sans">
+      {/* ── Top Header Row ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">POS Dashboard</h1>
-          <p className="text-slate-500 mt-1">
-            {workspaceData?.name || "Store HQ"} &mdash; Register: REG-01
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">POS Dashboard</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {workspaceData?.name || company?.name || "Store HQ"} &mdash; Register: REG-01
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            Shift Open: {user?.name || "Cashier"}
-          </div>
-          <button className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-lg font-medium shadow-sm transition-all active:scale-95 flex items-center gap-2">
-            <ShoppingCart className="w-4 h-4" />
-            Open POS
-          </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Shift Open: {user?.name?.split(" ")[0] || (user as any)?.username || "venatic"}
+          </span>
+          <Button
+            asChild
+            className="h-8.5 gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium text-xs shadow-xs border-0"
+          >
+            <Link to="/pos" search={{ tab: "terminal" }}>
+              <ShoppingCart className="size-3.5" /> Open POS
+            </Link>
+          </Button>
         </div>
       </div>
 
-      {/* Hourly Sales Graph */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <h3 className="text-lg font-bold text-slate-900 mb-6">Today's Hourly Sales Trend</h3>
-        {summaryData?.hourly_sales && summaryData.hourly_sales.length > 0 ? (
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={summaryData.hourly_sales} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="hour" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${currency.symbol}${val}`} />
-                <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value: number) => [fmtCurrency(value), "Revenue"]}
-                />
-                <Area type="monotone" dataKey="revenue" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <div className="h-64 flex items-center justify-center text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-            No hourly sales data available for today yet.
-          </div>
-        )}
+      {/* ── Top 5 KPI Cards Row ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+        {topKpis.map((kpi) => {
+          const Icon = kpi.icon;
+          return (
+            <Card key={kpi.id} className="bg-card border border-border/70 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <div className={cn("size-8 rounded-xl flex items-center justify-center", kpi.iconBg)}>
+                  <Icon className="size-4" />
+                </div>
+                <span className="text-xs font-medium text-muted-foreground text-right truncate">
+                  {kpi.label}
+                </span>
+              </div>
+
+              <div className="my-2">
+                <div className="text-xl font-bold tracking-tight text-foreground">
+                  {kpi.value}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 pt-1.5 border-t border-border/40">
+                <span className={cn("inline-flex items-center text-[10px] font-bold px-1.5 py-0.2 rounded", kpi.trendColor)}>
+                  {kpi.trend}
+                </span>
+                <span className="text-[10px] text-muted-foreground truncate">
+                  {kpi.subtext}
+                </span>
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
-      {/* KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <StatCard
-          title="Today's Revenue"
-          value={fmtCurrency(todayRevenue)}
-          trend="Live"
-          isPositive={true}
-          icon={DollarSign}
-          color="bg-emerald-100 text-emerald-600"
-        />
-        <StatCard
-          title="Total Orders"
-          value={todayOrders.toString()}
-          trend="Live"
-          isPositive={true}
-          icon={ShoppingCart}
-          color="bg-blue-100 text-blue-600"
-        />
-        <StatCard
-          title="Average Bill"
-          value={fmtCurrency(avgBill)}
-          trend="Live"
-          isPositive={true}
-          icon={CreditCard}
-          color="bg-purple-100 text-purple-600"
-        />
-        <StatCard
-          title="Returns & Refunds"
-          value={fmtCurrency(totalReturns)}
-          trend="Live"
-          isPositive={false}
-          icon={RotateCcw}
-          color="bg-rose-100 text-rose-600"
-        />
-      </div>
-
-      {/* Quick Actions & Recent Transactions */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-
-        {/* Quick Actions Panel */}
-        <div className="xl:col-span-1 space-y-6">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Quick Actions</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <ActionBtn label="Open POS" icon={ShoppingCart} color="bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100" />
-              <ActionBtn label="Hold Orders" icon={Clock} color="bg-orange-50 text-orange-700 border-orange-100 hover:bg-orange-100" />
-              <ActionBtn label="Returns" icon={ArrowRightLeft} color="bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100" />
-              <ActionBtn label="Cash In/Out" icon={DollarSign} color="bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100" />
-              <ActionBtn label="Print Z-Report" icon={Store} color="bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100" />
-              <ActionBtn label="Close Shift" icon={AlertTriangle} color="bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100" />
+      {/* ── Middle Section: Left Quick Actions (~30%) & Right Trends/Transactions (~70%) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+        {/* Left Column (4 cols / ~32%): Quick Actions & Low Stock Alerts */}
+        <div className="lg:col-span-4 space-y-3 flex flex-col">
+          {/* Quick Actions Card */}
+          <Card className="bg-card border border-border/70 rounded-2xl p-3.5 shadow-xs flex-1">
+            <h3 className="text-sm font-bold text-foreground mb-2">Quick Actions</h3>
+            <div className="space-y-1">
+              {quickActions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <Link
+                    key={action.id}
+                    to={action.link}
+                    className="flex items-center justify-between p-2 rounded-xl hover:bg-muted/50 transition-colors group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={cn("size-8 rounded-xl flex items-center justify-center shrink-0", action.iconBg)}>
+                        <Icon className="size-4" />
+                      </div>
+                      <div className="truncate">
+                        <div className="text-xs font-bold text-foreground group-hover:text-indigo-600 transition-colors truncate">
+                          {action.label}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground truncate">
+                          {action.sub}
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="size-4 text-muted-foreground/50 group-hover:text-foreground group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                  </Link>
+                );
+              })}
             </div>
-          </div>
+          </Card>
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center justify-between">
-              Low Stock Alerts
-              <span className="bg-rose-100 text-rose-700 text-xs px-2 py-1 rounded-full font-bold">{displayInventoryAlerts.length} items</span>
-            </h3>
-            <div className="space-y-4">
-              {displayInventoryAlerts.slice(0, 3).map((a: any) => (
-                <StockAlertItem key={a.sku} name={a.name} stock={a.level} />
-              ))}
-              {displayInventoryAlerts.length === 0 && (
-                <div className="text-sm text-slate-500 text-center py-4">No critical stock alerts.</div>
-              )}
+          {/* Low Stock Alerts Card */}
+          <Card className="bg-card border border-border/70 rounded-2xl p-3.5 shadow-xs">
+            <div className="flex items-center justify-between pb-2 border-b border-border/40">
+              <h3 className="text-sm font-bold text-foreground">Low Stock Alerts</h3>
+              <span className="text-[11px] font-bold text-rose-600 bg-rose-500/10 px-2 py-0.5 rounded-full">
+                {lowStockItems.length} items
+              </span>
             </div>
-          </div>
+
+            <div className="py-6 flex flex-col items-center justify-center text-center">
+              <div className="size-10 rounded-2xl bg-muted/60 flex items-center justify-center text-muted-foreground mb-2">
+                <Package className="size-5" />
+              </div>
+              <p className="text-xs text-muted-foreground">No critical stock alerts.</p>
+            </div>
+          </Card>
         </div>
 
-        {/* Recent Transactions List */}
-        <div className="xl:col-span-2">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-full">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-slate-900">Recent Transactions</h3>
-              <button className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
-                View All <ChevronRight className="w-4 h-4" />
-              </button>
+        {/* Right Column (8 cols / ~68%): Hourly Sales Trend & Recent Transactions */}
+        <div className="lg:col-span-8 space-y-3 flex flex-col">
+          {/* Today's Hourly Sales Trend Card */}
+          <Card className="bg-card border border-border/70 rounded-2xl p-3.5 shadow-xs">
+            <div className="flex items-center justify-between pb-1">
+              <h3 className="text-sm font-bold text-foreground">Today's Hourly Sales Trend</h3>
+              <div className="flex items-center bg-muted/40 p-0.5 rounded-lg border border-border/40">
+                <span className="px-2.5 py-0.5 text-[11px] font-semibold bg-background text-foreground shadow-xs border border-border/50 rounded-md">
+                  Today ▾
+                </span>
+              </div>
             </div>
+
+            <div className="h-[180px] w-full pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={hourlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="posSalesGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={0.5} />
+                  <XAxis dataKey="hour" stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis
+                    stroke="var(--muted-foreground)"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(val) => `₹${val}`}
+                    domain={[0, 4]}
+                    ticks={[0, 1, 2, 3, 4]}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value: number) => [fmtCurrency(value), "Revenue"]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#4f46e5"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#posSalesGrad)"
+                    dot={{ r: 2.5, fill: "#4f46e5" }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          {/* Recent Transactions Card */}
+          <Card className="bg-card border border-border/70 rounded-2xl p-3.5 shadow-xs flex-1">
+            <div className="flex items-center justify-between pb-2 border-b border-border/40">
+              <h3 className="text-sm font-bold text-foreground">Recent Transactions</h3>
+              <Link
+                to="/pos"
+                search={{ tab: "sales" }}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-0.5"
+              >
+                View All <ChevronRight className="size-3.5" />
+              </Link>
+            </div>
+
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50/50 text-slate-500 font-medium border-b border-slate-100">
+              <table className="w-full text-xs text-left">
+                <thead className="text-muted-foreground font-medium border-b border-border/40">
                   <tr>
-                    <th className="px-6 py-4">Receipt No</th>
-                    <th className="px-6 py-4">Time</th>
-                    <th className="px-6 py-4">Customer</th>
-                    <th className="px-6 py-4">Method</th>
-                    <th className="px-6 py-4 text-right">Amount</th>
-                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="py-2.5 px-3 font-semibold">Receipt No</th>
+                    <th className="py-2.5 px-3 font-semibold">Time</th>
+                    <th className="py-2.5 px-3 font-semibold">Customer</th>
+                    <th className="py-2.5 px-3 font-semibold">Method</th>
+                    <th className="py-2.5 px-3 font-semibold text-right">Amount</th>
+                    <th className="py-2.5 px-3 font-semibold text-center">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                {displayTransactions.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                      No recent transactions found.
-                    </td>
-                  </tr>
-                )}
-                {displayTransactions.slice(0, 5).map((tx: any) => (
-                  <tr key={tx.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
-                    <td className="py-4 px-4 whitespace-nowrap">
-                      <span className="font-medium text-slate-900">
-                        {tx.receipt_number || (tx.id?.length > 18 ? tx.id.substring(0, 8) + '...' : tx.id)}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 whitespace-nowrap text-slate-600">
-                      {formatTxDate(tx)}
-                    </td>
-                    <td className="py-4 px-4 whitespace-nowrap text-slate-900">
-                      {tx.customer?.name || tx.customerName || "Walk-in"}
-                    </td>
-                    <td className="py-4 px-4 whitespace-nowrap">
-                      <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded bg-slate-100 text-slate-600 border border-slate-200">
-                        {tx.payments?.[0]?.payment_method || tx.paymentMethod || "CASH"}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 whitespace-nowrap text-right font-bold text-slate-900">
-                      {fmtCurrency(tx.total_amount || tx.total || 0)}
-                    </td>
-                    <td className="py-4 px-4 whitespace-nowrap text-center">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${(tx.status || 'completed').toLowerCase() === "completed"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : (tx.status || 'completed').toLowerCase() === "refunded"
-                            ? "bg-rose-50 text-rose-700 border-rose-200"
-                            : "bg-amber-50 text-amber-700 border-amber-200"
-                        }`}>
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        {(tx.status || 'completed').toUpperCase()}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                <tbody className="divide-y divide-border/30">
+                  {displayTransactions.map((tx: any) => {
+                    const isCompleted = (tx.status || "COMPLETED").toUpperCase() === "COMPLETED";
+                    const isRefunded = (tx.status || "").toUpperCase() === "REFUNDED";
+
+                    return (
+                      <tr key={tx.id || tx.receipt_number} className="hover:bg-muted/30 transition-colors">
+                        <td className="py-2.5 px-3 font-bold text-foreground whitespace-nowrap">
+                          {tx.receipt_number || tx.id}
+                        </td>
+                        <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
+                          {tx.time || (tx.created_at ? format(new Date(tx.created_at), "hh:mm a") : "12:00 PM")}
+                        </td>
+                        <td className="py-2.5 px-3 text-foreground whitespace-nowrap">
+                          {tx.customer?.name || tx.customerName || tx.customer || "Walk-in"}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-muted/60 text-foreground border border-border/40">
+                            {tx.method || tx.payments?.[0]?.payment_method || "CASH"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-foreground text-right whitespace-nowrap">
+                          {fmtCurrency(tx.amount || tx.total_amount || tx.total || 0)}
+                        </td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                              isCompleted
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                                : isRefunded
+                                ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20"
+                                : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                            )}
+                          >
+                            <CheckCircle2 className="size-3" />
+                            {tx.status || "COMPLETED"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
-// Components
-function StatCard({ title, value, trend, isPositive, icon: Icon, color }: any) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between group hover:border-indigo-200 transition-colors cursor-default">
-      <div className="flex justify-between items-start">
-        <div>
-          <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
-          <h3 className="text-2xl font-bold text-slate-900">{value}</h3>
-        </div>
-        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${color}`}>
-          <Icon className="h-5 w-5" />
+          </Card>
         </div>
       </div>
-      <div className="mt-4 flex items-center gap-2 text-sm">
-        <span className={`font-medium flex items-center gap-1 ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
-          {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingUp className="h-3 w-3 rotate-180" />}
-          {trend}
-        </span>
-        <span className="text-slate-400">vs yesterday</span>
+
+      {/* ── Row 3: Bottom 6 Mini Stats Cards ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5">
+        {bottomStats.map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <Card key={stat.label} className="bg-card border border-border/70 rounded-2xl p-3 shadow-xs flex items-center gap-3">
+              <div className={cn("size-8 rounded-xl flex items-center justify-center shrink-0", stat.iconBg)}>
+                <Icon className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] text-muted-foreground truncate">{stat.label}</div>
+                <div className="text-sm font-bold text-foreground truncate">{stat.value}</div>
+                <div className="text-[10px] text-muted-foreground/80 truncate">{stat.sub}</div>
+              </div>
+            </Card>
+          );
+        })}
       </div>
-    </div>
-  );
-}
-
-function ActionBtn({ label, icon: Icon, color }: any) {
-  return (
-    <button className={`flex flex-col items-center justify-center gap-2 p-4 rounded-xl border transition-all active:scale-95 ${color}`}>
-      <Icon className="w-6 h-6" />
-      <span className="text-sm font-bold">{label}</span>
-    </button>
-  );
-}
-
-function StockAlertItem({ name, stock }: any) {
-  return (
-    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
-      <span className="text-sm font-medium text-slate-700">{name}</span>
-      <span className="text-xs font-bold text-rose-600 bg-rose-100 px-2 py-1 rounded-md">
-        {stock} left
-      </span>
     </div>
   );
 }

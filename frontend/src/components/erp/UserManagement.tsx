@@ -488,10 +488,10 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
   const pendingInvites = users.filter((user) => user.must_change_password).length;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">User Management</h1>
+          <h1 className="text-base font-bold">User Management</h1>
           <p className="text-sm text-muted-foreground mt-1">Create users, assign roles, and manage access for your tenant.</p>
         </div>
         <button
@@ -499,9 +499,9 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
             setEditUser(undefined);
             setShowModal(true);
           }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition cursor-pointer"
         >
-          <UserPlus className="size-4" /> New User
+          <UserPlus className="size-3.5" /> New User
         </button>
       </div>
 
@@ -521,7 +521,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           >
             <div className="text-2xl font-bold">{stat.value}</div>
             <div className="text-sm font-medium mt-0.5">{stat.label}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{stat.sub}</div>
+            <div className="text-sm text-muted-foreground mt-1">{stat.sub}</div>
           </motion.div>
         ))}
       </div>

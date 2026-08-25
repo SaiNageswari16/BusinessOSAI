@@ -313,7 +313,7 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
               notes: `QC Inspection: ${found.qc_status || "Passed"}`,
               event_at: found.created_at || new Date().toISOString(),
             },
-          ],
+          ] as any,
           serial_count: 0,
           serials: [],
         });
@@ -365,9 +365,7 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <FlaskConical className="size-6 text-indigo-600" />
-            Traceability
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Traceability
           </h2>
           <p className="text-sm text-muted-foreground">Trace any batch through its full lifecycle — from receipt to delivery, return or recall.</p>
         </div>

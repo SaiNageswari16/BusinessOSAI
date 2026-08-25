@@ -177,8 +177,7 @@ export function GoodsIssue() {
           {/* List Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                <Send className="size-6 text-rose-600" /> Goods Issue Vouchers
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Goods Issue Vouchers
               </h2>
               <p className="text-sm text-slate-500 mt-1">
                 Dispatch and deduct stock from inventory for customer orders, internal transfers, or consumption.
@@ -249,9 +248,9 @@ export function GoodsIssue() {
                                   issue_number: gi.issue_number,
                                   recipient: gi.recipient || "",
                                   reference_number: gi.reference_number || "",
-                                  warehouse: (gi as any).warehouse_id || "",
+                                  warehouse: (gi as any).warehouse_id || (gi as any).warehouse || "",
                                   notes: (gi as any).notes || "",
-                                  issue_date: gi.created_at ? gi.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                  issue_date: (gi as any).created_at ? (gi as any).created_at.slice(0, 10) : ((gi as any).issue_date ? (gi as any).issue_date.slice(0, 10) : new Date().toISOString().slice(0, 10)),
                                 });
                                 if (gi.items && gi.items.length > 0) {
                                   setItems(gi.items.map((it: any) => ({

@@ -84,14 +84,14 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
 
   if (tab === "leave_policies") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Leave Schemes & Policies</h1>
-            <p className="text-sm text-muted-foreground">Configure yearly leave allocation policies for staff.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Schemes & Policies</h2>
+            <p className="text-xs text-muted-foreground">Configure yearly leave allocation policies for staff.</p>
           </div>
-          <Button onClick={() => setPolicyDialogOpen(true)} className="gradient-brand text-white border-0">
-            <Plus className="size-4 mr-1.5" /> Create Leave Policy
+          <Button onClick={() => setPolicyDialogOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white border-0">
+            <Plus className="size-3.5 mr-1.5" /> Create Leave Policy
           </Button>
         </div>
 
@@ -176,9 +176,9 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
     const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const dates = Array.from({ length: 31 }, (_, i) => i + 1);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Leave Calendar</h1><p className="text-sm text-muted-foreground">Team leave overview for July 2026.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Calendar</h2><p className="text-xs text-muted-foreground">Team leave overview for July 2026.</p></div>
         </div>
         <div className="glass-panel p-6 rounded-xl border border-border/50">
           <h3 className="font-semibold text-foreground mb-4">Approved Leaves — July 2026</h3>
@@ -222,9 +222,9 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
 
   if (tab === "leave_balance") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Leave Balance</h1><p className="text-sm text-muted-foreground">Remaining leave entitlements per employee for FY 2026.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Balance</h2><p className="text-xs text-muted-foreground">Remaining leave entitlements per employee for FY 2026.</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -265,11 +265,11 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
   if (tab === "approvals") {
     const pending = requests.filter(l => l.status === "Pending");
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h1 className="text-2xl font-bold text-foreground">Leave Approvals</h1><p className="text-sm text-muted-foreground">Pending leave requests awaiting your approval.</p></div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-600 rounded-lg text-sm font-medium">
-            <Clock className="size-4" /> {pending.length} pending
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Approvals</h2><p className="text-xs text-muted-foreground">Pending leave requests awaiting your approval.</p></div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 text-amber-600 rounded-lg text-xs font-semibold">
+            <Clock className="size-3.5" /> {pending.length} pending
           </div>
         </div>
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
@@ -302,9 +302,9 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
 
   // Default: leave_requests
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold text-foreground">Leave Requests</h1><p className="text-sm text-muted-foreground">All employee leave applications and their current status.</p></div>
+        <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Requests</h2><p className="text-xs text-muted-foreground">All employee leave applications and their current status.</p></div>
       </div>
       <div className="grid grid-cols-3 gap-4">
         {[

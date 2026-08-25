@@ -85,8 +85,7 @@ export function Suppliers() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Building2 className="text-primary size-6" /> Suppliers & Vendors
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Suppliers & Vendors
           </h2>
           <p className="text-sm text-muted-foreground">Manage your master supplier directory, tax GSTINs, credit limits, and bank accounts.</p>
         </div>

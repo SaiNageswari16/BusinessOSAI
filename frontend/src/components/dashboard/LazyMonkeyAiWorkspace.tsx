@@ -480,7 +480,7 @@ export function LazyMonkeyAiWorkspace() {
                       </div>
                     </div>
                     <div className="size-8 rounded-full bg-slate-100 dark:bg-muted text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs border border-slate-200 shadow-xs">
-                      {user?.full_name ? user.full_name.charAt(0).toUpperCase() : "T"}
+                      {((user as any)?.full_name || user?.name || user?.email || "T").charAt(0).toUpperCase()}
                     </div>
                   </div>
                 )}

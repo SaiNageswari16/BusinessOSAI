@@ -437,13 +437,13 @@ export function GlobalUsers() {
   );
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Users className="size-6 text-primary" /> Global Users & Workspaces Directory
+          <h2 className="text-base font-bold tracking-tight flex items-center gap-2">
+            <Users className="size-5 text-primary" /> Global Users & Workspaces Directory
           </h2>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs mt-0.5">
             Platform-wide support desk console. Manage users, purge deleted client workspaces, or provision subscriptions.
           </p>
         </div>

@@ -154,10 +154,10 @@ export function CustomerTimeline() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Customer Timeline</h1>
-        <p className="text-sm text-muted-foreground">360° interaction history — orders, support tickets, quotations, and case history.</p>
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Customer Timeline</h2>
+        <p className="text-xs text-muted-foreground">360° interaction history — orders, support tickets, quotations, and case history.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

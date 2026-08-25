@@ -141,17 +141,17 @@ export function SubscriptionManagement() {
     const suspendedCount = tenants.filter(t => t.status === "suspended").length;
 
     return (
-      <div className="p-8 space-y-8 max-w-7xl mx-auto">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="space-y-6 max-w-7xl mx-auto">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-              <ShieldAlert className="size-6 text-indigo-500" /> SaaS Platform Oversight
+            <h2 className="text-base font-bold tracking-tight flex items-center gap-2">
+              <ShieldAlert className="size-5 text-indigo-500" /> SaaS Platform Oversight
             </h2>
-            <p className="text-muted-foreground text-sm mt-1">Cross-tenant administrative control console, logs, and subscriber profiles.</p>
+            <p className="text-muted-foreground text-xs mt-0.5">Cross-tenant administrative control console, logs, and subscriber profiles.</p>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => { void loadTenants(); void loadAuditLogs(); }} className="gap-2 h-9">
-              <RefreshCw className={cn("size-4", (loading || logsLoading) && "animate-spin")} /> Refresh Feeds
+            <Button size="sm" variant="outline" onClick={() => { void loadTenants(); void loadAuditLogs(); }} className="gap-1.5 h-8 text-xs font-semibold">
+              <RefreshCw className={cn("size-3.5", (loading || logsLoading) && "animate-spin")} /> Refresh Feeds
             </Button>
           </div>
         </div>
@@ -185,7 +185,7 @@ export function SubscriptionManagement() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
             <div>
               <h3 className="font-bold text-lg">Subscribed Workspace Environments</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Toggle status to immediately block/allow tenant system access.</p>
+              <p className="text-sm text-muted-foreground mt-1">Toggle status to immediately block/allow tenant system access.</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
@@ -307,7 +307,7 @@ export function SubscriptionManagement() {
               <h3 className="font-bold text-lg flex items-center gap-2">
                 <Activity className="size-5 text-indigo-500 animate-pulse" /> Live Platform Activity logs
               </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Real-time cross-tenant operations audit stream monitor.</p>
+              <p className="text-sm text-muted-foreground mt-1">Real-time cross-tenant operations audit stream monitor.</p>
             </div>
             <Button variant="outline" size="sm" onClick={loadAuditLogs} className="h-8 gap-1.5">
               <RefreshCw className={cn("size-3.5", logsLoading && "animate-spin")} /> Reload Logs
@@ -363,13 +363,13 @@ export function SubscriptionManagement() {
 
   // ─── Normal Tenant / Customer Invoice & Billing View ───────────────
   return (
-    <div className="p-8 space-y-6 max-w-5xl mx-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Subscription & Licenses</h2>
-          <p className="text-muted-foreground text-sm mt-1">Manage your LazyMonkeyAI plan, modules, and billing.</p>
+          <h2 className="text-base font-bold tracking-tight">Subscription & Licenses</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">Manage your LazyMonkeyAI plan, modules, and billing.</p>
         </div>
-        <Button size="sm" className="h-9 gap-2 gradient-brand text-white border-0"><Zap className="size-4" /> Upgrade Plan</Button>
+        <Button size="sm" className="h-8 gap-1.5 gradient-brand text-white border-0 text-xs font-semibold"><Zap className="size-3.5" /> Upgrade Plan</Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

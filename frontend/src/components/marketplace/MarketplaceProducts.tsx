@@ -15,11 +15,11 @@ export function MarketplaceProducts() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Marketplace Products</h1>
-          <p className="text-sm text-muted-foreground">Manage and approve products listed by vendors across the marketplace.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Marketplace Products</h2>
+          <p className="text-xs text-muted-foreground">Manage and approve products listed by vendors across the marketplace.</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:w-64 min-w-[200px]">

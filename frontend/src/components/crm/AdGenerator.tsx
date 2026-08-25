@@ -533,18 +533,18 @@ export function AdGenerator() {
     : 2;
 
   return (
-    <div className="p-6 min-h-[calc(100vh-6rem)] flex flex-col space-y-6 bg-background">
+    <div className="p-4 min-h-[calc(100vh-6rem)] flex flex-col space-y-3 bg-background">
       {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">AI Ad Pipeline</h1>
-          <p className="text-sm text-muted-foreground">Generate → Approve → Publish → Promote. Full Meta workflow.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">AI Ad Pipeline</h2>
+          <p className="text-xs text-muted-foreground">Generate → Approve → Publish → Promote. Full Meta workflow.</p>
         </div>
-        <div className="flex items-center gap-3 self-end flex-wrap">
+        <div className="flex items-center gap-2 self-end flex-wrap">
           {/* FB Connection */}
           <button
             onClick={() => setShowFbPanel(true)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer h-9 ${
+            className={`flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
               fbStatus.page_connected
                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
                 : "bg-muted border-border hover:bg-muted/80 text-muted-foreground"
@@ -1231,7 +1231,7 @@ export function AdGenerator() {
                     {/* App Config */}
                     <details className="border border-border rounded-xl">
                       <summary className="px-4 py-2.5 text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground">Meta App Config (Advanced)</summary>
-                      <form onSubmit={handleSaveAppConfig} className="p-4 space-y-3">
+                      <form onSubmit={handleSaveAppConfig} className="space-y-6">
                         <div>
                           <label className="block text-[10px] font-semibold text-muted-foreground mb-1">App ID</label>
                           <input type="text" value={fbAppForm.app_id} onChange={(e) => setFbAppForm({...fbAppForm, app_id: e.target.value})}

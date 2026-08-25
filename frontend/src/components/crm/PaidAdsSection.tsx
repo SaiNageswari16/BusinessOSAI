@@ -276,9 +276,9 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
                         >
                           <Eye className="size-3.5" />
                         </button>
-                        {tokenInfo?.ad_account_id && (
+                        {(tokenInfo as any)?.ad_account_id && (
                           <a
-                            href={`https://www.facebook.com/adsmanager/manage/campaigns?act=${tokenInfo.ad_account_id.replace("act_", "")}`}
+                            href={`https://www.facebook.com/adsmanager/manage/campaigns?act=${String((tokenInfo as any).ad_account_id).replace("act_", "")}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1.5 rounded-lg hover:bg-blue-500/10 text-blue-500 transition-colors cursor-pointer"

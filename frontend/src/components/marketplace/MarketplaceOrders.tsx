@@ -16,13 +16,11 @@ export function MarketplaceOrders() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <ShoppingCart className="size-6 text-primary" /> Multi-Vendor Orders
-          </h1>
-          <p className="text-sm text-muted-foreground">Track and manage cross-vendor orders, fulfillments, and payments.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Multi-Vendor Orders</h2>
+          <p className="text-xs text-muted-foreground">Track and manage cross-vendor orders, fulfillments, and payments.</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:w-64 min-w-[200px]">

@@ -59,8 +59,7 @@ export function BlacklistedSuppliers() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <ShieldBan className="text-rose-600 size-6" /> Blacklisted Suppliers
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Blacklisted Suppliers
           </h2>
           <p className="text-sm text-muted-foreground">Manage restricted vendors to prevent unauthorized PO generation.</p>
         </div>

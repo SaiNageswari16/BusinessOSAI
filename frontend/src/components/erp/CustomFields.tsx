@@ -145,14 +145,14 @@ export function CustomFields() {
   }, {} as Record<string, CustomField[]>);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Custom Fields</h2>
-          <p className="text-sm text-muted-foreground">Extend any entity with custom data fields. <span className="font-medium text-primary">{total} total</span></p>
+          <h2 className="text-base font-bold tracking-tight">Custom Fields</h2>
+          <p className="text-xs text-muted-foreground">Extend any entity with custom data fields. <span className="font-medium text-primary">{total} total</span></p>
         </div>
-        <Button className="gradient-brand text-white border-0" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
-          <Plus className="size-4 mr-2" /> Add Field
+        <Button size="sm" className="h-8 gradient-brand text-white border-0 text-xs font-semibold" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>
+          <Plus className="size-3.5 mr-1.5" /> Add Field
         </Button>
       </div>
 

@@ -194,34 +194,32 @@ export function EmailCampaigns() {
   }, { sent: 0 });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Mail className="size-6 text-primary" /> Email Campaigns
-          </h1>
-          <p className="text-sm text-muted-foreground">Design, compose, and send rich email campaigns to employees, candidates, and customers.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Email Campaigns</h2>
+          <p className="text-xs text-muted-foreground">Design, compose, and send rich email campaigns to employees, candidates, and customers.</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           <button 
             onClick={() => loadData()}
-            className="p-2 border hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer bg-card"
+            className="p-1.5 h-8 w-8 border hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer bg-card flex items-center justify-center"
           >
-            <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
           </button>
           <button 
             onClick={() => setShowAiWriter(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 border hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 dark:text-indigo-400 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-3 h-8 bg-indigo-50 border hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 dark:text-indigo-400 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
           >
-            <Sparkles className="size-4 animate-pulse text-indigo-500" />
+            <Sparkles className="size-3.5 animate-pulse text-indigo-500" />
             AI Writer
           </button>
           <button 
             onClick={() => { resetComposer(); setShowCompose(true); }}
-            className="flex items-center justify-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity cursor-pointer"
           >
-            <Plus className="size-4" /> Compose Campaign
+            <Plus className="size-3.5" /> Compose Campaign
           </button>
         </div>
       </div>

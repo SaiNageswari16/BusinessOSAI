@@ -206,17 +206,17 @@ export function Discounts() {
   const isUpcoming = (d: Discount) => d.starts_at && new Date(d.starts_at) > new Date();
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Discounts</h1>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Discounts</h2>
+          <p className="text-xs text-muted-foreground">
             Create discount rules, coupons, and bundle deals. Configure eligibility, usage limits, and stackability.
           </p>
         </div>
         <button onClick={() => { setEditingId(null); setForm(blankDiscount); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium">
-          <Plus className="size-4" /> New Discount
+          className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold">
+          <Plus className="size-3.5" /> New Discount
         </button>
       </div>
 

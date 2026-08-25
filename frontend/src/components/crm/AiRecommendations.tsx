@@ -74,19 +74,17 @@ export function AiRecommendations({ tab = "recommendations" }: { tab?: string })
   const visible = data.recommendations.filter(r => !dismissed.has(r.id));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <BrainCircuit className="size-7 text-primary" /> AI Recommendations
-          </h1>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">AI Recommendations</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Antigravity AI generates real-time, actionable recommendations from your live customer data.
           </p>
         </div>
-        <button onClick={load} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity shrink-0">
-          <RefreshCw className="size-4" /> Refresh AI Insights
+        <button onClick={load} className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity shrink-0">
+          <RefreshCw className="size-3.5" /> Refresh AI Insights
         </button>
       </div>
 
@@ -165,7 +163,7 @@ export function AiRecommendations({ tab = "recommendations" }: { tab?: string })
                       </div>
                       <div>
                         <h3 className="font-bold text-foreground text-base leading-tight">{rec.title}</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p className="text-sm text-muted-foreground mt-1">
                           <span className="font-medium text-foreground">{rec.customer}</span> · {rec.customer_seg}
                         </p>
                       </div>

@@ -137,22 +137,22 @@ export function DesignationManagement() {
   const companyMap = Object.fromEntries(companies.map((c) => [c.id, c.name]));
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Designation Management</h2>
-          <p className="text-muted-foreground text-sm mt-1">Define job titles and seniority levels across your organization.</p>
+          <h2 className="text-base font-bold tracking-tight">Designation Management</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">Define job titles and seniority levels across your organization.</p>
         </div>
-        <Button className="gradient-brand text-white border-0 gap-2" onClick={() => { setEditDesig(null); setShowForm(true); }}>
-          <Plus className="size-4" /> Add Designation
+        <Button size="sm" className="h-8 gradient-brand text-white border-0 gap-1.5 text-xs font-semibold" onClick={() => { setEditDesig(null); setShowForm(true); }}>
+          <Plus className="size-3.5" /> Add Designation
         </Button>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex gap-3">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-10 pl-10 pr-4 text-sm rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
+            className="w-full h-8 pl-9 pr-3 text-xs rounded-lg border bg-card focus:ring-2 focus:ring-primary/20 outline-none"
             placeholder="Search designations..." />
         </div>
         <span className="text-xs text-muted-foreground self-center">{designations.length} total</span>

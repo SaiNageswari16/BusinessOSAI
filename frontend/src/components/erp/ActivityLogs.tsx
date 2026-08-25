@@ -70,17 +70,17 @@ export function ActivityLogs() {
   };
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl mx-auto pb-20">
+    <div className="space-y-6 max-w-4xl mx-auto pb-10">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Activity className="size-6 text-primary animate-pulse" /> Activity Feed
+          <h2 className="text-base font-bold tracking-tight flex items-center gap-2">
+            <Activity className="size-5 text-primary animate-pulse" /> Activity Feed
           </h2>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs mt-0.5">
             Real-time pulse of business operations and user actions. <span className="font-medium text-primary">{total} actions</span>
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+        <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={load} disabled={loading}>
           Refresh Feed
         </Button>
       </div>

@@ -43,8 +43,7 @@ export function AiInventoryHealth() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Sparkles className="size-6 text-indigo-600" /> AI Inventory Health
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">AI Inventory Health
           </h2>
           <p className="text-sm text-muted-foreground">AI-generated inventory insights and proactive recommendations.</p>
         </div>

@@ -54,8 +54,7 @@ export function PurchaseReturns() {
     <div className="space-y-6 text-foreground">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <ArrowRightLeft className="text-primary size-6" /> Purchase Returns & Debit Notes
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Purchase Returns & Debit Notes
           </h2>
           <p className="text-sm text-muted-foreground">Return defective goods to vendors with automated Debit Note generation.</p>
         </div>
