@@ -321,8 +321,8 @@ export function MasterCatalogAdmin() {
         {/* Database Grid Table */}
         <div className="overflow-x-auto border border-border rounded-xl bg-card">
           <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-border text-muted-foreground font-semibold uppercase tracking-wider bg-muted/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
                 <th className="py-3 px-4 w-12 text-center">
                   <input
                     type="checkbox"

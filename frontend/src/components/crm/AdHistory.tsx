@@ -668,9 +668,9 @@ export function AdHistory() {
             <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/30">
-                      <th className="p-3 text-xs font-bold text-muted-foreground uppercase tracking-wider min-w-[180px]">Campaign Name</th>
+                  <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
+                <th className="p-3 text-xs font-bold text-muted-foreground uppercase tracking-wider min-w-[180px]">Campaign Name</th>
                       <th className="p-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
                       <th className="p-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Objective</th>
                       <th className="p-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">

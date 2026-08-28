@@ -590,7 +590,7 @@ function Markdown({ text }: { text: string }) {
       out.push(
         <div key={`t-${out.length}`} className="my-3 overflow-x-auto rounded-xl border border-border/70 shadow-xs">
           <table className="w-full text-xs">
-            <thead className="bg-muted/50 border-b border-border/60">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 {header.map((h, i) => (
                   <th key={i} className="px-3.5 py-2 text-left font-bold text-muted-foreground">

@@ -744,7 +744,7 @@ export function CompanyManagement() {
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full text-xs">
-                            <thead className="bg-muted/50 border-b">
+                            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                               <tr>
                                 <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[10px]">Code</th>
                                 <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground text-[10px]">Branch Name</th>

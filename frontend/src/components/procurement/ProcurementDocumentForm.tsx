@@ -1262,7 +1262,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider font-bold">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-3 py-3 w-10 text-center">#</th>
                 <th className="px-3 py-3 min-w-[220px]">Items / Services</th>

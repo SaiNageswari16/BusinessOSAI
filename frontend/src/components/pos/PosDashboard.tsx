@@ -462,7 +462,7 @@ export function PosDashboard() {
 
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
-                <thead className="text-muted-foreground font-medium border-b border-border/40">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="py-2.5 px-3 font-semibold">Receipt No</th>
                     <th className="py-2.5 px-3 font-semibold">Time</th>

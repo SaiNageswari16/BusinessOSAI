@@ -111,8 +111,8 @@ export function SupplierPerformance() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="bg-muted/50 border-b text-muted-foreground text-xs uppercase font-semibold">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
                   <th className="py-3.5 px-4">Supplier Partner</th>
                   <th className="py-3.5 px-4 text-center">Delivery Score</th>
                   <th className="py-3.5 px-4 text-center">Quality Score</th>

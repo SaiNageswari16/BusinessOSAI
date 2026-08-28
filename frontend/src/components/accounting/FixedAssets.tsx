@@ -316,7 +316,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4 font-medium">Asset Name</th>
                 <th className="px-6 py-4 font-medium">Method</th>
@@ -371,7 +371,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">Asset #</th>
                   <th className="px-6 py-4 font-medium">Name</th>
@@ -445,7 +445,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4 font-medium">ID</th>
                 <th className="px-6 py-4 font-medium">Asset Name</th>

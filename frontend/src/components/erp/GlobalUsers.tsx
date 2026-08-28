@@ -513,7 +513,7 @@ export function GlobalUsers() {
 
           <div className="rounded-xl border bg-card overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 border-b">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-3 text-left font-semibold text-muted-foreground text-xs">Workspace & Owner</th>
                   <th className="px-6 py-3 text-left font-semibold text-muted-foreground text-xs">Requested Date</th>
@@ -628,7 +628,7 @@ export function GlobalUsers() {
 
           <div className="rounded-xl border bg-card overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 border-b">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-3 text-left font-semibold text-muted-foreground text-xs">Workspace Name & Slug</th>
                   <th className="px-6 py-3 text-left font-semibold text-muted-foreground text-xs">Plan & Status</th>
@@ -743,7 +743,7 @@ export function GlobalUsers() {
 
           <div className="rounded-xl border bg-card overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 border-b">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-3 text-left font-semibold text-muted-foreground text-xs">Full Name & Email</th>
                   <th className="px-6 py-3 text-left font-semibold text-muted-foreground text-xs">Client Workspace</th>

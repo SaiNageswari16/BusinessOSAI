@@ -107,7 +107,7 @@ export function Exports() {
       </div>
       <div className="overflow-x-auto w-full">
         <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-muted/40 text-muted-foreground">
+          <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
             <tr>
               {tableColumns.map((col: any, i: number) => (
                 <th key={i} className="px-6 py-4 font-bold text-xs uppercase tracking-wider border-b border-border/50">{col.header}</th>

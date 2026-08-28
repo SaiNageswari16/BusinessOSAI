@@ -419,7 +419,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
           <h3 className="font-bold text-foreground mb-4">Monthly Payslips</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-3 font-medium">Period</th>
                   <th className="px-6 py-3 text-right font-medium">Basic Pay</th>

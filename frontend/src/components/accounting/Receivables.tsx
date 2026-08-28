@@ -125,7 +125,7 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             </div>
             <div className="border border-border/50 rounded-xl overflow-hidden">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground bg-muted/30 border-b border-border/50">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="px-4 py-2 font-medium">Item Description</th>
                     <th className="px-4 py-2 font-medium text-right w-20">Qty</th>
@@ -332,7 +332,7 @@ export function Receivables({ tab = "invoices" }: Props) {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="px-6 py-4 font-medium">Customer ID</th>
                     <th className="px-6 py-4 font-medium">Name</th>
@@ -390,7 +390,7 @@ export function Receivables({ tab = "invoices" }: Props) {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr><th className="px-6 py-4 font-medium">Invoice #</th><th className="px-6 py-4 font-medium">Customer</th><th className="px-6 py-4 text-right font-medium">Total</th><th className="px-6 py-4 text-right font-medium">Paid</th><th className="px-6 py-4 text-right font-medium">Outstanding</th><th className="px-6 py-4 text-center font-medium">Status</th></tr>
                 </thead>
                 <tbody>{paidInvoices.map((inv, i) => (
@@ -439,7 +439,7 @@ export function Receivables({ tab = "invoices" }: Props) {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="px-6 py-4 font-medium">Invoice #</th><th className="px-6 py-4 font-medium">Customer</th><th className="px-6 py-4 font-medium">Due Date</th>
                     <th className="px-6 py-4 text-right font-medium">Total</th><th className="px-6 py-4 text-right font-medium">Balance Due</th><th className="px-6 py-4 text-center font-medium">Status</th><th className="px-6 py-4 text-center font-medium">Action</th>
@@ -577,7 +577,7 @@ export function Receivables({ tab = "invoices" }: Props) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-5 py-3 font-medium">Invoice #</th><th className="px-5 py-3 font-medium">Customer</th><th className="px-5 py-3 font-medium">Date</th><th className="px-5 py-3 font-medium">Due Date</th>
                   <th className="px-5 py-3 text-right font-medium">Total Amount</th><th className="px-5 py-3 text-right font-medium">Balance Due</th><th className="px-5 py-3 text-center font-medium">Status</th><th className="px-5 py-3 text-center font-medium">Action</th>

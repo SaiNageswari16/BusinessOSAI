@@ -44,8 +44,8 @@ export function MarketplaceProducts() {
       <div className="glass-panel border border-border/50 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead>
-              <tr className="bg-muted/30 border-b border-border/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
                 <th className="px-6 py-4 font-semibold text-muted-foreground">Product</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground">Vendor</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground">Category</th>

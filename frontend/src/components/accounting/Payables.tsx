@@ -311,7 +311,7 @@ export function Payables({ tab = "bills" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr><th className="px-6 py-4 font-medium">CN Number</th><th className="px-6 py-4 font-medium">Vendor</th><th className="px-6 py-4 font-medium">Issue Date</th><th className="px-6 py-4 text-right font-medium">Amount</th><th className="px-6 py-4 text-center font-medium">Status</th></tr>
               </thead>
               <tbody>
@@ -342,7 +342,7 @@ export function Payables({ tab = "bills" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr><th className="px-6 py-4 font-medium">DN Number</th><th className="px-6 py-4 font-medium">Vendor</th><th className="px-6 py-4 font-medium">Issue Date</th><th className="px-6 py-4 text-right font-medium">Amount</th><th className="px-6 py-4 text-center font-medium">Status</th></tr>
               </thead>
               <tbody>
@@ -373,7 +373,7 @@ export function Payables({ tab = "bills" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr><th className="px-6 py-4 font-medium">Vendor</th><th className="px-6 py-4 text-right font-medium">Current</th><th className="px-6 py-4 text-right font-medium">1-30 Days</th><th className="px-6 py-4 text-right font-medium">31-60 Days</th><th className="px-6 py-4 text-right font-medium">61-90 Days</th><th className="px-6 py-4 text-right font-medium">Total Outstanding</th></tr>
               </thead>
               <tbody>
@@ -409,7 +409,7 @@ export function Payables({ tab = "bills" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">Payment ID</th>
                   <th className="px-6 py-4 font-medium">Bill Ref</th>
@@ -480,7 +480,7 @@ export function Payables({ tab = "bills" }: Props) {
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4 font-medium">Bill ID</th>
                 <th className="px-6 py-4 font-medium">Vendor</th>

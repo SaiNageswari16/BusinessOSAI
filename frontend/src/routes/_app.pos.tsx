@@ -56,7 +56,7 @@ function PosSales() {
       ) : (
         <div className="bg-card rounded-2xl shadow-xs border border-border/70 overflow-hidden">
           <table className="w-full text-xs text-left">
-            <thead className="bg-muted/40 text-muted-foreground font-bold uppercase tracking-wider text-[11px] border-b border-border/60">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-4 py-3 text-left">Receipt No</th>
                 <th className="px-4 py-3 text-left">Date & Time</th>
@@ -119,7 +119,7 @@ function PosCustomersPlaceholder() {
       </div>
       <div className="bg-card rounded-2xl shadow-xs border border-border/70 overflow-hidden">
         <table className="w-full text-xs text-left">
-          <thead className="bg-muted/40 text-muted-foreground font-bold uppercase tracking-wider text-[11px] border-b border-border/60">
+          <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
             <tr><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-left">Phone</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Tier</th><th className="px-4 py-3 text-left">Points</th><th className="px-4 py-3 text-center">Action</th></tr>
           </thead>
           <tbody className="divide-y divide-border/30 font-medium">

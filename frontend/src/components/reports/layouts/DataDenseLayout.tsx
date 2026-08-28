@@ -72,7 +72,7 @@ export function DataDenseLayout({ reportData, filteredTableData, getKpiIcon }: D
           </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-muted text-muted-foreground sticky top-0 z-10 shadow-sm">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold sticky top-0 z-10 shadow-sm">
                 <tr>
                   {tableColumns.map((col, i) => (
                     <th key={i} className="px-4 py-3 font-bold text-[10px] uppercase tracking-widest border-b border-border">

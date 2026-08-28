@@ -2102,7 +2102,7 @@ export function PosSalesInvoice() {
 
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase text-[10px] tracking-wider font-bold">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-3 py-3 w-10 text-left">#</th>
                   <th className="px-3 py-3 w-[22%] min-w-[200px] text-left">Items / Services</th>
@@ -3303,7 +3303,7 @@ export function PosSalesInvoice() {
               <h3 className="font-bold text-slate-700 mb-3 text-sm">Unpaid Invoices</h3>
               <div className="border border-slate-200 rounded-xl overflow-hidden">
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+                  <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Date</th>
                       <th className="px-4 py-3 font-semibold">Invoice ID</th>

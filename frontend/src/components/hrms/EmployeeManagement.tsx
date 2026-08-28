@@ -906,7 +906,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
           <div className="glass-panel rounded-xl border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="px-6 py-4">Designation Name</th>
                     <th className="px-6 py-4">Level Mapping</th>

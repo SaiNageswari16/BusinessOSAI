@@ -839,9 +839,9 @@ export function PosPaymentIn() {
           <div className="flex-1 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-2xs">
             <div className="overflow-x-auto flex-1">
               <table className="w-full text-left border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/80 text-slate-500 font-bold text-xs uppercase tracking-wider">
-                    <th className="py-3.5 px-4">Date & Time</th>
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
+                <th className="py-3.5 px-4">Date & Time</th>
                     <th className="py-3.5 px-4">Voucher / Ref #</th>
                     <th className="py-3.5 px-4">Party & Account</th>
                     <th className="py-3.5 px-4 text-right text-emerald-700">Credit (+) In</th>

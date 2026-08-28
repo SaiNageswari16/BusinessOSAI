@@ -125,7 +125,7 @@ export function HeroChartLayout({ reportData, filteredTableData, getKpiIcon }: D
       <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-muted/50 text-muted-foreground">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 {tableColumns.map((col, i) => (
                   <th key={i} className="px-6 py-4 font-bold text-xs uppercase tracking-wider">

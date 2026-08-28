@@ -856,9 +856,9 @@ export const RefundView = ({ currentSessionId, initialSearch }: { currentSession
             </div>
             <div className="flex-1 overflow-y-auto p-0">
               <table className="w-full text-left">
-                <thead>
-                  <tr className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                    <th className="pb-3 px-6 w-10">Select</th>
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
+                <th className="pb-3 px-6 w-10">Select</th>
                     <th className="pb-3 px-6">Item ID</th>
                     <th className="pb-3 px-6 text-center w-24">Qty Refunded</th>
                     <th className="pb-3 px-6 text-right">Unit Price</th>

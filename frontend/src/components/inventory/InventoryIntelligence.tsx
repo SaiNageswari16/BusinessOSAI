@@ -451,7 +451,7 @@ export function InventoryIntelligence() {
           <h3 className="font-bold mb-4">Category Table</h3>
           <div className="overflow-y-auto max-h-[300px]">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs uppercase font-bold text-muted-foreground">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="pb-2">Category</th>
                   <th className="pb-2 text-right">Products</th>

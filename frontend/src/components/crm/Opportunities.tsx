@@ -146,7 +146,7 @@ export function Opportunities() {
             <div className="py-12 text-center text-muted-foreground">Loading sales pipeline…</div>
           ) : (
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4">Opportunity Name</th>
                   <th className="px-6 py-4">Customer / Lead</th>

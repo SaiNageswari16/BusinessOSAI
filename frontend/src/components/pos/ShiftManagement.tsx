@@ -38,7 +38,7 @@ export function ShiftManagement() {
       <h3 className="text-sm font-bold mt-4 mb-2 flex items-center gap-1.5"><History className="size-4" /> Recent Shifts</h3>
       <div className="bg-card border rounded-xl overflow-hidden shadow-sm">
         <table className="w-full text-sm text-left">
-          <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
+          <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
             <tr>
               <th className="px-6 py-3">Shift ID</th>
               <th className="px-6 py-3">Cashier</th>
