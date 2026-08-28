@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Heart } from "lucide-react";
 import { useWishlist } from "@/contexts/StoreWishlistContext";
-import { useCurrency } from "@/hooks/use-currency";
 
 interface ProductGalleryProps {
   productId: string;
@@ -10,7 +9,6 @@ interface ProductGalleryProps {
 }
 
 export function ProductGallery({ productId, productName, imageUrl }: ProductGalleryProps) {
-    const { currency, formatCurrency } = useCurrency();
   const { isInWishlist, toggleWishlist } = useWishlist();
   const isWished = isInWishlist(productId);
 
