@@ -6,7 +6,7 @@ import {
   ExternalLink, Edit2, ShieldCheck, CreditCard, ChevronRight, LayoutGrid, List,
   Users, Sparkles, X, Save, Loader2, Trash2, AlertCircle, Globe, FileText, CheckCircle,
   Truck, Receipt, KeyRound, Server, Activity, ArrowRight, ShieldAlert, CheckCircle2,
-  Copy, RefreshCw, Layers, Shield
+  Copy, RefreshCw, Layers, Shield, Upload
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
