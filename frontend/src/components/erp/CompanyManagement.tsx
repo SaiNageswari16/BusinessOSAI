@@ -1296,8 +1296,14 @@ export function CompanyManagement() {
                   )}
                 >
                   <div className="flex gap-2.5 w-full">
-                    <div className="size-8 rounded-lg gradient-brand text-white grid place-items-center font-bold text-xs shrink-0">
-                      {initials}
+                    <div className="size-8 rounded-lg border bg-background flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                      {company.logo_url ? (
+                        <img src={company.logo_url} alt={company.name} className="w-full h-full object-contain p-0.5" />
+                      ) : (
+                        <div className="w-full h-full gradient-brand text-white grid place-items-center font-bold text-xs">
+                          {initials}
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 overflow-hidden">
                       <h3 className={cn("font-bold text-xs tracking-tight truncate", isActive ? "text-primary" : "text-foreground")}>
@@ -1358,8 +1364,14 @@ export function CompanyManagement() {
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between px-4 py-2.5 bg-card border-b border-border sticky top-0 z-10">
               <div className="flex items-center gap-2.5">
-                <div className="size-9 rounded-xl gradient-brand text-white grid place-items-center font-bold text-xs shrink-0 shadow-xs">
-                  {activeCompany.logo_initials ?? activeCompany.name.slice(0, 2).toUpperCase()}
+                <div className="size-9 rounded-xl border bg-background flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                  {activeCompany.logo_url ? (
+                    <img src={activeCompany.logo_url} alt={activeCompany.name} className="w-full h-full object-contain p-0.5" />
+                  ) : (
+                    <div className="w-full h-full gradient-brand text-white grid place-items-center font-bold text-xs">
+                      {activeCompany.logo_initials ?? activeCompany.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">

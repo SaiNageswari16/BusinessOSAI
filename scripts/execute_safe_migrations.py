@@ -49,6 +49,17 @@ async def main():
         "ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS call_disposition VARCHAR(100);",
         "ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS call_duration_minutes INTEGER DEFAULT 0;",
         "ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS customer_response TEXT;",
+
+        # companies table
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo_url TEXT;",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo_initials VARCHAR(10);",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_name VARCHAR(150);",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(50);",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_ifsc VARCHAR(30);",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_branch VARCHAR(100);",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS upi_id VARCHAR(100);",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS upi_qr_url TEXT;",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS signature_url TEXT;",
     ]
 
     for stmt in statements:
