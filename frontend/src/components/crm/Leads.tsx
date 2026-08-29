@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle, Calendar, Mail, Phone, Plus, Search,
   Facebook, RefreshCw, Sparkles, X, Trash2, Key,
-  PhoneCall, PhoneOff, CheckCircle2, Clock, Mic, Loader2, Target, Megaphone, Layers, Briefcase
+  PhoneCall, CheckCircle2, Clock, Loader2, Target, Megaphone, Layers, Briefcase
 } from "lucide-react";
 import { toast } from "sonner";
 import { crmLeadsApi, crmCallsApi, type CrmLead, type LeadAttribution, type CRMCallLog } from "@/lib/api-client";
@@ -189,37 +189,6 @@ export function Leads() {
     setCallTarget(lead);
   };
 
-  const initiateCall = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!callTarget) return;
-    setCalling(true);
-    try {
-      const res = await crmLeadsApi.initiateCall(callTarget.id, {
-        sip_number: sipNumber,
-        custom_prompt: customPrompt || undefined,
-      });
-
-      if (res.status === "connected") {
-        setActiveCall({ leadId: callTarget.id, roomName: res.room_name! });
-        setCallTarget(null);
-        toast.success(`📞 AI call connected to ${callTarget.name}!`, { duration: 6000 });
-        // Auto-move lead to Contacted
-        await moveLead(callTarget, "Contacted");
-      } else {
-        toast.error(`Call ended with status: ${res.status}. ${res.message}`);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to initiate call");
-    } finally {
-      setCalling(false);
-    }
-  };
-
-  const endActiveCall = () => {
-    setActiveCall(null);
-    toast("Call session ended.", { icon: "📵" });
-  };
-
   const openAttribution = async (lead: CrmLead) => {
     if (!lead.meta?.ad_id) {
       toast.info("No ad attribution data for this lead (may have been created manually).");
@@ -240,33 +209,6 @@ export function Leads() {
 
   return (
     <div className="p-4 min-h-[calc(100vh-6rem)] flex flex-col space-y-3">
-
-      {/* Active Call Banner */}
-      <AnimatePresence>
-        {activeCall && (
-          <motion.div
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -16 }}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
-          >
-            <span className="relative flex size-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full size-3 bg-emerald-500"></span>
-            </span>
-            <Mic className="size-4" />
-            <p className="text-sm font-semibold flex-1">
-              AI call active · Room: <code className="text-xs font-mono opacity-70">{activeCall.roomName}</code>
-            </p>
-            <button
-              onClick={endActiveCall}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-lg text-xs font-semibold hover:bg-red-500/20 transition-colors"
-            >
-              <PhoneOff className="size-3.5" /> End Call
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
