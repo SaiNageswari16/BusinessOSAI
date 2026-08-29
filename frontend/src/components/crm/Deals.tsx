@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Filter, MoreHorizontal, Target, Calendar, User } from "lucide-react";
+import { Plus, Search, Filter, MoreHorizontal, Target, Calendar, User, PhoneCall } from "lucide-react";
 
 import { crmOpportunitiesApi, type CrmOpportunity } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -16,19 +16,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/use-currency";
+import { AiCallingModal } from "./AiCallingModal";
 
 interface Props {
   tab?: string;
 }
 
 export function Deals({ tab = "all_deals" }: Props) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [deals, setDeals] = useState<CrmOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [callingDeal, setCallingDeal] = useState<CrmOpportunity | null>(null);
   const [newDeal, setNewDeal] = useState({ name: "", customer_name: "", amount: 0, probability: 50, stage: "Prospecting" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const stages = ["Prospecting", "Qualification", "Needs Analysis", "Value Proposition", "Negotiation", "Closed Won", "Closed Lost"];
@@ -186,7 +188,14 @@ export function Deals({ tab = "all_deals" }: Props) {
                       style={{ borderLeftColor: `hsl(var(--primary))` }}
                     >
                       <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-bold text-foreground text-sm leading-tight pr-4">{deal.name}</h4>
+                        <h4 className="font-bold text-foreground text-sm leading-tight pr-2">{deal.name}</h4>
+                        <button
+                          onClick={() => setCallingDeal(deal)}
+                          className="p-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition shrink-0"
+                          title="Start AI Deal Call"
+                        >
+                          <PhoneCall className="size-3.5" />
+                        </button>
                       </div>
                       <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5">
                         <Target className="size-3" /> {(deal as any).customer_name || "Robert Johnson (Lead)"}
@@ -221,6 +230,25 @@ export function Deals({ tab = "all_deals" }: Props) {
             );
           })}
         </div>
+      )}
+
+      {/* Universal AI Calling Modal */}
+      {callingDeal && (
+        <AiCallingModal
+          open={!!callingDeal}
+          onClose={() => setCallingDeal(null)}
+          targetType="deal"
+          targetId={callingDeal.id}
+          contactName={(callingDeal as any).customer_name || callingDeal.name}
+          contactPhone={(callingDeal as any).contact_phone || undefined}
+          contactEmail={(callingDeal as any).contact_email || undefined}
+          companyName={(callingDeal as any).company_name || undefined}
+          dealValue={callingDeal.amount}
+          defaultNotes={`Deal: ${callingDeal.name}, Current Stage: ${callingDeal.stage}, Value: ${callingDeal.amount}`}
+          onCallCompleted={async () => {
+            await fetchDeals();
+          }}
+        />
       )}
     </div>
   );

@@ -126,7 +126,7 @@ const moduleDisplayList = [
     group: "HRMS", 
     label: "HRMS", 
     icon: UsersRound, 
-    defaultTo: "/hrms?tab=dashboard", 
+    defaultTo: "/hrms?tab=employees", 
     permission: "view:hrms",
     activeText: "text-fuchsia-600",
     activeBg: "bg-fuchsia-50/90",
@@ -275,7 +275,11 @@ export function AppTopbar() {
   }, [currentPath, currentPathWithSearch]);
 
   const handleNavigateModule = (defaultTo: string) => {
-    const [path, searchStr] = defaultTo.split("?");
+    let target = defaultTo;
+    if (defaultTo.includes("/hrms") && !hasPermission("view:hrms_employees")) {
+      target = "/hrms?tab=ess_attendance";
+    }
+    const [path, searchStr] = target.split("?");
     const search: Record<string, string> = {};
     if (searchStr) {
       const params = new URLSearchParams(searchStr);

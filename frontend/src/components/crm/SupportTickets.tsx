@@ -23,12 +23,15 @@ import {
   Building,
   Calendar,
   Layers,
+  PhoneCall,
 } from "lucide-react";
 
-import { crmTicketsApi, crmCustomersApi, type CrmTicket, type CrmCustomer } from "@/lib/api-client";
+import { crmTicketsApi, crmCustomersApi, crmCallsApi, type CrmTicket, type CrmCustomer, type CRMCallLog } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
+import { AiCallingModal } from "./AiCallingModal";
+
 
 interface Props {
   tab?: string;
@@ -478,13 +481,26 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<CrmTicket | null>(null);
+  const [callingTicket, setCallingTicket] = useState<CrmTicket | null>(null);
   const [menuOpenTicketId, setMenuOpenTicketId] = useState<string | null>(null);
+  const [callStatusMap, setCallStatusMap] = useState<Record<string, CRMCallLog>>({});
 
   const fetchTickets = async () => {
     setLoading(true);
     try {
       const res = await crmTicketsApi.list();
       setTickets(res || []);
+      // Load call statuses in background
+      try {
+        const callRes = await crmCallsApi.listLogs(1, 200, "ticket");
+        const map: Record<string, CRMCallLog> = {};
+        for (const log of (callRes.items || [])) {
+          if (log.target_id && !map[log.target_id]) {
+            map[log.target_id] = log;
+          }
+        }
+        setCallStatusMap(map);
+      } catch { /* silent */ }
     } catch (err) {
       console.error("Failed to fetch support tickets:", err);
       setTickets([]);
@@ -503,6 +519,7 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
   useEffect(() => {
     void fetchTickets();
   }, [tenant.id]);
+
 
   const runAiSummary = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -778,15 +795,33 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
                       </div>
                     </td>
 
-                    {/* Customer */}
+                    {/* Customer & Call Status */}
                     <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="size-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
-                          {((ticket as any).customer_name || "C").charAt(0).toUpperCase()}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="size-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+                            {((ticket as any).customer_name || "C").charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-foreground font-semibold truncate max-w-[130px]">
+                            {(ticket as any).customer_name || "Enterprise Client"}
+                          </span>
                         </div>
-                        <span className="text-foreground font-semibold truncate max-w-[130px]">
-                          {(ticket as any).customer_name || "Enterprise Client"}
-                        </span>
+                        {(() => {
+                          const log = callStatusMap[ticket.id];
+                          if (!log) return null;
+                          const days = Math.floor((Date.now() - new Date(log.created_at).getTime()) / (1000 * 60 * 60 * 24));
+                          const overdue = days >= 2;
+                          return (
+                            <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                              overdue
+                                ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                            }`}>
+                              {overdue ? <Clock className="size-2.5" /> : <CheckCircle2 className="size-2.5" />}
+                              {overdue ? `Call follow-up ${days}d ago` : days === 0 ? "Called today" : `Called ${days}d ago`}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </td>
 
@@ -853,15 +888,31 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
 
                     {/* Actions Menu */}
                     <td className="px-5 py-4 text-right relative">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpenTicketId((prev) => (prev === ticket.id ? null : ticket.id));
-                        }}
-                        className="p-1.5 rounded-lg border border-border/70 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shadow-xs"
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCallingTicket(ticket);
+                          }}
+                          className={`p-1.5 rounded-lg border transition-colors ${
+                            callStatusMap[ticket.id]
+                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                              : "border-border/70 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400"
+                          }`}
+                          title={callStatusMap[ticket.id] ? "Ticket was called — Click to call again" : "Start AI Support Call"}
+                        >
+                          <PhoneCall className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenTicketId((prev) => (prev === ticket.id ? null : ticket.id));
+                          }}
+                          className="p-1.5 rounded-lg border border-border/70 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shadow-xs"
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </button>
+                      </div>
 
                       {menuOpenTicketId === ticket.id && (
                         <div
@@ -876,6 +927,15 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
                             className="w-full px-3.5 py-2 hover:bg-muted flex items-center gap-2 text-left transition-colors"
                           >
                             <Eye className="size-3.5 text-primary" /> View Full Case
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCallingTicket(ticket);
+                              setMenuOpenTicketId(null);
+                            }}
+                            className="w-full px-3.5 py-2 hover:bg-muted flex items-center gap-2 text-left transition-colors text-indigo-600 dark:text-indigo-400"
+                          >
+                            <PhoneCall className="size-3.5" /> AI Support Call
                           </button>
                           <button
                             onClick={(e) => void runAiSummary(e, ticket.id)}
@@ -958,6 +1018,25 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
           />
         )}
       </AnimatePresence>
+
+      {/* AI Voice Calling Modal */}
+      {callingTicket && (
+        <AiCallingModal
+          open={!!callingTicket}
+          onClose={() => {
+            setCallingTicket(null);
+            void fetchTickets();
+          }}
+          targetType="ticket"
+          targetId={callingTicket.id}
+          contactName={(callingTicket as any).customer_name || "Customer"}
+          contactPhone={(callingTicket as any).customer_phone || undefined}
+          contactEmail={(callingTicket as any).customer_email || undefined}
+          companyName={(callingTicket as any).customer_company || undefined}
+          initialPersona="support"
+        />
+      )}
     </div>
   );
 }
+

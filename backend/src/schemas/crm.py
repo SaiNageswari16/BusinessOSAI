@@ -446,3 +446,98 @@ class CreatePaidAdRequestSchema(BaseModel):
     end_time: str | None = None
 
 
+# ─── AI Calling Schemas ──────────────────────────────────────────────────────────
+
+class CRMCallInitiateRequest(BaseModel):
+    target_type: str = "lead"  # lead | customer | opportunity | deal | quotation | order | ticket | complaint
+    target_id: uuid.UUID | None = None
+    contact_name: str
+    contact_phone: str | None = None
+    contact_email: str | None = None
+    company_name: str | None = None
+    agent_persona: str = "Alex - Senior Solutions & Sales Closer"
+    custom_prompt: str | None = None
+    sip_number: str | None = None  # Optional SIP DID if calling via telephony
+    call_mode: str = "browser_ai"  # browser_ai | livekit_sip | webrtc
+
+
+class CRMCallInitiateResponse(BaseModel):
+    call_id: uuid.UUID
+    status: str
+    room_name: str | None = None
+    agent_greeting: str
+    contact_name: str
+    contact_phone: str | None = None
+    agent_persona: str
+    battlecards: list[dict] = []
+    message: str
+
+
+class CRMCallTurnMessage(BaseModel):
+    speaker: str  # AI | User
+    text: str
+    timestamp: str | None = None
+
+
+class CRMCallTurnRequest(BaseModel):
+    call_id: uuid.UUID
+    user_speech: str
+    conversation_history: list[CRMCallTurnMessage] = []
+    agent_persona: str = "Alex - Senior Solutions & Sales Closer"
+    target_type: str = "lead"
+    contact_name: str = "Client"
+    company_name: str | None = None
+    context_notes: str | None = None
+
+
+class CRMCallTurnResponse(BaseModel):
+    ai_response: str
+    detected_sentiment: str  # Positive | Neutral | Negative | Objection | Highly Interested
+    confidence: float = 0.95
+    suggested_objection_handling: str | None = None
+    recommended_action: str | None = None
+
+
+class CRMCallCompleteRequest(BaseModel):
+    call_id: uuid.UUID
+    duration_seconds: int = 0
+    transcript: list[CRMCallTurnMessage] = []
+    final_sentiment: str = "Positive"
+    status: str = "Completed"  # Completed | No Answer | Busy | Failed
+    auto_advance_stage: bool = True
+    new_stage_or_status: str | None = None
+
+
+class CRMCallLogResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    target_type: str
+    target_id: uuid.UUID | None
+    contact_name: str
+    contact_phone: str | None
+    contact_email: str | None
+    company_name: str | None
+    status: str
+    direction: str
+    duration_seconds: int
+    agent_persona: str
+    call_mode: str
+    transcript: list[dict] | None = []
+    ai_summary: str | None
+    sentiment: str | None
+    qualification_score: int | None
+    action_items: list[str] | None = []
+    recording_url: str | None
+    created_at: datetime
+
+
+class CRMCallStatsResponse(BaseModel):
+    total_calls: int
+    connected_calls: int
+    avg_duration_seconds: int
+    positive_sentiment_rate: float
+    leads_contacted_count: int
+    opportunities_advanced: int
+
+
+

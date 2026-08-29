@@ -1,16 +1,27 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, FileText, Shield, Calculator, Award, Trash2, CheckCircle, Clock, XCircle, AlertTriangle } from "lucide-react";
+import { Plus, FileText, Shield, Calculator, Award, Trash2, CheckCircle, Clock, XCircle, AlertTriangle, Printer, Download, Eye } from "lucide-react";
 import { exitApi, employeesApi, ExitResignation, ExitClearanceTask, ExitFinalSettlement, ExitExperienceLetter, Employee } from "../../lib/api-client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
+import { getActiveBillingGst } from "@/lib/receipt-template-store";
 
 interface Props { tab?: string; }
 
 export function ExitManagement({ tab = "resignation" }: Props) {
     const { currency, formatCurrency } = useCurrency();
+    const { tenant } = useTenant();
+    const activeGst = getActiveBillingGst();
+    const orgName = activeGst?.trade_name || activeGst?.legal_name || tenant?.name || "BusinessOS Enterprise";
+    const orgAddress = activeGst?.address || tenant?.settings?.address || "100 Innovation Boulevard, Tech District";
+    const orgGstin = activeGst?.gstin || tenant?.settings?.gstin || "";
+    const orgCin = activeGst?.cin || tenant?.settings?.cin || "";
+    const orgEmail = activeGst?.email || tenant?.settings?.email || "hr@businessos.ai";
+    const orgPhone = activeGst?.phone || tenant?.settings?.phone || "+91 (800) 555-0199";
+
   const [resignations, setResignations] = useState<ExitResignation[]>([]);
   const [clearanceTasks, setClearanceTasks] = useState<ExitClearanceTask[]>([]);
   const [settlements, setSettlements] = useState<ExitFinalSettlement[]>([]);
@@ -417,6 +428,247 @@ export function ExitManagement({ tab = "resignation" }: Props) {
     );
   }
 
+  // Print Official Experience Certificate
+  const handlePrintExperienceCertificate = (letObj: ExitExperienceLetter) => {
+    const printWin = window.open("", "_blank", "width=850,height=1100");
+    if (!printWin) {
+      alert("Please allow popups to print or download the Experience & Relieving Certificate.");
+      return;
+    }
+
+    const fromStr = new Date(letObj.from_date).toLocaleDateString("en-IN", { dateStyle: "long" });
+    const toStr = new Date(letObj.to_date).toLocaleDateString("en-IN", { dateStyle: "long" });
+    const issuedStr = letObj.issued_on && letObj.issued_on !== "—" ? new Date(letObj.issued_on).toLocaleDateString("en-IN", { dateStyle: "long" }) : new Date().toLocaleDateString("en-IN", { dateStyle: "long" });
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Service Certificate & Relieving Letter - ${letObj.employee_name}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 18mm 20mm;
+            }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            }
+            body {
+              background: #ffffff;
+              color: #0f172a;
+              padding: 20px;
+              font-size: 10pt;
+              line-height: 1.6;
+            }
+            .page-container {
+              max-width: 720px;
+              margin: 0 auto;
+              background: #ffffff;
+            }
+            .header-banner {
+              border-bottom: 2.5px solid #1e1b4b;
+              padding-bottom: 16px;
+              margin-bottom: 24px;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+            }
+            .header-banner h1 {
+              font-size: 18pt;
+              font-weight: 900;
+              color: #1e1b4b;
+              letter-spacing: -0.5px;
+            }
+            .header-banner p {
+              font-size: 8pt;
+              color: #64748b;
+              margin-top: 2px;
+            }
+            .cert-badge {
+              text-align: right;
+            }
+            .cert-badge span {
+              display: inline-block;
+              background: #1e1b4b;
+              color: #ffffff;
+              font-size: 8pt;
+              font-weight: 800;
+              padding: 4px 12px;
+              border-radius: 6px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .cert-title {
+              text-align: center;
+              font-size: 14pt;
+              font-weight: 900;
+              color: #1e1b4b;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              margin: 24px 0 20px 0;
+              text-decoration: underline;
+            }
+            .body-text {
+              font-size: 10pt;
+              color: #334155;
+              margin-bottom: 16px;
+              text-align: justify;
+            }
+            .details-box {
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              border-radius: 10px;
+              padding: 16px;
+              margin: 20px 0;
+              font-size: 9.5pt;
+            }
+            .details-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 10px;
+            }
+            .details-grid .item-label {
+              font-size: 8pt;
+              font-weight: 800;
+              color: #64748b;
+              text-transform: uppercase;
+            }
+            .details-grid .item-val {
+              font-weight: 700;
+              color: #0f172a;
+            }
+            .signatures-grid {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              margin-top: 50px;
+              padding-top: 16px;
+              border-top: 1px dashed #cbd5e1;
+            }
+            .sign-column {
+              width: 45%;
+            }
+            .sign-line {
+              height: 45px;
+              border-bottom: 1.5px solid #0f172a;
+              margin-bottom: 6px;
+            }
+            .sign-name {
+              font-size: 10pt;
+              font-weight: 800;
+              color: #0f172a;
+            }
+            .sign-title {
+              font-size: 8.5pt;
+              color: #64748b;
+            }
+            .footer-strip {
+              margin-top: 40px;
+              padding-top: 12px;
+              border-top: 1px solid #e2e8f0;
+              display: flex;
+              justify-content: space-between;
+              font-size: 7.5pt;
+              color: #94a3b8;
+            }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page-container">
+            <div class="header-banner">
+              <div>
+                <h1>${orgName}</h1>
+                <p>${orgAddress}</p>
+                <p>Email: ${orgEmail} • Phone: ${orgPhone}${orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
+              </div>
+              <div class="cert-badge">
+                <span>Official Work Certificate</span>
+                <p style="font-size:8pt; color:#64748b; margin-top:4px;">Date: ${issuedStr}</p>
+                <p style="font-size:8pt; font-family:monospace; color:#64748b;">REF: BOS-EXP-${Math.floor(1000 + Math.random() * 9000)}</p>
+              </div>
+            </div>
+
+            <div class="cert-title">Service Experience & Relieving Certificate</div>
+
+            <p class="body-text" style="font-weight:700; margin-bottom:8px;">TO WHOMSOEVER IT MAY CONCERN</p>
+
+            <p class="body-text">
+              This is to certify that <strong>${letObj.employee_name}</strong> was employed with <strong>${orgName}</strong> as a <strong>${letObj.designation}</strong> from <strong>${fromStr}</strong> to <strong>${toStr}</strong>.
+            </p>
+
+            <div class="details-box">
+              <div class="details-grid">
+                <div>
+                  <p class="item-label">Employee Name</p>
+                  <p class="item-val">${letObj.employee_name}</p>
+                </div>
+                <div>
+                  <p class="item-label">Designation / Role</p>
+                  <p class="item-val">${letObj.designation}</p>
+                </div>
+                <div>
+                  <p class="item-label">Date of Joining</p>
+                  <p class="item-val">${fromStr}</p>
+                </div>
+                <div>
+                  <p class="item-label">Date of Relieving</p>
+                  <p class="item-val">${toStr}</p>
+                </div>
+              </div>
+            </div>
+
+            <p class="body-text">
+              During their tenure with us, ${letObj.employee_name} demonstrated commendable dedication, integrity, and technical competence in executing their assigned duties and cross-functional responsibilities.
+            </p>
+
+            <p class="body-text">
+              All official clearance protocols and handover procedures have been successfully fulfilled. We formally relieve them of their responsibilities as of the close of business hours on <strong>${toStr}</strong> and wish them the very best in their future career endeavors.
+            </p>
+
+            <div class="signatures-grid">
+              <div class="sign-column">
+                <div class="sign-line"></div>
+                <div class="sign-name">Authorized Signatory</div>
+                <div class="sign-title">Human Resources & People Operations • ${orgName}</div>
+              </div>
+
+              <div class="sign-column" style="text-align: right;">
+                <div style="height: 45px; display:flex; align-items:flex-end; justify-content:flex-end;">
+                  <span style="border: 2px solid #4f46e5; color: #4f46e5; font-size: 7.5pt; font-weight: 800; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">Corporate Verified</span>
+                </div>
+                <div class="sign-name">Corporate Seal</div>
+                <div class="sign-title">${orgName}</div>
+              </div>
+            </div>
+
+            <div class="footer-strip">
+              <div>Verification Hash: SEC-CERT-${Math.floor(100000 + Math.random() * 900000)}</div>
+              <div>${orgName} • Confidential Employee Record</div>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 300);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+  };
+
   // Experience Letter sub-tab
   if (tab === "experience_letter") {
     return (
@@ -429,7 +681,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
 
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Relieving & Experience Letters</h2>
-          <p className="text-xs text-muted-foreground font-sans">Generate and issue official work certificates for departing corporate members.</p>
+          <p className="text-xs text-muted-foreground font-sans">Generate, preview, and print official work certificates and relieving letters for departing corporate members.</p>
         </div>
 
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
@@ -442,7 +694,7 @@ export function ExitManagement({ tab = "resignation" }: Props) {
                   <th className="px-6 py-4 font-semibold">Tenure</th>
                   <th className="px-6 py-4 font-semibold">Issued Date</th>
                   <th className="px-6 py-4 font-semibold">Status</th>
-                  <th className="px-6 py-4 text-center font-semibold">Action</th>
+                  <th className="px-6 py-4 text-center font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -463,13 +715,23 @@ export function ExitManagement({ tab = "resignation" }: Props) {
                       <td className="px-6 py-4 text-muted-foreground font-semibold">{letObj.issued_on}</td>
                       <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-xs font-bold ${letObj.status === "Issued" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>{letObj.status}</span></td>
                       <td className="px-6 py-4 text-center">
-                        {letObj.status !== "Issued" ? (
-                          <Button size="sm" onClick={() => handleIssueLetter(letObj.id)} className="h-8 text-xs font-bold">
-                            Approve & Issue Email
+                        <div className="flex gap-2 justify-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 gap-1.5 h-8 text-xs font-bold"
+                            onClick={() => handlePrintExperienceCertificate(letObj)}
+                          >
+                            <Printer className="size-3.5" /> Print Certificate
                           </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground font-semibold">Dispatched</span>
-                        )}
+                          {letObj.status !== "Issued" ? (
+                            <Button size="sm" onClick={() => handleIssueLetter(letObj.id)} className="h-8 text-xs font-bold">
+                              Approve & Dispatch
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground font-semibold self-center">Dispatched</span>
+                          )}
+                        </div>
                       </td>
                     </motion.tr>
                   ))

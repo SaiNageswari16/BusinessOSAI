@@ -20,8 +20,17 @@ from src.api.deps import CurrentUserContext, require_permission
 from src.config import get_settings
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import JobOpening, Applicant, Interview, OfferLetter, OnboardingRecord
 from src.utils.notifications import add_system_notification
+from src.models import (
+    JobOpening,
+    Applicant,
+    Interview,
+    OfferLetter,
+    OnboardingRecord,
+    Employee,
+    EmployeeDocument,
+    Tenant,
+)
 from src.schemas.erp import (
     JobOpeningCreate,
     JobOpeningUpdate,
@@ -1310,20 +1319,23 @@ async def send_offer_email(
     if not applicant:
          raise HTTPException(status_code=404, detail="Candidate applicant not found")
 
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    company_name = tenant.name if tenant else "BusinessOS"
+
     # Dispatch email
     email_body = (
         f"Dear {offer.candidate},\n\n"
-        f"We are pleased to extend this formal offer of employment to join Nimbus Retail Group as a {offer.role}.\n\n"
+        f"We are pleased to extend this formal offer of employment to join {company_name} as a {offer.role}.\n\n"
         f"Offer Terms:\n"
-        f"- Compensation: ${offer.ctc:,.2f} per annum\n"
+        f"- Compensation: {offer.ctc:,.2f} per annum (Gross CTC)\n"
         f"- Target Start Date: {offer.joining_date}\n"
         f"- Offer Expiration: {offer.expiry_date}\n\n"
     )
     if offer.custom_template:
         email_body += f"{offer.custom_template}\n\n"
-    email_body += f"Sincerely,\n{offer.signer_name}\nHuman Resources Department\nNimbus Retail Group"
+    email_body += f"Sincerely,\n{offer.signer_name}\nHuman Resources Department\n{company_name}"
 
-    await send_recruitment_email(applicant.email, f"Employment Offer: {offer.role} - Nimbus Retail", email_body)
+    await send_recruitment_email(applicant.email, f"Employment Offer: {offer.role} - {company_name}", email_body)
 
     offer.email_sent = True
     await db.commit()
@@ -1364,15 +1376,60 @@ async def update_offer_status(
         if applicant:
             applicant.stage = "Hired"
             
+            # Auto-create or link Employee in EmployeeManagement
+            emp = await db.scalar(
+                select(Employee).where(
+                    Employee.email == applicant.email,
+                    Employee.tenant_id == ctx.tenant_id
+                )
+            )
+            if not emp:
+                count = await db.scalar(
+                    select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
+                ) or 0
+                seq = str(count + 1).zfill(4)
+                emp = Employee(
+                    tenant_id=ctx.tenant_id,
+                    employee_code=f"EMP-{seq}",
+                    full_name=applicant.name,
+                    email=applicant.email,
+                    date_of_joining=offer.joining_date,
+                    employment_type="Full-Time",
+                    status="Active",
+                    basic_salary=Decimal(str(offer.ctc)),
+                )
+                db.add(emp)
+                await db.flush()
+
+            # Save Offer Letter into Employee Document Vault
+            existing_doc = await db.scalar(
+                select(EmployeeDocument).where(
+                    EmployeeDocument.employee_id == emp.id,
+                    EmployeeDocument.document_type == "Offer Letter",
+                    EmployeeDocument.tenant_id == ctx.tenant_id
+                )
+            )
+            if not existing_doc:
+                doc = EmployeeDocument(
+                    tenant_id=ctx.tenant_id,
+                    employee_id=emp.id,
+                    document_name=f"Official_Offer_Letter_{offer.candidate.replace(' ', '_')}.pdf",
+                    document_type="Offer Letter",
+                    file_path=f"/hrms/documents/offer_{offer.id}.pdf",
+                    upload_date=date.today()
+                )
+                db.add(doc)
+
+            # Auto-create Onboarding Checklist if not exists
             stmt = select(OnboardingRecord).where(
                 and_(
                     OnboardingRecord.tenant_id == ctx.tenant_id,
                     OnboardingRecord.applicant_id == offer.applicant_id
                 )
             )
-            existing = await db.scalar(stmt)
+            existing_onb = await db.scalar(stmt)
             
-            if not existing:
+            if not existing_onb:
                 new_onb = OnboardingRecord(
                     tenant_id=ctx.tenant_id,
                     applicant_id=offer.applicant_id,

@@ -83,6 +83,8 @@ const componentMap: Record<string, React.ElementType> = {
   ess_payroll:       EmployeeSelfService,
   ess_documents:     EmployeeSelfService,
   ess_tasks:         EmployeeSelfService,
+  ess_performance:   EmployeeSelfService,
+  ess_learning:      EmployeeSelfService,
   ess_announcements: EmployeeSelfService,
 
   // Exit Management
@@ -163,6 +165,8 @@ const tabPermissions: Record<string, string> = {
   ess_payroll:       "view:ess_payroll",
   ess_documents:     "view:ess_documents",
   ess_tasks:         "view:ess_tasks_announcements",
+  ess_performance:   "view:ess_tasks_announcements",
+  ess_learning:      "view:ess_tasks_announcements",
   ess_announcements: "view:ess_tasks_announcements",
 
   // Exit Management

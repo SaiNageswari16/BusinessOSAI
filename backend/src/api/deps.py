@@ -44,7 +44,7 @@ class CurrentUserContext:
 
         # 4. HRMS permission matching
         if permission == "view:hrms":
-            return any(p.startswith("view:hrms") or p.startswith("manage:hrms") for p in self.permissions)
+            return any(p.startswith("view:hrms") or p.startswith("manage:hrms") or p.startswith("view:ess") or p.startswith("manage:ess") for p in self.permissions)
 
         # 5. ERP / General Management matching
         if permission in ("view:erp", "manage:erp"):

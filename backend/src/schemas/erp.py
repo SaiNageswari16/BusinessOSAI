@@ -100,7 +100,7 @@ class CompanyBase(BaseModel):
     city: str | None = None
     address: str | None = None
     phone: str | None = None
-    email: EmailStr | None = None
+    email: str | None = None
     website: str | None = None
     default_currency_code: str = "INR"
     timezone: str = "Asia/Kolkata"
@@ -109,7 +109,10 @@ class CompanyBase(BaseModel):
     tax_config_label: str | None = None
     plan: str | None = None
     logo_initials: str | None = Field(default=None, max_length=5)
+    logo_url: str | None = None
     established_date: date | None = None
+    gst_registrations: list[dict] | None = Field(default_factory=list)
+    gsp_credentials: dict | None = Field(default_factory=dict)
     status: str = "active"
 
 
@@ -130,7 +133,7 @@ class CompanyUpdate(BaseModel):
     city: str | None = None
     address: str | None = None
     phone: str | None = None
-    email: EmailStr | None = None
+    email: str | None = None
     website: str | None = None
     default_currency_code: str | None = None
     timezone: str | None = None
@@ -139,7 +142,10 @@ class CompanyUpdate(BaseModel):
     tax_config_label: str | None = None
     plan: str | None = None
     logo_initials: str | None = None
+    logo_url: str | None = None
     established_date: date | None = None
+    gst_registrations: list[dict] | None = None
+    gsp_credentials: dict | None = None
     status: str | None = None
 
 
@@ -167,7 +173,10 @@ class CompanyResponse(ORMModel):
     tax_config_label: str | None
     plan: str | None
     logo_initials: str | None
+    logo_url: str | None = None
     established_date: date | None
+    gst_registrations: list[dict] | None = []
+    gsp_credentials: dict | None = {}
     status: str
     created_at: datetime
     updated_at: datetime
@@ -1191,6 +1200,9 @@ class EmployeeBase(BaseModel):
     status: str = "Active"  # Active|On Leave|Inactive
     basic_salary: float | None = None
     sales_points: float | None = 0.0
+    punch_method: str | None = "GPS"  # GPS|Biometric|Face|Web|Manual
+    biometric_pin: str | None = None
+    nfc_card_number: str | None = None
     company_id: uuid.UUID | None = None
     branch_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
@@ -1214,6 +1226,9 @@ class EmployeeUpdate(BaseModel):
     status: str | None = None
     basic_salary: float | None = None
     sales_points: float | None = None
+    punch_method: str | None = None
+    biometric_pin: str | None = None
+    nfc_card_number: str | None = None
     company_id: uuid.UUID | None = None
     branch_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
@@ -1235,6 +1250,9 @@ class EmployeeResponse(ORMModel):
     status: str
     basic_salary: float | None
     sales_points: float | None = 0.0
+    punch_method: str | None = "GPS"
+    biometric_pin: str | None = None
+    nfc_card_number: str | None = None
     company_id: uuid.UUID | None
     branch_id: uuid.UUID | None
     department_id: uuid.UUID | None

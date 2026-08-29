@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Mail, Phone, MapPin, Building, Star, CreditCard, History, Box, FileText, Ticket, MessageSquare, BrainCircuit, Wallet, Award, Activity } from "lucide-react";
+import { X, Mail, Phone, MapPin, Building, Star, CreditCard, History, Box, FileText, Ticket, MessageSquare, BrainCircuit, Wallet, Award, Activity, PhoneCall, Sparkles, Clock, CheckCircle } from "lucide-react";
 import type { Customer } from "@/data/mockCrmData";
 import { useCrmData } from "@/hooks/useCrmData";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
+import { AiCallingModal } from "./AiCallingModal";
 
 interface CustomerProfileProps {
   customer: Customer;
@@ -12,12 +14,34 @@ interface CustomerProfileProps {
 }
 
 export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const { mockCustomers } = useCrmData();
   const [activeTab, setActiveTab] = useState("Overview");
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [callLogs, setCallLogs] = useState<CRMCallLog[]>([]);
+  const [loadingCalls, setLoadingCalls] = useState(false);
+
+  const fetchCalls = async () => {
+    setLoadingCalls(true);
+    try {
+      const res = await crmCallsApi.listLogs(1, 20, "customer", customer.id);
+      setCallLogs(res.items || []);
+    } catch {
+      // Fallback
+    } finally {
+      setLoadingCalls(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "AI Voice Calls") {
+      fetchCalls();
+    }
+  }, [activeTab, customer.id]);
 
   const tabs = [
     { id: "Overview", icon: Activity },
+    { id: "AI Voice Calls", icon: PhoneCall },
     { id: "Purchases", icon: Box },
     { id: "Wallet & Loyalty", icon: Wallet },
     { id: "Support", icon: Ticket },
@@ -46,9 +70,18 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-muted-foreground hover:bg-accent rounded-full transition-colors">
-            <X className="size-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowCallModal(true)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition"
+            >
+              <PhoneCall className="size-3.5" />
+              Start AI Voice Call
+            </button>
+            <button onClick={onClose} className="p-2 text-muted-foreground hover:bg-accent rounded-full transition-colors">
+              <X className="size-5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex px-6 border-b border-border/50 overflow-x-auto hide-scrollbar bg-muted/10">
@@ -193,8 +226,110 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                 </div>
               )}
 
+              {/* AI Voice Calls Tab */}
+              {activeTab === "AI Voice Calls" && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                        <PhoneCall className="size-4 text-emerald-500" />
+                        AI Voice Calls & Telephony History
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Real-time AI voice conversations, recorded transcripts & automated CRM action items
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowCallModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow hover:bg-primary/90 transition"
+                    >
+                      <PhoneCall className="size-3.5" />
+                      New AI Call
+                    </button>
+                  </div>
+
+                  {loadingCalls ? (
+                    <div className="py-12 text-center text-xs text-muted-foreground">Loading call history...</div>
+                  ) : callLogs.length === 0 ? (
+                    <div className="p-8 text-center rounded-2xl border-2 border-dashed border-border/60 space-y-3 bg-muted/10">
+                      <div className="size-12 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
+                        <PhoneCall className="size-6" />
+                      </div>
+                      <h4 className="font-bold text-sm text-foreground">No AI Voice Calls Recorded Yet</h4>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                        Initiate an AI voice call to talk with {customer.name} using our interactive voice agent or outbound telecom dialer.
+                      </p>
+                      <button
+                        onClick={() => setShowCallModal(true)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition"
+                      >
+                        <PhoneCall className="size-3.5" />
+                        Launch AI Dialer
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {callLogs.map((log) => (
+                        <div key={log.id} className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                <PhoneCall className="size-4" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-xs text-foreground flex items-center gap-2">
+                                  {log.agent_persona}
+                                  <span className="text-[10px] font-normal text-muted-foreground font-mono">
+                                    {new Date(log.created_at).toLocaleString()}
+                                  </span>
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  Mode: <span className="font-semibold text-foreground uppercase">{log.call_mode}</span> · Duration: <span className="font-mono font-semibold text-foreground">{Math.floor(log.duration_seconds / 60)}m {log.duration_seconds % 60}s</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {log.sentiment && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                  {log.sentiment}
+                                </span>
+                              )}
+                              {log.qualification_score && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+                                  Score: {log.qualification_score}/100
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {log.ai_summary && (
+                            <div className="p-3 rounded-xl bg-muted/30 border border-border/40 text-xs text-foreground">
+                              <span className="font-bold text-muted-foreground block text-[10px] uppercase mb-0.5">AI Summary:</span>
+                              {log.ai_summary}
+                            </div>
+                          )}
+
+                          {log.action_items && log.action_items.length > 0 && (
+                            <div className="space-y-1 text-xs">
+                              <span className="font-bold text-muted-foreground text-[10px] uppercase">Action Items:</span>
+                              {log.action_items.map((item, i) => (
+                                <div key={i} className="flex items-center gap-1.5 text-muted-foreground">
+                                  <CheckCircle className="size-3 text-emerald-500 shrink-0" />
+                                  <span>{item}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Placeholders for other tabs */}
-              {(activeTab !== "Overview" && activeTab !== "AI Insights") && (
+              {(activeTab !== "Overview" && activeTab !== "AI Insights" && activeTab !== "AI Voice Calls") && (
                 <div className="h-64 flex flex-col items-center justify-center text-muted-foreground border-2 border-dashed border-border/50 rounded-xl">
                   <Box className="size-8 mb-2 opacity-20" />
                   <p>Detailed {activeTab.toLowerCase()} data would be displayed here.</p>
@@ -203,6 +338,24 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
             </motion.div>
           </AnimatePresence>
         </div>
+
+        {/* AI Calling Modal */}
+        {showCallModal && (
+          <AiCallingModal
+            open={showCallModal}
+            onClose={() => setShowCallModal(false)}
+            targetType="customer"
+            targetId={customer.id}
+            contactName={customer.name}
+            contactPhone={customer.phone}
+            contactEmail={customer.email}
+            dealValue={customer.outstandingAmount}
+            defaultNotes={`Customer: ${customer.name}, Segment: ${customer.segment}, Credit Limit: ${customer.creditLimit}`}
+            onCallCompleted={async () => {
+              await fetchCalls();
+            }}
+          />
+        )}
       </motion.div>
     </div>
   );

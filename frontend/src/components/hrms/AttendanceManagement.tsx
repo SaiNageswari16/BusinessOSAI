@@ -82,6 +82,46 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     corrected_check_out: "",
   });
 
+  // Manual / Custom punch dialog state
+  const [manualPunchDialogOpen, setManualPunchDialogOpen] = useState(false);
+  const [manualPunchForm, setManualPunchForm] = useState({
+    employee_id: "",
+    date: new Date().toISOString().split("T")[0],
+    check_in: "09:00",
+    check_out: "18:00",
+    method: "Manual",
+    status: "Present",
+    notes: "Direct administrative timesheet record"
+  });
+
+  // Biometric simulation & device states
+  const [bioSimDialogOpen, setBioSimDialogOpen] = useState(false);
+  const [bioSimForm, setBioSimForm] = useState({
+    employee_id: "",
+    device_id: "",
+    action: "Check-In",
+    punch_type: "Fingerprint"
+  });
+  const [addDeviceDialogOpen, setAddDeviceDialogOpen] = useState(false);
+  const [deviceForm, setDeviceForm] = useState({
+    device_code: "",
+    location: "",
+    model: "ZKTeco SilkBio-101TC",
+    enrolled_employees: 0,
+    status: "Online"
+  });
+
+  // GPS punch simulator states
+  const [gpsPunchDialogOpen, setGpsPunchDialogOpen] = useState(false);
+  const [gpsPunchForm, setGpsPunchForm] = useState({
+    employee_id: "",
+    preset: "San Francisco HQ (100 Innovation Blvd)",
+    latitude: 37.7749,
+    longitude: -122.4194,
+    action: "Check-In",
+    notes: "Geofence verified corporate radius punch"
+  });
+
   // Shift & Calendars states
   const [workCalendars, setWorkCalendars] = useState<any[]>([]);
   const [calendarDialogOpen, setCalendarDialogOpen] = useState(false);
@@ -363,6 +403,143 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     }
   };
 
+  // Manual / Custom punch handler
+  const handleManualPunch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualPunchForm.employee_id) {
+      alert("Please select an employee profile.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const checkInIso = manualPunchForm.check_in ? `${manualPunchForm.date}T${manualPunchForm.check_in}:00` : undefined;
+      const checkOutIso = manualPunchForm.check_out ? `${manualPunchForm.date}T${manualPunchForm.check_out}:00` : undefined;
+      
+      await attendanceApi.create({
+        employee_id: manualPunchForm.employee_id,
+        date: manualPunchForm.date,
+        check_in: checkInIso,
+        check_out: checkOutIso,
+        method: manualPunchForm.method,
+        status: manualPunchForm.status,
+        notes: manualPunchForm.notes
+      });
+      setManualPunchDialogOpen(false);
+      await loadDailyAttendance();
+      alert("Attendance record punched and verified successfully!");
+    } catch (err: any) {
+      alert("Failed to punch attendance: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Simulate Biometric Punch
+  const handleSimulateBiometric = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bioSimForm.employee_id || !bioSimForm.device_id) {
+      alert("Please choose both an employee and a biometric scanner device.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const dev = biometricDevices.find(d => d.id === bioSimForm.device_id);
+      const devName = dev ? `${dev.location} (${dev.device_code})` : "Biometric Gateway";
+      const isOut = bioSimForm.action === "Check-Out";
+
+      if (isOut) {
+        await attendanceApi.checkOut({
+          employee_id: bioSimForm.employee_id,
+          notes: `Verified ${bioSimForm.punch_type} scan at ${devName}`
+        });
+      } else {
+        await attendanceApi.checkIn({
+          employee_id: bioSimForm.employee_id,
+          method: "Biometric",
+          notes: `Verified ${bioSimForm.punch_type} punch at ${devName}`
+        });
+      }
+      setBioSimDialogOpen(false);
+      await loadDailyAttendance();
+      await loadBiometric();
+      alert(`Biometric ${bioSimForm.action} verified & clocked successfully via ${devName}!`);
+    } catch (err: any) {
+      alert("Biometric punch simulation failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add Biometric Device
+  const handleCreateDevice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deviceForm.device_code || !deviceForm.location) return;
+    setLoading(true);
+    try {
+      await attendanceApi.createBiometric({
+        device_code: deviceForm.device_code,
+        location: deviceForm.location,
+        model: deviceForm.model,
+        enrolled_employees: Number(deviceForm.enrolled_employees) || 0,
+        status: deviceForm.status
+      });
+      setAddDeviceDialogOpen(false);
+      setDeviceForm({ device_code: "", location: "", model: "ZKTeco SilkBio-101TC", enrolled_employees: 0, status: "Online" });
+      await loadBiometric();
+    } catch (err: any) {
+      alert("Failed to create biometric device: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete Biometric Device
+  const handleDeleteDevice = async (id: string) => {
+    if (!confirm("Are you sure you want to remove this biometric terminal?")) return;
+    try {
+      await attendanceApi.deleteBiometric(id);
+      await loadBiometric();
+    } catch (err: any) {
+      alert("Failed to delete biometric device: " + err.message);
+    }
+  };
+
+  // Simulate GPS Geofence Punch
+  const handleSimulateGpsPunch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gpsPunchForm.employee_id) {
+      alert("Please select an employee profile.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const isOut = gpsPunchForm.action === "Check-Out";
+      if (isOut) {
+        await attendanceApi.checkOut({
+          employee_id: gpsPunchForm.employee_id,
+          latitude: gpsPunchForm.latitude,
+          longitude: gpsPunchForm.longitude,
+          notes: `${gpsPunchForm.preset} • ${gpsPunchForm.notes}`
+        });
+      } else {
+        await attendanceApi.checkIn({
+          employee_id: gpsPunchForm.employee_id,
+          latitude: gpsPunchForm.latitude,
+          longitude: gpsPunchForm.longitude,
+          method: "GPS",
+          notes: `${gpsPunchForm.preset} • ${gpsPunchForm.notes}`
+        });
+      }
+      setGpsPunchDialogOpen(false);
+      await loadDailyAttendance();
+      alert(`GPS Geofenced ${gpsPunchForm.action} verified & recorded successfully!`);
+    } catch (err: any) {
+      alert("GPS punch failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ─── Render: Biometric Devices ──────────────────────────────────
   if (tab === "biometric") {
     return (
@@ -370,12 +547,27 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-foreground">Biometric Devices</h2>
-            <p className="text-xs text-muted-foreground">Fingerprint, access turnstile, and keycard scanners.</p>
+            <p className="text-xs text-muted-foreground">Fingerprint, access turnstiles, and RFID keycard hardware terminals.</p>
           </div>
-          <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0" onClick={handleSyncBiometric} disabled={syncingBiometrics}>
-            {syncingBiometrics ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <RefreshCw className="size-3.5 mr-1.5" />}
-            Sync Active Devices
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              className="h-8 text-xs font-semibold gradient-brand text-white border-0"
+              onClick={() => setBioSimDialogOpen(true)}
+            >
+              <Fingerprint className="size-3.5 mr-1.5" /> Simulate Fingerprint / RFID Punch
+            </Button>
+            <Button
+              variant="outline"
+              className="h-8 text-xs font-semibold"
+              onClick={() => setAddDeviceDialogOpen(true)}
+            >
+              <Plus className="size-3.5 mr-1.5" /> Add Terminal
+            </Button>
+            <Button className="h-8 text-xs font-semibold" variant="secondary" onClick={handleSyncBiometric} disabled={syncingBiometrics}>
+              {syncingBiometrics ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <RefreshCw className="size-3.5 mr-1.5" />}
+              Sync Active Devices
+            </Button>
+          </div>
         </div>
 
         {loading && biometricDevices.length === 0 && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
@@ -386,9 +578,19 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               className={`glass-panel p-6 rounded-xl border ${device.status === "Online" ? "border-emerald-500/25 bg-emerald-500/5" : "border-red-500/20 bg-red-500/5"}`}>
               <div className="flex justify-between items-start mb-4">
                 <div className="p-3 bg-primary/10 rounded-xl"><Fingerprint className="size-6 text-primary" /></div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${device.status === "Online" ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>
-                  {device.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${device.status === "Online" ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>
+                    {device.status}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="size-7 p-0 text-muted-foreground hover:text-red-500"
+                    onClick={() => handleDeleteDevice(device.id)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
               </div>
               <h3 className="font-bold text-foreground text-base leading-tight mb-1">{device.location}</h3>
               <p className="text-xs text-muted-foreground">Model: {device.model} • Code: {device.device_code}</p>
@@ -405,6 +607,160 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             </motion.div>
           ))}
         </div>
+
+        {/* ─── SIMULATE BIOMETRIC PUNCH DIALOG ───────────────────────── */}
+        {bioSimDialogOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <Card className="w-full max-w-md p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold flex items-center gap-2 text-foreground">
+                  <Fingerprint className="size-5 text-indigo-500" /> Simulate Biometric Terminal Punch
+                </h3>
+                <button onClick={() => setBioSimDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
+                  <XCircle className="size-5" />
+                </button>
+              </div>
+              <form onSubmit={handleSimulateBiometric} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Choose Employee Profile</label>
+                  <select
+                    value={bioSimForm.employee_id}
+                    onChange={e => setBioSimForm(p => ({ ...p, employee_id: e.target.value }))}
+                    className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                    required
+                  >
+                    <option value="">-- Choose Employee --</option>
+                    {employees.map(e => (
+                      <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Biometric Device Terminal</label>
+                  <select
+                    value={bioSimForm.device_id}
+                    onChange={e => setBioSimForm(p => ({ ...p, device_id: e.target.value }))}
+                    className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                    required
+                  >
+                    <option value="">-- Select Terminal Scanner --</option>
+                    {biometricDevices.map(d => (
+                      <option key={d.id} value={d.id}>{d.location} [{d.device_code} - {d.model}]</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Punch Action</label>
+                    <select
+                      value={bioSimForm.action}
+                      onChange={e => setBioSimForm(p => ({ ...p, action: e.target.value }))}
+                      className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                    >
+                      <option>Check-In</option>
+                      <option>Check-Out</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Scan Technology</label>
+                    <select
+                      value={bioSimForm.punch_type}
+                      onChange={e => setBioSimForm(p => ({ ...p, punch_type: e.target.value }))}
+                      className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                    >
+                      <option>Fingerprint (500 DPI Optical)</option>
+                      <option>RFID / NFC Smart Keycard</option>
+                      <option>Iris Scanner</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <Button type="button" variant="outline" className="flex-1" onClick={() => setBioSimDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" className="flex-1 gradient-brand text-white border-0" disabled={loading}>
+                    {loading ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Fingerprint className="size-4 mr-1.5" />}
+                    Punch Biometric
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* ─── ADD BIOMETRIC DEVICE DIALOG ───────────────────────────── */}
+        {addDeviceDialogOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <Card className="w-full max-w-md p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold flex items-center gap-2 text-foreground">
+                  <Plus className="size-5 text-primary" /> Register Biometric Terminal
+                </h3>
+                <button onClick={() => setAddDeviceDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
+                  <XCircle className="size-5" />
+                </button>
+              </div>
+              <form onSubmit={handleCreateDevice} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Device Code / Terminal ID</label>
+                  <Input
+                    placeholder="e.g. BIO-05 or GATE-SOUTH"
+                    value={deviceForm.device_code}
+                    onChange={e => setDeviceForm(p => ({ ...p, device_code: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Physical Location / Gate</label>
+                  <Input
+                    placeholder="e.g. Floor 4 R&D Lab Entrance"
+                    value={deviceForm.location}
+                    onChange={e => setDeviceForm(p => ({ ...p, location: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Terminal Model</label>
+                    <Input
+                      placeholder="e.g. ZKTeco SilkBio-101TC"
+                      value={deviceForm.model}
+                      onChange={e => setDeviceForm(p => ({ ...p, model: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Enrolled Count</label>
+                    <Input
+                      type="number"
+                      value={deviceForm.enrolled_employees}
+                      onChange={e => setDeviceForm(p => ({ ...p, enrolled_employees: parseInt(e.target.value) || 0 }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Device Status</label>
+                  <select
+                    value={deviceForm.status}
+                    onChange={e => setDeviceForm(p => ({ ...p, status: e.target.value }))}
+                    className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                  >
+                    <option>Online</option>
+                    <option>Offline</option>
+                    <option>Maintenance</option>
+                  </select>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button type="button" variant="outline" className="flex-1" onClick={() => setAddDeviceDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" className="flex-1 gradient-brand text-white border-0" disabled={loading}>
+                    Register Terminal
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        )}
       </div>
     );
   }
@@ -519,9 +875,17 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     const gpsRecords = attendance.filter(r => r.latitude || r.longitude);
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">GPS / Geofenced Attendance</h2>
-          <p className="text-xs text-muted-foreground">Geofenced coordinates recorded for field or remote WFH staff.</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">GPS / Geofenced Attendance</h2>
+            <p className="text-xs text-muted-foreground">Geofenced coordinates recorded for field or remote WFH staff.</p>
+          </div>
+          <Button
+            className="h-8 text-xs font-semibold gradient-brand text-white border-0"
+            onClick={() => setGpsPunchDialogOpen(true)}
+          >
+            <MapPin className="size-3.5 mr-1.5" /> Simulate GPS Geofence Punch
+          </Button>
         </div>
 
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
@@ -547,6 +911,113 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             </motion.div>
           ))}
         </div>
+
+        {/* ─── SIMULATE GPS PUNCH DIALOG ─────────────────────────────── */}
+        {gpsPunchDialogOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <Card className="w-full max-w-md p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold flex items-center gap-2 text-foreground">
+                  <MapPin className="size-5 text-emerald-500" /> Simulate GPS Geofenced Punch
+                </h3>
+                <button onClick={() => setGpsPunchDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
+                  <XCircle className="size-5" />
+                </button>
+              </div>
+              <form onSubmit={handleSimulateGpsPunch} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Choose Employee Profile</label>
+                  <select
+                    value={gpsPunchForm.employee_id}
+                    onChange={e => setGpsPunchForm(p => ({ ...p, employee_id: e.target.value }))}
+                    className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                    required
+                  >
+                    <option value="">-- Choose Employee --</option>
+                    {employees.map(e => (
+                      <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Office Location Geofence Preset</label>
+                  <select
+                    value={gpsPunchForm.preset}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val.includes("HQ")) {
+                        setGpsPunchForm(p => ({ ...p, preset: val, latitude: 37.7749, longitude: -122.4194 }));
+                      } else if (val.includes("Oakland")) {
+                        setGpsPunchForm(p => ({ ...p, preset: val, latitude: 37.8044, longitude: -122.2712 }));
+                      } else if (val.includes("WFH")) {
+                        setGpsPunchForm(p => ({ ...p, preset: val, latitude: 37.7833, longitude: -122.4167 }));
+                      } else {
+                        setGpsPunchForm(p => ({ ...p, preset: val }));
+                      }
+                    }}
+                    className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                  >
+                    <option value="San Francisco HQ (100 Innovation Blvd - Within 150m Geofence)">San Francisco HQ (Within 150m Geofence - Verified)</option>
+                    <option value="Oakland Logistics Center (Within 200m Geofence)">Oakland Logistics Center (Within 200m Geofence - Verified)</option>
+                    <option value="Remote Home Office (WFH Verified IP & Coordinates)">Remote Home Office (WFH Verified IP & Coordinates)</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Latitude</label>
+                    <Input
+                      type="number"
+                      step="0.0001"
+                      value={gpsPunchForm.latitude}
+                      onChange={e => setGpsPunchForm(p => ({ ...p, latitude: parseFloat(e.target.value) || 0 }))}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Longitude</label>
+                    <Input
+                      type="number"
+                      step="0.0001"
+                      value={gpsPunchForm.longitude}
+                      onChange={e => setGpsPunchForm(p => ({ ...p, longitude: parseFloat(e.target.value) || 0 }))}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Action</label>
+                    <select
+                      value={gpsPunchForm.action}
+                      onChange={e => setGpsPunchForm(p => ({ ...p, action: e.target.value }))}
+                      className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                    >
+                      <option>Check-In</option>
+                      <option>Check-Out</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Radius Status</label>
+                    <div className="h-10 px-3 flex items-center gap-1.5 bg-emerald-500/10 text-emerald-600 rounded-md text-xs font-bold border border-emerald-500/20">
+                      <CheckCircle className="size-3.5" /> Inside Allowed Geofence
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <Button type="button" variant="outline" className="flex-1" onClick={() => setGpsPunchDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" className="flex-1 gradient-brand text-white border-0" disabled={loading}>
+                    {loading ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <MapPin className="size-4 mr-1.5" />}
+                    Punch GPS
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        )}
       </div>
     );
   }
@@ -938,23 +1409,31 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Daily Attendance</h2>
-          <p className="text-xs text-muted-foreground">Timesheets log summary for today.</p>
+          <p className="text-xs text-muted-foreground">Timesheets log summary, manual administrative punches, and WFH tracking.</p>
         </div>
-        {(() => {
-          const activeRole = user?.roles.find(r => r.id === user?.activeRoleId);
-          const isAdmin = activeRole ? (activeRole.name.toLowerCase().includes("admin") || activeRole.name.toLowerCase().includes("hr")) : user?.isTenantOwner;
-          if (!isAdmin) return null;
-          return (
-            <div className="flex gap-2">
-              <Button variant="outline" className="h-8 text-xs font-semibold border-emerald-500/20 text-emerald-600 hover:bg-emerald-500/10" onClick={handleClockIn}>
-                WFH Clock In
-              </Button>
-              <Button variant="outline" className="h-8 text-xs font-semibold border-red-500/20 text-red-600 hover:bg-red-500/10" onClick={handleClockOut}>
-                WFH Clock Out
-              </Button>
-            </div>
-          );
-        })()}
+        <div className="flex gap-2">
+          <Button
+            className="h-8 text-xs font-semibold gradient-brand text-white border-0"
+            onClick={() => setManualPunchDialogOpen(true)}
+          >
+            <Plus className="size-3.5 mr-1.5" /> Manual Punch / Time Adjustment
+          </Button>
+          {(() => {
+            const activeRole = user?.roles.find(r => r.id === user?.activeRoleId);
+            const isAdmin = activeRole ? (activeRole.name.toLowerCase().includes("admin") || activeRole.name.toLowerCase().includes("hr")) : user?.isTenantOwner;
+            if (!isAdmin) return null;
+            return (
+              <div className="flex gap-2">
+                <Button variant="outline" className="h-8 text-xs font-semibold border-emerald-500/20 text-emerald-600 hover:bg-emerald-500/10" onClick={handleClockIn}>
+                  WFH Clock In
+                </Button>
+                <Button variant="outline" className="h-8 text-xs font-semibold border-red-500/20 text-red-600 hover:bg-red-500/10" onClick={handleClockOut}>
+                  WFH Clock Out
+                </Button>
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       {stats && (
@@ -993,7 +1472,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               </thead>
               <tbody className="divide-y">
                 {attendance.length === 0 ? (
-                  <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No attendance records generated yet.</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No attendance records generated yet.</td></tr>
                 ) : attendance.map((att) => (
                   <tr key={att.id} className="hover:bg-muted/10 transition-colors">
                     <td className="px-6 py-4">
@@ -1021,6 +1500,113 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ─── MANUAL PUNCH / ADJUSTMENT DIALOG ───────────────────────── */}
+      {manualPunchDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-foreground">
+                <Clock className="size-5 text-primary" /> Manual Timesheet Punch / Adjustment
+              </h3>
+              <button onClick={() => setManualPunchDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <XCircle className="size-5" />
+              </button>
+            </div>
+            <form onSubmit={handleManualPunch} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Choose Employee Profile *</label>
+                <select
+                  value={manualPunchForm.employee_id}
+                  onChange={e => setManualPunchForm(p => ({ ...p, employee_id: e.target.value }))}
+                  className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                  required
+                >
+                  <option value="">-- Choose Employee --</option>
+                  {employees.map(e => (
+                    <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Timesheet Date</label>
+                  <Input
+                    type="date"
+                    value={manualPunchForm.date}
+                    onChange={e => setManualPunchForm(p => ({ ...p, date: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Attendance Status</label>
+                  <select
+                    value={manualPunchForm.status}
+                    onChange={e => setManualPunchForm(p => ({ ...p, status: e.target.value }))}
+                    className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                  >
+                    <option>Present</option>
+                    <option>Late</option>
+                    <option>Half Day</option>
+                    <option>Absent</option>
+                    <option>On Leave</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Check In Time</label>
+                  <Input
+                    type="time"
+                    value={manualPunchForm.check_in}
+                    onChange={e => setManualPunchForm(p => ({ ...p, check_in: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Check Out Time</label>
+                  <Input
+                    type="time"
+                    value={manualPunchForm.check_out}
+                    onChange={e => setManualPunchForm(p => ({ ...p, check_out: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Punch Method</label>
+                <select
+                  value={manualPunchForm.method}
+                  onChange={e => setManualPunchForm(p => ({ ...p, method: e.target.value }))}
+                  className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                >
+                  <option value="Manual">Manual Entry (HR Verified)</option>
+                  <option value="Biometric">Biometric Fingerprint Terminal</option>
+                  <option value="Face">Facial Recognition Turnstile</option>
+                  <option value="GPS">GPS Geofenced Remote</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Administrative Notes / Reason</label>
+                <Input
+                  placeholder="e.g. Regularized by HR Manager"
+                  value={manualPunchForm.notes}
+                  onChange={e => setManualPunchForm(p => ({ ...p, notes: e.target.value }))}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setManualPunchDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1 gradient-brand text-white border-0" disabled={loading}>
+                  Save Attendance
+                </Button>
+              </div>
+            </form>
+          </Card>
         </div>
       )}
     </div>

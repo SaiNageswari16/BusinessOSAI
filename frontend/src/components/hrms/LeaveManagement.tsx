@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Calendar, CheckCircle, Clock, XCircle, Loader2, BookOpen, FileText } from "lucide-react";
-import { leavesApi, LeaveRequest, LeaveBalance, LeavePolicy } from "../../lib/api-client";
+import { Plus, Calendar, CheckCircle, Clock, XCircle, Loader2, BookOpen, FileText, UserPlus } from "lucide-react";
+import { leavesApi, employeesApi, LeaveRequest, LeaveBalance, LeavePolicy, Employee } from "../../lib/api-client";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Card } from "../ui/card";
 import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
@@ -23,6 +25,7 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [policies, setPolicies] = useState<LeavePolicy[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Policy form states
@@ -31,6 +34,18 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
   const [policyType, setPolicyType] = useState("Annual");
   const [policyDays, setPolicyDays] = useState("12");
   const [policyApplicable, setPolicyApplicable] = useState("All");
+
+  // Admin apply leave form states
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({
+    employee_id: "",
+    leave_type: "Annual",
+    from_date: "",
+    to_date: "",
+    days_requested: 1,
+    reason: "",
+    auto_approve: true,
+  });
 
   const loadLeavesData = useCallback(async () => {
     setLoading(true);
@@ -41,6 +56,8 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
       setBalances(balsRes || []);
       const polsRes = await leavesApi.listPolicies();
       setPolicies(polsRes || []);
+      const empsRes = await employeesApi.list(1, 100);
+      setEmployees(empsRes.items || []);
     } catch (e) {
       console.error("Failed to load leaves data", e);
     } finally {
@@ -300,11 +317,54 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
     );
   }
 
+  const handleAdminApplyLeave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leaveForm.employee_id || !leaveForm.from_date || !leaveForm.to_date) {
+      alert("Please select employee and date range.");
+      return;
+    }
+    try {
+      const created = await leavesApi.create({
+        employee_id: leaveForm.employee_id,
+        leave_type: leaveForm.leave_type,
+        from_date: leaveForm.from_date,
+        to_date: leaveForm.to_date,
+        days_requested: Number(leaveForm.days_requested) || 1,
+        reason: leaveForm.reason || "Administrative Leave Entry"
+      });
+      if (leaveForm.auto_approve && created?.id) {
+        await leavesApi.approve(created.id);
+      }
+      setLeaveDialogOpen(false);
+      setLeaveForm({
+        employee_id: "",
+        leave_type: "Annual",
+        from_date: "",
+        to_date: "",
+        days_requested: 1,
+        reason: "",
+        auto_approve: true
+      });
+      await loadLeavesData();
+    } catch (err: any) {
+      alert("Failed to submit leave request: " + err.message);
+    }
+  };
+
   // Default: leave_requests
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Requests</h2><p className="text-xs text-muted-foreground">All employee leave applications and their current status.</p></div>
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Leave Requests</h2>
+          <p className="text-xs text-muted-foreground">All employee leave applications, balances, and executive approvals.</p>
+        </div>
+        <Button
+          className="h-8 text-xs font-semibold gradient-brand text-white border-0"
+          onClick={() => setLeaveDialogOpen(true)}
+        >
+          <Plus className="size-3.5 mr-1.5" /> Record Leave for Employee
+        </Button>
       </div>
       <div className="grid grid-cols-3 gap-4">
         {[
@@ -357,6 +417,114 @@ export function LeaveManagement({ tab = "leave_requests" }: Props) {
           )}
         </div>
       </div>
+
+      {/* ─── RECORD LEAVE APPLICATION DIALOG ───────────────────────── */}
+      {leaveDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-foreground">
+                <Calendar className="size-5 text-primary" /> Record Leave Application
+              </h3>
+              <button onClick={() => setLeaveDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <XCircle className="size-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAdminApplyLeave} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Employee Profile *</label>
+                <select
+                  value={leaveForm.employee_id}
+                  onChange={e => setLeaveForm(p => ({ ...p, employee_id: e.target.value }))}
+                  className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                  required
+                >
+                  <option value="">-- Choose Employee --</option>
+                  {employees.map(e => (
+                    <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Leave Category</label>
+                <select
+                  value={leaveForm.leave_type}
+                  onChange={e => setLeaveForm(p => ({ ...p, leave_type: e.target.value }))}
+                  className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                >
+                  <option>Annual</option>
+                  <option>Sick</option>
+                  <option>Casual</option>
+                  <option>Maternity</option>
+                  <option>Unpaid</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">From Date</label>
+                  <Input
+                    type="date"
+                    value={leaveForm.from_date}
+                    onChange={e => setLeaveForm(p => ({ ...p, from_date: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">To Date</label>
+                  <Input
+                    type="date"
+                    value={leaveForm.to_date}
+                    onChange={e => setLeaveForm(p => ({ ...p, to_date: e.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Days Requested</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={leaveForm.days_requested}
+                    onChange={e => setLeaveForm(p => ({ ...p, days_requested: parseInt(e.target.value) || 1 }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Approval Action</label>
+                  <select
+                    value={leaveForm.auto_approve ? "approve" : "pending"}
+                    onChange={e => setLeaveForm(p => ({ ...p, auto_approve: e.target.value === "approve" }))}
+                    className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                  >
+                    <option value="approve">Auto-Approve Immediately</option>
+                    <option value="pending">Submit as Pending</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase">Reason / Justification</label>
+                <Input
+                  placeholder="e.g. Medical emergency / Planned vacation"
+                  value={leaveForm.reason}
+                  onChange={e => setLeaveForm(p => ({ ...p, reason: e.target.value }))}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setLeaveDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" className="flex-1 gradient-brand text-white border-0">
+                  Record Leave
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

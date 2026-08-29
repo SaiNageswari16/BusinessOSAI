@@ -50,6 +50,8 @@ async def init_database() -> None:
 
     # Ensure new columns on existing PostgreSQL tables always runs
     migration_statements = [
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gst_registrations JSONB DEFAULT '[]'::jsonb;",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gsp_credentials JSONB DEFAULT '{}'::jsonb;",
         "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS uom VARCHAR(50) DEFAULT 'Pcs';",
         "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS cost_price NUMERIC(15, 2) DEFAULT 0.0;",
         "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS mrp NUMERIC(15, 2) DEFAULT 0.0;",
@@ -299,6 +301,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 email="alex@nimbus.com",
                 employment_type="Full-Time",
                 status="Active",
+                punch_method="GPS",
                 date_of_joining=date.today() - timedelta(days=365)
             ),
             Employee(
@@ -310,6 +313,8 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 email="james@nimbus.com",
                 employment_type="Full-Time",
                 status="Active",
+                punch_method="Biometric",
+                nfc_card_number="NFC-99481",
                 date_of_joining=date.today() - timedelta(days=300)
             ),
             Employee(
@@ -321,6 +326,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 email="sarah@nimbus.com",
                 employment_type="Full-Time",
                 status="Active",
+                punch_method="Face",
                 date_of_joining=date.today() - timedelta(days=200)
             ),
             Employee(
@@ -332,6 +338,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 email="aisha@nimbus.com",
                 employment_type="Full-Time",
                 status="Active",
+                punch_method="Web",
                 date_of_joining=date.today() - timedelta(days=150)
             )
         ]

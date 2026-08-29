@@ -96,6 +96,34 @@ export interface ApiError {
 }
 
 
+export interface GstRegistration {
+  id?: string;
+  gstin: string;
+  trade_name?: string;
+  state_code?: string;
+  state_name?: string;
+  address?: string;
+  is_primary?: boolean;
+}
+
+export interface GspModuleCredentials {
+  client_id?: string;
+  client_secret?: string;
+  username?: string;
+  password?: string;
+  gstin?: string;
+  base_url?: string;
+}
+
+export interface GspCredentials {
+  environment?: "sandbox" | "production";
+  registered_email?: string;
+  ip_address?: string;
+  ewb?: GspModuleCredentials;
+  gst?: GspModuleCredentials;
+  einv?: GspModuleCredentials;
+}
+
 export interface Company {
   id: string;
   tenant_id: string;
@@ -120,7 +148,10 @@ export interface Company {
   tax_config_label: string | null;
   plan: string | null;
   logo_initials: string | null;
+  logo_url?: string | null;
   established_date: string | null;
+  gst_registrations?: GstRegistration[];
+  gsp_credentials?: GspCredentials;
   status: string;
   created_at: string;
   updated_at: string;
@@ -586,6 +617,9 @@ export interface Employee {
   pan_number: string | null;
   aadhar_number: string | null;
   basic_salary: number | null;
+  punch_method?: "GPS" | "Biometric" | "Face" | "Web" | "Manual" | string;
+  biometric_pin?: string | null;
+  nfc_card_number?: string | null;
   status: string;
   manager_id: string | null;
   created_at: string;
@@ -754,6 +788,12 @@ export const companiesApi = {
   update: (id: string, data: Record<string, unknown>) =>
     request<Company>("PATCH", `/erp/companies/${id}`, data),
   delete: (id: string) => request<void>("DELETE", `/erp/companies/${id}`),
+  testGspConnection: (payload: { module: string; credentials?: any }) =>
+    request<{ success: boolean; message: string; module: string; token_preview?: string; client_id?: string; gstin?: string; timestamp?: string }>(
+      "POST",
+      "/erp/companies/test-gsp-connection",
+      payload
+    ),
 };
 
 // â”€â”€â”€ ERP â€” Branches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1086,6 +1126,10 @@ export const attendanceApi = {
     request<HrmsDashboardStats>("GET", "/hrms/attendance/stats"),
   listBiometric: () =>
     request<BiometricDevice[]>("GET", "/hrms/attendance/biometric"),
+  createBiometric: (data: { device_code: string; location: string; model: string; enrolled_employees?: number; status?: string }) =>
+    request<BiometricDevice>("POST", "/hrms/attendance/biometric", data),
+  deleteBiometric: (id: string) =>
+    request<any>("DELETE", `/hrms/attendance/biometric/${id}`),
   syncBiometric: () =>
     request<{ message: string }>("POST", "/hrms/attendance/biometric/sync"),
   listFaceLogs: () =>
@@ -2090,6 +2134,98 @@ export interface CrmLeadActivity {
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CRMCallInitiateRequest {
+  target_type: string;  // lead | customer | opportunity | deal | quotation | order | ticket | complaint
+  target_id?: string | null;
+  contact_name: string;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  company_name?: string | null;
+  agent_persona?: string;
+  custom_prompt?: string | null;
+  sip_number?: string | null;
+  call_mode?: string;
+}
+
+export interface CRMCallInitiateResponse {
+  call_id: string;
+  status: string;
+  room_name?: string | null;
+  agent_greeting: string;
+  contact_name: string;
+  contact_phone?: string | null;
+  agent_persona: string;
+  battlecards: Array<{ topic: string; talking_point: string }>;
+  message: string;
+}
+
+export interface CRMCallTurnMessage {
+  speaker: 'AI' | 'User';
+  text: string;
+  timestamp?: string;
+}
+
+export interface CRMCallTurnRequest {
+  call_id: string;
+  user_speech: string;
+  conversation_history: CRMCallTurnMessage[];
+  agent_persona?: string;
+  target_type?: string;
+  contact_name?: string;
+  company_name?: string | null;
+  context_notes?: string | null;
+}
+
+export interface CRMCallTurnResponse {
+  ai_response: string;
+  detected_sentiment: string;
+  confidence?: number;
+  suggested_objection_handling?: string;
+  recommended_action?: string;
+}
+
+export interface CRMCallCompleteRequest {
+  call_id: string;
+  duration_seconds: number;
+  transcript: CRMCallTurnMessage[];
+  final_sentiment: string;
+  status?: string;
+  auto_advance_stage?: boolean;
+  new_stage_or_status?: string | null;
+}
+
+export interface CRMCallLog {
+  id: string;
+  tenant_id: string;
+  target_type: string;
+  target_id?: string | null;
+  contact_name: string;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  company_name?: string | null;
+  status: string;
+  direction: string;
+  duration_seconds: number;
+  agent_persona: string;
+  call_mode: string;
+  transcript?: Array<{ speaker: string; text: string; timestamp?: string }>;
+  ai_summary?: string | null;
+  sentiment?: string | null;
+  qualification_score?: number | null;
+  action_items?: string[];
+  recording_url?: string | null;
+  created_at: string;
+}
+
+export interface CRMCallStats {
+  total_calls: number;
+  connected_calls: number;
+  avg_duration_seconds: number;
+  positive_sentiment_rate: number;
+  leads_contacted_count: number;
+  opportunities_advanced: number;
 }
 
 export interface LeadAttribution {
@@ -3359,6 +3495,7 @@ export interface InventoryProduct {
   category_name: string | null; brand_name: string | null; uom_name: string | null;
   short_description: string | null; long_description: string | null;
   image_url: string | null;
+  hsn_code?: string | null;
   purchase_price: number; mrp: number; selling_price: number;
   wholesale_price?: number; min_wholesale_qty?: number;
   b2b_price?: number; min_b2b_qty?: number;
@@ -3367,6 +3504,8 @@ export interface InventoryProduct {
   initial_stock: number; stock?: number; reorder_level: number; safety_stock: number;
   supplier: string | null; warehouse: string | null;
   status: string; created_at: string; updated_at: string;
+  specifications?: any;
+  [k: string]: any;
 }
 
 // --- Inventory Operations ---
@@ -4521,5 +4660,116 @@ export const whitebooksApi = {
   settings: whitebooksSettingsApi,
 };
 
+// ─── CRM AI Calling Types ──────────────────────────────────────────────────────
+export interface CRMCallTurnMessage {
+  speaker: "AI" | "User";
+  text: string;
+  timestamp: string;
+}
 
+export interface CRMCallInitiateRequest {
+  target_type: "lead" | "customer" | "opportunity" | "deal" | "quotation" | "order" | "ticket" | "complaint";
+  target_id?: string | null;
+  contact_name: string;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  company_name?: string | null;
+  agent_persona?: string;
+  custom_prompt?: string;
+  sip_number?: string;
+  call_mode?: "browser_ai" | "livekit_sip";
+}
 
+export interface CRMCallInitiateResponse {
+  call_id: string;
+  agent_greeting: string;
+  battlecards: Array<{ topic: string; talking_point: string }>;
+  call_mode: "browser_ai" | "livekit_sip";
+  room_name?: string;
+  status: string;
+}
+
+export interface CRMCallTurnRequest {
+  call_id: string;
+  user_speech: string;
+  conversation_history: CRMCallTurnMessage[];
+  agent_persona?: string;
+  target_type?: string;
+  contact_name?: string;
+  company_name?: string | null;
+  context_notes?: string;
+}
+
+export interface CRMCallTurnResponse {
+  ai_response: string;
+  detected_sentiment: string;
+  suggested_objection_handling?: string;
+}
+
+export interface CRMCallCompleteRequest {
+  call_id: string;
+  duration_seconds: number;
+  transcript: CRMCallTurnMessage[];
+  final_sentiment?: string;
+  status?: string;
+  auto_advance_stage?: boolean;
+}
+
+export interface CRMCallLog {
+  id: string;
+  call_id: string;
+  target_type: string;
+  target_id?: string;
+  contact_name: string;
+  contact_phone?: string;
+  contact_email?: string;
+  company_name?: string;
+  agent_persona: string;
+  call_mode: string;
+  duration_seconds: number;
+  sentiment?: string;
+  qualification_score?: number;
+  ai_summary?: string;
+  action_items?: string[];
+  transcript?: CRMCallTurnMessage[];
+  status: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface CRMCallStats {
+  total_calls: number;
+  calls_today: number;
+  avg_duration_seconds: number;
+  sentiment_breakdown: Record<string, number>;
+  calls_by_target_type: Record<string, number>;
+  top_agents: Array<{ persona: string; call_count: number }>;
+}
+
+// ─── CRM AI Calling API ────────────────────────────────────────────────────────
+export const crmCallsApi = {
+  initiate: (payload: CRMCallInitiateRequest) =>
+    request<CRMCallInitiateResponse>("POST", "/crm/calls/initiate", payload),
+
+  turn: (payload: CRMCallTurnRequest) =>
+    request<CRMCallTurnResponse>("POST", "/crm/calls/turn", payload),
+
+  complete: (payload: CRMCallCompleteRequest) =>
+    request<CRMCallLog>("POST", "/crm/calls/complete", payload),
+
+  listLogs: (
+    page = 1,
+    pageSize = 20,
+    targetType?: string,
+    targetId?: string
+  ) =>
+    request<{ items: CRMCallLog[]; total: number }>(
+      "GET",
+      "/crm/calls/logs",
+      undefined,
+      { page, page_size: pageSize, target_type: targetType, target_id: targetId }
+    ),
+
+  getStats: () =>
+    request<CRMCallStats>("GET", "/crm/calls/stats"),
+};
