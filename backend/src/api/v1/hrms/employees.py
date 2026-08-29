@@ -89,37 +89,53 @@ async def list_employees(
     search: str | None = None,
 ):
     # Auto-link any workspace User belonging to this tenant who doesn't have an Employee profile yet
-    users_without_emp = await db.scalars(
-        select(User).where(
-            User.tenant_id == ctx.tenant_id,
-            ~User.id.in_(
-                select(Employee.user_id).where(
-                    Employee.user_id.is_not(None),
-                    Employee.tenant_id == ctx.tenant_id
+    try:
+        users_without_emp = await db.scalars(
+            select(User).where(
+                User.tenant_id == ctx.tenant_id,
+                ~User.id.in_(
+                    select(Employee.user_id).where(
+                        Employee.user_id.is_not(None),
+                        Employee.tenant_id == ctx.tenant_id
+                    )
                 )
             )
         )
-    )
-    unlinked_users = users_without_emp.all()
-    if unlinked_users:
-        emp_count = await db.scalar(
-            select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
-        ) or 0
-        for i, u in enumerate(unlinked_users):
-            seq = str(emp_count + i + 1).zfill(4)
-            db.add(Employee(
-                tenant_id=ctx.tenant_id,
-                user_id=u.id,
-                employee_code=f"EMP-{seq}",
-                full_name=u.full_name or u.email.split('@')[0].capitalize(),
-                email=u.email,
-                phone=u.phone,
-                date_of_joining=date.today(),
-                employment_type="Full-Time",
-                status="Active",
-                sales_points=0.0,
-            ))
-        await db.commit()
+        unlinked_users = users_without_emp.all()
+        if unlinked_users:
+            for u in unlinked_users:
+                # Check if employee with this email already exists
+                existing_emp = await db.scalar(
+                    select(Employee).where(
+                        Employee.tenant_id == ctx.tenant_id,
+                        func.lower(Employee.email) == func.lower(u.email)
+                    )
+                )
+                if existing_emp:
+                    if not existing_emp.user_id:
+                        existing_emp.user_id = u.id
+                else:
+                    emp_count = await db.scalar(
+                        select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
+                    ) or 0
+                    seq = str(emp_count + 1).zfill(4)
+                    db.add(Employee(
+                        tenant_id=ctx.tenant_id,
+                        user_id=u.id,
+                        employee_code=f"EMP-{seq}",
+                        full_name=u.full_name or u.email.split('@')[0].capitalize(),
+                        email=u.email,
+                        phone=u.phone,
+                        date_of_joining=date.today(),
+                        employment_type="Full-Time",
+                        status="Active",
+                        sales_points=0.0,
+                    ))
+            await db.commit()
+    except Exception as sync_err:
+        await db.rollback()
+        import logging
+        logging.getLogger("hrms.employees").warning(f"Auto-link user to employee skipped: {sync_err}")
 
     query = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
     if department_id:

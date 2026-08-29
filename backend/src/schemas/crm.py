@@ -483,7 +483,7 @@ class CreatePaidAdRequestSchema(BaseModel):
 
 class CRMCallInitiateRequest(BaseModel):
     target_type: str = "lead"  # lead | customer | opportunity | deal | quotation | order | ticket | complaint
-    target_id: uuid.UUID | None = None
+    target_id: str | uuid.UUID | None = None
     contact_name: str
     contact_phone: str | None = None
     contact_email: str | None = None
@@ -601,6 +601,7 @@ class CRMCallStatsResponse(BaseModel):
     connected_calls: int
     avg_duration_seconds: int
     positive_sentiment_rate: float
+    avg_qualification_score: int = 0
     leads_contacted_count: int
     opportunities_advanced: int
 

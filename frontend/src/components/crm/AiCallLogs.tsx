@@ -286,10 +286,10 @@ export const AiCallLogs: React.FC = () => {
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black text-foreground">
-              {stats?.positive_sentiment_rate ?? "85%"}
+              {stats && stats.total_calls > 0 ? `${stats.positive_sentiment_rate}%` : "0%"}
             </span>
             <span className="text-[11px] font-semibold text-purple-600">
-              High interest
+              {stats && stats.total_calls > 0 ? `${stats.positive_sentiment_rate}% Positive` : "No calls yet"}
             </span>
           </div>
         </motion.div>
@@ -310,10 +310,10 @@ export const AiCallLogs: React.FC = () => {
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black text-foreground">
-              {stats?.avg_qualification_score ?? "82"}/100
+              {stats && stats.total_calls > 0 && stats.avg_qualification_score ? `${stats.avg_qualification_score}/100` : "0/100"}
             </span>
             <span className="text-[11px] font-semibold text-emerald-600">
-              Sales Qualified
+              {stats && stats.total_calls > 0 ? "Actual Avg Score" : "No score yet"}
             </span>
           </div>
         </motion.div>
@@ -384,6 +384,23 @@ export const AiCallLogs: React.FC = () => {
             <p className="text-xs text-muted-foreground max-w-sm mx-auto">
               No AI call logs match your current search filters. Initiate a call with leads or customers to see real-time transcripts and metrics.
             </p>
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                  setActiveCallTarget({
+                    targetType: "lead",
+                    targetId: `manual_${Date.now()}`,
+                    contactName: "Direct Dial / Prospect",
+                    companyName: "Enterprise Client",
+                  });
+                  setCallingModalOpen(true);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+              >
+                <PhoneCall className="size-4" />
+                Start First AI Call
+              </button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">

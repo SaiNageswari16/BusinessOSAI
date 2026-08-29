@@ -1829,12 +1829,19 @@ async def initiate_crm_call(
             {"topic": "Clarification on Configuration", "talking_point": "Guide step-by-step through Settings -> Integrations and verify live synchronization."}
         ]
 
+    target_uuid = None
+    if payload.target_id:
+        try:
+            target_uuid = uuid.UUID(str(payload.target_id))
+        except (ValueError, AttributeError):
+            target_uuid = None
+
     # Create initial CRM Call Log record
     call_log = CRMCallLog(
         id=call_id,
         tenant_id=ctx.tenant_id,
         target_type=payload.target_type,
-        target_id=payload.target_id,
+        target_id=target_uuid,
         contact_name=payload.contact_name,
         contact_phone=payload.contact_phone,
         contact_email=payload.contact_email,
@@ -1853,10 +1860,10 @@ async def initiate_crm_call(
     db.add(call_log)
 
     # If lead target, log activity
-    if payload.target_type == "lead" and payload.target_id:
+    if payload.target_type == "lead" and target_uuid:
         activity = LeadActivity(
             tenant_id=ctx.tenant_id,
-            lead_id=payload.target_id,
+            lead_id=target_uuid,
             activity_type="AI Call",
             summary=f"AI call initiated ({payload.agent_persona}). Room: {room_name}",
             occurred_at=datetime.now(timezone.utc),
@@ -2106,14 +2113,16 @@ async def get_crm_call_stats(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    """Returns calling analytics and KPIs across the organization."""
+    """Returns calling analytics and KPIs calculated strictly from actual database records."""
     logs = (await db.scalars(select(CRMCallLog).where(CRMCallLog.tenant_id == ctx.tenant_id))).all()
     total_calls = len(logs)
     connected_calls = sum(1 for l in logs if l.status in ("Completed", "In Progress"))
     total_dur = sum(l.duration_seconds for l in logs)
-    avg_dur = int(total_dur / max(total_calls, 1))
-    positive_count = sum(1 for l in logs if l.sentiment in ("Positive", "Highly Interested"))
-    pos_rate = round((positive_count / max(total_calls, 1)) * 100, 1)
+    avg_dur = int(total_dur / total_calls) if total_calls > 0 else 0
+    positive_count = sum(1 for l in logs if l.sentiment and l.sentiment.lower() in ("positive", "interested", "highly interested"))
+    pos_rate = round((positive_count / total_calls) * 100, 1) if total_calls > 0 else 0.0
+    scores = [l.qualification_score for l in logs if l.qualification_score is not None]
+    avg_score = int(sum(scores) / len(scores)) if scores else 0
     leads_count = sum(1 for l in logs if l.target_type == "lead")
     opps_count = sum(1 for l in logs if l.target_type in ("opportunity", "deal"))
 
@@ -2122,6 +2131,7 @@ async def get_crm_call_stats(
         connected_calls=connected_calls,
         avg_duration_seconds=avg_dur,
         positive_sentiment_rate=pos_rate,
+        avg_qualification_score=avg_score,
         leads_contacted_count=leads_count,
         opportunities_advanced=opps_count
     )
