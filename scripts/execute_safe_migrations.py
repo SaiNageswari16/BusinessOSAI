@@ -1,7 +1,18 @@
 import asyncio
+import os
 import sys
+from pathlib import Path
 
-sys.path.append("backend")
+# Ensure backend directory is in sys.path regardless of where script is called from
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent
+backend_dir = project_root / "backend"
+
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
+# Change current working directory to backend so .env is loaded
+os.chdir(str(backend_dir))
 
 from sqlalchemy import text
 from src.database.session import engine
