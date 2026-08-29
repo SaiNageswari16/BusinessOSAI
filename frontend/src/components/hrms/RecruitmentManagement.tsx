@@ -37,7 +37,8 @@ import {
   ShieldCheck,
   Layers,
   FileCheck,
-  Building2
+  Building2,
+  Calculator
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
