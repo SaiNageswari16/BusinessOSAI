@@ -46,7 +46,7 @@ export function Feedback() {
   useEffect(() => {
     fetchFeedback();
     fetchCustomers();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   const handlePostFeedback = async (e: React.FormEvent) => {
     e.preventDefault();

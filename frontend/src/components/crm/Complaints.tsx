@@ -47,7 +47,7 @@ export function Complaints() {
   useEffect(() => {
     fetchComplaints();
     fetchCustomers();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   const handleLogComplaint = async (e: React.FormEvent) => {
     e.preventDefault();

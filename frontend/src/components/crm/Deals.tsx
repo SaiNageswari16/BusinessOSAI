@@ -72,7 +72,7 @@ export function Deals({ tab = "all_deals" }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     void fetchDeals();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   const moveDeal = async (id: string, stage: string) => {
     try {

@@ -47,7 +47,7 @@ export function Returns() {
   useEffect(() => {
     fetchReturns();
     fetchCustomers();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   const handleCreateReturn = async (e: React.FormEvent) => {
     e.preventDefault();

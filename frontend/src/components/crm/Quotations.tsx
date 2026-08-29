@@ -65,7 +65,7 @@ export function Quotations() {
 
   useEffect(() => {
     void fetchQuotations();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   const handlePrintQuotation = (quote: CrmQuotation) => {
     const printWin = window.open("", "_blank", "width=850,height=1100");

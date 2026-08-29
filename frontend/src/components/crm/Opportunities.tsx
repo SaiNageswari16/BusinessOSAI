@@ -58,7 +58,7 @@ export function Opportunities() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     void fetchOpps();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   const filteredOpps = opportunities.filter(opp => {
     return opp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

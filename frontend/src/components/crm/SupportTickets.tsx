@@ -518,7 +518,7 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     void fetchTickets();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
 
   const runAiSummary = async (e: React.MouseEvent, id: string) => {

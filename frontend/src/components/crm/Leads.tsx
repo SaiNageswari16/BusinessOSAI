@@ -91,7 +91,7 @@ export function Leads() {
       } catch (e) { /* silent */ }
     };
     void fetchCreds();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
 
   const filtered = useMemo(() => {
