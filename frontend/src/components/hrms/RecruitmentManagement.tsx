@@ -3482,12 +3482,21 @@ ${customClausesText || offerForm.customTemplate}`;
 
                     {/* Styled Letterhead Canvas */}
                     <div className="border border-border/80 rounded-2xl p-8 bg-white dark:bg-zinc-950 font-sans shadow-lg max-w-3xl mx-auto text-zinc-900 dark:text-zinc-100">
-                      {/* Header banner */}
+                      {/* Header banner with logo */}
                       <div className="flex justify-between items-start border-b-2 border-zinc-900 dark:border-zinc-100 pb-4 mb-6">
-                        <div>
-                          <h3 className="font-extrabold text-xl tracking-tight text-zinc-900 dark:text-zinc-50">{orgName}</h3>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{orgAddress}</p>
-                          <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Email: {orgEmail} • Phone: {orgPhone}{orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
+                        <div className="flex items-center gap-3.5">
+                          {orgLogo ? (
+                            <img src={orgLogo} alt={orgName} className="h-12 max-w-[140px] object-contain rounded-md" />
+                          ) : (
+                            <div className="size-11 rounded-lg bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 flex items-center justify-center font-extrabold text-sm">
+                              {orgInitials}
+                            </div>
+                          )}
+                          <div>
+                            <h3 className="font-extrabold text-xl tracking-tight text-zinc-900 dark:text-zinc-50">{orgName}</h3>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{orgAddress}</p>
+                            <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Email: {orgEmail} • Phone: {orgPhone}{orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
+                          </div>
                         </div>
                         <div className="text-right">
                           <span className="inline-block px-3 py-1 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 text-[10px] font-extrabold uppercase rounded tracking-wider">

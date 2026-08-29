@@ -21,8 +21,10 @@ from src.schemas.crm import (
     CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, 
     LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate, 
     CreatePaidAdRequestSchema, CRMCallInitiateRequest, CRMCallInitiateResponse, CRMCallTurnRequest, 
-    CRMCallTurnResponse, CRMCallCompleteRequest, CRMCallLogResponse, CRMCallStatsResponse
+    CRMCallTurnResponse, CRMCallCompleteRequest, CRMCallLogResponse, CRMCallStatsResponse,
+    CRMTelephonySettingsSchema, CRMTelephonySettingsUpdate
 )
+from src.services.telephony_service import TelephonyService
 from src.utils.pagination import PaginatedResponse, paginate
 from src.utils.notifications import add_system_notification
 import logging
@@ -106,8 +108,26 @@ async def update_lead(lead_id: uuid.UUID, payload: LeadUpdate, request: Request,
 @router.post("/leads/{lead_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
 async def add_lead_activity(lead_id: uuid.UUID, payload: LeadActivityCreate, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
     lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
-    activity = LeadActivity(tenant_id=ctx.tenant_id, lead_id=lead.id, created_by_user_id=ctx.user.id, occurred_at=payload.occurred_at or datetime.now(timezone.utc), activity_type=payload.activity_type, summary=payload.summary)
-    lead.last_contact_at = activity.occurred_at; db.add(activity); await db.flush()
+    activity = LeadActivity(
+        tenant_id=ctx.tenant_id,
+        lead_id=lead.id,
+        created_by_user_id=ctx.user.id,
+        occurred_at=payload.occurred_at or datetime.now(timezone.utc),
+        activity_type=payload.activity_type,
+        summary=payload.summary,
+        call_disposition=payload.call_disposition,
+        call_duration_minutes=payload.call_duration_minutes or 0,
+        customer_response=payload.customer_response,
+    )
+    lead.last_contact_at = activity.occurred_at
+    if payload.call_disposition:
+        lead.call_disposition = payload.call_disposition
+    if payload.call_duration_minutes is not None:
+        lead.call_duration_minutes = payload.call_duration_minutes
+    if payload.customer_response:
+        lead.customer_response = payload.customer_response
+    db.add(activity)
+    await db.flush()
     return activity
 
 
@@ -115,6 +135,43 @@ async def add_lead_activity(lead_id: uuid.UUID, payload: LeadActivityCreate, ctx
 async def list_lead_activities(lead_id: uuid.UUID, ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
     await _lead_or_404(db, lead_id, ctx.tenant_id)
     result = await db.execute(select(LeadActivity).where(LeadActivity.tenant_id == ctx.tenant_id, LeadActivity.lead_id == lead_id).order_by(LeadActivity.occurred_at.desc()))
+    return result.scalars().all()
+
+
+@router.post("/opportunities/{opportunity_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
+async def add_opportunity_activity(opportunity_id: uuid.UUID, payload: LeadActivityCreate, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
+    opp = await db.scalar(select(CRMOpportunity).where(CRMOpportunity.id == opportunity_id, CRMOpportunity.tenant_id == ctx.tenant_id))
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    activity = LeadActivity(
+        tenant_id=ctx.tenant_id,
+        opportunity_id=opp.id,
+        created_by_user_id=ctx.user.id,
+        occurred_at=payload.occurred_at or datetime.now(timezone.utc),
+        activity_type=payload.activity_type,
+        summary=payload.summary,
+        call_disposition=payload.call_disposition,
+        call_duration_minutes=payload.call_duration_minutes or 0,
+        customer_response=payload.customer_response,
+    )
+    opp.last_contact_at = activity.occurred_at
+    if payload.call_disposition:
+        opp.call_disposition = payload.call_disposition
+    if payload.call_duration_minutes is not None:
+        opp.call_duration_minutes = payload.call_duration_minutes
+    if payload.customer_response:
+        opp.customer_response = payload.customer_response
+    db.add(activity)
+    await db.flush()
+    return activity
+
+
+@router.get("/opportunities/{opportunity_id}/activities", response_model=list[LeadActivityResponse])
+async def list_opportunity_activities(opportunity_id: uuid.UUID, ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
+    opp = await db.scalar(select(CRMOpportunity).where(CRMOpportunity.id == opportunity_id, CRMOpportunity.tenant_id == ctx.tenant_id))
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    result = await db.execute(select(LeadActivity).where(LeadActivity.tenant_id == ctx.tenant_id, LeadActivity.opportunity_id == opportunity_id).order_by(LeadActivity.occurred_at.desc()))
     return result.scalars().all()
 
 
@@ -2011,7 +2068,7 @@ async def list_crm_call_logs(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
     target_type: str | None = None,
     target_id: uuid.UUID | None = None,
     search: str | None = None,
@@ -2035,8 +2092,13 @@ async def list_crm_call_logs(
                 CRMCallLog.ai_summary.ilike(search_fmt)
             )
         )
-    query = query.order_by(CRMCallLog.created_at.desc())
-    return await paginate(db, query, page, page_size, CRMCallLogResponse)
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(CRMCallLog.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return paginate(result.scalars().all(), total or 0, page, page_size)
 
 
 @router.get("/calls/stats", response_model=CRMCallStatsResponse)

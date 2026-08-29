@@ -57,6 +57,11 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       return Boolean(user.isPlatformAdmin || user.email === "venaticfungus@gmail.com");
     }
 
+    // Platform Admins (God mode) bypass all module/permission restrictions
+    if (user.isPlatformAdmin || user.email === "venaticfungus@gmail.com") {
+      return true;
+    }
+
     // Module-level entitlement check for client workspaces (Platform Admin bypasses this)
     if (!user.isPlatformAdmin && user.enabledModules && user.enabledModules.length > 0) {
       const isPermInModule = (mod: string, perm: string): boolean => {
@@ -65,7 +70,7 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
         if (mod === "accounting") return perm.includes("accounting") || perm.includes("finance") || perm.includes("invoice") || perm.includes("journal") || perm.includes("bank") || perm.includes("voucher") || perm.includes("tax");
         if (mod === "crm") return perm.includes("crm") || perm.includes("lead") || perm.includes("deal") || perm.includes("quotation") || perm.includes("ticket");
         if (mod === "procurement") return perm.includes("procurement") || perm.includes("purchase") || perm.includes("vendor") || perm.includes("grn");
-        if (mod === "hrms") return perm.includes("hrms") || perm.includes("employee") || perm.includes("payroll") || perm.includes("attendance") || perm.includes("leave");
+        if (mod === "hrms") return perm.includes("hrms") || perm.includes("employee") || perm.includes("payroll") || perm.includes("attendance") || perm.includes("leave") || perm.includes("ess");
         if (mod === "iot") return perm.includes("iot") || perm.includes("telemetry") || perm.includes("device");
         if (mod === "marketplace") return perm.includes("marketplace") || perm.includes("appstore");
         if (mod === "core" || mod === "erp") return perm.includes("erp") || perm.includes("company") || perm.includes("branch") || perm.includes("role") || perm.includes("user");
@@ -98,7 +103,17 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
 
     // Module-group virtual permissions — only expand to the specific module's permissions
     if (permission === "view:hrms") {
-      return user.permissions.some(p => p.startsWith("view:hrms_") || p.startsWith("manage:hrms_"));
+      return user.permissions.some(
+        (p) =>
+          p.startsWith("view:hrms") ||
+          p.startsWith("manage:hrms") ||
+          p.startsWith("view:ess") ||
+          p.startsWith("manage:ess") ||
+          p.includes("employee") ||
+          p.includes("attendance") ||
+          p.includes("leave") ||
+          p.includes("payroll")
+      );
     }
     if (permission === "view:erp") {
       return user.permissions.some(p =>

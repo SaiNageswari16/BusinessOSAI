@@ -463,6 +463,12 @@ export function PosInvoicesHistory() {
       return;
     }
 
+    const orgName = tenant?.name || "BusinessOS Store";
+    const orgLogo = tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const orgGstin = (tenant as any)?.tax_id || (tenant as any)?.gstin || (tenant as any)?.raw?.tax_id || "37AAAAA0000A1Z5";
+    const orgAddress = (tenant as any)?.address || (tenant as any)?.raw?.address || "Main Branch Store";
+    const orgPhone = (tenant as any)?.phone || (tenant as any)?.raw?.phone || "";
+
     const itemsHtml = (inv.items || [])
       .map(
         (it) => `
@@ -487,10 +493,12 @@ export function PosInvoicesHistory() {
                   </style>
                 </head>
                 <body>
-                  <h2>BUSINESS OS RETAIL</h2>
-                  <p>Main Branch Store · GSTIN: 37AAAAA0000A1Z5</p>
+                  ${orgLogo ? `<div style="text-align:center; margin-bottom: 6px;"><img src="${orgLogo}" alt="${orgName}" style="max-height: 40px; max-width: 140px; object-fit: contain; filter: grayscale(100%) contrast(150%);" /></div>` : ""}
+                  <h2>${orgName}</h2>
+                  <p>${orgAddress}${orgPhone ? ` · Tel: ${orgPhone}` : ""}</p>
+                  <p>GSTIN: ${orgGstin}</p>
                   <p>Sales Invoice #: ${inv.invoice_number}</p>
-                  <p>Date: ${inv.invoice_date} | Rep: ${inv.sales_executive}</p>
+                  <p>Date: ${inv.invoice_date} | Rep: ${inv.sales_executive || "Admin"}</p>
                   <div class="line"></div>
                   <div style="font-size:11px; margin-bottom:4px;"><b>Customer:</b> ${inv.customer_name} (${inv.customer_phone || "N/A"})</div>
                   <div class="line"></div>

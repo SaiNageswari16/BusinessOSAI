@@ -3,13 +3,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle, Calendar, Mail, Phone, Plus, Search,
   Facebook, RefreshCw, Sparkles, X, Trash2, Key,
-  PhoneCall, CheckCircle2, Clock, Loader2, Target, Megaphone, Layers, Briefcase
+  PhoneCall, CheckCircle2, Clock, Loader2, Target, Megaphone, Layers, Briefcase,
+  ClipboardList, FileText, PhoneOff, PhoneForwarded
 } from "lucide-react";
 import { toast } from "sonner";
 import { crmLeadsApi, crmCallsApi, type CrmLead, type LeadAttribution, type CRMCallLog } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
 import { AiCallingModal } from "./AiCallingModal";
+import { NotesAndDispositionModal } from "./NotesAndDispositionModal";
 
 const stages: CrmLead["status"][] = ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"];
 const blankLead = { name: "", company_name: "", email: "", phone: "", source: "Website", estimated_value: "0" };
@@ -23,6 +25,9 @@ export function Leads() {
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(blankLead);
+
+  // Manual Call Disposition & Notes Modal State
+  const [notesTargetLead, setNotesTargetLead] = useState<CrmLead | null>(null);
 
   // Facebook Lead Ads States
   const [showFbSettings, setShowFbSettings] = useState(false);
@@ -351,6 +356,32 @@ export function Leads() {
                         </select>
                       </div>
 
+                      {/* ── Call Disposition & Notes Badge Block ── */}
+                      {lead.call_disposition && (
+                        <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-[10px] text-indigo-700 dark:text-indigo-300">
+                          <PhoneForwarded className="size-3 shrink-0 text-indigo-600" />
+                          <span className="font-bold truncate">{lead.call_disposition}</span>
+                          {lead.call_duration_minutes ? (
+                            <span className="text-muted-foreground ml-auto shrink-0 font-mono">
+                              {lead.call_duration_minutes}m
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {lead.customer_response && (
+                        <div className="mt-1.5 px-2.5 py-1 rounded-md bg-muted/40 border border-border/50 text-[10px] text-foreground italic line-clamp-2">
+                          "{lead.customer_response}"
+                        </div>
+                      )}
+
+                      {lead.notes && !lead.customer_response && (
+                        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground line-clamp-1">
+                          <FileText className="size-3 shrink-0 text-indigo-500" />
+                          <span className="truncate">{lead.notes}</span>
+                        </div>
+                      )}
+
                       {/* ── Call Status Differentiation Block ── */}
                       {(() => {
                         const callLog = callStatusMap[lead.id];
@@ -426,6 +457,15 @@ export function Leads() {
                           </button>
                         );
                       })()}
+
+                      {/* Log Call & Notes Button */}
+                      <button
+                        onClick={() => setNotesTargetLead(lead)}
+                        className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border border-border/80 bg-background hover:bg-muted text-foreground transition-colors"
+                      >
+                        <ClipboardList className="size-3.5 text-indigo-600" />
+                        Log Call & Notes
+                      </button>
 
                       {lead.next_follow_up_at && (
                         <p className="mt-1.5 flex gap-1 text-[10px] text-muted-foreground">
@@ -664,6 +704,43 @@ export function Leads() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Notes & Call Disposition Modal */}
+      {notesTargetLead && (
+        <NotesAndDispositionModal
+          isOpen={!!notesTargetLead}
+          onClose={() => setNotesTargetLead(null)}
+          entityType="lead"
+          entityId={notesTargetLead.id}
+          entityName={notesTargetLead.name}
+          entityCompany={notesTargetLead.company_name}
+          entityPhone={notesTargetLead.phone}
+          currentStatus={notesTargetLead.status}
+          availableStatuses={stages}
+          initialNotes={notesTargetLead.notes}
+          initialDisposition={notesTargetLead.call_disposition}
+          initialMinutes={notesTargetLead.call_duration_minutes}
+          initialResponse={notesTargetLead.customer_response}
+          initialNextFollowup={notesTargetLead.next_follow_up_at}
+          onSaveSuccess={(updated) => {
+            setLeads((prev) =>
+              prev.map((l) =>
+                l.id === notesTargetLead.id
+                  ? {
+                      ...l,
+                      ...(updated.status ? { status: updated.status as CrmLead["status"] } : {}),
+                      notes: updated.notes !== undefined ? updated.notes : l.notes,
+                      call_disposition: updated.call_disposition !== undefined ? updated.call_disposition : l.call_disposition,
+                      call_duration_minutes: updated.call_duration_minutes !== undefined ? updated.call_duration_minutes : l.call_duration_minutes,
+                      customer_response: updated.customer_response !== undefined ? updated.customer_response : l.customer_response,
+                      next_follow_up_at: updated.next_follow_up_at !== undefined ? updated.next_follow_up_at : l.next_follow_up_at,
+                    }
+                  : l
+              )
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

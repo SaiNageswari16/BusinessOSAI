@@ -275,11 +275,7 @@ export function AppTopbar() {
   }, [currentPath, currentPathWithSearch]);
 
   const handleNavigateModule = (defaultTo: string) => {
-    let target = defaultTo;
-    if (defaultTo.includes("/hrms") && !hasPermission("view:hrms_employees")) {
-      target = "/hrms?tab=ess_attendance";
-    }
-    const [path, searchStr] = target.split("?");
+    const [path, searchStr] = defaultTo.split("?");
     const search: Record<string, string> = {};
     if (searchStr) {
       const params = new URLSearchParams(searchStr);

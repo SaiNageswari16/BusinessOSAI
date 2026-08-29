@@ -171,10 +171,12 @@ class FacebookLeadImportService:
                         skipped_count += 1
                         continue
 
-                    # Build lead fields
-                    name  = _extract_name(field_map, fb_lead_id)
-                    phone = _pick(field_map, _PHONE_KEYS) or "0000000000"
+                    # Build lead fields safely with bound lengths
+                    name  = (_extract_name(field_map, fb_lead_id) or f"FB Lead #{fb_lead_id}")[:250].strip()
+                    phone = (_pick(field_map, _PHONE_KEYS) or "0000000000")[:90].strip()
                     email = _pick(field_map, _EMAIL_KEYS) or None
+                    if email:
+                        email = email[:250].strip()
 
                     created_at_fb: Optional[datetime] = None
                     if field_map.get("created_time"):
@@ -195,17 +197,18 @@ class FacebookLeadImportService:
                         source          = "Social Media",
                         status          = "New",
                         tenant_id       = tenant_id,
-                        owner_user_id  = imported_by,
-                        external_id     = fb_lead_id,
+                        owner_user_id   = imported_by,
+                        external_id     = str(fb_lead_id)[:250],
                         external_source = "facebook",
                         meta            = meta_payload,
                     )
                     self.db.add(lead)
+                    await self.db.flush()
                     imported_count += 1
 
                 except Exception as exc:
-                    logger.warning(f"[Tenant {tenant_id}] Failed to process FB lead: {exc}")
-                    errors.append(str(exc))
+                    logger.warning(f"[Tenant {tenant_id}] Failed to process FB lead {fb_lead_id}: {exc}")
+                    errors.append(f"Lead {fb_lead_id}: {str(exc)}")
                     skipped_count += 1
 
         await self.db.commit()

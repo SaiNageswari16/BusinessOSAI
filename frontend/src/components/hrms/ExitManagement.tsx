@@ -21,6 +21,8 @@ export function ExitManagement({ tab = "resignation" }: Props) {
     const orgCin = activeGst?.cin || tenant?.settings?.cin || "";
     const orgEmail = activeGst?.email || tenant?.settings?.email || "hr@businessos.ai";
     const orgPhone = activeGst?.phone || tenant?.settings?.phone || "+91 (800) 555-0199";
+    const orgLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const orgInitials = (tenant?.logo_initials || orgName.slice(0, 2)).toUpperCase();
 
   const [resignations, setResignations] = useState<ExitResignation[]>([]);
   const [clearanceTasks, setClearanceTasks] = useState<ExitClearanceTask[]>([]);
@@ -582,10 +584,13 @@ export function ExitManagement({ tab = "resignation" }: Props) {
         <body>
           <div class="page-container">
             <div class="header-banner">
-              <div>
-                <h1>${orgName}</h1>
-                <p>${orgAddress}</p>
-                <p>Email: ${orgEmail} • Phone: ${orgPhone}${orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
+              <div style="display: flex; align-items: center; gap: 14px;">
+                ${orgLogo ? `<img src="${orgLogo}" alt="${orgName}" style="max-height: 52px; max-width: 150px; object-fit: contain;" />` : `<div style="width: 44px; height: 44px; border-radius: 8px; background: #1e1b4b; color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14pt;">${orgInitials}</div>`}
+                <div>
+                  <h1>${orgName}</h1>
+                  <p>${orgAddress}</p>
+                  <p>Email: ${orgEmail} • Phone: ${orgPhone}${orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
+                </div>
               </div>
               <div class="cert-badge">
                 <span>Official Work Certificate</span>

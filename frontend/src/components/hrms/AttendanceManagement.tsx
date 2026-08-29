@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2 } from "lucide-react";
+import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { attendanceApi, employeesApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, workCalendarsApi } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useCurrency } from "@/hooks/use-currency";
+import { AttendanceCalendarView } from "./AttendanceCalendarView";
+import { ShiftRosterCalendar } from "./ShiftRosterCalendar";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "N/A";
@@ -64,6 +66,10 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   const [biometricDevices, setBiometricDevices] = useState<BiometricDevice[]>([]);
   const [faceLogs, setFaceLogs] = useState<FaceRecognitionLog[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
+
+  // View Mode: Table vs Interactive Monthly Calendar Grid
+  const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
+  const [selectedEmpFilter, setSelectedEmpFilter] = useState<string>("");
 
   // Dialogs & Actions
   const [syncingBiometrics, setSyncingBiometrics] = useState(false);
@@ -1090,104 +1096,17 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
 
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Shift & Calendars Configuration</h2>
-            <p className="text-xs text-muted-foreground">Manage active work calendars, day schedules, and shift timings.</p>
-          </div>
-          <Button 
-            className="h-8 text-xs font-semibold gradient-brand text-white border-0" 
-            onClick={() => setCalendarDialogOpen(true)}
-          >
-            <Plus className="size-3.5 mr-1.5" /> New Shift Calendar
-          </Button>
-        </div>
-
-        {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
-
-        {!loading && workCalendars.length === 0 && (
-          <div className="flex flex-col items-center justify-center p-12 text-center glass-panel rounded-xl border border-border/50 bg-muted/10">
-            <Clock className="size-12 text-muted-foreground mb-4 opacity-50" />
-            <h3 className="font-semibold text-foreground text-lg mb-1">No Shift Calendars Found</h3>
-            <p className="text-sm text-muted-foreground max-w-sm mb-4">
-              Add a work calendar to organize and assign shift timings for your employees.
-            </p>
-            <Button className="gradient-brand text-white border-0" onClick={() => setCalendarDialogOpen(true)}>
-              Initialize Calendar
-            </Button>
-          </div>
-        )}
-
-        {!loading && workCalendars.map((cal) => (
-          <motion.div 
-            key={cal.id} 
-            initial={{ opacity: 0, y: 10 }} 
-            animate={{ opacity: 1, y: 0 }}
-            className="glass-panel p-6 rounded-xl border border-border/50 space-y-4"
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-bold text-foreground text-lg mb-1">{cal.name}</h3>
-                <p className="text-xs text-muted-foreground">
-                  Days: {cal.working_days?.join(", ") || "None"} | Type: {cal.calendar_type}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="text-xs bg-transparent"
-                  onClick={() => {
-                    setSelectedCalendar(cal);
-                    setShiftDialogOpen(true);
-                  }}
-                >
-                  <Plus className="size-3.5 mr-1" /> Add Shift
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
-                  className="text-red-500 hover:text-red-600 hover:bg-red-500/10 text-xs"
-                  onClick={() => handleDeleteCalendar(cal.id)}
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Shifts</p>
-              {(!cal.shifts || cal.shifts.length === 0) ? (
-                <p className="text-sm text-muted-foreground italic">No shifts configured. Click 'Add Shift' to insert one.</p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {cal.shifts.map((shift: any, sIdx: number) => (
-                    <div 
-                      key={sIdx} 
-                      className="flex justify-between items-center p-3 rounded-lg border border-border/50 bg-muted/20"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-1.5 bg-primary/10 rounded-md"><Clock className="size-4 text-primary" /></div>
-                        <div>
-                          <p className="font-semibold text-sm text-foreground">{shift.name}</p>
-                          <p className="text-xs text-muted-foreground">{shift.start_time} - {shift.end_time}</p>
-                        </div>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        className="text-muted-foreground hover:text-red-500 p-1 h-auto"
-                        onClick={() => handleDeleteShift(cal, sIdx)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        ))}
+        <ShiftRosterCalendar
+          employees={employees}
+          workCalendars={workCalendars}
+          onAddShift={(cal) => {
+            setSelectedCalendar(cal);
+            setShiftDialogOpen(true);
+          }}
+          onNewCalendar={() => setCalendarDialogOpen(true)}
+          onDeleteCalendar={handleDeleteCalendar}
+          onDeleteShift={handleDeleteShift}
+        />
 
         {/* Modal: New Shift Calendar */}
         {calendarDialogOpen && (
@@ -1406,17 +1325,43 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   // ─── Render: Daily Attendance (Default) ─────────────────────────
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Daily Attendance</h2>
-          <p className="text-xs text-muted-foreground">Timesheets log summary, manual administrative punches, and WFH tracking.</p>
+          <p className="text-xs text-muted-foreground">Timesheets log summary, interactive calendar grid, manual administrative punches, and WFH tracking.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Table vs Calendar View Switcher */}
+          <div className="flex items-center gap-1 p-0.5 bg-muted/50 border border-border rounded-lg">
+            <button
+              onClick={() => setViewMode("table")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                viewMode === "table"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutList className="size-3.5" />
+              Table View
+            </button>
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                viewMode === "calendar"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <CalendarIcon className="size-3.5" />
+              Calendar View
+            </button>
+          </div>
+
           <Button
             className="h-8 text-xs font-semibold gradient-brand text-white border-0"
             onClick={() => setManualPunchDialogOpen(true)}
           >
-            <Plus className="size-3.5 mr-1.5" /> Manual Punch / Time Adjustment
+            <Plus className="size-3.5 mr-1.5" /> Manual Punch / Mark Date
           </Button>
           {(() => {
             const activeRole = user?.roles.find(r => r.id === user?.activeRoleId);
@@ -1455,7 +1400,24 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
 
       {loading && attendance.length === 0 && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}
 
-      {!loading && (
+      {!loading && viewMode === "calendar" && (
+        <AttendanceCalendarView
+          attendanceRecords={attendance}
+          employees={employees}
+          selectedEmployeeId={selectedEmpFilter}
+          onSelectEmployee={setSelectedEmpFilter}
+          onMarkAttendanceDate={(dateStr, empId) => {
+            setManualPunchForm(p => ({
+              ...p,
+              date: dateStr,
+              employee_id: empId || p.employee_id || (employees[0]?.id ?? ""),
+            }));
+            setManualPunchDialogOpen(true);
+          }}
+        />
+      )}
+
+      {!loading && viewMode === "table" && (
         <div className="glass-panel rounded-xl border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">

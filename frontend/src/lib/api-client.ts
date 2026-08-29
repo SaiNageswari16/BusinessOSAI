@@ -2116,6 +2116,9 @@ export interface CrmLead {
   next_follow_up_at: string | null;
   notes: string | null;
   lost_reason: string | null;
+  call_disposition?: string | null;
+  call_duration_minutes?: number | null;
+  customer_response?: string | null;
   external_id?: string | null;
   external_source?: string | null;
   meta?: Record<string, any> | null;
@@ -2127,9 +2130,13 @@ export interface CrmLead {
 
 export interface CrmLeadActivity {
   id: string;
-  lead_id: string;
+  lead_id?: string | null;
+  opportunity_id?: string | null;
   activity_type: string;
   summary: string;
+  call_disposition?: string | null;
+  call_duration_minutes?: number | null;
+  customer_response?: string | null;
   occurred_at: string;
   created_by_user_id: string | null;
   created_at: string;
@@ -2770,6 +2777,11 @@ export interface CrmOpportunity {
   next_step_at: string | null;
   forecast_category: string;
   lost_reason: string | null;
+  notes?: string | null;
+  call_disposition?: string | null;
+  call_duration_minutes?: number | null;
+  customer_response?: string | null;
+  last_contact_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -2781,6 +2793,8 @@ export const crmOpportunitiesApi = {
   },
   create: (data: Record<string, unknown>) => request<CrmOpportunity>("POST", "/crm/opportunities", data),
   update: (id: string, data: Record<string, unknown>) => request<CrmOpportunity>("PATCH", `/crm/opportunities/${id}`, data),
+  listActivities: (id: string) => request<CrmLeadActivity[]>("GET", `/crm/opportunities/${id}/activities`),
+  addActivity: (id: string, data: Record<string, unknown>) => request<CrmLeadActivity>("POST", `/crm/opportunities/${id}/activities`, data),
 };
 
 export interface EmailCampaign {
@@ -4761,13 +4775,15 @@ export const crmCallsApi = {
     page = 1,
     pageSize = 20,
     targetType?: string,
-    targetId?: string
+    targetId?: string,
+    search?: string,
+    sentiment?: string
   ) =>
     request<{ items: CRMCallLog[]; total: number }>(
       "GET",
       "/crm/calls/logs",
       undefined,
-      { page, page_size: pageSize, target_type: targetType, target_id: targetId }
+      { page, page_size: pageSize, target_type: targetType, target_id: targetId, search, sentiment }
     ),
 
   getStats: () =>

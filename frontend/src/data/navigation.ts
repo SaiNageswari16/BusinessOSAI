@@ -347,10 +347,11 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/crm?tab=email_campaigns",
+        to: "/crm?tab=ai_call_logs",
         label: "Communication",
         icon: Radio,
         subItems: [
+          { to: "/crm?tab=ai_call_logs", label: "AI Voice Calling & Logs", icon: Headset },
           { to: "/crm?tab=email_campaigns", label: "Email Campaigns", icon: Inbox },
           { to: "/crm?tab=sms_campaigns", label: "SMS Campaigns", icon: Radio },
           { to: "/crm?tab=whatsapp_campaigns", label: "WhatsApp Campaigns", icon: Network },

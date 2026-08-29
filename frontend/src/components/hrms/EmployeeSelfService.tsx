@@ -5,7 +5,8 @@ import {
   MapPin, Fingerprint, Camera, User, QrCode, Download, Share2, Printer, 
   Clipboard, Check, Sparkles, Building, Mail, Phone, Award, Star, 
   BookOpen, GraduationCap, Target, TrendingUp, CheckCircle2, Play, 
-  ArrowUpRight, Plus, Trash2, Radio, ShieldCheck, ExternalLink, XCircle 
+  ArrowUpRight, Plus, Trash2, Radio, ShieldCheck, ExternalLink, XCircle,
+  LayoutList
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
@@ -14,6 +15,7 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useCurrency } from "@/hooks/use-currency";
+import { AttendanceCalendarView } from "./AttendanceCalendarView";
 
 const formatDate = (dateStr: string | null | undefined, options?: Intl.DateTimeFormatOptions) => {
   if (!dateStr) return "N/A";
@@ -56,6 +58,9 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
   // HR Assigned Punch Mode for this employee ("GPS" | "Biometric" | "Face" | "Web")
   const [assignedPunchMethod, setAssignedPunchMethod] = useState<"GPS" | "Biometric" | "Face" | "Web">("GPS");
+
+  // ESS Attendance View Mode: "overview" (cards + punch) | "calendar" (monthly calendar grid)
+  const [essAttendanceView, setEssAttendanceView] = useState<"overview" | "calendar">("overview");
 
   // Apply Leave form states
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
@@ -1216,130 +1221,168 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
       {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-600 text-sm border border-red-500/20">{error}</div>}
 
-      {/* ─── HR ASSIGNED PUNCH METHOD POLICY CONTAINER ─── */}
-      <Card className="p-5 border bg-gradient-to-r from-primary/5 via-card to-indigo-500/5 rounded-2xl">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-primary/10 text-primary border border-primary/20">
-                HR Authorized Policy
-              </span>
-              <h4 className="font-bold text-foreground text-sm">
-                Designated Punch Method: <span className="text-primary font-black">{assignedPunchMethod === "GPS" ? "GPS Geofence Tracking" : assignedPunchMethod === "Biometric" ? "Hardware Biometric / RFID Keycard" : assignedPunchMethod === "Face" ? "Facial Recognition AI Turnstile" : "Web Portal 1-Click"}</span>
-              </h4>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {assignedPunchMethod === "GPS" ? "Your check-ins are verified against authorized office geofences (San Francisco HQ 150m radius & Oakland Campus)." :
-               assignedPunchMethod === "Biometric" ? "Your attendance is captured automatically via physical biometric turnstile terminal (BIO-01 ZKTeco Main Gate)." :
-               assignedPunchMethod === "Face" ? "Your presence is verified automatically at building entrance camera scanner (HQ Lobby Cam-1)." :
-               "You are authorized for standard browser portal clock-in/out."}
-            </p>
-          </div>
-
-          {/* Quick Method Simulator Switcher */}
-          <div className="flex items-center gap-1 p-1 bg-muted/60 rounded-xl border text-xs">
-            {(["GPS", "Biometric", "Face", "Web"] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setAssignedPunchMethod(m)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${assignedPunchMethod === m ? "bg-card shadow-xs text-primary" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+      {/* ─── ESS Attendance View Toggle Bar ─── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+        <div className="flex items-center gap-1 p-0.5 bg-muted/50 border border-border rounded-lg">
+          <button
+            onClick={() => setEssAttendanceView("overview")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              essAttendanceView === "overview"
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <LayoutList className="size-3.5" />
+            Punch & Today's Status
+          </button>
+          <button
+            onClick={() => setEssAttendanceView("calendar")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              essAttendanceView === "calendar"
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Calendar className="size-3.5" />
+            Monthly Timesheet Calendar
+          </button>
         </div>
+      </div>
 
-        {/* Method-Specific Status Badge */}
-        <div className="mt-4 pt-3.5 border-t grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="p-2.5 rounded-xl bg-card border flex items-center gap-2.5">
-            {assignedPunchMethod === "GPS" ? <MapPin className="size-4 text-emerald-500 shrink-0" /> :
-             assignedPunchMethod === "Biometric" ? <Fingerprint className="size-4 text-indigo-500 shrink-0" /> :
-             assignedPunchMethod === "Face" ? <Camera className="size-4 text-purple-500 shrink-0" /> :
-             <Clock className="size-4 text-blue-500 shrink-0" />}
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">Punch Gateway</p>
-              <p className="font-semibold text-foreground">
-                {assignedPunchMethod === "GPS" ? "SF HQ (37.7749° N, -122.4194° W)" :
-                 assignedPunchMethod === "Biometric" ? "Terminal BIO-01 (Turnstile Gate A)" :
-                 assignedPunchMethod === "Face" ? "Tablet Scanner #04 (Lobby Entrance)" :
-                 "Web Application Portal"}
-              </p>
-            </div>
-          </div>
-
-          <div className="p-2.5 rounded-xl bg-card border flex items-center gap-2.5">
-            <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">Verification Status</p>
-              <p className="font-semibold text-emerald-600 flex items-center gap-1">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
-                {assignedPunchMethod === "GPS" ? "Inside 150m Perimeter" :
-                 assignedPunchMethod === "Biometric" ? "Smart NFC #99481 Synced" :
-                 assignedPunchMethod === "Face" ? "Biometric ID: 99.2% Confirmed" :
-                 "Authorized User Token"}
-              </p>
-            </div>
-          </div>
-
-          <div className="p-2.5 rounded-xl bg-card border flex items-center gap-2.5">
-            <Clock className="size-4 text-amber-500 shrink-0" />
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">Today's Total Hours</p>
-              <p className="font-mono font-bold text-foreground">{todayRecord?.hours_worked ? `${todayRecord.hours_worked} hrs` : todayRecord?.check_in ? "In Progress..." : "0.0 hrs"}</p>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {emp && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="p-5 md:col-span-1 border bg-card relative overflow-hidden flex flex-col justify-between rounded-2xl">
-            <div>
-              <p className="text-xs text-muted-foreground uppercase font-bold mb-2">Today's Presence</p>
-              <h3 className="text-2xl font-black mb-1">
-                {todayRecord ? todayRecord.status : "Not Clocked In"}
-              </h3>
-              <p className="text-xs text-muted-foreground">Punch Method: {todayRecord?.method || assignedPunchMethod}</p>
-            </div>
-            <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <p className="text-muted-foreground">In Time</p>
-                <p className="font-mono font-bold">{formatTime(todayRecord?.check_in)}</p>
+      {essAttendanceView === "calendar" ? (
+        <AttendanceCalendarView
+          attendanceRecords={attendance}
+          isEssMode={true}
+          currentEmployee={emp}
+        />
+      ) : (
+        <>
+          {/* ─── HR ASSIGNED PUNCH METHOD POLICY CONTAINER ─── */}
+          <Card className="p-5 border bg-gradient-to-r from-primary/5 via-card to-indigo-500/5 rounded-2xl">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-primary/10 text-primary border border-primary/20">
+                    HR Authorized Policy
+                  </span>
+                  <h4 className="font-bold text-foreground text-sm">
+                    Designated Punch Method: <span className="text-primary font-black">{assignedPunchMethod === "GPS" ? "GPS Geofence Tracking" : assignedPunchMethod === "Biometric" ? "Hardware Biometric / RFID Keycard" : assignedPunchMethod === "Face" ? "Facial Recognition AI Turnstile" : "Web Portal 1-Click"}</span>
+                  </h4>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {assignedPunchMethod === "GPS" ? "Your check-ins are verified against authorized office geofences (San Francisco HQ 150m radius & Oakland Campus)." :
+                   assignedPunchMethod === "Biometric" ? "Your attendance is captured automatically via physical biometric turnstile terminal (BIO-01 ZKTeco Main Gate)." :
+                   assignedPunchMethod === "Face" ? "Your presence is verified automatically at building entrance camera scanner (HQ Lobby Cam-1)." :
+                   "You are authorized for standard browser portal clock-in/out."}
+                </p>
               </div>
-              <div>
-                <p className="text-muted-foreground">Out Time</p>
-                <p className="font-mono font-bold">{formatTime(todayRecord?.check_out)}</p>
-              </div>
-            </div>
-          </Card>
 
-          <Card className="p-5 md:col-span-2 border bg-card rounded-2xl">
-            <h3 className="font-bold text-base mb-4 flex items-center gap-2"><Clock className="size-4 text-primary" /> Recent Attendance History</h3>
-            {loading && attendance.length === 0 ? (
-              <div className="flex justify-center py-6"><Loader2 className="size-6 animate-spin text-primary" /></div>
-            ) : attendance.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic py-4">No timesheet records recorded in database yet.</p>
-            ) : (
-              <div className="divide-y max-h-48 overflow-y-auto space-y-2">
-                {attendance.map(record => (
-                  <div key={record.id} className="flex justify-between items-center py-2 text-xs">
-                    <div>
-                      <p className="font-semibold">{formatDate(record.date, { weekday: 'short', month: 'short', day: 'numeric' })}</p>
-                      <p className="text-muted-foreground text-[10px]">Punch Method: {record.method}</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      {record.hours_worked && <span className="font-mono text-muted-foreground">{record.hours_worked} hrs</span>}
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${attStatusStyle(record.status)}`}>
-                        {record.status}
-                      </span>
-                    </div>
-                  </div>
+              {/* Quick Method Simulator Switcher */}
+              <div className="flex items-center gap-1 p-1 bg-muted/60 rounded-xl border text-xs">
+                {(["GPS", "Biometric", "Face", "Web"] as const).map(m => (
+                  <button
+                    key={m}
+                    onClick={() => setAssignedPunchMethod(m)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${assignedPunchMethod === m ? "bg-card shadow-xs text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {m}
+                  </button>
                 ))}
               </div>
-            )}
+            </div>
+
+            {/* Method-Specific Status Badge */}
+            <div className="mt-4 pt-3.5 border-t grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-2.5 rounded-xl bg-card border flex items-center gap-2.5">
+                {assignedPunchMethod === "GPS" ? <MapPin className="size-4 text-emerald-500 shrink-0" /> :
+                 assignedPunchMethod === "Biometric" ? <Fingerprint className="size-4 text-indigo-500 shrink-0" /> :
+                 assignedPunchMethod === "Face" ? <Camera className="size-4 text-purple-500 shrink-0" /> :
+                 <Clock className="size-4 text-blue-500 shrink-0" />}
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Punch Gateway</p>
+                  <p className="font-semibold text-foreground">
+                    {assignedPunchMethod === "GPS" ? "SF HQ (37.7749° N, -122.4194° W)" :
+                     assignedPunchMethod === "Biometric" ? "Terminal BIO-01 (Turnstile Gate A)" :
+                     assignedPunchMethod === "Face" ? "Tablet Scanner #04 (Lobby Entrance)" :
+                     "Web Application Portal"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-card border flex items-center gap-2.5">
+                <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Verification Status</p>
+                  <p className="font-semibold text-emerald-600 flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
+                    {assignedPunchMethod === "GPS" ? "Inside 150m Perimeter" :
+                     assignedPunchMethod === "Biometric" ? "Smart NFC #99481 Synced" :
+                     assignedPunchMethod === "Face" ? "Biometric ID: 99.2% Confirmed" :
+                     "Authorized User Token"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-card border flex items-center gap-2.5">
+                <Clock className="size-4 text-amber-500 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Today's Total Hours</p>
+                  <p className="font-mono font-bold text-foreground">{todayRecord?.hours_worked ? `${todayRecord.hours_worked} hrs` : todayRecord?.check_in ? "In Progress..." : "0.0 hrs"}</p>
+                </div>
+              </div>
+            </div>
           </Card>
-        </div>
+
+          {emp && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="p-5 md:col-span-1 border bg-card relative overflow-hidden flex flex-col justify-between rounded-2xl">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase font-bold mb-2">Today's Presence</p>
+                  <h3 className="text-2xl font-black mb-1">
+                    {todayRecord ? todayRecord.status : "Not Clocked In"}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">Punch Method: {todayRecord?.method || assignedPunchMethod}</p>
+                </div>
+                <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">In Time</p>
+                    <p className="font-mono font-bold">{formatTime(todayRecord?.check_in)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Out Time</p>
+                    <p className="font-mono font-bold">{formatTime(todayRecord?.check_out)}</p>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-5 md:col-span-2 border bg-card rounded-2xl">
+                <h3 className="font-bold text-base mb-4 flex items-center gap-2"><Clock className="size-4 text-primary" /> Recent Attendance History</h3>
+                {loading && attendance.length === 0 ? (
+                  <div className="flex justify-center py-6"><Loader2 className="size-6 animate-spin text-primary" /></div>
+                ) : attendance.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic py-4">No timesheet records recorded in database yet.</p>
+                ) : (
+                  <div className="divide-y max-h-48 overflow-y-auto space-y-2">
+                    {attendance.map(record => (
+                      <div key={record.id} className="flex justify-between items-center py-2 text-xs">
+                        <div>
+                          <p className="font-semibold">{formatDate(record.date, { weekday: 'short', month: 'short', day: 'numeric' })}</p>
+                          <p className="text-muted-foreground text-[10px]">Punch Method: {record.method}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          {record.hours_worked && <span className="font-mono text-muted-foreground">{record.hours_worked} hrs</span>}
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${attStatusStyle(record.status)}`}>
+                            {record.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+        </>
       )}
 
       {/* ─── DIGITAL VCARD & SMART QR BUSINESS CARD MODAL ─────────── */}

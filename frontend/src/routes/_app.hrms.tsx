@@ -193,29 +193,10 @@ function HrmsModule() {
     return <Unauthorized />;
   }
 
-  let activeTab = "dashboard";
+  let activeTab = "employees";
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
     activeTab = params.get("tab") || "employees";
-  }
-
-  if (activeTab === "dashboard") {
-    if (hasPermission("view:hrms_employees")) {
-      activeTab = "employees";
-    } else if (hasPermission("view:ess_attendance")) {
-      activeTab = "ess_attendance";
-    } else {
-      // Find the first tab they have permission for
-      const allowedTab = Object.keys(tabPermissions).find(t => hasPermission(tabPermissions[t]));
-      if (allowedTab) {
-        activeTab = allowedTab;
-      }
-    }
-  }
-
-  const requiredPerm = tabPermissions[activeTab];
-  if (requiredPerm && !hasPermission(requiredPerm)) {
-    return <Unauthorized />;
   }
 
   const formatTitle = (str: string) =>
@@ -235,10 +216,38 @@ function HrmsModule() {
             transition={{ duration: 0.2 }}
             className="min-h-full"
           >
-            <ActiveComponent tab={activeTab} />
+            <ComponentErrorBoundary componentName={activeTab}>
+              <ActiveComponent tab={activeTab} />
+            </ComponentErrorBoundary>
           </motion.div>
         </AnimatePresence>
       </div>
     </div>
   );
+}
+
+class ComponentErrorBoundary extends React.Component<
+  { componentName: string; children: React.ReactNode },
+  { error: Error | null; stack: string | null }
+> {
+  state = { error: null as Error | null, stack: null as string | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error, stack: error.stack || null };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // eslint-disable-next-line no-console
+    console.error(`[HRMS:ComponentErrorBoundary:${this.props.componentName}]`, error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 space-y-3 bg-red-50/50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-xl">
+          <h2 className="text-lg font-bold text-red-600">Component Error: {this.props.componentName}</h2>
+          <p className="text-sm text-foreground font-mono">{this.state.error.message}</p>
+          <pre className="text-[10px] bg-muted p-3 rounded overflow-auto max-h-60">{this.state.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
