@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Printer, X } from 'lucide-react';
 import { getActiveInvoicePrintTemplate } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 export interface FullInvoiceData {
   invoice_number?: string;
@@ -56,6 +57,16 @@ interface FullInvoicePrinterProps {
   customTemplate?: any;
 }
 
+const STATE_GST_CODES: Record<string, string> = {
+  "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab", "04": "Chandigarh",
+  "05": "Uttarakhand", "06": "Haryana", "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
+  "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh", "13": "Nagaland", "14": "Manipur",
+  "15": "Mizoram", "16": "Tripura", "17": "Meghalaya", "18": "Assam", "19": "West Bengal",
+  "20": "Jharkhand", "21": "Odisha", "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
+  "27": "Maharashtra", "29": "Karnataka", "30": "Goa", "32": "Kerala", "33": "Tamil Nadu",
+  "36": "Telangana", "37": "Andhra Pradesh", "38": "Ladakh"
+};
+
 export function FullInvoicePrinter({
   invoice,
   isOpen,
@@ -64,6 +75,7 @@ export function FullInvoicePrinter({
   customTemplate,
 }: FullInvoicePrinterProps) {
   const { currency } = useCurrency();
+  const { tenant } = useTenant();
   const printContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -355,16 +367,24 @@ export function FullInvoicePrinter({
               >
                 <div className="space-y-1 max-w-[60%]">
                   {f.showLogo && (
-                    <div className="flex items-center gap-2 mb-1">
-                      <div
-                        className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-extrabold text-base shadow-sm"
-                        style={{ backgroundColor: primaryColor }}
-                      >
-                        {template.storeName ? template.storeName.substring(0, 2).toUpperCase() : 'LM'}
-                      </div>
+                    <div className="flex items-center gap-2.5 mb-1">
+                      {(template.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url) ? (
+                        <img
+                          src={template.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url}
+                          alt="Logo"
+                          className="h-10 max-w-[140px] object-contain rounded-lg shadow-2xs"
+                        />
+                      ) : (
+                        <div
+                          className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-extrabold text-base shadow-sm shrink-0"
+                          style={{ backgroundColor: primaryColor }}
+                        >
+                          {template.storeName ? template.storeName.substring(0, 2).toUpperCase() : (tenant?.name ? tenant.name.substring(0, 2).toUpperCase() : 'LM')}
+                        </div>
+                      )}
                       <div>
                         <h2 className="font-extrabold text-base text-slate-900 leading-tight">
-                          {template.storeName || 'LazyMonkeyAI'}
+                          {template.storeName || tenant?.name || 'BusinessOS AI'}
                         </h2>
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                           Authorized Business Partner
@@ -428,7 +448,7 @@ export function FullInvoicePrinter({
                     <div>
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
                       <p className="text-[10px] font-bold text-slate-800 mt-0.5">
-                        {isInterState ? (customerGstin ? `Inter-State (${customerStateCode})` : 'Inter-State') : `Andhra Pradesh (${sellerStateCode})`}
+                        {isInterState ? (customerGstin ? `Inter-State (${customerStateCode})` : 'Inter-State') : `${STATE_GST_CODES[sellerStateCode] || 'Intra-State'} (${sellerStateCode})`}
                       </p>
                       {invoice.customerType && (
                         <p className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded inline-block border border-indigo-100 mt-0.5">

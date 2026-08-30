@@ -126,7 +126,7 @@ const moduleDisplayList = [
     group: "HRMS", 
     label: "HRMS", 
     icon: UsersRound, 
-    defaultTo: "/hrms?tab=dashboard", 
+    defaultTo: "/hrms?tab=employees", 
     permission: "view:hrms",
     activeText: "text-fuchsia-600",
     activeBg: "bg-fuchsia-50/90",

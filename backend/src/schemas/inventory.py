@@ -56,6 +56,8 @@ class UnitOfMeasureBase(BaseModel):
 
 
 class ProductBase(BaseModel):
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
+
     name: str = Field(..., max_length=255)
     sku: Optional[str] = Field(None, max_length=100)
     barcode: Optional[str] = Field(None, max_length=100)

@@ -10,22 +10,53 @@ export function RibbonNavigation() {
   const navigate = useNavigate();
   const { hasPermission } = useRbac();
 
-  // Filter nav groups to only those the user is permitted to see
+  // Filter nav groups and sub-items to only those the user is permitted to see
   const visibleNav = useMemo(() => {
-    return nav.filter((group) => {
-      if (!group.permission) return true;
-      return hasPermission(group.permission);
-    });
+    return nav
+      .filter((group) => !group.permission || hasPermission(group.permission))
+      .map((group) => {
+        const filteredItems = group.items
+          .filter((item) => {
+            if (item.permission && !hasPermission(item.permission)) {
+              if (item.subItems && item.subItems.some((s) => !s.permission || hasPermission(s.permission))) {
+                return true;
+              }
+              return false;
+            }
+            return true;
+          })
+          .map((item) => {
+            if (!item.subItems) return item;
+            return {
+              ...item,
+              subItems: item.subItems.filter((s) => !s.permission || hasPermission(s.permission)),
+            };
+          });
+        return {
+          ...group,
+          items: filteredItems,
+        };
+      })
+      .filter((group) => group.items.length > 0);
   }, [hasPermission]);
 
   // Find active items based on URL + Search string
   const currentPathWithSearch = location.href;
   const currentPath = location.pathname;
 
-  let activeG = visibleNav.find(g => g.group === "Core ERP") || visibleNav[0] || nav[0];
+  // 1. First find matching group by current pathname
+  let activeG = visibleNav.find(g => 
+    g.items.some(it => {
+      const itPath = it.to.split("?")[0];
+      if (itPath === currentPath) return true;
+      return it.subItems?.some(sub => sub.to.split("?")[0] === currentPath);
+    })
+  ) || visibleNav.find(g => g.group === "Core ERP") || visibleNav[0] || nav[0];
+
   let activeI = activeG?.items[0];
   let activeS = activeG?.items[0]?.subItems?.[0];
 
+  // 2. Refine active group, item, and subItem by exact search query match
   for (const group of visibleNav) {
     for (const item of group.items) {
       if (item.subItems) {
@@ -46,29 +77,10 @@ export function RibbonNavigation() {
     }
   }
 
-  // Fallback to pathname matching if no search param match
-  if (!activeG || (activeG === visibleNav[0] && location.pathname !== "/dashboard")) {
-    for (const group of visibleNav) {
-      for (const item of group.items) {
-        if (item.subItems) {
-          for (const sub of item.subItems) {
-            if (sub.to.startsWith(currentPath)) {
-              activeG = group;
-              activeI = item;
-              activeS = sub;
-              break;
-            }
-          }
-        } else {
-          if (item.to.startsWith(currentPath)) {
-            activeG = group;
-            activeI = item;
-            activeS = undefined;
-            break;
-          }
-        }
-      }
-    }
+  // 3. Fallback to first item/subitem within activeG if no subItem matched
+  if (!activeI && activeG?.items?.length > 0) {
+    activeI = activeG.items[0];
+    activeS = activeG.items[0]?.subItems?.[0];
   }
 
   const [activeGroup, setActiveGroup] = useState<NavGroup>(activeG);

@@ -71,7 +71,7 @@ export function useCrmData(): CrmData {
       }
     };
     fetchAll();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   return {
     mockCrmStats,

@@ -34,6 +34,7 @@ import { Feedback } from "@/components/crm/Feedback";
 import { CustomerTimeline } from "@/components/crm/CustomerTimeline";
 
 // Communication
+import { AiCallLogs } from "@/components/crm/AiCallLogs";
 import { EmailCampaigns } from "@/components/crm/EmailCampaigns";
 import { SmsCampaigns } from "@/components/crm/SmsCampaigns";
 import { WhatsappCampaigns } from "@/components/crm/WhatsappCampaigns";
@@ -81,7 +82,10 @@ const componentMap: Record<string, React.ElementType> = {
   feedback: Feedback,
   customer_timeline: CustomerTimeline,
 
-  // Communication
+  // Communication & AI Calling
+  ai_call_logs: AiCallLogs,
+  ai_calling: AiCallLogs,
+  call_logs: AiCallLogs,
   email_campaigns: EmailCampaigns,
   sms_campaigns: SmsCampaigns,
   whatsapp_campaigns: WhatsappCampaigns,

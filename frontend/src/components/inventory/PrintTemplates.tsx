@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 export interface PrintTemplate {
   id: string;
@@ -31,6 +32,7 @@ export interface PrintTemplate {
   primaryColor: string;
   paperBgColor?: string; // Custom sheet/paper background color
   fontFamily: string;
+  logoUrl?: string;
   headerTitle?: string;
   storeName?: string;
   storeAddress?: string;
@@ -651,6 +653,7 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
 
 export function PrintTemplates() {
     const { currency, formatCurrency } = useCurrency();
+    const { tenant } = useTenant();
   const [activeCategory, setActiveCategory] = useState<"invoices" | "thermal" | "barcodes" | "qrcodes">("invoices");
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
     const saved = localStorage.getItem("businessos_print_templates_v1");
@@ -1464,6 +1467,66 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                     </label>
                   </div>
 
+                  {/* Logo Upload & Input */}
+                  <div className="p-3.5 rounded-xl border bg-muted/20 space-y-2.5">
+                    <label className="block text-xs font-semibold text-foreground">
+                      Template / Store Logo
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <div className="size-12 rounded-lg border bg-background flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                        {(form.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url) ? (
+                          <img src={form.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url || ""} alt="Logo" className="w-full h-full object-contain p-1" />
+                        ) : (
+                          <span className="text-xs font-bold text-muted-foreground uppercase">{form.storeName?.slice(0, 2) || "LOGO"}</span>
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-1.5">
+                        <div className="flex gap-2">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            id="tpl-logo-file"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (re) => {
+                                  if (typeof re.target?.result === "string") {
+                                    setForm({ ...form, logoUrl: re.target!.result as string });
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor="tpl-logo-file"
+                            className="px-2.5 py-1 rounded-lg border text-xs font-semibold hover:bg-muted/40 cursor-pointer flex items-center gap-1 shadow-2xs"
+                          >
+                            <Upload className="size-3 text-primary" /> Upload Image
+                          </label>
+                          {form.logoUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setForm({ ...form, logoUrl: "" })}
+                              className="px-2 py-1 rounded-lg border text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                            >
+                              Reset
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={form.logoUrl || ""}
+                          onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
+                          placeholder="Or paste Direct Image URL / Base64 Data URL..."
+                          className="w-full rounded-lg border border-input bg-background px-2.5 py-1 text-xs text-foreground font-mono focus:border-primary focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3 pt-2">
                     <div>
                       <label className="block text-xs font-semibold text-foreground mb-1">
@@ -2052,14 +2115,22 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
              style={(!isTally && !isSimple && !isModern) ? { borderBottom: `2px solid ${template.primaryColor}` } : {}}>
           <div>
             {f.showLogo && (
-              <div className="flex items-center gap-2 mb-2">
-                <div
-                  className="h-9 w-9 rounded-xl flex items-center justify-center text-white font-bold text-sm"
-                  style={{ backgroundColor: template.primaryColor }}
-                >
-                  {template.storeName ? template.storeName.substring(0, 2).toUpperCase() : "IS"}
-                </div>
-                <span className="font-bold text-base text-slate-900">{template.storeName}</span>
+              <div className="flex items-center gap-2.5 mb-2">
+                {(template.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url) ? (
+                  <img
+                    src={template.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url}
+                    alt="Logo"
+                    className="h-9 max-w-[120px] object-contain rounded-lg shadow-2xs"
+                  />
+                ) : (
+                  <div
+                    className="h-9 w-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
+                    style={{ backgroundColor: template.primaryColor }}
+                  >
+                    {template.storeName ? template.storeName.substring(0, 2).toUpperCase() : (tenant?.name ? tenant.name.substring(0, 2).toUpperCase() : "IS")}
+                  </div>
+                )}
+                <span className="font-bold text-base text-slate-900">{template.storeName || tenant?.name}</span>
               </div>
             )}
             {!f.showLogo && (

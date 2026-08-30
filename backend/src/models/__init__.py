@@ -239,7 +239,10 @@ class Company(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     tax_config_label: Mapped[str | None] = mapped_column(String(100))
     plan: Mapped[str | None] = mapped_column(String(50))
     logo_initials: Mapped[str | None] = mapped_column(String(5))
+    logo_url: Mapped[str | None] = mapped_column(Text)
     established_date: Mapped[date | None] = mapped_column(Date)
+    gst_registrations: Mapped[list | None] = mapped_column(JSONB, default=list)
+    gsp_credentials: Mapped[dict | None] = mapped_column(JSONB, default=dict)
     status: Mapped[EntityStatus] = mapped_column(
         Enum(EntityStatus, name="entity_status", create_constraint=False),
         default=EntityStatus.ACTIVE,
@@ -883,6 +886,9 @@ class Employee(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(String(30), default="Active")  # Active|On Leave|Inactive
     basic_salary: Mapped[float | None] = mapped_column(Numeric(12, 2))
     sales_points: Mapped[float | None] = mapped_column(Numeric(12, 2), default=0.0)
+    punch_method: Mapped[str] = mapped_column(String(50), default="GPS")  # GPS|Biometric|Face|Web|Manual
+    biometric_pin: Mapped[str | None] = mapped_column(String(50))
+    nfc_card_number: Mapped[str | None] = mapped_column(String(50))
     
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
     branch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="SET NULL"))
@@ -1421,10 +1427,10 @@ class Customer(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     email: Mapped[str | None] = mapped_column(String(255), index=True)
-    phone: Mapped[str | None] = mapped_column(String(30))
+    phone: Mapped[str | None] = mapped_column(String(100))
     company_name: Mapped[str | None] = mapped_column(String(255))
     customer_type: Mapped[str] = mapped_column(String(50), default="Retail")
-    status: Mapped[str] = mapped_column(String(30), default="Active")
+    status: Mapped[str] = mapped_column(String(50), default="Active")
     address: Mapped[str | None] = mapped_column(Text)
     billing_address: Mapped[str | None] = mapped_column(Text)
     shipping_address: Mapped[str | None] = mapped_column(Text)
@@ -1439,29 +1445,36 @@ class Lead(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     company_name: Mapped[str | None] = mapped_column(String(255), index=True)
     email: Mapped[str | None] = mapped_column(String(255), index=True)
-    phone: Mapped[str | None] = mapped_column(String(30))
-    status: Mapped[str] = mapped_column(String(30), default="New", index=True)
-    source: Mapped[str | None] = mapped_column(String(100))
+    phone: Mapped[str | None] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(50), default="New", index=True)
+    source: Mapped[str | None] = mapped_column(String(150))
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     estimated_value: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     lost_reason: Mapped[str | None] = mapped_column(String(255))
+    call_disposition: Mapped[str | None] = mapped_column(String(100))
+    call_duration_minutes: Mapped[int | None] = mapped_column(Integer, default=0)
+    customer_response: Mapped[str | None] = mapped_column(Text)
     
-    external_id: Mapped[str | None] = mapped_column(String(100), index=True)
-    external_source: Mapped[str | None] = mapped_column(String(50), index=True)
+    external_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    external_source: Mapped[str | None] = mapped_column(String(100), index=True)
     meta: Mapped[dict | None] = mapped_column(JSONB, default=dict)
     ai_score: Mapped[int | None] = mapped_column(Integer)
-    ai_sentiment: Mapped[str | None] = mapped_column(String(50))
+    ai_sentiment: Mapped[str | None] = mapped_column(String(100))
 
 
 class LeadActivity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "crm_lead_activities"
 
-    lead_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="CASCADE"), nullable=False, index=True)
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="CASCADE"), nullable=True, index=True)
+    opportunity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_opportunities.id", ondelete="CASCADE"), nullable=True, index=True)
     activity_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    summary: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    call_disposition: Mapped[str | None] = mapped_column(String(100))
+    call_duration_minutes: Mapped[int | None] = mapped_column(Integer, default=0)
+    customer_response: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
 
@@ -1472,8 +1485,8 @@ class CRMSupportTicket(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
     customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="SET NULL"))
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    priority: Mapped[str] = mapped_column(String(30), default="Medium")  # Low|Medium|High
-    status: Mapped[str] = mapped_column(String(30), default="Open")  # Open|In Progress|Resolved|Closed
+    priority: Mapped[str] = mapped_column(String(50), default="Medium")  # Low|Medium|High
+    status: Mapped[str] = mapped_column(String(50), default="Open")  # Open|In Progress|Resolved|Closed
     category: Mapped[str] = mapped_column(String(100), default="Support")
     ai_summary: Mapped[str | None] = mapped_column(Text)
 
@@ -1487,7 +1500,7 @@ class CRMQuotation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin)
     subtotal: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     tax: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     total: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
-    status: Mapped[str] = mapped_column(String(30), default="Draft")  # Draft|Sent|Accepted|Declined|Expired
+    status: Mapped[str] = mapped_column(String(50), default="Draft")  # Draft|Sent|Accepted|Declined|Expired
 
 
 class CRMSalesOrder(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
@@ -1497,8 +1510,8 @@ class CRMSalesOrder(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
     order_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     items: Mapped[dict | None] = mapped_column(JSONB, default=dict)
     total: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
-    status: Mapped[str] = mapped_column(String(30), default="Pending")  # Pending|Processing|Shipped|Delivered|Cancelled
-    payment_status: Mapped[str] = mapped_column(String(30), default="Unpaid")  # Unpaid|Partially Paid|Paid
+    status: Mapped[str] = mapped_column(String(50), default="Pending")  # Pending|Processing|Shipped|Delivered|Cancelled
+    payment_status: Mapped[str] = mapped_column(String(50), default="Unpaid")  # Unpaid|Partially Paid|Paid
 
 
 class CRMOpportunity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
@@ -1516,6 +1529,11 @@ class CRMOpportunity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     next_step_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     forecast_category: Mapped[str] = mapped_column(String(30), default="Pipeline")
     lost_reason: Mapped[str | None] = mapped_column(String(255))
+    notes: Mapped[str | None] = mapped_column(Text)
+    call_disposition: Mapped[str | None] = mapped_column(String(100))
+    call_duration_minutes: Mapped[int | None] = mapped_column(Integer, default=0)
+    customer_response: Mapped[str | None] = mapped_column(Text)
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class OrganizationIntegration(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -1705,7 +1723,35 @@ class Discount(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(String(50), default="active")
 
 
+class CRMCallLog(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """AI Voice and Telephony Call logs for Sales and CRM."""
+    __tablename__ = "crm_call_logs"
+
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # lead | customer | opportunity | deal | quotation | order | ticket | complaint
+    target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    contact_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    
+    status: Mapped[str] = mapped_column(String(50), default="Completed", index=True)  # Completed | In Progress | No Answer | Busy | Failed | Scheduled
+    direction: Mapped[str] = mapped_column(String(20), default="Outbound")  # Outbound | Inbound
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    agent_persona: Mapped[str] = mapped_column(String(100), default="Alex - Senior Solutions & Sales Closer")
+    call_mode: Mapped[str] = mapped_column(String(50), default="browser_ai")  # browser_ai | livekit_sip | webrtc
+    
+    transcript: Mapped[list | None] = mapped_column(JSONB, default=list)  # [{"speaker": "AI"|"User", "text": "...", "timestamp": "...", "sentiment": "..."}]
+    ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sentiment: Mapped[str | None] = mapped_column(String(50), default="Positive")  # Positive | Neutral | Negative | Objection | Highly Interested
+    qualification_score: Mapped[int | None] = mapped_column(Integer, default=85)
+    action_items: Mapped[list | None] = mapped_column(JSONB, default=list)  # ["Send revised quotation", "Schedule demo on Tuesday"]
+    recording_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
 
 from .erp import *
 from .inventory import *
 from .procurement import *
+

@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Filter, MoreHorizontal, Target, Calendar, User } from "lucide-react";
+import {
+  Plus, Search, Filter, MoreHorizontal, Target, Calendar, User, PhoneCall,
+  ClipboardList, FileText, PhoneForwarded
+} from "lucide-react";
 
 import { crmOpportunitiesApi, type CrmOpportunity } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -16,19 +19,23 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCurrency } from "@/hooks/use-currency";
+import { AiCallingModal } from "./AiCallingModal";
+import { NotesAndDispositionModal } from "./NotesAndDispositionModal";
 
 interface Props {
   tab?: string;
 }
 
 export function Deals({ tab = "all_deals" }: Props) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [deals, setDeals] = useState<CrmOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [callingDeal, setCallingDeal] = useState<CrmOpportunity | null>(null);
+  const [notesTargetDeal, setNotesTargetDeal] = useState<CrmOpportunity | null>(null);
   const [newDeal, setNewDeal] = useState({ name: "", customer_name: "", amount: 0, probability: 50, stage: "Prospecting" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const stages = ["Prospecting", "Qualification", "Needs Analysis", "Value Proposition", "Negotiation", "Closed Won", "Closed Lost"];
@@ -65,7 +72,7 @@ export function Deals({ tab = "all_deals" }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     void fetchDeals();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   const moveDeal = async (id: string, stage: string) => {
     try {
@@ -186,7 +193,14 @@ export function Deals({ tab = "all_deals" }: Props) {
                       style={{ borderLeftColor: `hsl(var(--primary))` }}
                     >
                       <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-bold text-foreground text-sm leading-tight pr-4">{deal.name}</h4>
+                        <h4 className="font-bold text-foreground text-sm leading-tight pr-2">{deal.name}</h4>
+                        <button
+                          onClick={() => setCallingDeal(deal)}
+                          className="p-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition shrink-0"
+                          title="Start AI Deal Call"
+                        >
+                          <PhoneCall className="size-3.5" />
+                        </button>
                       </div>
                       <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5">
                         <Target className="size-3" /> {(deal as any).customer_name || "Robert Johnson (Lead)"}
@@ -205,6 +219,32 @@ export function Deals({ tab = "all_deals" }: Props) {
                         </select>
                       </div>
 
+                      {/* ── Call Disposition & Notes Badge Block ── */}
+                      {deal.call_disposition && (
+                        <div className="mt-2 mb-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-[10px] text-indigo-700 dark:text-indigo-300">
+                          <PhoneForwarded className="size-3 shrink-0 text-indigo-600" />
+                          <span className="font-bold truncate">{deal.call_disposition}</span>
+                          {deal.call_duration_minutes ? (
+                            <span className="text-muted-foreground ml-auto shrink-0 font-mono">
+                              {deal.call_duration_minutes}m
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {deal.customer_response && (
+                        <div className="mb-2 px-2.5 py-1 rounded-md bg-muted/40 border border-border/50 text-[10px] text-foreground italic line-clamp-2">
+                          "{deal.customer_response}"
+                        </div>
+                      )}
+
+                      {deal.notes && !deal.customer_response && (
+                        <div className="mb-2 flex items-center gap-1 text-[10px] text-muted-foreground line-clamp-1">
+                          <FileText className="size-3 shrink-0 text-indigo-500" />
+                          <span className="truncate">{deal.notes}</span>
+                        </div>
+                      )}
+
                       <div className="flex justify-between items-center text-[10px] text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Calendar className="size-3" /> 
@@ -214,6 +254,15 @@ export function Deals({ tab = "all_deals" }: Props) {
                           <User className="size-3" /> {(deal as any).owner_name?.split(' ')[0] || "Admin"}
                         </div>
                       </div>
+
+                      {/* Log Call & Notes Button */}
+                      <button
+                        onClick={() => setNotesTargetDeal(deal)}
+                        className="mt-2.5 w-full flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border border-border/80 bg-background hover:bg-muted text-foreground transition-colors"
+                      >
+                        <ClipboardList className="size-3 text-indigo-600" />
+                        Log Call & Notes
+                      </button>
                     </motion.div>
                   ))}
                 </div>
@@ -221,6 +270,61 @@ export function Deals({ tab = "all_deals" }: Props) {
             );
           })}
         </div>
+      )}
+
+      {/* Universal AI Calling Modal */}
+      {callingDeal && (
+        <AiCallingModal
+          open={!!callingDeal}
+          onClose={() => setCallingDeal(null)}
+          targetType="deal"
+          targetId={callingDeal.id}
+          contactName={(callingDeal as any).customer_name || callingDeal.name}
+          contactPhone={(callingDeal as any).contact_phone || undefined}
+          contactEmail={(callingDeal as any).contact_email || undefined}
+          companyName={(callingDeal as any).company_name || undefined}
+          dealValue={callingDeal.amount}
+          defaultNotes={`Deal: ${callingDeal.name}, Current Stage: ${callingDeal.stage}, Value: ${callingDeal.amount}`}
+          onCallCompleted={async () => {
+            await fetchDeals();
+          }}
+        />
+      )}
+
+      {/* Manual Call Disposition & Notes Modal for Deals */}
+      {notesTargetDeal && (
+        <NotesAndDispositionModal
+          isOpen={!!notesTargetDeal}
+          onClose={() => setNotesTargetDeal(null)}
+          entityType="opportunity"
+          entityId={notesTargetDeal.id}
+          entityName={notesTargetDeal.name}
+          entityCompany={(notesTargetDeal as any).customer_name}
+          entityPhone={(notesTargetDeal as any).contact_phone}
+          currentStatus={notesTargetDeal.stage}
+          availableStatuses={stages}
+          initialNotes={notesTargetDeal.notes}
+          initialDisposition={notesTargetDeal.call_disposition}
+          initialMinutes={notesTargetDeal.call_duration_minutes}
+          initialResponse={notesTargetDeal.customer_response}
+          initialNextFollowup={notesTargetDeal.next_step_at}
+          onSaveSuccess={(updated) => {
+            setDeals((prev) =>
+              prev.map((d) =>
+                d.id === notesTargetDeal.id
+                  ? {
+                      ...d,
+                      ...(updated.status ? { stage: updated.status } : {}),
+                      notes: updated.notes !== undefined ? updated.notes : d.notes,
+                      call_disposition: updated.call_disposition !== undefined ? updated.call_disposition : d.call_disposition,
+                      call_duration_minutes: updated.call_duration_minutes !== undefined ? updated.call_duration_minutes : d.call_duration_minutes,
+                      customer_response: updated.customer_response !== undefined ? updated.customer_response : d.customer_response,
+                    }
+                  : d
+              )
+            );
+          }}
+        />
       )}
     </div>
   );

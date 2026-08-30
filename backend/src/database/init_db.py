@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -50,6 +51,8 @@ async def init_database() -> None:
 
     # Ensure new columns on existing PostgreSQL tables always runs
     migration_statements = [
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gst_registrations JSONB DEFAULT '[]'::jsonb;",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gsp_credentials JSONB DEFAULT '{}'::jsonb;",
         "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS uom VARCHAR(50) DEFAULT 'Pcs';",
         "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS cost_price NUMERIC(15, 2) DEFAULT 0.0;",
         "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS mrp NUMERIC(15, 2) DEFAULT 0.0;",
@@ -100,7 +103,20 @@ async def init_database() -> None:
         SET cost_price = 65.00, selling_price = 95.00, mrp = 120.00
         WHERE (cost_price IS NULL OR cost_price = 0) AND (mrp IS NULL OR mrp = 0);
         """,
-        "UPDATE ar_invoices SET balance_due = 0.0 WHERE lower(status) IN ('paid', 'completed', 'voided', 'cancelled') OR (amount_paid IS NOT NULL AND total_amount IS NOT NULL AND amount_paid >= total_amount - 0.05);"
+        "UPDATE ar_invoices SET balance_due = 0.0 WHERE lower(status) IN ('paid', 'completed', 'voided', 'cancelled') OR (amount_paid IS NOT NULL AND total_amount IS NOT NULL AND amount_paid >= total_amount - 0.05);",
+        "ALTER TABLE crm_leads ALTER COLUMN phone TYPE VARCHAR(100);",
+        "ALTER TABLE crm_leads ALTER COLUMN status TYPE VARCHAR(50);",
+        "ALTER TABLE crm_leads ALTER COLUMN source TYPE VARCHAR(150);",
+        "ALTER TABLE crm_leads ALTER COLUMN external_id TYPE VARCHAR(255);",
+        "ALTER TABLE crm_leads ALTER COLUMN external_source TYPE VARCHAR(100);",
+        "ALTER TABLE crm_leads ALTER COLUMN ai_sentiment TYPE VARCHAR(100);",
+        "ALTER TABLE crm_customers ALTER COLUMN phone TYPE VARCHAR(100);",
+        "ALTER TABLE crm_customers ALTER COLUMN status TYPE VARCHAR(50);",
+        "ALTER TABLE crm_support_tickets ALTER COLUMN priority TYPE VARCHAR(50);",
+        "ALTER TABLE crm_support_tickets ALTER COLUMN status TYPE VARCHAR(50);",
+        "ALTER TABLE crm_quotations ALTER COLUMN status TYPE VARCHAR(50);",
+        "ALTER TABLE crm_sales_orders ALTER COLUMN status TYPE VARCHAR(50);",
+        "ALTER TABLE crm_sales_orders ALTER COLUMN payment_status TYPE VARCHAR(50);"
     ]
 
     for stmt in migration_statements:
@@ -252,6 +268,8 @@ async def write_audit_log(
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> None:
+    safe_old = json.loads(json.dumps(old_values, default=str)) if old_values is not None else None
+    safe_new = json.loads(json.dumps(new_values, default=str)) if new_values is not None else None
     db.add(
         AuditLog(
             tenant_id=tenant_id,
@@ -260,8 +278,8 @@ async def write_audit_log(
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
-            old_values=old_values,
-            new_values=new_values,
+            old_values=safe_old,
+            new_values=safe_new,
             ip_address=ip_address,
             user_agent=user_agent,
         )
@@ -299,6 +317,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 email="alex@nimbus.com",
                 employment_type="Full-Time",
                 status="Active",
+                punch_method="GPS",
                 date_of_joining=date.today() - timedelta(days=365)
             ),
             Employee(
@@ -310,6 +329,8 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 email="james@nimbus.com",
                 employment_type="Full-Time",
                 status="Active",
+                punch_method="Biometric",
+                nfc_card_number="NFC-99481",
                 date_of_joining=date.today() - timedelta(days=300)
             ),
             Employee(
@@ -321,6 +342,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 email="sarah@nimbus.com",
                 employment_type="Full-Time",
                 status="Active",
+                punch_method="Face",
                 date_of_joining=date.today() - timedelta(days=200)
             ),
             Employee(
@@ -332,6 +354,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 email="aisha@nimbus.com",
                 employment_type="Full-Time",
                 status="Active",
+                punch_method="Web",
                 date_of_joining=date.today() - timedelta(days=150)
             )
         ]

@@ -79,14 +79,33 @@ async def create_company(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:companies"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    from src.models import Company
+    from src.models import Company, Tenant
+    from sqlalchemy.orm.attributes import flag_modified
 
     data = payload.model_dump(exclude={"status"})
     if data.get("logo_initials"):
         data["logo_initials"] = data["logo_initials"][:5]
+    
+    # If primary GST is in gst_registrations and top-level gst_number is empty, auto-set top-level
+    gst_regs = data.get("gst_registrations") or []
+    if not data.get("gst_number") and gst_regs:
+        primary_gst = next((r.get("gstin") for r in gst_regs if r.get("is_primary")), gst_regs[0].get("gstin"))
+        if primary_gst:
+            data["gst_number"] = primary_gst
+
     company = Company(tenant_id=ctx.tenant_id, status=_parse_status(payload.status), **data)
     db.add(company)
     await db.flush()
+
+    # Sync GSP credentials to Tenant settings if provided
+    gsp_creds = data.get("gsp_credentials")
+    if gsp_creds and isinstance(gsp_creds, dict):
+        tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+        if tenant:
+            t_settings = tenant.settings or {}
+            t_settings["whitebooks_config"] = gsp_creds
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
 
     await write_audit_log(
         db,
@@ -127,7 +146,8 @@ async def update_company(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:companies"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    from src.models import Company
+    from src.models import Company, Tenant
+    from sqlalchemy.orm.attributes import flag_modified
 
     company = await db.scalar(
         select(Company).where(Company.id == company_id, Company.tenant_id == ctx.tenant_id)
@@ -139,10 +159,28 @@ async def update_company(
     updates = payload.model_dump(exclude_unset=True)
     if "logo_initials" in updates and updates["logo_initials"] is not None:
         updates["logo_initials"] = updates["logo_initials"][:5]
-    if "status" in updates:
+    if "status" in updates and updates["status"] is not None:
         updates["status"] = _parse_status(updates["status"])
+
+    # Auto sync primary GSTIN
+    if "gst_registrations" in updates and updates["gst_registrations"] is not None:
+        gst_regs = updates["gst_registrations"]
+        if not updates.get("gst_number") and gst_regs:
+            primary_gst = next((r.get("gstin") for r in gst_regs if r.get("is_primary")), gst_regs[0].get("gstin"))
+            if primary_gst:
+                updates["gst_number"] = primary_gst
+
     for key, value in updates.items():
         setattr(company, key, value)
+
+    # Sync GSP credentials to Tenant settings if updated
+    if "gsp_credentials" in updates and isinstance(updates["gsp_credentials"], dict):
+        tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+        if tenant:
+            t_settings = tenant.settings or {}
+            t_settings["whitebooks_config"] = updates["gsp_credentials"]
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
 
     await write_audit_log(
         db,
@@ -158,6 +196,23 @@ async def update_company(
         user_agent=request.headers.get("user-agent"),
     )
     return company
+
+
+@router.post("/companies/test-gsp-connection")
+async def test_company_gsp_connection(
+    payload: dict,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Test live handshake with Whitebooks GSP / Government Gateway for EWB, GST, or EINV.
+    """
+    from src.services.whitebooks_service import whitebooks_service
+
+    module = payload.get("module", "ewb")
+    credentials = payload.get("credentials")
+    res = await whitebooks_service.test_module_connection(module, credentials)
+    return res
 
 
 @router.delete("/companies/{company_id}", status_code=status.HTTP_204_NO_CONTENT)

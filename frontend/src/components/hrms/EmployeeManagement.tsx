@@ -94,6 +94,8 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     employment_type: "Full-Time",
     status: "Active",
     basic_salary: "",
+    punch_method: "GPS",
+    nfc_card_number: "",
     company_id: "",
     branch_id: "",
     department_id: "",
@@ -342,6 +344,8 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       employment_type: emp.employment_type,
       status: emp.status,
       basic_salary: emp.basic_salary ? String(emp.basic_salary) : "",
+      punch_method: emp.punch_method || "GPS",
+      nfc_card_number: emp.nfc_card_number ?? "",
       company_id: emp.company_id ?? (companies[0]?.id || ""),
       branch_id: emp.branch_id ?? "",
       department_id: emp.department_id ?? "",
@@ -506,7 +510,9 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     const empCode = vCardData?.employee_code || selectedEmpForVCard?.employee_code || "EMP-001";
     const designation = vCardData?.designation || designations.find(d => d.id === selectedEmpForVCard?.designation_id)?.name || "Corporate Staff";
     const department = vCardData?.department || departments.find(d => d.id === selectedEmpForVCard?.department_id)?.name || "General Department";
-    const company = vCardData?.company_name || companies[0]?.name || "LazyMonkey AI";
+    const activeCompany = companies.find(c => c.id === selectedEmpForVCard?.company_id) || companies[0];
+    const company = vCardData?.company_name || activeCompany?.name || "BusinessOS AI";
+    const companyLogo = activeCompany?.logo_url || "";
     const email = vCardData?.email || selectedEmpForVCard?.email || "";
     const phone = vCardData?.phone || selectedEmpForVCard?.phone || "N/A";
     const qrUrl = vCardData?.qr_code_data_url || "";
@@ -754,9 +760,12 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         <body>
           <div class="page-container">
             <div class="header">
-              <div class="header-left">
-                <h1>${company}</h1>
-                <p>Official Digital Employee Identity Pass & Credential Verification</p>
+              <div class="header-left" style="display: flex; align-items: center; gap: 14px;">
+                ${companyLogo ? `<img src="${companyLogo}" alt="${company}" style="max-height: 48px; max-width: 140px; object-fit: contain;" />` : `<div style="width: 42px; height: 42px; border-radius: 8px; background: #4f46e5; color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14pt;">${activeCompany?.logo_initials || "ORG"}</div>`}
+                <div>
+                  <h1>${company}</h1>
+                  <p>Official Digital Employee Identity Pass & Credential Verification</p>
+                </div>
               </div>
               <div class="header-right">
                 <span class="badge-org">Verified Corporate Staff</span>
@@ -767,7 +776,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
             <div class="card-wrapper">
               <div class="id-badge">
                 <div class="badge-top">
-                  <h3>${company}</h3>
+                  ${companyLogo ? `<img src="${companyLogo}" alt="${company}" style="max-height: 28px; max-width: 120px; object-fit: contain; filter: brightness(0) invert(1); margin-bottom: 4px;" />` : `<h3>${company}</h3>`}
                   <span>Digital Pass & NFC vCard</span>
                 </div>
                 <div class="avatar-box">${initials}</div>
@@ -1336,6 +1345,22 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-muted-foreground uppercase">Basic Salary (USD)</label>
                   <Input type="number" value={formData.basic_salary} onChange={e => setFormData(p => ({ ...p, basic_salary: e.target.value }))} placeholder="e.g. 85000" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">HR Authorized Punch Method</label>
+                  <select value={formData.punch_method} onChange={e => setFormData(p => ({ ...p, punch_method: e.target.value }))} className="w-full h-10 px-3 text-sm rounded-md border bg-background">
+                    <option value="GPS">GPS Geofencing (150m Office Perimeter)</option>
+                    <option value="Biometric">Physical Hardware Biometric / Keycard</option>
+                    <option value="Face">Facial Recognition AI Turnstile</option>
+                    <option value="Web">Web Application 1-Click Punch</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">NFC Badge / Biometric ID (Optional)</label>
+                  <Input value={formData.nfc_card_number} onChange={e => setFormData(p => ({ ...p, nfc_card_number: e.target.value }))} placeholder="e.g. NFC-99481" />
                 </div>
               </div>
               

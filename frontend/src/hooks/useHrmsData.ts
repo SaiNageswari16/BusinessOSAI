@@ -4,7 +4,7 @@ import * as baseData from "@/data/mockHrmsData";
 export function useHrmsData() {
   const { tenant } = useTenant();
 
-  if (tenant.id === "c2") {
+  if (tenant?.id === "c2") {
     // Atlas Manufacturing (c2)
     return {
       ...baseData,
@@ -34,7 +34,7 @@ export function useHrmsData() {
     };
   }
 
-  if (tenant.id === "c3") {
+  if (tenant?.id === "c3") {
     // Helios Logistics (c3)
     return {
       ...baseData,

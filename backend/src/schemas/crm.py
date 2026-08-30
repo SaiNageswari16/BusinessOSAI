@@ -11,7 +11,7 @@ class ORMModel(BaseModel):
 class CustomerBase(BaseModel):
     name: str = Field(min_length=2, max_length=255)
     email: EmailStr | None = None
-    phone: str | None = Field(default=None, max_length=30)
+    phone: str | None = Field(default=None, max_length=100)
     company_name: str | None = Field(default=None, max_length=255)
     customer_type: str = "Retail"
     status: str = "Active"
@@ -63,14 +63,17 @@ class LeadBase(BaseModel):
     name: str = Field(min_length=2, max_length=255)
     company_name: str | None = Field(default=None, max_length=255)
     email: EmailStr | None = None
-    phone: str | None = Field(default=None, max_length=30)
+    phone: str | None = Field(default=None, max_length=100)
     status: str = "New"
-    source: str | None = Field(default=None, max_length=100)
+    source: str | None = Field(default=None, max_length=150)
     owner_user_id: uuid.UUID | None = None
     estimated_value: float = Field(default=0, ge=0)
     next_follow_up_at: datetime | None = None
     notes: str | None = None
     lost_reason: str | None = Field(default=None, max_length=255)
+    call_disposition: str | None = None
+    call_duration_minutes: int | None = 0
+    customer_response: str | None = None
 
 
 class LeadCreate(LeadBase):
@@ -86,9 +89,13 @@ class LeadUpdate(BaseModel):
     source: str | None = None
     owner_user_id: uuid.UUID | None = None
     estimated_value: float | None = Field(default=None, ge=0)
+    last_contact_at: datetime | None = None
     next_follow_up_at: datetime | None = None
     notes: str | None = None
     lost_reason: str | None = None
+    call_disposition: str | None = None
+    call_duration_minutes: int | None = None
+    customer_response: str | None = None
 
 
 class LeadResponse(ORMModel):
@@ -106,21 +113,33 @@ class LeadResponse(ORMModel):
     next_follow_up_at: datetime | None
     notes: str | None
     lost_reason: str | None
+    call_disposition: str | None
+    call_duration_minutes: int | None
+    customer_response: str | None
     created_at: datetime
     updated_at: datetime
 
 
 class LeadActivityCreate(BaseModel):
-    activity_type: str = Field(min_length=2, max_length=50)
-    summary: str = Field(min_length=2, max_length=500)
+    lead_id: uuid.UUID | None = None
+    opportunity_id: uuid.UUID | None = None
+    activity_type: str = Field(min_length=2, max_length=50)  # Call, Note, Meeting, Email, Follow-up
+    summary: str = Field(min_length=1)
+    call_disposition: str | None = None
+    call_duration_minutes: int | None = 0
+    customer_response: str | None = None
     occurred_at: datetime | None = None
 
 
 class LeadActivityResponse(ORMModel):
     id: uuid.UUID
-    lead_id: uuid.UUID
+    lead_id: uuid.UUID | None
+    opportunity_id: uuid.UUID | None
     activity_type: str
     summary: str
+    call_disposition: str | None
+    call_duration_minutes: int | None
+    customer_response: str | None
     occurred_at: datetime
     created_by_user_id: uuid.UUID | None
     created_at: datetime
@@ -140,6 +159,10 @@ class OpportunityBase(BaseModel):
     next_step_at: datetime | None = None
     forecast_category: str = "Pipeline"
     lost_reason: str | None = Field(default=None, max_length=255)
+    notes: str | None = None
+    call_disposition: str | None = None
+    call_duration_minutes: int | None = 0
+    customer_response: str | None = None
 
 
 class OpportunityCreate(OpportunityBase):
@@ -159,6 +182,11 @@ class OpportunityUpdate(BaseModel):
     next_step_at: datetime | None = None
     forecast_category: str | None = None
     lost_reason: str | None = Field(default=None, max_length=255)
+    notes: str | None = None
+    call_disposition: str | None = None
+    call_duration_minutes: int | None = None
+    customer_response: str | None = None
+    last_contact_at: datetime | None = None
 
 
 class OpportunityResponse(ORMModel):
@@ -176,6 +204,11 @@ class OpportunityResponse(ORMModel):
     next_step_at: datetime | None
     forecast_category: str
     lost_reason: str | None
+    notes: str | None
+    call_disposition: str | None
+    call_duration_minutes: int | None
+    customer_response: str | None
+    last_contact_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -444,5 +477,133 @@ class CreatePaidAdRequestSchema(BaseModel):
     targeting: dict | None = None
     start_time: str | None = None
     end_time: str | None = None
+
+
+# ─── AI Calling Schemas ──────────────────────────────────────────────────────────
+
+class CRMCallInitiateRequest(BaseModel):
+    target_type: str = "lead"  # lead | customer | opportunity | deal | quotation | order | ticket | complaint
+    target_id: str | uuid.UUID | None = None
+    contact_name: str
+    contact_phone: str | None = None
+    contact_email: str | None = None
+    company_name: str | None = None
+    agent_persona: str = "Alex - Senior Solutions & Sales Closer"
+    custom_prompt: str | None = None
+    sip_number: str | None = None  # Optional SIP DID if calling via telephony
+    call_mode: str = "browser_ai"  # browser_ai | livekit_sip | webrtc
+
+
+class CRMCallInitiateResponse(BaseModel):
+    call_id: uuid.UUID
+    status: str
+    room_name: str | None = None
+    agent_greeting: str
+    contact_name: str
+    contact_phone: str | None = None
+    agent_persona: str
+    battlecards: list[dict] = []
+    livekit_url: str | None = None
+    livekit_token: str | None = None
+    plivo_call_uuid: str | None = None
+    sip_trunk_id: str | None = None
+    caller_id: str | None = None
+    telephony_provider: str = "livekit_plivo"
+    carrier_status: str = "connected"
+    message: str
+
+
+class CRMTelephonySettingsSchema(BaseModel):
+    livekit_url: str
+    livekit_api_key: str
+    livekit_api_secret_configured: bool
+    sip_trunk_id: str
+    plivo_auth_id: str
+    plivo_auth_token_configured: bool
+    plivo_source_number: str
+    plivo_termination_domain: str
+    has_livekit: bool
+    has_plivo: bool
+    status: str
+
+
+class CRMTelephonySettingsUpdate(BaseModel):
+    livekit_url: str | None = None
+    livekit_api_key: str | None = None
+    livekit_api_secret: str | None = None
+    sip_trunk_id: str | None = None
+    plivo_auth_id: str | None = None
+    plivo_auth_token: str | None = None
+    plivo_source_number: str | None = None
+    plivo_termination_domain: str | None = None
+
+
+class CRMCallTurnMessage(BaseModel):
+    speaker: str  # AI | User
+    text: str
+    timestamp: str | None = None
+
+
+class CRMCallTurnRequest(BaseModel):
+    call_id: uuid.UUID
+    user_speech: str
+    conversation_history: list[CRMCallTurnMessage] = []
+    agent_persona: str = "Alex - Senior Solutions & Sales Closer"
+    target_type: str = "lead"
+    contact_name: str = "Client"
+    company_name: str | None = None
+    context_notes: str | None = None
+
+
+class CRMCallTurnResponse(BaseModel):
+    ai_response: str
+    detected_sentiment: str  # Positive | Neutral | Negative | Objection | Highly Interested
+    confidence: float = 0.95
+    suggested_objection_handling: str | None = None
+    recommended_action: str | None = None
+
+
+class CRMCallCompleteRequest(BaseModel):
+    call_id: uuid.UUID
+    duration_seconds: int = 0
+    transcript: list[CRMCallTurnMessage] = []
+    final_sentiment: str = "Positive"
+    status: str = "Completed"  # Completed | No Answer | Busy | Failed
+    auto_advance_stage: bool = True
+    new_stage_or_status: str | None = None
+
+
+class CRMCallLogResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    target_type: str
+    target_id: uuid.UUID | None
+    contact_name: str
+    contact_phone: str | None
+    contact_email: str | None
+    company_name: str | None
+    status: str
+    direction: str
+    duration_seconds: int
+    agent_persona: str
+    call_mode: str
+    transcript: list[dict] | None = []
+    ai_summary: str | None
+    sentiment: str | None
+    qualification_score: int | None
+    action_items: list[str] | None = []
+    recording_url: str | None
+    created_at: datetime
+
+
+class CRMCallStatsResponse(BaseModel):
+    total_calls: int
+    connected_calls: int
+    avg_duration_seconds: int
+    positive_sentiment_rate: float
+    avg_qualification_score: int = 0
+    leads_contacted_count: int
+    opportunities_advanced: int
+
 
 

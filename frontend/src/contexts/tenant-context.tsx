@@ -8,6 +8,7 @@ export interface TenantCompany {
   name: string;
   industry: string;
   logo: string;
+  logo_url?: string | null;
   isReal?: boolean;
   raw?: RealCompany;
 }
@@ -89,6 +90,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       name: mockCompanies[0].name,
       industry: mockCompanies[0].industry,
       logo: mockCompanies[0].logo,
+      logo_url: null,
     };
   });
 
@@ -157,12 +159,14 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
             name: t.name,
             industry: "Client Workspace",
             logo: t.name.slice(0, 2).toUpperCase(),
+            logo_url: t.logo_url || null,
             isReal: true,
             raw: {
               id: t.id,
               tenant_id: t.id,
               name: t.name,
               logo_initials: t.name.slice(0, 2).toUpperCase(),
+              logo_url: t.logo_url || null,
             } as any
           }));
         }
@@ -175,7 +179,8 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           id: c.id,
           name: c.name,
           industry: c.industry ?? "General",
-          logo: c.logo_initials ?? c.name.slice(0, 2).toUpperCase(),
+          logo: c.logo_url || c.logo_initials || c.name.slice(0, 2).toUpperCase(),
+          logo_url: c.logo_url || null,
           isReal: true,
           raw: c,
         }));

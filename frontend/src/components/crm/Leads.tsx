@@ -1,14 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle, Calendar, Mail, Phone, Plus, Search,
   Facebook, RefreshCw, Sparkles, X, Trash2, Key,
-  PhoneCall, PhoneOff, Mic, Loader2, Target, Megaphone, Layers, Briefcase
+  PhoneCall, CheckCircle2, Clock, Loader2, Target, Megaphone, Layers, Briefcase,
+  ClipboardList, FileText, PhoneOff, PhoneForwarded
 } from "lucide-react";
 import { toast } from "sonner";
-import { crmLeadsApi, type CrmLead, type LeadAttribution } from "@/lib/api-client";
+import { crmLeadsApi, crmCallsApi, type CrmLead, type LeadAttribution, type CRMCallLog } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
+import { AiCallingModal } from "./AiCallingModal";
+import { NotesAndDispositionModal } from "./NotesAndDispositionModal";
 
 const stages: CrmLead["status"][] = ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"];
 const blankLead = { name: "", company_name: "", email: "", phone: "", source: "Website", estimated_value: "0" };
@@ -23,6 +26,9 @@ export function Leads() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(blankLead);
 
+  // Manual Call Disposition & Notes Modal State
+  const [notesTargetLead, setNotesTargetLead] = useState<CrmLead | null>(null);
+
   // Facebook Lead Ads States
   const [showFbSettings, setShowFbSettings] = useState(false);
   const [fbForm, setFbForm] = useState({ access_token: "", page_or_form_id: "", api_version: "v25.0" });
@@ -31,10 +37,8 @@ export function Leads() {
 
   // AI Call States
   const [callTarget, setCallTarget] = useState<CrmLead | null>(null);
-  const [sipNumber, setSipNumber] = useState("");
-  const [customPrompt, setCustomPrompt] = useState("");
-  const [calling, setCalling] = useState(false);
-  const [activeCall, setActiveCall] = useState<{ leadId: string; roomName: string } | null>(null);
+  // Map of leadId -> latest call log (for differentiation: called vs needs-to-be-called)
+  const [callStatusMap, setCallStatusMap] = useState<Record<string, CRMCallLog>>({}); 
 
   // Ad Attribution Drawer
   const [attrLead, setAttrLead] = useState<CrmLead | null>(null);
@@ -44,11 +48,34 @@ export function Leads() {
   const load = async () => {
     setLoading(true);
     try {
-      setLeads((await crmLeadsApi.list(1, 100, search || undefined)).items);
+      const leadsData = (await crmLeadsApi.list(1, 100, search || undefined)).items;
+      setLeads(leadsData);
+      // Asynchronously load call statuses without blocking UI
+      void loadCallStatuses(leadsData.map(l => l.id));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load leads");
     } finally {
       setLoading(false);
+    }
+  };
+
+  /** Fetch the latest call log for all lead IDs to build a "called/not-called" status map */
+  const loadCallStatuses = async (leadIds: string[]) => {
+    try {
+      const res = await crmCallsApi.listLogs(1, 200, "lead");
+      const map: Record<string, CRMCallLog> = {};
+      // Build a map: leadId -> most recent call log
+      for (const log of (res.items || [])) {
+        if (log.target_id && leadIds.includes(log.target_id)) {
+          // listLogs returns sorted desc by created_at, so first entry per target_id is the latest
+          if (!map[log.target_id]) {
+            map[log.target_id] = log;
+          }
+        }
+      }
+      setCallStatusMap(map);
+    } catch {
+      // Silent — call status is optional enrichment
     }
   };
 
@@ -64,7 +91,8 @@ export function Leads() {
       } catch (e) { /* silent */ }
     };
     void fetchCreds();
-  }, [tenant.id]);
+  }, [tenant?.id]);
+
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
@@ -163,44 +191,7 @@ export function Leads() {
 
   // ── AI Call ──────────────────────────────────────────────────────────────────
   const openCallModal = (lead: CrmLead) => {
-    if (!lead.phone) {
-      toast.error("This lead has no phone number. Please add one first.");
-      return;
-    }
     setCallTarget(lead);
-    setCustomPrompt("");
-    setSipNumber("");
-  };
-
-  const initiateCall = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!callTarget) return;
-    setCalling(true);
-    try {
-      const res = await crmLeadsApi.initiateCall(callTarget.id, {
-        sip_number: sipNumber,
-        custom_prompt: customPrompt || undefined,
-      });
-
-      if (res.status === "connected") {
-        setActiveCall({ leadId: callTarget.id, roomName: res.room_name! });
-        setCallTarget(null);
-        toast.success(`📞 AI call connected to ${callTarget.name}!`, { duration: 6000 });
-        // Auto-move lead to Contacted
-        await moveLead(callTarget, "Contacted");
-      } else {
-        toast.error(`Call ended with status: ${res.status}. ${res.message}`);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to initiate call");
-    } finally {
-      setCalling(false);
-    }
-  };
-
-  const endActiveCall = () => {
-    setActiveCall(null);
-    toast("Call session ended.", { icon: "📵" });
   };
 
   const openAttribution = async (lead: CrmLead) => {
@@ -223,33 +214,6 @@ export function Leads() {
 
   return (
     <div className="p-4 min-h-[calc(100vh-6rem)] flex flex-col space-y-3">
-
-      {/* Active Call Banner */}
-      <AnimatePresence>
-        {activeCall && (
-          <motion.div
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -16 }}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
-          >
-            <span className="relative flex size-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full size-3 bg-emerald-500"></span>
-            </span>
-            <Mic className="size-4" />
-            <p className="text-sm font-semibold flex-1">
-              AI call active · Room: <code className="text-xs font-mono opacity-70">{activeCall.roomName}</code>
-            </p>
-            <button
-              onClick={endActiveCall}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-lg text-xs font-semibold hover:bg-red-500/20 transition-colors"
-            >
-              <PhoneOff className="size-3.5" /> End Call
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -392,21 +356,115 @@ export function Leads() {
                         </select>
                       </div>
 
-                      {/* AI Call Button */}
+                      {/* ── Call Disposition & Notes Badge Block ── */}
+                      {lead.call_disposition && (
+                        <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-[10px] text-indigo-700 dark:text-indigo-300">
+                          <PhoneForwarded className="size-3 shrink-0 text-indigo-600" />
+                          <span className="font-bold truncate">{lead.call_disposition}</span>
+                          {lead.call_duration_minutes ? (
+                            <span className="text-muted-foreground ml-auto shrink-0 font-mono">
+                              {lead.call_duration_minutes}m
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {lead.customer_response && (
+                        <div className="mt-1.5 px-2.5 py-1 rounded-md bg-muted/40 border border-border/50 text-[10px] text-foreground italic line-clamp-2">
+                          "{lead.customer_response}"
+                        </div>
+                      )}
+
+                      {lead.notes && !lead.customer_response && (
+                        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground line-clamp-1">
+                          <FileText className="size-3 shrink-0 text-indigo-500" />
+                          <span className="truncate">{lead.notes}</span>
+                        </div>
+                      )}
+
+                      {/* ── Call Status Differentiation Block ── */}
+                      {(() => {
+                        const callLog = callStatusMap[lead.id];
+                        const hasPhone = !!lead.phone;
+                        const wasCalled = !!callLog;
+                        const callDate = wasCalled ? new Date(callLog.created_at) : null;
+                        const daysSinceCall = callDate
+                          ? Math.floor((Date.now() - callDate.getTime()) / (1000 * 60 * 60 * 24))
+                          : null;
+                        const needsFollowUp = wasCalled && daysSinceCall !== null && daysSinceCall >= 2;
+
+                        if (!hasPhone) {
+                          return (
+                            <div className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/40 bg-muted/30 text-[10px] text-muted-foreground">
+                              <PhoneOff className="size-3 shrink-0" />
+                              <span>No phone — cannot call</span>
+                            </div>
+                          );
+                        }
+
+                        if (wasCalled && !needsFollowUp) {
+                          // Recently called — green badge + re-call option
+                          return (
+                            <div className="mt-2 space-y-1">
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-700 dark:text-emerald-400">
+                                <CheckCircle2 className="size-3 shrink-0" />
+                                <span className="font-semibold">Called</span>
+                                <span className="opacity-70">·</span>
+                                <span className="opacity-70">
+                                  {daysSinceCall === 0 ? "Today" : `${daysSinceCall}d ago`}
+                                  {callLog.sentiment && ` · ${callLog.sentiment}`}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => openCallModal(lead)}
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-semibold border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors"
+                              >
+                                <PhoneCall className="size-3" />
+                                Call Again
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        if (wasCalled && needsFollowUp) {
+                          // Follow-up overdue — amber pulsing badge
+                          return (
+                            <div className="mt-2 space-y-1">
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-700 dark:text-amber-400 animate-pulse">
+                                <Clock className="size-3 shrink-0" />
+                                <span className="font-bold">Follow-up Needed</span>
+                                <span className="opacity-70">· {daysSinceCall}d ago</span>
+                              </div>
+                              <button
+                                onClick={() => openCallModal(lead)}
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-400 text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                              >
+                                <PhoneCall className="size-3" />
+                                Call Now
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        // Never called — primary indigo CTA
+                        return (
+                          <button
+                            onClick={() => openCallModal(lead)}
+                            className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                          >
+                            <PhoneCall className="size-3" />
+                            Start AI Call
+                          </button>
+                        );
+                      })()}
+
+                      {/* Log Call & Notes Button */}
                       <button
-                        onClick={() => openCallModal(lead)}
-                        disabled={activeCall?.leadId === lead.id}
-                        className={`mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                          activeCall?.leadId === lead.id
-                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 cursor-default"
-                            : lead.phone
-                            ? "bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40"
-                            : "bg-muted border-border text-muted-foreground cursor-not-allowed opacity-50"
-                        }`}
-                        title={lead.phone ? "Initiate AI outbound call via LiveKit" : "Add phone number to enable calling"}
+                        onClick={() => setNotesTargetLead(lead)}
+                        className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border border-border/80 bg-background hover:bg-muted text-foreground transition-colors"
                       >
-                        <PhoneCall className="size-3" />
-                        {activeCall?.leadId === lead.id ? "Call Active" : "AI Call"}
+                        <ClipboardList className="size-3.5 text-indigo-600" />
+                        Log Call & Notes
                       </button>
 
                       {lead.next_follow_up_at && (
@@ -416,6 +474,7 @@ export function Leads() {
                       )}
                     </motion.article>
                   ))}
+
                   {stageLeads.length === 0 && (
                     <div className="h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-muted-foreground bg-background/50">
                       <AlertCircle className="size-5 opacity-30" />
@@ -434,110 +493,24 @@ export function Leads() {
         </div>
       )}
 
-      {/* ── AI Call Modal ────────────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {callTarget && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 12 }}
-              className="bg-card border rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
-            >
-              {/* Modal Header */}
-              <div className="p-5 border-b bg-gradient-to-r from-indigo-500/10 to-violet-500/10 flex items-center gap-3">
-                <div className="size-10 rounded-xl bg-indigo-500/15 flex items-center justify-center">
-                  <PhoneCall className="size-5 text-indigo-600 dark:text-indigo-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-foreground truncate">Initiate AI Call</h3>
-                  <p className="text-xs text-muted-foreground truncate">
-                    Calling <span className="font-semibold text-foreground">{callTarget.name}</span> · {callTarget.phone}
-                  </p>
-                </div>
-                <button onClick={() => setCallTarget(null)} className="text-muted-foreground hover:text-foreground">
-                  <X className="size-4" />
-                </button>
-              </div>
-
-              <form onSubmit={initiateCall} className="p-5 space-y-4">
-                {/* SIP Number */}
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                    Your SIP / Plivo DID Number <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                    <input
-                      required
-                      type="text"
-                      placeholder="+919876543210"
-                      value={sipNumber}
-                      onChange={(e) => setSipNumber(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Your Plivo DID configured on LiveKit SIP Trunk</p>
-                </div>
-
-                {/* Lead Context Preview */}
-                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1 text-xs">
-                  <p className="font-semibold text-foreground mb-1.5">📋 Call Context (auto-generated)</p>
-                  <p className="text-muted-foreground">
-                    Calling <strong>{callTarget.name}</strong> from{" "}
-                    <strong>{callTarget.company_name || "individual"}</strong>
-                  </p>
-                  <p className="text-muted-foreground">
-                    Deal value: <strong className="text-emerald-600">{currency.symbol}{Number(callTarget.estimated_value).toLocaleString()}</strong>
-                    {callTarget.ai_score != null && (
-                      <> · AI Score: <strong>{callTarget.ai_score}%</strong></>
-                    )}
-                  </p>
-                  {callTarget.notes && (
-                    <p className="text-muted-foreground italic mt-1 line-clamp-2">"{callTarget.notes}"</p>
-                  )}
-                </div>
-
-                {/* Custom Prompt Override */}
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                    Custom AI Persona / Script <span className="opacity-50">(optional)</span>
-                  </label>
-                  <textarea
-                    rows={3}
-                    placeholder="Leave blank to use the auto-generated context above. Or override with a custom sales script..."
-                    value={customPrompt}
-                    onChange={(e) => setCustomPrompt(e.target.value)}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-                  />
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setCallTarget(null)}
-                    className="flex-1 px-4 py-2.5 border rounded-lg text-sm hover:bg-muted transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={calling || !sipNumber}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {calling ? (
-                      <><Loader2 className="size-4 animate-spin" /> Connecting…</>
-                    ) : (
-                      <><PhoneCall className="size-4" /> Start AI Call</>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* ── Universal AI Voice Studio & Dialer Modal ────────────────────────────────────── */}
+      {callTarget && (
+        <AiCallingModal
+          open={!!callTarget}
+          onClose={() => setCallTarget(null)}
+          targetType="lead"
+          targetId={callTarget.id}
+          contactName={callTarget.name}
+          contactPhone={callTarget.phone || undefined}
+          contactEmail={callTarget.email || undefined}
+          companyName={callTarget.company_name || undefined}
+          dealValue={callTarget.estimated_value}
+          defaultNotes={callTarget.notes || undefined}
+          onCallCompleted={async () => {
+            await load();
+          }}
+        />
+      )}
 
       {/* Facebook Settings Modal */}
       <AnimatePresence>
@@ -731,6 +704,43 @@ export function Leads() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Notes & Call Disposition Modal */}
+      {notesTargetLead && (
+        <NotesAndDispositionModal
+          isOpen={!!notesTargetLead}
+          onClose={() => setNotesTargetLead(null)}
+          entityType="lead"
+          entityId={notesTargetLead.id}
+          entityName={notesTargetLead.name}
+          entityCompany={notesTargetLead.company_name}
+          entityPhone={notesTargetLead.phone}
+          currentStatus={notesTargetLead.status}
+          availableStatuses={stages}
+          initialNotes={notesTargetLead.notes}
+          initialDisposition={notesTargetLead.call_disposition}
+          initialMinutes={notesTargetLead.call_duration_minutes}
+          initialResponse={notesTargetLead.customer_response}
+          initialNextFollowup={notesTargetLead.next_follow_up_at}
+          onSaveSuccess={(updated) => {
+            setLeads((prev) =>
+              prev.map((l) =>
+                l.id === notesTargetLead.id
+                  ? {
+                      ...l,
+                      ...(updated.status ? { status: updated.status as CrmLead["status"] } : {}),
+                      notes: updated.notes !== undefined ? updated.notes : l.notes,
+                      call_disposition: updated.call_disposition !== undefined ? updated.call_disposition : l.call_disposition,
+                      call_duration_minutes: updated.call_duration_minutes !== undefined ? updated.call_duration_minutes : l.call_duration_minutes,
+                      customer_response: updated.customer_response !== undefined ? updated.customer_response : l.customer_response,
+                      next_follow_up_at: updated.next_follow_up_at !== undefined ? updated.next_follow_up_at : l.next_follow_up_at,
+                    }
+                  : l
+              )
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -49,7 +49,7 @@ export function CustomerTimeline() {
       }
     };
     fetchCustomers();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   // 2. Fetch Customer Timeline events (Orders, Tickets, Quotations)
   useEffect(() => {

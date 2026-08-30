@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Download, FileText, CreditCard, DollarSign, Shield, Loader2 } from "lucide-react";
+import { Plus, Download, FileText, CreditCard, DollarSign, Shield, Loader2, Printer } from "lucide-react";
 import { payrollApi, employeesApi, designationsApi, SalaryStructure, Payslip, Employee, PayGrade, Designation } from "../../lib/api-client";
 import { Briefcase, Settings } from "lucide-react";
 import { Button } from "../ui/button";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
+import { getActiveBillingGst } from "@/lib/receipt-template-store";
 
 interface Props { tab?: string; }
 
@@ -16,6 +18,16 @@ const payslipStatusStyle = (s: string) => {
 
 export function PayrollManagement({ tab = "salary_structure" }: Props) {
     const { currency, formatCurrency } = useCurrency();
+    const { tenant } = useTenant();
+    const activeGst = getActiveBillingGst();
+    const orgName = activeGst?.trade_name || activeGst?.legal_name || tenant?.name || "BusinessOS Enterprise";
+    const orgLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const orgInitials = orgName.substring(0, 2).toUpperCase();
+    const orgAddress = activeGst?.address || tenant?.settings?.address || "100 Innovation Boulevard, Tech District";
+    const orgGstin = activeGst?.gstin || tenant?.settings?.gstin || "";
+    const orgCin = activeGst?.cin || tenant?.settings?.cin || "";
+    const orgEmail = activeGst?.email || tenant?.settings?.email || "hr@businessos.ai";
+    const orgPhone = activeGst?.phone || tenant?.settings?.phone || "+91 (800) 555-0199";
   const [structures, setStructures] = useState<SalaryStructure[]>([]);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -571,11 +583,314 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     );
   }
 
+  // Print / Export High-Res Official Payslip
+  const handlePrintPayslip = (ps: Payslip) => {
+    const printWin = window.open("", "_blank", "width=850,height=1100");
+    if (!printWin) {
+      alert("Please allow popups to preview and print the Payslip.");
+      return;
+    }
+
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const monthStr = monthNames[ps.month - 1] || `Month ${ps.month}`;
+    const totalDeductions = ps.pf_deduction + ps.esi_deduction + ps.tds_deduction + ps.other_deductions;
+    const allowances = ps.hra + ps.other_allowances;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Payslip - ${ps.employee_name} (${monthStr} ${ps.year})</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 15mm 18mm;
+            }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            }
+            body {
+              background: #ffffff;
+              color: #0f172a;
+              padding: 20px;
+              font-size: 9.5pt;
+              line-height: 1.5;
+            }
+            .page-container {
+              max-width: 720px;
+              margin: 0 auto;
+              background: #ffffff;
+              border: 1.5px solid #cbd5e1;
+              padding: 24px;
+              border-radius: 8px;
+            }
+            .header-banner {
+              border-bottom: 2px solid #1e1b4b;
+              padding-bottom: 14px;
+              margin-bottom: 18px;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+            }
+            .header-banner h1 {
+              font-size: 16pt;
+              font-weight: 900;
+              color: #1e1b4b;
+              letter-spacing: -0.5px;
+            }
+            .header-banner p {
+              font-size: 8pt;
+              color: #64748b;
+              margin-top: 1px;
+            }
+            .payslip-title {
+              text-align: center;
+              font-size: 12pt;
+              font-weight: 800;
+              color: #1e1b4b;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin-bottom: 16px;
+              background: #f1f5f9;
+              padding: 6px 0;
+              border-radius: 6px;
+            }
+            .emp-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 8px;
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              border-radius: 6px;
+              padding: 12px;
+              margin-bottom: 18px;
+              font-size: 8.5pt;
+            }
+            .emp-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 2px 0;
+            }
+            .emp-label {
+              color: #64748b;
+              font-weight: 600;
+            }
+            .emp-val {
+              color: #0f172a;
+              font-weight: 700;
+            }
+            .breakdown-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 18px;
+              font-size: 9pt;
+            }
+            .breakdown-table th {
+              background: #1e1b4b;
+              color: #ffffff;
+              text-align: left;
+              padding: 8px 10px;
+              font-size: 8pt;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .breakdown-table td {
+              padding: 8px 10px;
+              border-bottom: 1px solid #e2e8f0;
+            }
+            .table-col-earn {
+              width: 50%;
+              border-right: 1.5px solid #cbd5e1;
+              vertical-align: top;
+            }
+            .table-col-ded {
+              width: 50%;
+              vertical-align: top;
+            }
+            .inner-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 4px 0;
+            }
+            .inner-row.subtotal {
+              border-top: 1.5px solid #cbd5e1;
+              font-weight: 800;
+              padding-top: 6px;
+              margin-top: 6px;
+            }
+            .net-box {
+              background: #f0fdf4;
+              border: 1.5px solid #86efac;
+              border-radius: 8px;
+              padding: 14px 18px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 24px;
+            }
+            .net-box .label {
+              font-size: 9pt;
+              font-weight: 700;
+              color: #166534;
+              text-transform: uppercase;
+            }
+            .net-box .val {
+              font-size: 16pt;
+              font-weight: 900;
+              color: #15803d;
+            }
+            .signatures-grid {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              margin-top: 36px;
+              padding-top: 14px;
+              border-top: 1px dashed #cbd5e1;
+            }
+            .sign-column {
+              width: 45%;
+            }
+            .sign-line {
+              height: 40px;
+              border-bottom: 1.5px solid #0f172a;
+              margin-bottom: 6px;
+            }
+            .sign-name {
+              font-size: 9pt;
+              font-weight: 800;
+              color: #0f172a;
+            }
+            .sign-title {
+              font-size: 7.5pt;
+              color: #64748b;
+            }
+            .footer-strip {
+              margin-top: 24px;
+              padding-top: 8px;
+              border-top: 1px solid #e2e8f0;
+              display: flex;
+              justify-content: space-between;
+              font-size: 7.5pt;
+              color: #94a3b8;
+            }
+            @media print {
+              body { padding: 0; }
+              .page-container { border: none; padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page-container">
+            <div class="header-banner">
+              <div style="display: flex; align-items: center; gap: 14px;">
+                ${orgLogo ? `<img src="${orgLogo}" alt="${orgName}" style="max-height: 48px; max-width: 140px; object-fit: contain;" />` : `<div style="width: 42px; height: 42px; border-radius: 8px; background: #1e1b4b; color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13pt;">${orgInitials}</div>`}
+                <div>
+                  <h1>${orgName}</h1>
+                  <p>${orgAddress}</p>
+                  <p>Email: ${orgEmail} • Phone: ${orgPhone}${orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <span style="display:inline-block; background:#1e1b4b; color:#fff; font-size:7.5pt; font-weight:800; padding:3px 8px; border-radius:4px; text-transform:uppercase;">Official Payslip</span>
+                <p style="font-size:7.5pt; color:#64748b; margin-top:4px;">Period: ${monthStr} ${ps.year}</p>
+                <p style="font-size:7.5pt; font-family:monospace; color:#64748b;">REF: PAY-${ps.year}-${ps.month.toString().padStart(2, '0')}-${ps.id.substring(0, 6)}</p>
+              </div>
+            </div>
+
+            <div class="payslip-title">Salary Slip for ${monthStr} ${ps.year}</div>
+
+            <div class="emp-grid">
+              <div>
+                <div class="emp-row"><span class="emp-label">Employee Name:</span><span class="emp-val">${ps.employee_name}</span></div>
+                <div class="emp-row"><span class="emp-label">Employee Code:</span><span class="emp-val font-mono">${ps.employee_code}</span></div>
+                <div class="emp-row"><span class="emp-label">Designation:</span><span class="emp-val">Corporate Staff</span></div>
+              </div>
+              <div>
+                <div class="emp-row"><span class="emp-label">Payment Status:</span><span class="emp-val" style="color:#16a34a;">${ps.status}</span></div>
+                <div class="emp-row"><span class="emp-label">Payout Mode:</span><span class="emp-val">Direct Bank Transfer</span></div>
+                <div class="emp-row"><span class="emp-label">Currency:</span><span class="emp-val">${currency.code || "USD"} (${currency.symbol})</span></div>
+              </div>
+            </div>
+
+            <table class="breakdown-table">
+              <thead>
+                <tr>
+                  <th style="width: 50%; border-right: 1.5px solid #ffffff;">Earnings (A)</th>
+                  <th style="width: 50%;">Deductions (B)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="table-col-earn">
+                    <div class="inner-row"><span>Basic Salary</span><span>${currency.symbol}${ps.basic_salary.toLocaleString()}</span></div>
+                    <div class="inner-row"><span>House Rent Allowance (HRA)</span><span>${currency.symbol}${ps.hra.toLocaleString()}</span></div>
+                    <div class="inner-row"><span>Special & Other Allowances</span><span>${currency.symbol}${ps.other_allowances.toLocaleString()}</span></div>
+                    <div class="inner-row subtotal"><span>Gross Earnings (A)</span><span>${currency.symbol}${ps.gross_salary.toLocaleString()}</span></div>
+                  </td>
+                  <td class="table-col-ded">
+                    <div class="inner-row"><span>Provident Fund (PF)</span><span>${currency.symbol}${ps.pf_deduction.toLocaleString()}</span></div>
+                    <div class="inner-row"><span>ESI Contribution</span><span>${currency.symbol}${ps.esi_deduction.toLocaleString()}</span></div>
+                    <div class="inner-row"><span>TDS / Income Tax</span><span>${currency.symbol}${ps.tds_deduction.toLocaleString()}</span></div>
+                    <div class="inner-row"><span>Other Deductions</span><span>${currency.symbol}${ps.other_deductions.toLocaleString()}</span></div>
+                    <div class="inner-row subtotal"><span>Total Deductions (B)</span><span>${currency.symbol}${totalDeductions.toLocaleString()}</span></div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="net-box">
+              <div>
+                <p class="label">Net Salary Disbursed (A - B)</p>
+                <p style="font-size:8pt; color:#15803d; font-style:italic; margin-top:2px;">Transferred to registered corporate salary account</p>
+              </div>
+              <div class="val">${currency.symbol}${ps.net_salary.toLocaleString()}</div>
+            </div>
+
+            <div class="signatures-grid">
+              <div class="sign-column">
+                <div class="sign-line"></div>
+                <div class="sign-name">Employee Acknowledgment</div>
+                <div class="sign-title">${ps.employee_name}</div>
+              </div>
+
+              <div class="sign-column" style="text-align: right;">
+                <div class="sign-line"></div>
+                <div class="sign-name">Authorized Finance Signatory</div>
+                <div class="sign-title">Payroll Operations • ${orgName}</div>
+              </div>
+            </div>
+
+            <div class="footer-strip">
+              <div>System Generated Electronic Salary Certificate • Valid without physical signature</div>
+              <div>${orgName} • Confidential Employee Record</div>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 300);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+  };
+
   if (tab === "payslips") {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Payslips</h2><p className="text-xs text-muted-foreground">Monthly payslip generation and distribution.</p></div>
+          <div><h2 className="text-2xl font-bold tracking-tight text-foreground">Payslips</h2><p className="text-xs text-muted-foreground">Monthly payslip generation, PDF printing, and distribution.</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -610,7 +925,16 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                       <td className="px-6 py-4 text-right text-red-400">-{currency.symbol}{(ps.pf_deduction + ps.esi_deduction + ps.tds_deduction + ps.other_deductions).toLocaleString()}</td>
                       <td className="px-6 py-4 text-right font-bold text-emerald-500">{currency.symbol}{ps.net_salary.toLocaleString()}</td>
                       <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-medium ${payslipStatusStyle(ps.status)}`}>{ps.status}</span></td>
-                      <td className="px-6 py-4 text-center"><a href={ps.pdf_url || "#"} className="text-primary hover:underline font-bold text-xs" download>Download PDF</a></td>
+                      <td className="px-6 py-4 text-center">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 gap-1.5 h-8 text-xs font-bold"
+                          onClick={() => handlePrintPayslip(ps)}
+                        >
+                          <Printer className="size-3.5" /> Print / PDF Slip
+                        </Button>
+                      </td>
                     </motion.tr>
                   ))}
                 </tbody>

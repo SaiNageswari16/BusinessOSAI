@@ -38,28 +38,87 @@ interface MasterResult {
 
 // ── Column definitions ──────────────────────────────────────────────
 const LOCAL_COLUMNS = [
-  { id: "image", label: "Image" },
-  { id: "name", label: "Product Name" },
-  { id: "sku", label: "SKU" },
-  { id: "barcode", label: "Barcode" },
-  { id: "base_name", label: "Base Code/Name" },
-  { id: "product_base_code", label: "Product Base Code" },
-  { id: "size_l_kg", label: "Size (L/Kg)" },
-  { id: "category", label: "Category" },
-  { id: "brand", label: "Brand" },
-  { id: "uom", label: "Unit (UOM)" },
-  { id: "purchase_price", label: "Purchase Price" },
-  { id: "mrp", label: "MRP" },
-  { id: "selling_price", label: "Retail Selling Price" },
-  { id: "wholesale_price", label: "Wholesale Price" },
-  { id: "b2b_price", label: "B2B Price" },
-  { id: "min_wholesale_qty", label: "Min Wholesale Qty" },
-  { id: "tax_percent", label: "Tax (%)" },
-  { id: "initial_stock", label: "Stock" },
-  { id: "reorder_level", label: "Reorder Level" },
-  { id: "safety_stock", label: "Safety Stock" },
-  { id: "status", label: "Status" },
-  { id: "source", label: "Source" },
+  // 1. Identity & Core
+  { id: "image", label: "Image", group: "Identity" },
+  { id: "name", label: "Item Name", group: "Identity" },
+  { id: "unique_item_name", label: "Unique Item Name", group: "Identity" },
+  { id: "sku", label: "SKU", group: "Identity" },
+  { id: "barcode", label: "BarCode", group: "Identity" },
+  { id: "secondary_barcode", label: "Secondary BarCode (BarCode.1)", group: "Identity" },
+  { id: "item_code", label: "Item CODE", group: "Identity" },
+  { id: "category", label: "Category", group: "Identity" },
+  { id: "sub_category", label: "Sub Category", group: "Identity" },
+  { id: "brand", label: "Brand", group: "Identity" },
+  { id: "uom", label: "Unit (UOM)", group: "Identity" },
+  { id: "sales_measuring_unit", label: "Sales Measuring Unit", group: "Identity" },
+  { id: "purchase_measuring_unit", label: "Purchase Measuring Unit", group: "Identity" },
+
+  // 2. Asian Paints & Colorant
+  { id: "base_name", label: "Base Code/Name (Col C)", group: "Asian Paints" },
+  { id: "product_base_code", label: "Product Base Code (Col D)", group: "Asian Paints" },
+  { id: "size_l_kg", label: "Size (L/Kg) (Col E)", group: "Asian Paints" },
+
+  // 3. Pricing & Tax
+  { id: "mrp", label: "MRP", group: "Pricing" },
+  { id: "selling_price", label: "Sales Price (Before Tax)", group: "Pricing" },
+  { id: "sales_tax_type", label: "Sales Tax Mode", group: "Pricing" },
+  { id: "sales_tax_name", label: "Sales Tax Name", group: "Pricing" },
+  { id: "tax_percent", label: "Sales Tax (%)", group: "Pricing" },
+  { id: "sales_price_after_tax", label: "Sales Price After Tax", group: "Pricing" },
+  { id: "discount_limit", label: "Disc1(%)", group: "Pricing" },
+  { id: "discount_amount", label: "Disc1(Rs)", group: "Pricing" },
+  { id: "wholesale_price", label: "Wholesale Price", group: "Pricing" },
+  { id: "min_wholesale_qty", label: "Min Wholesale Qty", group: "Pricing" },
+  { id: "b2b_price", label: "B2B Price", group: "Pricing" },
+  { id: "min_b2b_qty", label: "Min B2B Qty", group: "Pricing" },
+  { id: "distributor_price", label: "Distributor Price", group: "Pricing" },
+  { id: "min_distributor_qty", label: "Min Distributor Qty", group: "Pricing" },
+  { id: "hsn_code", label: "HSN Code", group: "Pricing" },
+
+  // 4. Purchasing & Supplier
+  { id: "purchase_price", label: "Purchase Price", group: "Purchasing" },
+  { id: "purchase_tax_type", label: "Purchase Tax Mode", group: "Purchasing" },
+  { id: "purchase_tax_name", label: "Purchase Tax Name", group: "Purchasing" },
+  { id: "purchase_tax_percent", label: "Purchase Tax (%)", group: "Purchasing" },
+  { id: "purchase_price_after_tax", label: "Purchase Price After Tax", group: "Purchasing" },
+  { id: "supplier", label: "Supplier Name", group: "Purchasing" },
+  { id: "preferred_supplier", label: "Preferred Supplier", group: "Purchasing" },
+  { id: "supplier_invoice_number", label: "Supplier Invoice #", group: "Purchasing" },
+  { id: "supplier_invoice_date", label: "Supplier Invoice Date", group: "Purchasing" },
+  { id: "item_received_date", label: "Item Received Date", group: "Purchasing" },
+
+  // 5. Inventory & Warehouse & Batches
+  { id: "initial_stock", label: "Opening Stock", group: "Inventory" },
+  { id: "stock", label: "Current Stock", group: "Inventory" },
+  { id: "reorder_level", label: "Stock Alert", group: "Inventory" },
+  { id: "safety_stock", label: "Safety Stock", group: "Inventory" },
+  { id: "mfg_date", label: "Manufacturing Date", group: "Inventory" },
+  { id: "expiry_date", label: "Expiry Date", group: "Inventory" },
+  { id: "warehouse", label: "Warehouse Name", group: "Inventory" },
+  { id: "location_in_warehouse", label: "Location in Warehouse", group: "Inventory" },
+  { id: "has_manual_batch", label: "Has Manual Batch", group: "Inventory" },
+  { id: "stock_batch_number", label: "Stock Batch #", group: "Inventory" },
+  { id: "stock_batch_expiry_date", label: "Stock Batch Expiry", group: "Inventory" },
+  { id: "opening_stock_batch_number", label: "Opening Stock Batch #", group: "Inventory" },
+  { id: "opening_stock_batch_expiry_date", label: "Opening Stock Batch Expiry", group: "Inventory" },
+
+  // 6. Flags & Operations
+  { id: "status", label: "Is Active / Status", group: "Operations" },
+  { id: "has_label", label: "Has Label", group: "Operations" },
+  { id: "label_headings", label: "Label Headings", group: "Operations" },
+  { id: "need_to_print_barcode_sticker", label: "Print Barcode Sticker", group: "Operations" },
+  { id: "is_service_item", label: "Is Service Item", group: "Operations" },
+  { id: "not_for_sale", label: "Not For Sale", group: "Operations" },
+  { id: "only_for_portal", label: "Only For Portal", group: "Operations" },
+  { id: "not_for_portal", label: "Not For Portal", group: "Operations" },
+  { id: "conversion_factor", label: "Conversion Factor", group: "Operations" },
+  { id: "weighing_scale_code", label: "Weighing Scale Code", group: "Operations" },
+  { id: "display_index", label: "Display Index", group: "Operations" },
+  { id: "keywords", label: "Keywords", group: "Operations" },
+  { id: "accessories_keyword", label: "Accessories Keyword", group: "Operations" },
+  { id: "short_description", label: "Description", group: "Details" },
+  { id: "description_html", label: "Description HTML", group: "Details" },
+  { id: "source", label: "Source", group: "Details" },
 ];
 
 const MASTER_COLUMNS = [
@@ -88,37 +147,111 @@ const esc = (v: any) => {
 };
 
 const defaultFormData = () => ({
-  name: "", brand: "", brand_id: "", sku: "", barcode: "", category_id: "",
-  uom_id: "", warehouse: "", supplier: "",
-  base_name: "", product_base_code: "", size_l_kg: "",
-  purchase_price: "" as any, mrp: "" as any, selling_price: "" as any,
-  wholesale_price: "" as any, min_wholesale_qty: "" as any,
-  b2b_price: "" as any, min_b2b_qty: "" as any,
-  distributor_price: "" as any, min_distributor_qty: "" as any,
-  tax_percent: 0, is_tax_inclusive: true,
-  purchase_tax_percent: 0, is_purchase_tax_inclusive: true,
-  wholesale_is_tax_inclusive: true,
-  b2b_is_tax_inclusive: true,
-  distributor_is_tax_inclusive: true,
-  discount_limit: "" as any, initial_stock: "" as any, reorder_level: "" as any, safety_stock: "" as any,
-  hsn_code: "",
+  // 1. Basic & Identification
+  name: "",
+  unique_item_name: "",
+  brand: "",
+  brand_id: "",
+  sku: "",
+  barcode: "",
+  secondary_barcode: "",
+  category_id: "",
   sub_category: "",
   item_code: "",
-  weighing_scale_code: "",
-  conversion_factor: "",
+  uom_id: "",
+  display_index: "" as any,
+  image_url: "",
+  category_image: "",
+
+  // Asian Paints & Hardware Specific
+  base_name: "",
+  product_base_code: "",
+  size_l_kg: "",
+
+  // 2. Pricing, Tax & Tiers
+  selling_price: "" as any,
+  is_tax_inclusive: true,
+  sales_tax_name: "GST",
+  tax_percent: 0,
+  sales_price_after_tax: "" as any,
+  mrp: "" as any,
+  discount_limit: "" as any, // Disc1(%)
+  discount_amount: "" as any, // Disc1(Rs)
+  sales_measuring_unit: "",
+  hsn_code: "",
+
+  // Multi-tier rates
+  wholesale_price: "" as any,
+  min_wholesale_qty: "" as any,
+  wholesale_is_tax_inclusive: true,
+
+  b2b_price: "" as any,
+  min_b2b_qty: "" as any,
+  b2b_is_tax_inclusive: true,
+
+  distributor_price: "" as any,
+  min_distributor_qty: "" as any,
+  distributor_is_tax_inclusive: true,
+
+  // 3. Purchase & Sourcing
+  purchase_price: "" as any,
+  is_purchase_tax_inclusive: true,
+  purchase_tax_name: "GST",
+  purchase_tax_percent: 0,
+  purchase_price_after_tax: "" as any,
+  purchase_measuring_unit: "",
+  supplier: "",
   preferred_supplier: "",
-  custom_fields: [] as Array<{ key: string; value: string }>,
-  image_url: "", short_description: "", long_description: "", status: "active"
+  supplier_invoice_number: "",
+  supplier_invoice_date: "",
+  item_received_date: "",
+
+  // 4. Stock, Warehouse & Batch Management
+  initial_stock: "" as any, // Opening Stock
+  stock: "" as any, // Current Stock
+  reorder_level: "" as any, // Stock Alert
+  safety_stock: "" as any,
+  warehouse: "",
+  location_in_warehouse: "",
+  mfg_date: "",
+  expiry_date: "",
+  has_manual_batch: false,
+  stock_batch_number: "",
+  stock_batch_expiry_date: "",
+  opening_stock_batch_number: "",
+  opening_stock_batch_expiry_date: "",
+
+  // 5. Flags & Portal Operations
+  status: "active",
+  is_service_item: false,
+  not_for_sale: false,
+  only_for_portal: false,
+  not_for_portal: false,
+  has_label: true,
+  label_headings: "",
+  need_to_print_barcode_sticker: true,
+  weighing_scale_code: "",
+  conversion_factor: "1",
+  keywords: "",
+  accessories_keyword: "",
+
+  // 6. Descriptions & Custom Specs
+  short_description: "",
+  long_description: "",
+  description_html: "",
+  custom_fields: [] as Array<{ key: string; value: string }>
 });
 
-
-
-const localVisibleDefault = ["image", "name", "sku", "barcode", "base_name", "product_base_code", "size_l_kg", "category", "brand", "mrp", "selling_price", "wholesale_price", "b2b_price", "min_wholesale_qty", "initial_stock", "status"];
+const localVisibleDefault = [
+  "image", "name", "sku", "barcode", "base_name", "product_base_code", "size_l_kg",
+  "category", "brand", "mrp", "selling_price", "wholesale_price", "b2b_price",
+  "min_wholesale_qty", "tax_percent", "initial_stock", "status"
+];
 const masterVisibleDefault = ["image", "name", "sku", "barcode", "base_name", "product_base_code", "size_l_kg", "category", "brand", "mrp", "selling_price", "source"];
 
-// ── Column menu sub-component ───────────────────────────────────────
+// ── Column menu sub-component with Search & Instant Presets ───────────
 function ColumnMenu({
-  columns, visible, onToggle, onToggleAll, onSave, onReset, onClose,
+  columns, visible, onToggle, onToggleAll, onSave, onReset, onClose, onApplyPreset
 }: {
   columns: typeof LOCAL_COLUMNS;
   visible: string[];
@@ -127,44 +260,102 @@ function ColumnMenu({
   onSave: () => void;
   onReset: () => void;
   onClose: () => void;
+  onApplyPreset?: (cols: string[]) => void;
 }) {
+  const [searchCol, setSearchCol] = useState("");
+
+  const filteredColumns = useMemo(() => {
+    if (!searchCol.trim()) return columns;
+    const q = searchCol.toLowerCase();
+    return columns.filter(c => c.label.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || ((c as any).group || "").toLowerCase().includes(q));
+  }, [columns, searchCol]);
+
+  const presets = [
+    { label: "Default", ids: localVisibleDefault },
+    { label: "All 65 Excel Cols", ids: columns.map(c => c.id) },
+    { label: "Pricing & GST", ids: ["image", "name", "mrp", "selling_price", "sales_tax_type", "sales_tax_name", "tax_percent", "sales_price_after_tax", "discount_limit", "discount_amount", "wholesale_price", "b2b_price", "distributor_price", "hsn_code"] },
+    { label: "Purchasing", ids: ["image", "name", "purchase_price", "purchase_tax_type", "purchase_tax_name", "purchase_tax_percent", "purchase_price_after_tax", "supplier", "preferred_supplier", "supplier_invoice_number", "item_received_date"] },
+    { label: "Stock & Batch", ids: ["image", "name", "initial_stock", "stock", "reorder_level", "safety_stock", "warehouse", "location_in_warehouse", "mfg_date", "expiry_date", "has_manual_batch", "stock_batch_number", "stock_batch_expiry_date"] },
+    { label: "Asian Paints", ids: ["image", "name", "base_name", "product_base_code", "size_l_kg", "category", "sub_category", "brand", "mrp", "selling_price"] },
+  ];
+
   return (
-    <div className="absolute right-0 mt-2 w-56 bg-white border rounded-xl shadow-xl z-50 p-3 flex flex-col max-h-[420px]">
-      <div className="flex items-center justify-between border-b pb-1.5 shrink-0">
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Columns</span>
+    <div className="absolute right-0 mt-2 w-84 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-3.5 flex flex-col max-h-[500px]">
+      <div className="flex items-center justify-between border-b pb-2 shrink-0">
+        <div>
+          <span className="text-xs font-black text-slate-800 uppercase tracking-wider block">Columns Customizer</span>
+          <span className="text-[10px] text-slate-500 font-semibold">{visible.length} of {columns.length} columns active</span>
+        </div>
         <button
           type="button"
           onClick={onToggleAll}
-          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-500 transition-colors uppercase cursor-pointer"
+          className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase cursor-pointer"
         >
           {visible.length === columns.length ? "Deselect All" : "Select All"}
         </button>
       </div>
+
+      {/* Preset Quick Selectors */}
+      <div className="py-2 border-b shrink-0">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Quick Presets:</span>
+        <div className="flex flex-wrap gap-1">
+          {presets.map(pr => (
+            <button
+              key={pr.label}
+              type="button"
+              onClick={() => onApplyPreset ? onApplyPreset(pr.ids) : pr.ids.forEach(id => { if (!visible.includes(id)) onToggle(id); })}
+              className="text-[10px] font-bold px-2 py-1 rounded-md bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 transition-colors cursor-pointer"
+            >
+              {pr.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Search columns */}
+      <div className="pt-2 shrink-0">
+        <input
+          type="text"
+          placeholder="Filter columns (e.g. price, batch, gst, paint)..."
+          value={searchCol}
+          onChange={(e) => setSearchCol(e.target.value)}
+          className="w-full h-8 px-2.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+      </div>
+
+      {/* Column Checkboxes */}
       <div className="divide-y divide-slate-100 overflow-y-auto my-2 py-1 pr-1 flex-1 max-h-64">
-        {columns.map(col => (
-          <label key={col.id} className="flex items-center gap-2.5 py-1.5 hover:bg-slate-50 cursor-pointer text-xs font-semibold text-slate-700">
-            <input
-              type="checkbox"
-              checked={visible.includes(col.id)}
-              onChange={() => onToggle(col.id)}
-              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 size-3.5 cursor-pointer"
-            />
-            {col.label}
+        {filteredColumns.map(col => (
+          <label key={col.id} className="flex items-center justify-between gap-2.5 py-1.5 px-1 hover:bg-slate-50 rounded cursor-pointer text-xs font-semibold text-slate-700">
+            <span className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={visible.includes(col.id)}
+                onChange={() => onToggle(col.id)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 size-3.5 cursor-pointer"
+              />
+              {col.label}
+            </span>
+            {(col as any).group && (
+              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0">
+                {(col as any).group}
+              </span>
+            )}
           </label>
         ))}
       </div>
+
       <div className="flex gap-2 pt-2 border-t mt-auto shrink-0">
-        <Button size="sm" onClick={onSave} className="flex-1 text-[11px] h-7 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg border-0 shadow-sm">
-          Save Preset
+        <Button size="sm" onClick={onSave} className="flex-1 text-[11px] h-8 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg border-0 shadow-sm">
+          Save View Preset
         </Button>
-        <Button size="sm" variant="outline" onClick={onReset} className="flex-1 text-[11px] h-7 font-bold rounded-lg text-slate-700 hover:bg-slate-50">
-          Reset
+        <Button size="sm" variant="outline" onClick={onReset} className="flex-1 text-[11px] h-8 font-bold rounded-lg text-slate-700 hover:bg-slate-50">
+          Reset Default
         </Button>
       </div>
     </div>
   );
 }
-
 // ══════════════════════════════════════════════════════════════════════
 //  INLINE CREATE POPOVER — for Category, Sub-Category, Brand
 // ══════════════════════════════════════════════════════════════════════
@@ -1207,7 +1398,29 @@ export function Products() {
         return acc;
       }, {});
 
+      // Calculate taxes if not specified
+      const sellingPriceNum = Number(currentForm.selling_price) || 0;
+      const salesTaxRate = Number(currentForm.tax_percent) || 0;
+      const isSalesIncl = (currentForm as any).is_tax_inclusive !== false;
+      let calculatedSalesAfterTax = 0;
+      if (isSalesIncl) {
+        calculatedSalesAfterTax = sellingPriceNum;
+      } else {
+        calculatedSalesAfterTax = sellingPriceNum + (sellingPriceNum * salesTaxRate) / 100;
+      }
+
+      const purchasePriceNum = Number(currentForm.purchase_price) || 0;
+      const purchaseTaxRate = Number((currentForm as any).purchase_tax_percent) || 0;
+      const isPurchaseIncl = (currentForm as any).is_purchase_tax_inclusive !== false;
+      let calculatedPurchaseAfterTax = 0;
+      if (isPurchaseIncl) {
+        calculatedPurchaseAfterTax = purchasePriceNum;
+      } else {
+        calculatedPurchaseAfterTax = purchasePriceNum + (purchasePriceNum * purchaseTaxRate) / 100;
+      }
+
       const specs = {
+        // Multi-tier Rates
         b2b_price: Number(currentForm.b2b_price) || 0,
         min_b2b_qty: Number(currentForm.min_b2b_qty) || 1,
         b2b_is_tax_inclusive: (currentForm as any).b2b_is_tax_inclusive !== false,
@@ -1217,16 +1430,61 @@ export function Products() {
         distributor_price: Number(currentForm.distributor_price) || 0,
         min_distributor_qty: Number(currentForm.min_distributor_qty) || 1,
         distributor_is_tax_inclusive: (currentForm as any).distributor_is_tax_inclusive !== false,
-        purchase_tax_percent: Number(currentForm.purchase_tax_percent) || 0,
-        is_purchase_tax_inclusive: currentForm.is_purchase_tax_inclusive !== false,
-        sub_category: currentForm.sub_category || "",
+
+        // Asian Paints & Hardware
         base_name: currentForm.base_name || "",
         product_base_code: currentForm.product_base_code || "",
         size_l_kg: currentForm.size_l_kg || "",
-        item_code: currentForm.item_code || "",
-        weighing_scale_code: currentForm.weighing_scale_code || "",
-        conversion_factor: currentForm.conversion_factor || "",
-        preferred_supplier: currentForm.preferred_supplier || currentForm.supplier || "",
+
+        // Extended Identity & Barcodes
+        unique_item_name: (currentForm as any).unique_item_name || "",
+        secondary_barcode: (currentForm as any).secondary_barcode || "",
+        item_code: (currentForm as any).item_code || "",
+        sub_category: currentForm.sub_category || "",
+        display_index: (currentForm as any).display_index || "",
+        category_image: (currentForm as any).category_image || "",
+
+        // Pricing & Tax details
+        sales_tax_name: (currentForm as any).sales_tax_name || "GST",
+        sales_price_after_tax: (currentForm as any).sales_price_after_tax ? Number((currentForm as any).sales_price_after_tax) : calculatedSalesAfterTax,
+        discount_amount: Number((currentForm as any).discount_amount) || 0,
+        sales_measuring_unit: (currentForm as any).sales_measuring_unit || "",
+
+        // Purchasing & Vendor details
+        purchase_tax_percent: purchaseTaxRate,
+        is_purchase_tax_inclusive: isPurchaseIncl,
+        purchase_tax_name: (currentForm as any).purchase_tax_name || "GST",
+        purchase_price_after_tax: (currentForm as any).purchase_price_after_tax ? Number((currentForm as any).purchase_price_after_tax) : calculatedPurchaseAfterTax,
+        purchase_measuring_unit: (currentForm as any).purchase_measuring_unit || "",
+        preferred_supplier: (currentForm as any).preferred_supplier || currentForm.supplier || "",
+        supplier_invoice_number: (currentForm as any).supplier_invoice_number || "",
+        supplier_invoice_date: (currentForm as any).supplier_invoice_date || "",
+        item_received_date: (currentForm as any).item_received_date || "",
+
+        // Warehouse & Batch Tracking
+        location_in_warehouse: (currentForm as any).location_in_warehouse || "",
+        mfg_date: (currentForm as any).mfg_date || "",
+        expiry_date: (currentForm as any).expiry_date || "",
+        has_manual_batch: Boolean((currentForm as any).has_manual_batch),
+        stock_batch_number: (currentForm as any).stock_batch_number || "",
+        stock_batch_expiry_date: (currentForm as any).stock_batch_expiry_date || "",
+        opening_stock_batch_number: (currentForm as any).opening_stock_batch_number || "",
+        opening_stock_batch_expiry_date: (currentForm as any).opening_stock_batch_expiry_date || "",
+
+        // Operational Flags
+        is_service_item: Boolean((currentForm as any).is_service_item),
+        not_for_sale: Boolean((currentForm as any).not_for_sale),
+        only_for_portal: Boolean((currentForm as any).only_for_portal),
+        not_for_portal: Boolean((currentForm as any).not_for_portal),
+        has_label: (currentForm as any).has_label !== false,
+        label_headings: (currentForm as any).label_headings || "",
+        need_to_print_barcode_sticker: (currentForm as any).need_to_print_barcode_sticker !== false,
+        weighing_scale_code: (currentForm as any).weighing_scale_code || "",
+        conversion_factor: (currentForm as any).conversion_factor || "1",
+        keywords: (currentForm as any).keywords || "",
+        accessories_keyword: (currentForm as any).accessories_keyword || "",
+        description_html: (currentForm as any).description_html || "",
+
         custom_attributes: customFieldsDict
       };
 
@@ -1275,21 +1533,40 @@ export function Products() {
     const customFieldsList = Object.entries(customAttributes).map(([key, value]) => ({ key, value: String(value) }));
 
     setCurrentForm({
-      name: product.name,
+      // Basic & Identity
+      name: product.name || "",
+      unique_item_name: specs.unique_item_name || (product as any).unique_item_name || "",
       brand: product.brand_name || product.brand || "",
       brand_id: product.brand_id || "",
       sku: product.sku || "",
       barcode: product.barcode || "",
+      secondary_barcode: specs.secondary_barcode || (product as any).secondary_barcode || "",
       category_id: product.category_id || "",
+      sub_category: specs.sub_category || (product as any).sub_category || "",
+      item_code: specs.item_code || (product as any).item_code || "",
       uom_id: product.uom_id || "",
-      warehouse: product.warehouse || "",
-      supplier: product.supplier || specs.preferred_supplier || "",
+      display_index: specs.display_index || (product as any).display_index || "",
+      image_url: product.image_url || "",
+      category_image: specs.category_image || (product as any).category_image || "",
+
+      // Asian Paints & Hardware
       base_name: product.base_name || specs.base_name || "",
       product_base_code: product.product_base_code || specs.product_base_code || "",
       size_l_kg: product.size_l_kg || specs.size_l_kg || "",
-      purchase_price: product.purchase_price ? product.purchase_price : "",
-      mrp: product.mrp ? product.mrp : "",
-      selling_price: product.selling_price ? product.selling_price : "",
+
+      // Pricing & Tax
+      selling_price: product.selling_price ? product.selling_price : (specs.selling_price || ""),
+      is_tax_inclusive: product.is_tax_inclusive !== false && specs.is_tax_inclusive !== false,
+      sales_tax_name: specs.sales_tax_name || "GST",
+      tax_percent: product.tax_percent ?? specs.tax_percent ?? 0,
+      sales_price_after_tax: specs.sales_price_after_tax || "",
+      mrp: product.mrp ? product.mrp : (specs.mrp || ""),
+      discount_limit: product.discount_limit ? product.discount_limit : (specs.discount_limit || ""),
+      discount_amount: specs.discount_amount || "",
+      sales_measuring_unit: specs.sales_measuring_unit || "",
+      hsn_code: product.hsn_code || specs.hsn_code || "",
+
+      // Tiers
       wholesale_price: product.wholesale_price || specs.wholesale_price || "",
       min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || "",
       wholesale_is_tax_inclusive: specs.wholesale_is_tax_inclusive !== false,
@@ -1299,25 +1576,54 @@ export function Products() {
       distributor_price: specs.distributor_price || "",
       min_distributor_qty: specs.min_distributor_qty || "",
       distributor_is_tax_inclusive: specs.distributor_is_tax_inclusive !== false,
-      tax_percent: product.tax_percent ?? 0,
-      is_tax_inclusive: product.is_tax_inclusive !== false,
-      purchase_tax_percent: specs.purchase_tax_percent ?? 0,
+
+      // Purchasing & Vendor
+      purchase_price: product.purchase_price ? product.purchase_price : (specs.purchase_price || ""),
       is_purchase_tax_inclusive: specs.is_purchase_tax_inclusive !== false,
-      discount_limit: product.discount_limit ? product.discount_limit : "",
-      initial_stock: (product.stock ?? product.initial_stock) ? (product.stock ?? product.initial_stock) : "",
-      reorder_level: product.reorder_level ? product.reorder_level : "",
-      safety_stock: product.safety_stock ? product.safety_stock : "",
-      hsn_code: product.hsn_code || specs.hsn_code || "",
-      sub_category: specs.sub_category || "",
-      item_code: specs.item_code || "",
-      weighing_scale_code: specs.weighing_scale_code || "",
-      conversion_factor: specs.conversion_factor || "",
+      purchase_tax_name: specs.purchase_tax_name || "GST",
+      purchase_tax_percent: specs.purchase_tax_percent ?? 0,
+      purchase_price_after_tax: specs.purchase_price_after_tax || "",
+      purchase_measuring_unit: specs.purchase_measuring_unit || "",
+      supplier: product.supplier || specs.preferred_supplier || specs.supplier || "",
       preferred_supplier: specs.preferred_supplier || product.supplier || "",
-      custom_fields: customFieldsList,
-      image_url: product.image_url || "",
-      short_description: product.short_description || "",
-      long_description: product.long_description || "",
-      status: product.status || "active"
+      supplier_invoice_number: specs.supplier_invoice_number || "",
+      supplier_invoice_date: specs.supplier_invoice_date || "",
+      item_received_date: specs.item_received_date || "",
+
+      // Stock, Warehouse & Batch
+      initial_stock: (product.stock ?? product.initial_stock) ? (product.stock ?? product.initial_stock) : (specs.initial_stock || ""),
+      stock: product.stock ?? specs.stock ?? "",
+      reorder_level: product.reorder_level ? product.reorder_level : (specs.reorder_level || ""),
+      safety_stock: product.safety_stock ? product.safety_stock : (specs.safety_stock || ""),
+      warehouse: product.warehouse || specs.warehouse || "",
+      location_in_warehouse: specs.location_in_warehouse || (product as any).location_in_warehouse || "",
+      mfg_date: specs.mfg_date || (product as any).mfg_date || "",
+      expiry_date: specs.expiry_date || (product as any).expiry_date || "",
+      has_manual_batch: Boolean(specs.has_manual_batch),
+      stock_batch_number: specs.stock_batch_number || "",
+      stock_batch_expiry_date: specs.stock_batch_expiry_date || "",
+      opening_stock_batch_number: specs.opening_stock_batch_number || "",
+      opening_stock_batch_expiry_date: specs.opening_stock_batch_expiry_date || "",
+
+      // Flags & Operations
+      status: product.status || "active",
+      is_service_item: Boolean(specs.is_service_item),
+      not_for_sale: Boolean(specs.not_for_sale),
+      only_for_portal: Boolean(specs.only_for_portal),
+      not_for_portal: Boolean(specs.not_for_portal),
+      has_label: specs.has_label !== false,
+      label_headings: specs.label_headings || "",
+      need_to_print_barcode_sticker: specs.need_to_print_barcode_sticker !== false,
+      weighing_scale_code: specs.weighing_scale_code || "",
+      conversion_factor: specs.conversion_factor || "1",
+      keywords: specs.keywords || "",
+      accessories_keyword: specs.accessories_keyword || "",
+
+      // Descriptions & Custom
+      short_description: product.short_description || specs.short_description || "",
+      long_description: product.long_description || specs.long_description || "",
+      description_html: specs.description_html || "",
+      custom_fields: customFieldsList
     });
     setEditingProductId(product.id);
     setIsModalOpen(true);
@@ -1329,21 +1635,40 @@ export function Products() {
     const customFieldsList = Object.entries(customAttributes).map(([key, value]) => ({ key, value: String(value) }));
 
     setCurrentForm({
+      // Basic & Identity
       name: product.name + " (Copy)",
+      unique_item_name: (specs.unique_item_name || "") ? specs.unique_item_name + " (Copy)" : "",
       brand: product.brand_name || product.brand || "",
       brand_id: product.brand_id || "",
       sku: (product.sku || "") + "-COPY",
       barcode: "",
+      secondary_barcode: "",
       category_id: product.category_id || "",
+      sub_category: specs.sub_category || "",
+      item_code: (specs.item_code || "") ? specs.item_code + "-COPY" : "",
       uom_id: product.uom_id || "",
-      warehouse: product.warehouse || "",
-      supplier: product.supplier || specs.preferred_supplier || "",
+      display_index: specs.display_index || "",
+      image_url: product.image_url || "",
+      category_image: specs.category_image || "",
+
+      // Asian Paints & Hardware
       base_name: product.base_name || specs.base_name || "",
       product_base_code: product.product_base_code || specs.product_base_code || "",
       size_l_kg: product.size_l_kg || specs.size_l_kg || "",
-      purchase_price: product.purchase_price ? product.purchase_price : "",
-      mrp: product.mrp ? product.mrp : "",
+
+      // Pricing & Tax
       selling_price: product.selling_price ? product.selling_price : "",
+      is_tax_inclusive: product.is_tax_inclusive !== false,
+      sales_tax_name: specs.sales_tax_name || "GST",
+      tax_percent: product.tax_percent ?? 0,
+      sales_price_after_tax: specs.sales_price_after_tax || "",
+      mrp: product.mrp ? product.mrp : "",
+      discount_limit: product.discount_limit ? product.discount_limit : "",
+      discount_amount: specs.discount_amount || "",
+      sales_measuring_unit: specs.sales_measuring_unit || "",
+      hsn_code: product.hsn_code || specs.hsn_code || "",
+
+      // Tiers
       wholesale_price: product.wholesale_price || specs.wholesale_price || "",
       min_wholesale_qty: product.min_wholesale_qty || specs.min_wholesale_qty || "",
       wholesale_is_tax_inclusive: specs.wholesale_is_tax_inclusive !== false,
@@ -1353,30 +1678,58 @@ export function Products() {
       distributor_price: specs.distributor_price || "",
       min_distributor_qty: specs.min_distributor_qty || "",
       distributor_is_tax_inclusive: specs.distributor_is_tax_inclusive !== false,
-      tax_percent: product.tax_percent ?? 0,
-      is_tax_inclusive: product.is_tax_inclusive !== false,
-      purchase_tax_percent: specs.purchase_tax_percent ?? 0,
+
+      // Purchasing & Vendor
+      purchase_price: product.purchase_price ? product.purchase_price : "",
       is_purchase_tax_inclusive: specs.is_purchase_tax_inclusive !== false,
-      discount_limit: product.discount_limit ? product.discount_limit : "",
-      initial_stock: (product.stock ?? product.initial_stock) ? (product.stock ?? product.initial_stock) : "",
+      purchase_tax_name: specs.purchase_tax_name || "GST",
+      purchase_tax_percent: specs.purchase_tax_percent ?? 0,
+      purchase_price_after_tax: specs.purchase_price_after_tax || "",
+      purchase_measuring_unit: specs.purchase_measuring_unit || "",
+      supplier: product.supplier || specs.preferred_supplier || "",
+      preferred_supplier: specs.preferred_supplier || product.supplier || "",
+      supplier_invoice_number: "",
+      supplier_invoice_date: "",
+      item_received_date: "",
+
+      // Stock, Warehouse & Batch
+      initial_stock: "",
+      stock: "",
       reorder_level: product.reorder_level ? product.reorder_level : "",
       safety_stock: product.safety_stock ? product.safety_stock : "",
-      hsn_code: product.hsn_code || specs.hsn_code || "",
-      sub_category: specs.sub_category || "",
-      item_code: specs.item_code || "",
-      weighing_scale_code: specs.weighing_scale_code || "",
-      conversion_factor: specs.conversion_factor || "",
-      preferred_supplier: specs.preferred_supplier || product.supplier || "",
-      custom_fields: customFieldsList,
-      image_url: product.image_url || "",
+      warehouse: product.warehouse || "",
+      location_in_warehouse: specs.location_in_warehouse || "",
+      mfg_date: "",
+      expiry_date: "",
+      has_manual_batch: Boolean(specs.has_manual_batch),
+      stock_batch_number: "",
+      stock_batch_expiry_date: "",
+      opening_stock_batch_number: "",
+      opening_stock_batch_expiry_date: "",
+
+      // Flags & Operations
+      status: "active",
+      is_service_item: Boolean(specs.is_service_item),
+      not_for_sale: Boolean(specs.not_for_sale),
+      only_for_portal: Boolean(specs.only_for_portal),
+      not_for_portal: Boolean(specs.not_for_portal),
+      has_label: specs.has_label !== false,
+      label_headings: specs.label_headings || "",
+      need_to_print_barcode_sticker: specs.need_to_print_barcode_sticker !== false,
+      weighing_scale_code: "",
+      conversion_factor: specs.conversion_factor || "1",
+      keywords: specs.keywords || "",
+      accessories_keyword: specs.accessories_keyword || "",
+
+      // Descriptions & Custom
       short_description: product.short_description || "",
       long_description: product.long_description || "",
-      status: product.status || "active"
+      description_html: specs.description_html || "",
+      custom_fields: customFieldsList
     });
     setEditingProductId(null);
     setIsModalOpen(true);
   };
-
   const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this product?")) return;
     try {
@@ -1495,310 +1848,537 @@ export function Products() {
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    const isCsv = fileName.endsWith(".csv");
+    const isExcel = fileName.endsWith(".xlsx") || fileName.endsWith(".xls");
+
+    if (!isCsv && !isExcel) {
+      toast.error("Please upload a valid .csv, .xlsx, or .xls file.");
+      return;
+    }
+
     setIsImporting(true);
 
-    const processData = async (rows: any[]) => {
-      try {
-        if (!rows?.length) throw new Error("File is empty.");
-
-        const items = rows.map((row: any) => {
-          const rowKeys = Object.keys(row || {});
-          const findVal = (possibleNames: string[], containsSubstrings: string[] = []) => {
-            for (const target of possibleNames) {
-              const targetNorm = target.toLowerCase().replace(/[^a-z0-9]/g, "");
-              for (const k of rowKeys) {
-                const kNorm = k.toLowerCase().replace(/[^a-z0-9]/g, "");
-                if (kNorm === targetNorm && row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") {
-                  return String(row[k]).trim();
-                }
-              }
-            }
-            for (const sub of containsSubstrings) {
-              const subNorm = sub.toLowerCase();
-              for (const k of rowKeys) {
-                const kNorm = k.toLowerCase();
-                if (kNorm.includes(subNorm) && row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") {
-                  return String(row[k]).trim();
-                }
-              }
-            }
-            return "";
-          };
-
-          const baseNameVal = findVal(
-            ["Base Code/Name", "Base Code / Name", "BASE CODE/NAME", "Base Name", "base_name", "Base", "base", "BaseCode/Name", "BaseCode"],
-            ["base code/name", "base name", "base code"]
-          );
-
-          const productBaseCodeVal = findVal(
-            ["Product Base Code", "PRODUCT BASE CODE", "ProductBaseCode", "product_base_code", "base_code", "Base Code", "BaseCode"],
-            ["product base code", "base code"]
-          );
-
-          const sizeLKgVal = findVal(
-            ["Size (L/Kg)", "Size (L / Kg)", "Size (L/KG)", "SIZE (L/KG)", "Size", "size", "size_l_kg", "Pack Size", "pack_size", "Size (Litre/Kg)", "Size(L/Kg)"],
-            ["size (l/kg)", "size", "pack size"]
-          );
-
-          let nameVal = findVal(
-            ["ITEMNAME", "Product Name", "product_name", "productname", "name", "Name", "Title", "title", "item_name", "itemname", "product", "item", "description", "item_description", "particulars", "material"],
-            ["itemname", "name", "product", "desc", "title", "item", "particular"]
-          );
-
-          // If product name is inherited from parent in price lists like Asian Paints
-          if ((!nameVal || (!isNaN(Number(nameVal)) && nameVal.length <= 4)) && row["_parent_product_name"]) {
-            const parts = [row["_parent_product_name"]];
-            if (baseNameVal) parts.push(baseNameVal);
-            if (sizeLKgVal) parts.push(sizeLKgVal + (isNaN(Number(sizeLKgVal)) ? "" : "L"));
-            nameVal = parts.join(" - ");
-          } else if (!nameVal) {
-            nameVal = "Unnamed Product";
-          }
-
-          const barcodeVal = findVal(
-            ["BARCODE", "BarCode", "barcode", "Barcode (EAN/UPC)", "barcode_number", "bar_code", "ean", "EAN", "upc", "UPC", "gtin", "GTIN", "item_code", "itemcode", "code", "Code", "scan_code"],
-            ["barcode", "ean", "upc", "gtin", "code", "sku"]
-          );
-
-          const skuVal = findVal(["SKU", "sku", "sku_code", "skucode", "product_code", "SEARCHCODE", "Pack Code", "PACKCODE"], ["sku", "searchcode"]) || (barcodeVal ? `SKU-${barcodeVal}` : "");
-
-          const isActiveRaw = findVal(["ISACTIVE", "is_active", "Active", "Status", "status"]);
-          const isActive = isActiveRaw === "" ? true : (isActiveRaw.toLowerCase() === "true" || isActiveRaw === "1" || isActiveRaw.toLowerCase() === "active");
-
-          const b2bVal = parseFloat(findVal(["B2BPRICE", "B2B Price", "b2b_price", "B2B"])) || 0;
-          const minB2bVal = parseInt(findVal(["MINB2BQTY", "Min B2B Qty", "min_b2b_qty", "B2B Min Qty"]), 10) || 1;
-          const wholesaleVal = parseFloat(findVal(["WHOLESALEPRICE", "Wholesale Price", "wholesale_price", "wholesale"])) || 0;
-          const minWholesaleVal = parseInt(findVal(["MINWHOLESALEQTY", "Min Wholesale Qty", "min_wholesale_qty", "Wholesale Min Qty"]), 10) || 1;
-          const supplierVal = findVal(["PREFERREDSUPPLIER", "Preferred Supplier", "SUPPLIERNAME", "Supplier Name", "supplier", "Supplier"]);
-
-          const categoryVal = findVal(["CATEGORY", "Category", "category", "Category Name", "category_name", "Ctagory/Range/Type", "Ctagory"]) || row["_parent_category"] || "";
-
-          return {
-            name: nameVal,
-            sku: skuVal,
-            barcode: barcodeVal,
-            base_name: baseNameVal,
-            product_base_code: productBaseCodeVal,
-            size_l_kg: sizeLKgVal,
-            short_description: findVal(["DESCRIPTION", "Short Description", "short_description", "description", "Description", "details"]),
-            purchase_price: parseFloat(findVal(["PURCHASEPRICEAFTERTAX", "PURCHASEPRICEBEFORETAX", "Purchase Price", "Purchase Price/Cost Price", "purchase_price", "purchaseprice", "cost_price", "cost", "Cost Price"])) || 0,
-            mrp: parseFloat(findVal(["MRP", "mrp", "retail_price", "list_price"])) || 0,
-            selling_price: parseFloat(findVal(["SALESPRICEAFTERTAX", "SALESPRICEBEFORETAX", "Selling Price", "selling_price", "sellingprice", "price", "Price", "base_price"])) || 0,
-            wholesale_price: wholesaleVal,
-            min_wholesale_qty: minWholesaleVal,
-            tax_percent: parseFloat(findVal(["SALESTAXPERCENT", "Tax (%)", "tax_percent", "tax", "Tax"])) || 0,
-            discount_limit: parseFloat(findVal(["Discount Limit (%)", "discount_limit"])) || 0,
-            initial_stock: parseInt(findVal(["STOCK", "Quantity", "quantity", "stock", "initial_stock", "Stock", "qty", "Opening Stock"]), 10) || 0,
-            reorder_level: parseInt(findVal(["Reorder Level", "reorder_level", "Min. Stock Level"]), 10) || 10,
-            status: isActive ? "active" : "inactive",
-            supplier: supplierVal,
-            brand_name: findVal(["Brand", "brand", "Brand Name", "brand_name", "manufacturer"]) || (nameVal.toLowerCase().includes("asian paints") ? "Asian Paints" : ""),
-            category_name: categoryVal,
-            sub_category_name: findVal(["Sub Category", "sub_category", "sub_category_name"]),
-            uom_name: findVal(["SALESMEASURINGUNIT", "PURCHASEMEASURINGUNIT", "UOM", "uom", "Unit", "unit", "Unit of Measure", "uom_name"]),
-            hsn_code: findVal(["HSN", "hsn", "HSN Code", "hsn_code", "hsncode", "tax_hsn", "HSN/SAC", "hsn/sac"]),
-            specifications: {
-              base_name: baseNameVal,
-              product_base_code: productBaseCodeVal,
-              size_l_kg: sizeLKgVal,
-              b2b_price: b2bVal,
-              min_b2b_qty: minB2bVal,
-              wholesale_price: wholesaleVal,
-              min_wholesale_qty: minWholesaleVal,
-              preferred_supplier: supplierVal,
-              weighing_scale_code: findVal(["WEIGHINGSCALEITEMCODE", "Weighing Scale Item Code", "weighing_scale_code"]),
-              conversion_factor: findVal(["CONVERSIONFACTOR", "Conversion Factor", "conversion_factor"]),
-              item_code: findVal(["Item CODE", "Item Code", "item_code"])
-            }
-          };
-
-        });
-
-        // Filter out completely blank rows
-        const validItems = items.filter(it => (it.name && it.name !== "Unnamed Product") || it.barcode || it.sku);
-        if (!validItems.length) throw new Error("No valid products with Name or Barcode found in file.");
-
-        const isPaintOrInternal = validItems.some(
-          it => it.base_name || it.product_base_code || it.size_l_kg ||
-          (it.name && (it.name.toLowerCase().includes("asian paints") || it.name.toLowerCase().includes("paint") || it.name.toLowerCase().includes("enamel")))
-        );
-
-        setPendingImportData({
-          items: validItems,
-          fileName: file.name,
-          isPaintCatalog: isPaintOrInternal
-        });
-        // Auto-recommend Fast Import without AI search for paint/internal sheets, or false by default to prevent unwanted quota drain
-        setEnableAiForImport(!isPaintOrInternal);
-        setIsImportConfirmModalOpen(true);
+    const processData = (rows: any[]) => {
+      if (!rows || rows.length === 0) {
+        toast.error("The uploaded file is empty.");
         setIsImporting(false);
-      } catch (error: any) {
-        toast.error("Import error: " + (error.detail || error.message || "Unknown error"));
-        setIsImporting(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
       }
+
+      // Check if it's an Asian Paints format or standard 65-column sheet
+      const firstRow = rows[0] || {};
+      const colKeys = Object.keys(firstRow).map(k => k.trim().toLowerCase());
+      const isPaintCatalog = colKeys.some(k => k.includes("base code") || k.includes("product base code") || k.includes("size (l/kg)") || k.includes("asian paint"));
+
+      // Clean, format, and map all 65 catalog columns
+      const validItems = rows.map((r: any) => {
+        const findVal = (exactNames: string[], fuzzySubstrings: string[] = []) => {
+          for (const k of Object.keys(r)) {
+            const trimmed = k.trim();
+            if (exactNames.some(en => en.toLowerCase() === trimmed.toLowerCase())) {
+              return r[k] !== undefined && r[k] !== null ? String(r[k]).trim() : "";
+            }
+          }
+          for (const k of Object.keys(r)) {
+            const lower = k.trim().toLowerCase();
+            if (fuzzySubstrings.some(sub => lower.includes(sub.toLowerCase()))) {
+              return r[k] !== undefined && r[k] !== null ? String(r[k]).trim() : "";
+            }
+          }
+          return "";
+        };
+
+        const itemName = findVal(["ITEM NAME", "Item Name", "PRODUCT NAME", "Product Name", "name", "Item", "Description"], ["item name", "product name", "item"]);
+        if (!itemName) return null;
+
+        // Identity & Codes
+        const barcodeVal = findVal(["BarCode", "Barcode", "BARCODE", "barcode", "UPC", "EAN"], ["barcode"]);
+        const secondaryBarcodeVal = findVal(["BarCode.1", "Secondary Barcode", "secondary_barcode", "Alternate Barcode", "Barcode 2"]);
+        const skuVal = findVal(["SEARCHCODE", "SKU", "sku", "Item Code", "Product Code", "Item ID"], ["searchcode", "sku"]) || barcodeVal || `SKU-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+        const itemCodeVal = findVal(["Item CODE", "Item Code", "item_code", "ITM CODE"]);
+        const uniqueItemNameVal = findVal(["UNIQUE ITEM NAME", "Unique Item Name", "unique_item_name"]);
+
+        // Asian Paints & Hardware
+        const baseNameVal = findVal(["Base Code/Name", "Base Code / Name", "BASE CODE/NAME", "Base Name", "base_name", "Base", "BaseCode/Name"], ["base code/name", "base name"]);
+        const productBaseCodeVal = findVal(["Product Base Code", "PRODUCT BASE CODE", "ProductBaseCode", "product_base_code", "base_code", "Base Code"], ["product base code", "base code"]);
+        const sizeLKgVal = findVal(["Size (L/Kg)", "Size (L / Kg)", "Size (L/KG)", "SIZE (L/KG)", "Size", "size", "size_l_kg", "Pack Size", "pack_size"], ["size (l/kg)", "size"]);
+
+        // Categories & Brands
+        const categoryVal = findVal(["CATEGORY", "Category", "category", "Category Name"], ["category"]);
+        const subCategoryVal = findVal(["SUB CATEGORY", "Sub Category", "sub_category", "Subcategory"], ["sub category", "subcategory"]);
+        const brandVal = findVal(["Brand", "BRAND", "brand", "Brand Name", "Manufacturer"], ["brand"]);
+        const uomVal = findVal(["Unit", "UNIT", "uom", "UOM", "Unit of Measure"], ["unit", "uom"]);
+        const salesMeasuringUnitVal = findVal(["SALES MEASURING UNIT", "Sales Measuring Unit", "sales_measuring_unit"]);
+        const purchaseMeasuringUnitVal = findVal(["PURCHASE MEASURING UNIT", "Purchase Measuring Unit", "purchase_measuring_unit"]);
+
+        // Pricing & Tax
+        const mrpVal = parseFloat(findVal(["MRP", "mrp", "retail_price", "Maximum Retail Price"])) || 0;
+        const salesPriceVal = parseFloat(findVal(["SALES PRICE", "Sales Price", "selling_price", "SALESPRICE", "Price", "Rate"])) || 0;
+        const salesTaxTypeVal = findVal(["Sales Tax inclusive/Exclusive", "Sales Tax Mode", "sales_tax_type"]);
+        const isSalesTaxInclusive = salesTaxTypeVal.toLowerCase().includes("excl") ? false : true;
+        const salesTaxNameVal = findVal(["SALES TAX NAME", "Sales Tax Name", "sales_tax_name"]) || "GST";
+        const salesTaxPercentVal = parseFloat(findVal(["SALES TAX PERCENT", "Sales Tax Percent", "tax_percent", "GST (%)", "GST %", "Tax Rate", "TAX"])) || 0;
+        const salesPriceAfterTaxVal = parseFloat(findVal(["SALES PRICE AFTER TAX", "Sales Price After Tax", "sales_price_after_tax"])) || 0;
+        const disc1PctVal = parseFloat(findVal(["Disc1(%)", "Disc1%", "discount_limit", "Discount Limit (%)", "Discount (%)"])) || 0;
+        const disc1RsVal = parseFloat(findVal(["Disc1(Rs)", "Disc1 Rs", "discount_amount", "Discount (Rs)"])) || 0;
+        const hsnVal = findVal(["HSN", "hsn", "HSN Code", "hsn_code", "hsncode"]);
+
+        // Multi-tier rates
+        const wholesaleVal = parseFloat(findVal(["WHOLESALE PRICE", "Wholesale Price", "wholesale_price", "WHOLESALEPRICE"])) || 0;
+        const minWholesaleVal = parseInt(findVal(["MIN WHOLESALE QTY", "Min Wholesale Qty", "min_wholesale_qty", "MINWHOLESALEQTY"]), 10) || 1;
+        const b2bVal = parseFloat(findVal(["B2B PRICE", "B2B Price", "b2b_price", "B2BPRICE"])) || 0;
+        const minB2bVal = parseInt(findVal(["MIN B2B QTY", "Min B2B Qty", "min_b2b_qty", "MINB2BQTY"]), 10) || 1;
+        const distributorVal = parseFloat(findVal(["DISTRIBUTOR PRICE", "Distributor Price", "distributor_price"])) || 0;
+        const minDistributorVal = parseInt(findVal(["MIN DISTRIBUTOR QTY", "Min Distributor Qty", "min_distributor_qty"]), 10) || 1;
+
+        // Purchase & Sourcing
+        const purchasePriceVal = parseFloat(findVal(["PURCHASE PRICE ", "PURCHASE PRICE", "Purchase Price", "purchase_price", "cost_price", "Cost"])) || 0;
+        const purchaseTaxTypeVal = findVal(["PURCHASE Tax inclusive/Exclusive", "Purchase Tax Mode", "purchase_tax_type"]);
+        const isPurchaseTaxInclusive = purchaseTaxTypeVal.toLowerCase().includes("excl") ? false : true;
+        const purchaseTaxNameVal = findVal(["PURCHASE TAX NAME", "Purchase Tax Name", "purchase_tax_name"]) || "GST";
+        const purchaseTaxPercentVal = parseFloat(findVal(["PURCHASE TAX PERCENT", "Purchase Tax Percent", "purchase_tax_percent"])) || 0;
+        const purchasePriceAfterTaxVal = parseFloat(findVal(["PURCHASE PRICE AFTER TAX", "Purchase Price After Tax", "purchase_price_after_tax"])) || 0;
+        const supplierNameVal = findVal(["SUPPLIER NAME", "Supplier Name", "supplier", "Supplier", "Vendor"], ["supplier", "vendor"]);
+        const preferredSupplierVal = findVal(["PREFERRED SUPPLIER", "Preferred Supplier", "preferred_supplier"]) || supplierNameVal;
+        const supplierInvoiceNoVal = findVal(["SUPPLIER INVOICE NUMBER", "Supplier Invoice Number", "supplier_invoice_number"]);
+        const supplierInvoiceDateVal = findVal(["SUPPLIER INVOICE DATE", "Supplier Invoice Date", "supplier_invoice_date"]);
+        const itemReceivedDateVal = findVal(["ITEM RECEIVED DATE", "Item Received Date", "item_received_date"]);
+
+        // Stock & Warehouse
+        const openingStockVal = parseInt(findVal(["Opening Stock", "opening_stock", "initial_stock"]), 10) || 0;
+        const stockVal = parseInt(findVal(["STOCK", "Stock", "Quantity", "quantity", "Qty"]), 10) || openingStockVal;
+        const stockAlertVal = parseInt(findVal(["Stock Alert", "stock_alert", "Reorder Level", "reorder_level"]), 10) || 10;
+        const safetyStockVal = parseInt(findVal(["Safety Stock", "safety_stock"]), 10) || 0;
+        const warehouseNameVal = findVal(["WAREHOUSE NAME", "Warehouse Name", "warehouse", "Warehouse"]);
+        const locationInWarehouseVal = findVal(["LOCATION IN WAREHOUSE", "Location In Warehouse", "location_in_warehouse", "Rack Location", "Bin Location"]);
+        const mfgDateVal = findVal(["Manifacturing DATE", "Manufacturing Date", "mfg_date", "MFG DATE"]);
+        const expiryDateVal = findVal(["EXPIRY DATE", "Expiry Date", "expiry_date", "EXP DATE"]);
+        const hasManualBatchRaw = findVal(["HAS MANUAL BATCH", "Has Manual Batch", "has_manual_batch"]);
+        const hasManualBatch = hasManualBatchRaw.toLowerCase() === "yes" || hasManualBatchRaw.toLowerCase() === "true" || hasManualBatchRaw === "1";
+        const stockBatchNoVal = findVal(["STOCK BATCH NUMBER", "Stock Batch Number", "stock_batch_number"]);
+        const stockBatchExpVal = findVal(["STOCK BATCH EXPIRY DATE", "Stock Batch Expiry Date", "stock_batch_expiry_date"]);
+        const openingStockBatchNoVal = findVal(["OPENING STOCK BATCH NUMBER", "Opening Stock Batch Number", "opening_stock_batch_number"]);
+        const openingStockBatchExpVal = findVal(["OPENING STOCK BATCH EXPIRY DATE", "Opening Stock Batch Expiry Date", "opening_stock_batch_expiry_date"]);
+
+        // Operational Flags
+        const isActiveRaw = findVal(["IS ACTIVE", "ISACTIVE", "is_active", "Active", "Status"]);
+        const isActive = isActiveRaw === "" ? true : (isActiveRaw.toLowerCase() === "true" || isActiveRaw === "1" || isActiveRaw.toLowerCase() === "yes" || isActiveRaw.toLowerCase() === "active");
+        const hasLabelRaw = findVal(["HAS LABEL", "Has Label", "has_label"]);
+        const hasLabel = hasLabelRaw.toLowerCase() === "no" || hasLabelRaw.toLowerCase() === "false" || hasLabelRaw === "0" ? false : true;
+        const labelHeadingsVal = findVal(["LABEL HEADINGS", "Label Headings", "label_headings"]);
+        const needBarcodeStickerRaw = findVal(["NEED TO PRINT BARCODE STICKER", "Need To Print Barcode Sticker", "need_to_print_barcode_sticker"]);
+        const needBarcodeSticker = needBarcodeStickerRaw.toLowerCase() === "no" || needBarcodeStickerRaw.toLowerCase() === "false" || needBarcodeStickerRaw === "0" ? false : true;
+        const isServiceItemRaw = findVal(["IS SERVICE ITEM", "Is Service Item", "is_service_item"]);
+        const isServiceItem = isServiceItemRaw.toLowerCase() === "yes" || isServiceItemRaw.toLowerCase() === "true" || isServiceItemRaw === "1";
+        const notForSaleRaw = findVal(["NOTFORSALE", "Not For Sale", "not_for_sale"]);
+        const notForSale = notForSaleRaw.toLowerCase() === "yes" || notForSaleRaw.toLowerCase() === "true" || notForSaleRaw === "1";
+        const onlyForPortalRaw = findVal(["ONLY FOR PORTAL", "Only For Portal", "only_for_portal"]);
+        const onlyForPortal = onlyForPortalRaw.toLowerCase() === "yes" || onlyForPortalRaw.toLowerCase() === "true" || onlyForPortalRaw === "1";
+        const notForPortalRaw = findVal(["NOT FOR PORTAL", "Not For Portal", "not_for_portal"]);
+        const notForPortal = notForPortalRaw.toLowerCase() === "yes" || notForPortalRaw.toLowerCase() === "true" || notForPortalRaw === "1";
+        const conversionFactorVal = findVal(["CONVERSION FACTOR", "Conversion Factor", "conversion_factor"]) || "1";
+        const weighingScaleCodeVal = findVal(["WEIGHING SCALE ITEM CODE", "Weighing Scale Item Code", "weighing_scale_code", "WEIGHINGSCALEITEMCODE"]);
+        const displayIndexVal = findVal(["DISPLAYINDEX", "Display Index", "display_index"]);
+        const itemImageVal = findVal(["ITEMIMAGE", "Item Image", "item_image", "image_url"]);
+        const categoryImageVal = findVal(["CATEGORYIMAGE", "Category Image", "category_image"]);
+        const keywordsVal = findVal(["KEYWORDS", "Keywords", "keywords"]);
+        const accessoriesKeywordVal = findVal(["ACCESSORIES KEYWORD", "Accessories Keyword", "accessories_keyword"]);
+        const descVal = findVal(["DESCRIPTION", "Description", "description", "short_description"]);
+        const descHtmlVal = findVal(["DESCRIPTI ON HTML", "Description HTML", "description_html", "DESCRIPTI_ON_HTML"]);
+
+        const specs = {
+          unique_item_name: uniqueItemNameVal,
+          secondary_barcode: secondaryBarcodeVal,
+          item_code: itemCodeVal,
+          sub_category: subCategoryVal,
+          base_name: baseNameVal,
+          product_base_code: productBaseCodeVal,
+          size_l_kg: sizeLKgVal,
+          sales_measuring_unit: salesMeasuringUnitVal,
+          purchase_measuring_unit: purchaseMeasuringUnitVal,
+          sales_tax_name: salesTaxNameVal,
+          sales_tax_type: salesTaxTypeVal || (isSalesTaxInclusive ? "Inclusive" : "Exclusive"),
+          is_tax_inclusive: isSalesTaxInclusive,
+          sales_price_after_tax: salesPriceAfterTaxVal,
+          discount_amount: disc1RsVal,
+          wholesale_price: wholesaleVal,
+          min_wholesale_qty: minWholesaleVal,
+          wholesale_is_tax_inclusive: true,
+          b2b_price: b2bVal,
+          min_b2b_qty: minB2bVal,
+          b2b_is_tax_inclusive: true,
+          distributor_price: distributorVal,
+          min_distributor_qty: minDistributorVal,
+          distributor_is_tax_inclusive: true,
+          purchase_tax_name: purchaseTaxNameVal,
+          purchase_tax_type: purchaseTaxTypeVal || (isPurchaseTaxInclusive ? "Inclusive" : "Exclusive"),
+          purchase_tax_percent: purchaseTaxPercentVal,
+          is_purchase_tax_inclusive: isPurchaseTaxInclusive,
+          purchase_price_after_tax: purchasePriceAfterTaxVal,
+          supplier: supplierNameVal,
+          preferred_supplier: preferredSupplierVal,
+          supplier_invoice_number: supplierInvoiceNoVal,
+          supplier_invoice_date: supplierInvoiceDateVal,
+          item_received_date: itemReceivedDateVal,
+          location_in_warehouse: locationInWarehouseVal,
+          mfg_date: mfgDateVal,
+          expiry_date: expiryDateVal,
+          has_manual_batch: hasManualBatch,
+          stock_batch_number: stockBatchNoVal,
+          stock_batch_expiry_date: stockBatchExpVal,
+          opening_stock_batch_number: openingStockBatchNoVal,
+          opening_stock_batch_expiry_date: openingStockBatchExpVal,
+          has_label: hasLabel,
+          label_headings: labelHeadingsVal,
+          need_to_print_barcode_sticker: needBarcodeSticker,
+          is_service_item: isServiceItem,
+          not_for_sale: notForSale,
+          only_for_portal: onlyForPortal,
+          not_for_portal: notForPortal,
+          conversion_factor: conversionFactorVal,
+          weighing_scale_code: weighingScaleCodeVal,
+          display_index: displayIndexVal,
+          category_image: categoryImageVal,
+          keywords: keywordsVal,
+          accessories_keyword: accessoriesKeywordVal,
+          description_html: descHtmlVal,
+          custom_attributes: {}
+        };
+
+        return {
+          name: itemName,
+          sku: skuVal,
+          barcode: barcodeVal || null,
+          category_name: categoryVal || (isPaintCatalog ? "Paints & Wall Finishes" : "General"),
+          brand_name: brandVal || (isPaintCatalog ? "Asian Paints" : "General"),
+          uom_name: uomVal || (isPaintCatalog ? "Litre" : "Pieces"),
+          base_name: baseNameVal || null,
+          product_base_code: productBaseCodeVal || null,
+          size_l_kg: sizeLKgVal || null,
+          purchase_price: purchasePriceVal,
+          mrp: mrpVal,
+          selling_price: salesPriceVal || mrpVal,
+          tax_percent: salesTaxPercentVal,
+          discount_limit: disc1PctVal,
+          wholesale_price: wholesaleVal,
+          min_wholesale_qty: minWholesaleVal,
+          b2b_price: b2bVal,
+          initial_stock: openingStockVal || stockVal,
+          reorder_level: stockAlertVal,
+          safety_stock: safetyStockVal,
+          warehouse: warehouseNameVal || "Main Warehouse",
+          supplier: supplierNameVal || null,
+          hsn_code: hsnVal || null,
+          short_description: descVal || null,
+          image_url: itemImageVal || null,
+          status: isActive ? "active" : "inactive",
+          specifications: specs
+        };
+      }).filter(Boolean);
+
+      setIsImporting(false);
+
+      if (validItems.length === 0) {
+        toast.error("No valid product rows found. Ensure each row has at least an 'ITEM NAME' column.");
+        return;
+      }
+
+      setPendingImportData({
+        items: validItems,
+        fileName: file.name,
+        isPaintCatalog
+      });
+      setIsImportConfirmModalOpen(true);
     };
 
-
-    if (file.name.endsWith(".csv")) {
-      const raw = await file.text();
-      const text = raw.replace(/^﻿/, '');
-      Papa.parse(text, { header: true, skipEmptyLines: true, complete: (r: any) => processData(r.data), error: (err: any) => { setIsImporting(false); alert("CSV parse error: " + err.message); } });
-    } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+    if (isCsv) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          processData(results.data);
+        },
+        error: (err) => {
+          setIsImporting(false);
+          toast.error(`CSV parse error: ${err.message}`);
+        }
+      });
+    } else {
       const reader = new FileReader();
       reader.onload = (evt) => {
         try {
-          const wb = XLSX.read(evt.target?.result as any, { type: 'binary' });
-          const sheet = wb.Sheets[wb.SheetNames[0]];
-          const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-
-          // Smart Header Row Detection (inspects top 15 rows)
-          let headerIdx = 0;
-          for (let i = 0; i < Math.min(15, rawRows.length); i++) {
-            const row = (rawRows[i] || []).map(c => String(c).toLowerCase().trim());
-            const hasItemOrProduct = row.some(c => c.includes('product') || c.includes('item') || c.includes('barcode') || c.includes('name'));
-            const hasPriceOrCode = row.some(c => c.includes('price') || c.includes('code') || c.includes('size') || c.includes('base'));
-            if (hasItemOrProduct && hasPriceOrCode) {
-              headerIdx = i;
-              break;
-            }
-          }
-
-          const headers = (rawRows[headerIdx] || []).map(h => String(h).trim());
-          const data: any[] = [];
-          let currentParentName = "";
-          let currentParentCat = "";
-
-          for (let i = headerIdx + 1; i < rawRows.length; i++) {
-            const r = rawRows[i];
-            if (!r || !r.length || r.every(c => c === "" || c === null || c === undefined)) continue;
-            const obj: Record<string, any> = {};
-            headers.forEach((h, colIdx) => {
-              if (h) obj[h] = r[colIdx] !== undefined ? r[colIdx] : "";
-            });
-            // Smart hierarchy inheritance for paint sheets
-            const rawName = String(obj["Product Name"] || obj["ITEM NAME"] || obj["item_name"] || obj["name"] || "").trim();
-            const rawCat = String(obj["Ctagory/Range/Type"] || obj["CATEGORY"] || obj["category"] || "").trim();
-            if (rawName.length > 5 && isNaN(Number(rawName))) {
-              currentParentName = rawName;
-              if (rawCat) currentParentCat = rawCat;
-            } else if (currentParentName && (!rawName || (!isNaN(Number(rawName)) && rawName.length <= 4))) {
-              obj["_parent_product_name"] = currentParentName;
-              if (!rawCat && currentParentCat) obj["_parent_category"] = currentParentCat;
-            }
-            data.push(obj);
-          }
-
+          const bstr = evt.target?.result;
+          const wb = XLSX.read(bstr, { type: "binary" });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json(ws, { defval: "" });
           processData(data);
-        } catch (err: any) { setIsImporting(false); alert("Excel error: " + err.message); }
+        } catch (err: any) {
+          setIsImporting(false);
+          toast.error(`Excel parse error: ${err.message}`);
+        }
       };
       reader.readAsBinaryString(file);
-    } else {
-      setIsImporting(false); alert("Unsupported format. Use .csv or .xlsx");
     }
+
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleExport = () => {
-    if (fuzzyLocalResults.length === 0) return alert("No products to export.");
-    const headers = ["name", "brand", "sku", "barcode", "base_name", "product_base_code", "size_l_kg", "description", "purchase_price", "mrp", "selling_price", "tax_percent", "discount_limit", "initial_stock", "reorder_level", "status"];
-    const csv = [headers.join(","), ...fuzzyLocalResults.map(p => headers.map(h => esc((p as any)[h])).join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `products_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    if (products.length === 0) {
+      toast.error("No products to export.");
+      return;
+    }
+
+    // Build complete 65-column dataset matching the standard business format
+    const exportData = products.map((p) => {
+      const specs = (p.specifications && typeof p.specifications === 'object') ? p.specifications : {};
+      return {
+        "ITEM NAME": p.name || "",
+        "BarCode": p.barcode || "",
+        "Base Code/Name": p.base_name || specs.base_name || "",
+        "Product Base Code": p.product_base_code || specs.product_base_code || "",
+        "Size (L/Kg)": p.size_l_kg || specs.size_l_kg || "",
+        "CATEGORY": p.category_name || "",
+        "SUB CATEGORY": specs.sub_category || (p as any).sub_category || "",
+        "BarCode.1": specs.secondary_barcode || (p as any).secondary_barcode || "",
+        "Brand": p.brand_name || p.brand || "",
+        "Item CODE": specs.item_code || (p as any).item_code || "",
+        "Unit": p.uom_name || "",
+        "Stock Alert": p.reorder_level ?? 10,
+        "DESCRIPTION": p.short_description || specs.short_description || "",
+        "DESCRIPTI ON HTML": specs.description_html || "",
+        "CONVERSION FACTOR": specs.conversion_factor || "1",
+        "WEIGHING SCALE ITEM CODE": specs.weighing_scale_code || "",
+        "HSN": p.hsn_code || specs.hsn_code || "",
+        "MRP": p.mrp ?? 0,
+        "B2B PRICE": p.b2b_price ?? specs.b2b_price ?? 0,
+        "MIN B2B QTY": specs.min_b2b_qty ?? 1,
+        "WHOLESALE PRICE": p.wholesale_price ?? specs.wholesale_price ?? 0,
+        "MIN WHOLESALE QTY": p.min_wholesale_qty ?? specs.min_wholesale_qty ?? 1,
+        "SALES PRICE": p.selling_price ?? 0,
+        "Sales Tax inclusive/Exclusive": specs.sales_tax_type || (p.is_tax_inclusive !== false ? "Inclusive" : "Exclusive"),
+        "SALES TAX NAME": specs.sales_tax_name || "GST",
+        "SALES TAX PERCENT": p.tax_percent ?? 0,
+        "SALES PRICE AFTER TAX": specs.sales_price_after_tax ?? (p.selling_price ?? 0),
+        "Disc1(%)": p.discount_limit ?? 0,
+        "Disc1(Rs)": specs.discount_amount ?? 0,
+        "SALES MEASURING UNIT": specs.sales_measuring_unit || p.uom_name || "",
+        "PURCHASE PRICE ": p.purchase_price ?? 0,
+        "PURCHASE Tax inclusive/Exclusive": specs.purchase_tax_type || "Inclusive",
+        "PURCHASE TAX NAME": specs.purchase_tax_name || "GST",
+        "PURCHASE TAX PERCENT": specs.purchase_tax_percent ?? 0,
+        "PURCHASE PRICE AFTER TAX": specs.purchase_price_after_tax ?? (p.purchase_price ?? 0),
+        "PURCHASE MEASURING UNIT": specs.purchase_measuring_unit || p.uom_name || "",
+        "Opening Stock": p.initial_stock ?? 0,
+        "STOCK": p.stock ?? p.initial_stock ?? 0,
+        "Manifacturing DATE": specs.mfg_date || "",
+        "EXPIRY DATE": specs.expiry_date || "",
+        "WAREHOUSE NAME": p.warehouse || "Main Warehouse",
+        "LOCATION IN WAREHOUSE": specs.location_in_warehouse || "",
+        "IS ACTIVE": p.status === "active" ? "TRUE" : "FALSE",
+        "HAS LABEL": specs.has_label !== false ? "TRUE" : "FALSE",
+        "LABEL HEADINGS": specs.label_headings || "",
+        "SUPPLIER NAME": p.supplier || specs.supplier || "",
+        "ITEM RECEIVED DATE": specs.item_received_date || "",
+        "SUPPLIER INVOICE NUMBER": specs.supplier_invoice_number || "",
+        "SUPPLIER INVOICE DATE": specs.supplier_invoice_date || "",
+        "NEED TO PRINT BARCODE STICKER": specs.need_to_print_barcode_sticker !== false ? "TRUE" : "FALSE",
+        "IS SERVICE ITEM": specs.is_service_item ? "TRUE" : "FALSE",
+        "NOTFORSALE": specs.not_for_sale ? "TRUE" : "FALSE",
+        "ONLY FOR PORTAL": specs.only_for_portal ? "TRUE" : "FALSE",
+        "NOT FOR PORTAL": specs.not_for_portal ? "TRUE" : "FALSE",
+        "HAS MANUAL BATCH": specs.has_manual_batch ? "TRUE" : "FALSE",
+        "STOCK BATCH NUMBER": specs.stock_batch_number || "",
+        "STOCK BATCH EXPIRY DATE": specs.stock_batch_expiry_date || "",
+        "OPENING STOCK BATCH NUMBER": specs.opening_stock_batch_number || "",
+        "OPENING STOCK BATCH EXPIRY DATE": specs.opening_stock_batch_expiry_date || "",
+        "DISPLAYINDEX": specs.display_index || "",
+        "ITEMIMAGE": p.image_url || "",
+        "CATEGORYIMAGE": specs.category_image || "",
+        "UNIQUE ITEM NAME": specs.unique_item_name || (p as any).unique_item_name || "",
+        "KEYWORDS": specs.keywords || "",
+        "ACCESSORIES KEYWORD": specs.accessories_keyword || "",
+        "PREFERRED SUPPLIER": specs.preferred_supplier || p.supplier || ""
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory Products");
+    XLSX.writeFile(workbook, `inventory_products_65cols_${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success(`Exported ${products.length} products with all 65 catalog columns!`);
   };
 
   const handleDownloadSample = () => {
-    const headers = [
-      "ITEM NAME", "BarCode", "Base Code/Name", "Product Base Code", "Size (L/Kg)", "CATEGORY", "SUB CATEGORY", "BarCode.1", "Brand", "Item CODE", "Unit", "Stock Alert",
-      "DESCRIPTION", "DESCRIPTI ON HTML", "CONVERSION FACTOR", "WEIGHING SCALE ITEM CODE", "HSN",
-      "MRP", "B2B PRICE", "MIN B2B QTY", "WHOLESALE PRICE", "MIN WHOLESALE QTY", "SALES PRICE",
-      "Sales Tax inclusive/Exclusive", "SALES TAX NAME", "SALES PRICE AFTER TAX", "Disc1(%)", "Disc1(Rs)", "SALES MEASURING UNIT",
-      "PURCHASE PRICE ", "PURCHASE Tax inclusive/Exclusive", "PURCHASE TAX NAME", "PURCHASE TAX PERCENT", "PURCHASE PRICE AFTER TAX",
-      "PURCHASE MEASURING UNIT", "Opening Stock", "STOCK", "Manifacturing DATE", "EXPIRY DATE", "WAREHOUSE NAME",
-      "LOCATION IN WAREHOUSE", "IS ACTIVE", "HAS LABEL", "LABEL HEADINGS", "SUPPLIER NAME", "ITEM RECEIVED DATE",
-      "SUPPLIER INVOICE NUMBER", "SUPPLIER INVOICE DATE", "NEED TO PRINT BARCODE STICKER", "IS SERVICE ITEM", "NOTFORSALE",
-      "ONLY FOR PORTAL", "NOT FOR PORTAL", "HAS MANUAL BATCH", "STOCK BATCH NUMBER", "STOCK BATCH EXPIRY DATE",
-      "OPENING STOCK BATCH NUMBER", "OPENING STOCK BATCH EXPIRY DATE", "DISPLAYINDEX", "ITEMIMAGE", "CATEGORYIMAGE",
-      "UNIQUE ITEM NAME", "KEYWORDS", "ACCESSORIES KEYWORD", "PREFERRED SUPPLIER"
+    // Generate complete sample file matching the official 65-column business template
+    const sampleHeaders = [
+      "ITEM NAME", "BarCode", "Base Code/Name", "Product Base Code", "Size (L/Kg)",
+      "CATEGORY", "SUB CATEGORY", "BarCode.1", "Brand", "Item CODE", "Unit",
+      "Stock Alert", "DESCRIPTION", "DESCRIPTI ON HTML", "CONVERSION FACTOR",
+      "WEIGHING SCALE ITEM CODE", "HSN", "MRP", "B2B PRICE", "MIN B2B QTY",
+      "WHOLESALE PRICE", "MIN WHOLESALE QTY", "SALES PRICE", "Sales Tax inclusive/Exclusive",
+      "SALES TAX NAME", "SALES TAX PERCENT", "SALES PRICE AFTER TAX", "Disc1(%)",
+      "Disc1(Rs)", "SALES MEASURING UNIT", "PURCHASE PRICE ", "PURCHASE Tax inclusive/Exclusive",
+      "PURCHASE TAX NAME", "PURCHASE TAX PERCENT", "PURCHASE PRICE AFTER TAX",
+      "PURCHASE MEASURING UNIT", "Opening Stock", "STOCK", "Manifacturing DATE",
+      "EXPIRY DATE", "WAREHOUSE NAME", "LOCATION IN WAREHOUSE", "IS ACTIVE",
+      "HAS LABEL", "LABEL HEADINGS", "SUPPLIER NAME", "ITEM RECEIVED DATE",
+      "SUPPLIER INVOICE NUMBER", "SUPPLIER INVOICE DATE", "NEED TO PRINT BARCODE STICKER",
+      "IS SERVICE ITEM", "NOTFORSALE", "ONLY FOR PORTAL", "NOT FOR PORTAL",
+      "HAS MANUAL BATCH", "STOCK BATCH NUMBER", "STOCK BATCH EXPIRY DATE",
+      "OPENING STOCK BATCH NUMBER", "OPENING STOCK BATCH EXPIRY DATE", "DISPLAYINDEX",
+      "ITEMIMAGE", "CATEGORYIMAGE", "UNIQUE ITEM NAME", "KEYWORDS", "ACCESSORIES KEYWORD",
+      "PREFERRED SUPPLIER"
     ];
 
     const sampleRows = [
-      [
-        "ASIAN PAINTS APCOLITE PREMIUM GLOSS ENAMEL", "9181709900210", "Brilliant White", "912", "1L", "Paints & Finishes", "Enamels", "", "Asian Paints", "AP-0026", "LITRE", "10",
-        "Apcolite Premium Gloss Enamel provides a long lasting, mirror-like gloss finish for wood and metal.", "", "1", "101", "32089090",
-        238, 190.00, 5, 175.00, 10, 201.69,
-        "Exclusive", "GST@18", 238, 5, 0, "Litre",
-        155.00, "Exclusive", "GST@18", "18", 182.90,
-        "Litre", 40, 40, "2026-01-01", "2029-12-31", "Main Warehouse",
-        "Rack P-1", "Yes", "Yes", "MRP: 238", "Asian Paints Dealer Network", "2026-01-10",
-        "INV-AP99", "2026-01-10", "Yes", "No", "No",
-        "Yes", "No", "No", "", "",
-        "", "", "1", "", "",
-        "ASIAN PAINTS APCOLITE ENAMEL 1L", "paint, enamel, gloss, asian paints", "", "Asian Paints Dealer Network"
-      ],
-      [
-        "ASIAN PAINTS APCOLITE PREMIUM GLOSS ENAMEL", "9181709900240", "Blazing White", "0W06", "4L", "Paints & Finishes", "Enamels", "", "Asian Paints", "AP-0026-4L", "LITRE", "5",
-        "Apcolite Premium Gloss Enamel - 4 Litre pack", "", "1", "102", "32089090",
-        911, 750.00, 2, 700.00, 4, 772.03,
-        "Exclusive", "GST@18", 911, 5, 0, "Litre",
-        595.00, "Exclusive", "GST@18", "18", 702.10,
-        "Litre", 25, 25, "2026-01-01", "2029-12-31", "Main Warehouse",
-        "Rack P-2", "Yes", "Yes", "MRP: 911", "Asian Paints Dealer Network", "2026-01-10",
-        "INV-AP99", "2026-01-10", "Yes", "No", "No",
-        "Yes", "No", "No", "", "",
-        "", "", "2", "", "",
-        "ASIAN PAINTS APCOLITE ENAMEL 4L", "paint, enamel, gloss, asian paints, 4l", "", "Asian Paints Dealer Network"
-      ],
-      [
-        "CHOKINO MILKEA", "9999179361009", "", "", "200ml", "Beverages", "Milk Drinks", "", "Nestle", "ITM-001", "MILLI", "10",
-        "Delicious chocolate milk drink", "", "1", "101", "04029990",
-        100, 70.00, 5, 65.00, 10, 76.27,
-        "Exclusive", "GST@18", 90, 5, 0, "Qty",
-        52.54, "Exclusive", "GST@18", "18", 62,
-        "Qty", 50, 50, "2026-01-01", "2026-12-31", "Main Warehouse",
-        "Rack A-1", "Yes", "Yes", "MRP: 100", "Global Beverages Ltd", "2026-01-10",
-        "INV-9901", "2026-01-10", "Yes", "No", "No",
-        "Yes", "No", "Yes", "BAT-2026-01", "2026-12-31",
-        "BAT-2026-01", "2026-12-31", "3", "", "",
-        "CHOKINO MILKEA 200ML", "milk, chocolate, drink", "straw", "Global Beverages Ltd"
-      ],
-      [
-        "KIT TOWEL", "9997898492653", "", "", "Standard", "Home & Living", "Towels", "", "Bombay Dyeing", "ITM-002", "BAGS", "5",
-        "100% Cotton premium bath towel", "", "1", "102", "63026000",
-        60, 42.00, 10, 38.00, 20, 49,
-        "Inclusive", "GST@5", 49, 0, 0, "Qty",
-        28, "Inclusive", "GST@5", "5", 28,
-        "Qty", 100, 100, "2026-02-01", "2028-02-01", "Main Warehouse",
-        "Shelf B-2", "Yes", "Yes", "MRP: 60", "Textile Hub", "2026-02-15",
-        "INV-9902", "2026-02-15", "Yes", "No", "No",
-        "Yes", "No", "No", "", "",
-        "", "", "4", "", "",
-        "KIT TOWEL COTTON", "towel, cotton, bath", "", "Textile Hub"
-      ],
-      [
-        "GORAL Premium Toothbrush No. 616", "9992008087019", "", "", "Standard", "Personal Care", "Oral Care", "", "Goral", "ITM-003", "GRAMS", "20",
-        "Ultra soft bristles for deep cleaning", "", "1", "103", "96032100",
-        100, 50.00, 12, 45.00, 24, 59,
-        "Inclusive", "GST@18", 59, 10, 0, "Qty",
-        30, "Inclusive", "GST@18", "18", 30,
-        "Qty", 200, 200, "2026-03-01", "2029-03-01", "Main Warehouse",
-        "Aisle 3", "Yes", "Yes", "MRP: 100", "Goral Health Care", "2026-03-10",
-        "INV-9903", "2026-03-10", "Yes", "No", "No",
-        "Yes", "No", "No", "", "",
-        "", "", "5", "", "",
-        "GORAL TOOTHBRUSH 616", "toothbrush, oral, hygiene", "", "Goral Health Care"
-      ]
+      {
+        "ITEM NAME": "Royale Luxury Emulsion White 1L",
+        "BarCode": "8901234567890",
+        "Base Code/Name": "Base White",
+        "Product Base Code": "ROY-WHT-1L",
+        "Size (L/Kg)": "1L",
+        "CATEGORY": "Paints & Finishes",
+        "SUB CATEGORY": "Interior Emulsion",
+        "BarCode.1": "8901234567891",
+        "Brand": "Asian Paints",
+        "Item CODE": "AP-ROY-1L",
+        "Unit": "Litre",
+        "Stock Alert": 15,
+        "DESCRIPTION": "Super luxury emulsion paint with Teflon surface protector for interior walls.",
+        "DESCRIPTI ON HTML": "<p>Super luxury interior emulsion with smooth sheen finish.</p>",
+        "CONVERSION FACTOR": "1",
+        "WEIGHING SCALE ITEM CODE": "WS-001",
+        "HSN": "32091000",
+        "MRP": 520,
+        "B2B PRICE": 430,
+        "MIN B2B QTY": 10,
+        "WHOLESALE PRICE": 450,
+        "MIN WHOLESALE QTY": 5,
+        "SALES PRICE": 490,
+        "Sales Tax inclusive/Exclusive": "Inclusive",
+        "SALES TAX NAME": "GST",
+        "SALES TAX PERCENT": 18,
+        "SALES PRICE AFTER TAX": 490,
+        "Disc1(%)": 5,
+        "Disc1(Rs)": 0,
+        "SALES MEASURING UNIT": "Litre",
+        "PURCHASE PRICE ": 380,
+        "PURCHASE Tax inclusive/Exclusive": "Inclusive",
+        "PURCHASE TAX NAME": "GST",
+        "PURCHASE TAX PERCENT": 18,
+        "PURCHASE PRICE AFTER TAX": 380,
+        "PURCHASE MEASURING UNIT": "Litre",
+        "Opening Stock": 50,
+        "STOCK": 50,
+        "Manifacturing DATE": "2026-01-15",
+        "EXPIRY DATE": "2029-01-15",
+        "WAREHOUSE NAME": "Main Warehouse",
+        "LOCATION IN WAREHOUSE": "Aisle-3-Rack-2",
+        "IS ACTIVE": "TRUE",
+        "HAS LABEL": "TRUE",
+        "LABEL HEADINGS": "Asian Paints Royale",
+        "SUPPLIER NAME": "Asian Paints Dist Ltd",
+        "ITEM RECEIVED DATE": "2026-01-20",
+        "SUPPLIER INVOICE NUMBER": "INV-AP-8921",
+        "SUPPLIER INVOICE DATE": "2026-01-18",
+        "NEED TO PRINT BARCODE STICKER": "TRUE",
+        "IS SERVICE ITEM": "FALSE",
+        "NOTFORSALE": "FALSE",
+        "ONLY FOR PORTAL": "FALSE",
+        "NOT FOR PORTAL": "FALSE",
+        "HAS MANUAL BATCH": "TRUE",
+        "STOCK BATCH NUMBER": "BATCH-2026-A1",
+        "STOCK BATCH EXPIRY DATE": "2029-01-15",
+        "OPENING STOCK BATCH NUMBER": "BATCH-2026-A1",
+        "OPENING STOCK BATCH EXPIRY DATE": "2029-01-15",
+        "DISPLAYINDEX": "1",
+        "ITEMIMAGE": "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=300",
+        "CATEGORYIMAGE": "",
+        "UNIQUE ITEM NAME": "Asian Paints Royale Luxury Emulsion White 1L",
+        "KEYWORDS": "paint, emulsion, interior, asian paints, white",
+        "ACCESSORIES KEYWORD": "roller, brush, primer, putty",
+        "PREFERRED SUPPLIER": "Asian Paints Dist Ltd"
+      },
+      {
+        "ITEM NAME": "Apex Ultima Weather Proof Exterior Emulsion 4L",
+        "BarCode": "8901234567892",
+        "Base Code/Name": "Base 01",
+        "Product Base Code": "APX-01-4L",
+        "Size (L/Kg)": "4L",
+        "CATEGORY": "Paints & Finishes",
+        "SUB CATEGORY": "Exterior Emulsion",
+        "BarCode.1": "",
+        "Brand": "Asian Paints",
+        "Item CODE": "AP-APX-4L",
+        "Unit": "Litre",
+        "Stock Alert": 10,
+        "DESCRIPTION": "Advanced exterior wall protection with high durability and anti-algal warranty.",
+        "DESCRIPTI ON HTML": "<p>Exterior wall emulsion paint with 7-year performance warranty.</p>",
+        "CONVERSION FACTOR": "1",
+        "WEIGHING SCALE ITEM CODE": "WS-002",
+        "HSN": "32091000",
+        "MRP": 1680,
+        "B2B PRICE": 1390,
+        "MIN B2B QTY": 6,
+        "WHOLESALE PRICE": 1450,
+        "MIN WHOLESALE QTY": 3,
+        "SALES PRICE": 1580,
+        "Sales Tax inclusive/Exclusive": "Inclusive",
+        "SALES TAX NAME": "GST",
+        "SALES TAX PERCENT": 18,
+        "SALES PRICE AFTER TAX": 1580,
+        "Disc1(%)": 5,
+        "Disc1(Rs)": 0,
+        "SALES MEASURING UNIT": "Litre",
+        "PURCHASE PRICE ": 1250,
+        "PURCHASE Tax inclusive/Exclusive": "Inclusive",
+        "PURCHASE TAX NAME": "GST",
+        "PURCHASE TAX PERCENT": 18,
+        "PURCHASE PRICE AFTER TAX": 1250,
+        "PURCHASE MEASURING UNIT": "Litre",
+        "Opening Stock": 30,
+        "STOCK": 30,
+        "Manifacturing DATE": "2026-02-01",
+        "EXPIRY DATE": "2029-02-01",
+        "WAREHOUSE NAME": "Main Warehouse",
+        "LOCATION IN WAREHOUSE": "Aisle-3-Rack-3",
+        "IS ACTIVE": "TRUE",
+        "HAS LABEL": "TRUE",
+        "LABEL HEADINGS": "Apex Ultima",
+        "SUPPLIER NAME": "Asian Paints Dist Ltd",
+        "ITEM RECEIVED DATE": "2026-02-05",
+        "SUPPLIER INVOICE NUMBER": "INV-AP-9012",
+        "SUPPLIER INVOICE DATE": "2026-02-03",
+        "NEED TO PRINT BARCODE STICKER": "TRUE",
+        "IS SERVICE ITEM": "FALSE",
+        "NOTFORSALE": "FALSE",
+        "ONLY FOR PORTAL": "FALSE",
+        "NOT FOR PORTAL": "FALSE",
+        "HAS MANUAL BATCH": "TRUE",
+        "STOCK BATCH NUMBER": "BATCH-2026-B2",
+        "STOCK BATCH EXPIRY DATE": "2029-02-01",
+        "OPENING STOCK BATCH NUMBER": "BATCH-2026-B2",
+        "OPENING STOCK BATCH EXPIRY DATE": "2029-02-01",
+        "DISPLAYINDEX": "2",
+        "ITEMIMAGE": "https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=300",
+        "CATEGORYIMAGE": "",
+        "UNIQUE ITEM NAME": "Asian Paints Apex Ultima Weather Proof 4L",
+        "KEYWORDS": "exterior paint, apex ultima, weather proof",
+        "ACCESSORIES KEYWORD": "roller, masking tape, exterior primer",
+        "PREFERRED SUPPLIER": "Asian Paints Dist Ltd"
+      }
     ];
 
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+    const ws = XLSX.utils.json_to_sheet(sampleRows, { header: sampleHeaders });
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Item Details");
-    XLSX.writeFile(wb, "Itm_Details_Sample.xlsx");
-    toast.success("Sample Excel downloaded with all catalog columns including Asian Paints Base Code/Name, Product Base Code & Size!");
+    XLSX.utils.book_append_sheet(wb, ws, "Sample Catalog 65 Cols");
+    XLSX.writeFile(wb, "products_65cols_sample_template.xlsx");
+    toast.success("Downloaded 65-column sample Excel template!");
   };
-
   // ── Open create modal helper ────────────────────────────────────
   const openCreateModal = () => {
     setCurrentForm(defaultFormData());
@@ -1933,8 +2513,12 @@ export function Products() {
   // ── Columns menu renderer ───────────────────────────────────────
   const renderColumnsMenu = () => (
     <div className="relative">
-      <Button variant="outline" onClick={() => setIsColumnsMenuOpen(!isColumnsMenuOpen)}>
-        <Sliders className="size-4 mr-2" /> Columns
+      <Button variant="outline" onClick={() => setIsColumnsMenuOpen(!isColumnsMenuOpen)} className="h-10 px-3.5 rounded-xl border-slate-200 text-slate-700 font-bold hover:bg-slate-50 shadow-sm flex items-center gap-2">
+        <Sliders className="size-4 text-indigo-600" />
+        <span>Columns</span>
+        <span className="ml-1 px-1.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">
+          {activeTab === "inventory" ? localVisibleColumns.length : masterVisibleColumns.length}
+        </span>
       </Button>
       {isColumnsMenuOpen && (
         <>
@@ -1957,11 +2541,22 @@ export function Products() {
                 setter(cols.map(c => c.id));
               }
             }}
+            onApplyPreset={(presetIds) => {
+              if (activeTab === "inventory") {
+                setLocalVisibleColumns(presetIds);
+                localStorage.setItem("products_local_visible_columns", JSON.stringify(presetIds));
+              } else {
+                setMasterVisibleColumns(presetIds);
+                localStorage.setItem("products_master_visible_columns", JSON.stringify(presetIds));
+              }
+              toast.success("Applied column view preset!");
+            }}
             onSave={() => {
               const key = activeTab === "inventory" ? "products_local_visible_columns" : "products_master_visible_columns";
               const cols = activeTab === "inventory" ? localVisibleColumns : masterVisibleColumns;
               localStorage.setItem(key, JSON.stringify(cols));
               setIsColumnsMenuOpen(false);
+              toast.success("Column preferences saved!");
             }}
             onReset={() => {
               const def = activeTab === "inventory" ? localVisibleDefault : masterVisibleDefault;
@@ -1969,6 +2564,7 @@ export function Products() {
               const key = activeTab === "inventory" ? "products_local_visible_columns" : "products_master_visible_columns";
               setter(def);
               localStorage.setItem(key, JSON.stringify(def));
+              toast.info("Reset columns to default.");
             }}
             onClose={() => setIsColumnsMenuOpen(false)}
           />
@@ -1996,1120 +2592,1975 @@ export function Products() {
   };
 
   // ══════════════════════════════════════════════════════════════════
-  //  RENDER: Product form modal
+  //  RENDER: Product form modal (6 Comprehensive Tabs)
   // ══════════════════════════════════════════════════════════════════
   const renderProductForm = () => {
-    const selectedCatObj = categories.find(c => c.id === currentForm.category_id);
-    const activeParentId = selectedCatObj ? (selectedCatObj.parent_id || selectedCatObj.id) : "";
-    const activeSubId = selectedCatObj && selectedCatObj.parent_id ? selectedCatObj.id : "";
-    
-    const mainCategories = categories.filter(c => !c.parent_id);
-    const subCategories = categories.filter(c => c.parent_id && c.parent_id === activeParentId);
+    if (!isModalOpen) return null;
 
-    const tabs = [
-      { id: "basic", label: "Basic Details", desc: "Name, SKU, Category, Brand", icon: Package },
-      { id: "pricing", label: "Pricing, Tax & Purchasing", desc: "Prices, GST, Wholesale, B2B", icon: DollarSign },
-      { id: "inventory", label: "Inventory", desc: "Stock, Warehouse, Reorder", icon: Box },
-      { id: "custom_fields", label: "Custom Fields", desc: "Attributes, Specs, Tags", icon: Layers },
-      { id: "other", label: "Other Details", desc: "Description, Status", icon: FileText }
+    const modalTabs = [
+      { id: "basic", label: "Basic & Identity", icon: Package },
+      { id: "pricing", label: "Pricing & Tax", icon: DollarSign },
+      { id: "purchasing", label: "Purchasing & Vendor", icon: Truck },
+      { id: "inventory", label: "Stock & Batches", icon: Box },
+      { id: "operations", label: "Flags & Operations", icon: Zap },
+      { id: "other", label: "Descriptions & Specs", icon: FileText },
     ];
 
+    // Live tax computations for preview
+    const sPrice = Number(currentForm.selling_price) || 0;
+    const sTaxPct = Number(currentForm.tax_percent) || 0;
+    const isSalesTaxIncl = (currentForm as any).is_tax_inclusive !== false;
+    const computedSalesTaxAmt = isSalesTaxIncl 
+      ? (sPrice * sTaxPct) / (100 + sTaxPct)
+      : (sPrice * sTaxPct) / 100;
+    const computedSalesTotal = isSalesTaxIncl ? sPrice : (sPrice + computedSalesTaxAmt);
+
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-          className="bg-card border rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] max-h-[92vh] flex flex-col overflow-hidden">
+      <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.96 }}
+          className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-200"
+        >
           {/* Header */}
-          <div className="p-6 border-b flex items-center justify-between shrink-0 bg-white">
-            <h2 className="text-xl font-bold tracking-tight">{editingProductId ? "Edit Product" : "Create Product"}</h2>
-            <button type="button" onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); setActiveModalTab("basic"); }} className="p-1.5 rounded-lg hover:bg-muted"><X className="size-5" /></button>
-          </div>
-          
-          <div className="flex flex-1 overflow-hidden">
-            {/* Sidebar */}
-            <div className="w-72 bg-slate-50 border-r flex flex-col overflow-y-auto shrink-0 p-4">
-              <div className="space-y-2 flex-1">
-                {tabs.map(tab => {
-                  const Icon = tab.icon;
-                  const isActive = activeModalTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveModalTab(tab.id)}
-                      className={`w-full text-left p-3 rounded-xl flex gap-3 transition-colors ${
-                        isActive ? "bg-indigo-50 border border-indigo-100" : "hover:bg-muted border border-transparent"
-                      }`}
-                    >
-                      <div className={`shrink-0 p-2 rounded-lg ${isActive ? "bg-indigo-100 text-indigo-700" : "bg-white border text-slate-500"}`}>
-                        <Icon className="size-5" />
-                      </div>
-                      <div>
-                        <div className={`text-sm font-semibold ${isActive ? "text-indigo-900" : "text-slate-700"}`}>{tab.label}</div>
-                        <div className={`text-xs ${isActive ? "text-indigo-600" : "text-slate-500"}`}>{tab.desc}</div>
-                      </div>
-                    </button>
-                  );
-                })}
+          <div className="p-6 border-b flex items-center justify-between bg-slate-50 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+                <Package className="size-6" />
               </div>
-              <div className="mt-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 flex gap-3">
-                <Lightbulb className="size-5 text-indigo-600 shrink-0" />
-                <div>
-                  <div className="text-sm font-bold text-indigo-900 mb-1">Tip</div>
-                  <div className="text-xs text-indigo-700 leading-relaxed">Fill the basic details first, you can update the rest later.</div>
-                </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-900">
+                  {editingProductId ? "Edit Catalog Product" : "Create New Product"}
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Complete catalog information supporting all 65 business attributes, multi-tier pricing, batches, and paint colorant specifications.
+                </p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); setActiveModalTab("basic"); }}
+              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-full transition-colors"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
 
-            {/* Form Area */}
-            <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden bg-white">
-              <div className="flex-1 overflow-y-auto p-8">
-                
-                {activeModalTab === "basic" && (
-                  <div className="space-y-6 max-w-3xl">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900">Basic Details</h3>
-                      <p className="text-sm text-slate-500 mb-6">Add the essential details to identify your product.</p>
-                      
-                      <div className="p-4 border border-dashed rounded-xl flex items-center justify-between bg-slate-50/50 mb-6">
-                        <div className="flex items-center gap-4">
-                          {currentForm.image_url ? (
-                            <div className="relative size-16 rounded-xl overflow-hidden border bg-white group shadow-sm shrink-0">
-                              <img src={resolveImageUrl(currentForm.image_url)} alt="Preview" className="object-cover w-full h-full" />
-                              <button type="button" onClick={() => setCurrentForm(p => ({ ...p, image_url: "" }))} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition-opacity cursor-pointer border-0">
-                                Remove
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="size-16 rounded-xl border flex items-center justify-center text-muted-foreground bg-white shrink-0">
-                              <UploadCloud className="size-6 text-slate-400" />
-                            </div>
-                          )}
-                          <div>
-                            <div className="font-semibold text-sm text-slate-900">Upload Image</div>
-                            <div className="text-xs text-slate-500 mt-0.5">PNG, JPG or WebP • Max 5MB</div>
-                          </div>
-                        </div>
-                        <input type="file" accept="image/*" id="prod-img-upload" className="hidden" onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          try {
-                            const res = await inventoryApi.uploadProductImage(file);
-                            setCurrentForm(p => ({ ...p, image_url: res.image_url }));
-                            toast.success("Product image uploaded successfully!");
-                          } catch (err) {
-                            toast.error("Failed to upload product image.");
-                          }
-                        }} />
-                        <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById("prod-img-upload")?.click()} className="bg-white">
-                          Browse
-                        </Button>
-                      </div>
-                    </div>
+          {/* Navigation Tabs */}
+          <div className="flex border-b bg-slate-50/50 px-6 gap-2 shrink-0 overflow-x-auto">
+            {modalTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeModalTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveModalTab(tab.id)}
+                  className={`flex items-center gap-2 py-3.5 px-4 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+                    isActive
+                      ? "border-indigo-600 text-indigo-600 bg-white rounded-t-xl shadow-sm"
+                      : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+                  }`}
+                >
+                  <Icon className={`size-4 ${isActive ? "text-indigo-600" : "text-slate-400"}`} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
 
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-900 mb-1.5">
-                        Product Name <span className="text-red-500">*</span>
+          {/* Form Content */}
+          <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              
+              {/* TAB 1: BASIC & IDENTITY */}
+              {activeModalTab === "basic" && (
+                <div className="space-y-6">
+                  {/* Basic Identifiers */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Item Name (Product Name) <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
                         name="name"
+                        required
                         value={currentForm.name}
                         onChange={handleFormChange}
-                        placeholder="Enter product name"
-                        required
-                        className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        placeholder="e.g. Royale Luxury Emulsion White 1L"
+                        className="w-full h-11 px-4 text-sm font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Unique Item Name (Full Catalog Name)
+                      </label>
+                      <input
+                        type="text"
+                        name="unique_item_name"
+                        value={(currentForm as any).unique_item_name || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. Asian Paints Royale Luxury Emulsion White 1L Can"
+                        className="w-full h-11 px-4 text-sm rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Internal Item Code
+                      </label>
+                      <input
+                        type="text"
+                        name="item_code"
+                        value={(currentForm as any).item_code || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. ITM-AP-ROY-1L"
+                        className="w-full h-11 px-4 text-sm font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* SKU & Barcodes */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        SKU / Search Code
+                      </label>
+                      <input
+                        type="text"
+                        name="sku"
+                        value={currentForm.sku}
+                        onChange={handleFormChange}
+                        placeholder="e.g. SKU-ROYALE-01"
+                        className="w-full h-10 px-3.5 text-sm font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Primary BarCode (EAN/UPC)
+                      </label>
+                      <input
+                        type="text"
+                        name="barcode"
+                        value={currentForm.barcode}
+                        onChange={handleFormChange}
+                        placeholder="e.g. 8901234567890"
+                        className="w-full h-10 px-3.5 text-sm font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Secondary BarCode (BarCode.1)
+                      </label>
+                      <input
+                        type="text"
+                        name="secondary_barcode"
+                        value={(currentForm as any).secondary_barcode || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. 8901234567891"
+                        className="w-full h-10 px-3.5 text-sm font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Asian Paints / Hardware Specs Card */}
+                  <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200/80 space-y-3">
+                    <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs uppercase tracking-wider">
+                      <Sparkles className="size-4 text-amber-600" />
+                      <span>Asian Paints & Colorant Specifications</span>
+                      <span className="text-[10px] text-amber-600 font-normal ml-auto">Columns C, D, E</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">SKU</label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Base Code / Name (Col C)
+                        </label>
                         <input
                           type="text"
-                          name="sku"
-                          value={currentForm.sku}
+                          name="base_name"
+                          value={currentForm.base_name}
                           onChange={handleFormChange}
-                          placeholder="Enter SKU"
-                          className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                          placeholder="e.g. Base White / Base 01"
+                          className="w-full h-9 px-3 text-xs font-semibold rounded-lg border border-amber-200 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
                         />
                       </div>
+
                       <div>
-                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Barcode</label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Product Base Code (Col D)
+                        </label>
                         <input
                           type="text"
-                          name="barcode"
-                          value={currentForm.barcode}
+                          name="product_base_code"
+                          value={currentForm.product_base_code}
                           onChange={handleFormChange}
-                          placeholder="Enter barcode"
-                          className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                          placeholder="e.g. ROY-WHT-1L"
+                          className="w-full h-9 px-3 text-xs font-mono rounded-lg border border-amber-200 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Size (L/Kg) (Col E)
+                        </label>
+                        <input
+                          type="text"
+                          name="size_l_kg"
+                          value={currentForm.size_l_kg}
+                          onChange={handleFormChange}
+                          placeholder="e.g. 1L, 4L, 10L, 20L, 1Kg, 5Kg"
+                          className="w-full h-9 px-3 text-xs font-semibold rounded-lg border border-amber-200 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
                         />
                       </div>
                     </div>
+                  </div>
 
-                    <div className="grid grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Brand</label>
-                        <div className="relative">
-                          <div className="flex gap-2">
-                            <select
-                              name="brand_id"
-                              value={currentForm.brand_id}
-                              onChange={handleFormChange}
-                              className="flex-1 h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            >
-                              <option value="">Select brand</option>
-                              {brands.map((b) => (
-                                <option key={b.id} value={b.id}>{b.name}</option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => { setBrandPopoverOpen(v => !v); setCatPopoverOpen(false); setSubCatPopoverOpen(false); }}
-                              title="Create new brand"
-                              className="w-11 h-11 shrink-0 rounded-xl border text-indigo-600 bg-white hover:bg-indigo-50 flex items-center justify-center transition-all"
-                            >
-                              <Plus className="size-4" />
-                            </button>
-                          </div>
-                          {brandPopoverOpen && (
-                            <InlineCreatePopover
-                              label="Brand"
-                              onClose={() => setBrandPopoverOpen(false)}
-                              onSave={async (name) => {
-                                const created = await inventoryApi.createBrand({ name });
-                                setBrands(prev => [...prev, created]);
-                                setCurrentForm(prev => ({ ...prev, brand_id: created.id }));
-                                toast.success(`Brand "${name}" created!`);
-                              }}
-                            />
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">
-                          Category <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative">
-                          <div className="flex gap-2">
-                            <select
-                              value={activeParentId}
-                              onChange={(e) => {
-                                const newParentId = e.target.value;
-                                setCurrentForm(prev => ({ ...prev, category_id: newParentId }));
-                              }}
-                              className="flex-1 h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            >
-                              <option value="">Select category</option>
-                              {mainCategories.map((c) => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => { setCatPopoverOpen(v => !v); setBrandPopoverOpen(false); setSubCatPopoverOpen(false); }}
-                              title="Create new category"
-                              className="w-11 h-11 shrink-0 rounded-xl border text-indigo-600 bg-white hover:bg-indigo-50 flex items-center justify-center transition-all"
-                            >
-                              <Plus className="size-4" />
-                            </button>
-                          </div>
-                          {catPopoverOpen && (
-                            <InlineCreatePopover
-                              label="Category"
-                              onClose={() => setCatPopoverOpen(false)}
-                              onSave={async (name) => {
-                                const created = await inventoryApi.createCategory({ name });
-                                setCategories(prev => [...prev, created]);
-                                setCurrentForm(prev => ({ ...prev, category_id: created.id }));
-                                toast.success(`Category "${name}" created!`);
-                              }}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Sub-Category</label>
-                        <div className="relative">
-                          <div className="flex gap-2">
-                            <select
-                              value={activeSubId}
-                              disabled={!activeParentId}
-                              onChange={(e) => {
-                                const newSubId = e.target.value;
-                                setCurrentForm(prev => ({ ...prev, category_id: newSubId || activeParentId }));
-                              }}
-                              className="flex-1 h-11 px-4 text-sm rounded-xl border bg-background disabled:opacity-50 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            >
-                              <option value="">{activeParentId ? "Select sub-category" : "Select Category First"}</option>
-                              {subCategories.map((sc) => (
-                                <option key={sc.id} value={sc.id}>{sc.name}</option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              disabled={!activeParentId}
-                              onClick={() => { setSubCatPopoverOpen(v => !v); setBrandPopoverOpen(false); setCatPopoverOpen(false); }}
-                              title="Create new sub-category"
-                              className="w-11 h-11 shrink-0 rounded-xl border text-indigo-600 bg-white hover:bg-indigo-50 flex items-center justify-center transition-all disabled:opacity-50"
-                            >
-                              <Plus className="size-4" />
-                            </button>
-                          </div>
-                          {subCatPopoverOpen && activeParentId && (
-                            <InlineCreatePopover
-                              label="Sub-Category"
-                              onClose={() => setSubCatPopoverOpen(false)}
-                              onSave={async (name) => {
-                                const created = await inventoryApi.createCategory({ name, parent_id: activeParentId });
-                                setCategories(prev => [...prev, created]);
-                                setCurrentForm(prev => ({ ...prev, category_id: created.id }));
-                                toast.success(`Sub-Category "${name}" created!`);
-                              }}
-                            />
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">
-                          Unit of Measurement (UoM) <span className="text-red-500">*</span>
-                        </label>
+                  {/* Category, Brand, UOM, Units */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Category */}
+                    <div className="relative">
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Category
+                      </label>
+                      <div className="flex gap-2">
                         <select
-                          name="uom_id"
-                          value={currentForm.uom_id}
+                          name="category_id"
+                          value={currentForm.category_id}
                           onChange={handleFormChange}
-                          className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                          className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                         >
-                          <option value="">Select unit</option>
-                          {uoms.map((u) => (
-                            <option key={u.id} value={u.id}>{u.name}</option>
+                          <option value="">Select Category</option>
+                          {categories.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
                         </select>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeModalTab === "inventory" && (
-                  <div className="space-y-6 max-w-3xl">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900">Inventory Management</h3>
-                      <p className="text-sm text-slate-500 mb-6">Track and manage stock levels.</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-6">
-                      {[
-                        { label: "Initial Stock", name: "initial_stock", type: "number" },
-                        { label: "Reorder Level", name: "reorder_level", type: "number" },
-                        { label: "Safety Stock", name: "safety_stock", type: "number" },
-                        { label: "Warehouse", name: "warehouse", type: "text" },
-                      ].map((field) => (
-                        <div key={field.name}>
-                          <label className="block text-sm font-semibold text-slate-900 mb-1.5">{field.label}</label>
-                          <input
-                            type={field.type}
-                            min={field.type === "number" ? "0" : undefined}
-                            onKeyDown={field.type === "number" ? (e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); } : undefined}
-                            name={field.name}
-                            value={(currentForm as any)[field.name] ?? ""}
-                            onChange={handleFormChange}
-                            placeholder={`Enter ${field.label.toLowerCase()}`}
-                            className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {activeModalTab === "pricing" && (
-                  <div className="space-y-6 max-w-3xl pb-8">
-                    <div>
-                      <h3 className="text-xl font-bold text-slate-900 tracking-tight">Pricing, Tax & Multi-Tier Rates</h3>
-                      <p className="text-xs text-slate-500 mt-1">Configure GST tax schedules, retail selling price, and volume-based pricing tiers (B2B, Wholesale, Distributor).</p>
-                    </div>
-
-                    {/* Section 1: GST & Tax Configuration */}
-                    <div className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
-                      <div className="border-b border-slate-200/80 pb-3">
-                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">1. GST Tax & HSN Configuration</span>
-                        <span className="text-[11px] text-slate-500">Configure official GST tax schedules and HSN codes.</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Official GST Rate *</label>
-                          <select
-                            name="tax_percent"
-                            value={(currentForm as any).tax_percent ?? 0}
-                            onChange={handleFormChange}
-                            className="w-full h-11 px-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                          >
-                            <option value="0">0%</option>
-                            <option value="0.25">0.25%</option>
-                            <option value="3">3%</option>
-                            <option value="5">5%</option>
-                            <option value="12">12%</option>
-                            <option value="18">18%</option>
-                            <option value="28">28%</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <div className="flex items-center justify-between h-5 mb-1.5">
-                            <label className="block text-xs font-bold text-slate-700">HSN Code</label>
-                            <button
-                              type="button"
-                              onClick={() => setIsManualHsn(!isManualHsn)}
-                              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 transition-colors"
-                            >
-                              {isManualHsn ? "📋 Select from List" : "✏️ Enter Manually"}
-                            </button>
-                          </div>
-
-                          {isManualHsn ? (
-                            <div className="relative">
-                              <input
-                                type="text"
-                                name="hsn_code"
-                                value={(currentForm as any).hsn_code || ""}
-                                onChange={handleFormChange}
-                                placeholder="Enter HSN Code (e.g. 84713010)"
-                                className="w-full h-11 px-3 text-sm rounded-xl border border-slate-300 bg-white font-mono font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all uppercase placeholder:font-normal placeholder:normal-case placeholder:text-slate-400"
-                              />
-                            </div>
-                          ) : (
-                            <select
-                              className="w-full h-11 px-3 text-sm rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer font-mono font-bold text-slate-800"
-                              value={(currentForm as any).hsn_code || ""}
-                              onChange={(e) => {
-                                const selectedCode = e.target.value;
-                                if (selectedCode === "manual") {
-                                  setIsManualHsn(true);
-                                  return;
-                                }
-                                const match = hsnCodes.find(h => h.hsn_code === selectedCode);
-                                setCurrentForm(prev => ({
-                                  ...prev,
-                                  hsn_code: selectedCode,
-                                  tax_percent: match ? match.gst_rate : prev.tax_percent
-                                }));
-                                if (match) {
-                                  toast.success(`Selected HSN ${selectedCode} (${match.gst_rate}% GST Rate)`);
-                                }
-                              }}
-                            >
-                              <option value="">Select HSN Code</option>
-                              {hsnCodes.map((item) => (
-                                <option key={item.hsn_code} value={item.hsn_code}>
-                                  {item.hsn_code}
-                                </option>
-                              ))}
-                              <option value="manual">✏️ Enter Custom / Manual HSN...</option>
-                            </select>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Live Price Calculator & Tax Breakdown Card */}
-                      {(() => {
-                        const price = Number((currentForm as any).selling_price) || 0;
-                        const taxRate = Number((currentForm as any).tax_percent) || 0;
-                        const isIncl = (currentForm as any).is_tax_inclusive !== false;
-
-                        let basePrice = 0;
-                        let taxAmount = 0;
-                        let finalCustomerPrice = 0;
-
-                        if (isIncl) {
-                          basePrice = taxRate > 0 ? price / (1 + taxRate / 100) : price;
-                          taxAmount = price - basePrice;
-                          finalCustomerPrice = price;
-                        } else {
-                          basePrice = price;
-                          taxAmount = (price * taxRate) / 100;
-                          finalCustomerPrice = price + taxAmount;
-                        }
-
-                        return (
-                          <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2.5 shadow-2xs">
-                            <div className="flex items-center justify-between text-xs text-slate-500">
-                              <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">Real-Time Price & Tax Breakdown</span>
-                              <span className="bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-bold text-[10px]">
-                                {isIncl ? "With GST (Inclusive)" : "Without GST (+Tax Extra)"}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-3 pt-1">
-                              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                                <span className="text-slate-500 block text-[11px] font-medium mb-0.5">Net Base (Excl. Tax)</span>
-                                <span className="font-black text-slate-900 text-sm md:text-base">{currency.symbol}{basePrice.toFixed(2)}</span>
-                                <span className="text-[10px] text-slate-400 block mt-0.5">What business retains</span>
-                              </div>
-                              <div className="bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100">
-                                <span className="text-indigo-700 block text-[11px] font-semibold mb-0.5">GST Tax ({taxRate}%)</span>
-                                <span className="font-black text-indigo-700 text-sm md:text-base">+{currency.symbol}{taxAmount.toFixed(2)}</span>
-                                <span className="text-[10px] text-indigo-400 block mt-0.5">Govt tax collected</span>
-                              </div>
-                              <div className="bg-emerald-50/50 p-2.5 rounded-lg border border-emerald-100">
-                                <span className="text-emerald-700 block text-[11px] font-semibold mb-0.5">Final Customer Price</span>
-                                <span className="font-black text-emerald-700 text-sm md:text-base">{currency.symbol}{finalCustomerPrice.toFixed(2)}</span>
-                                <span className="text-[10px] text-emerald-600 font-semibold block mt-0.5">Printed billing amount</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Section 2: Retail & Consumer Pricing */}
-                    <div className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
-                      <div>
-                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">2. Retail & Consumer Pricing</span>
-                        <span className="text-[11px] text-slate-500">Standard walk-in counter sales prices and packaging MRP.</span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Retail Selling Price *</label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
-                            <input
-                              type="number"
-                              step="any"
-                              min="0"
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                              name="selling_price"
-                              value={(currentForm as any).selling_price ?? ""}
-                              onChange={handleFormChange}
-                              placeholder=""
-                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Retail Tax Mode</label>
-                          <select
-                            name="is_tax_inclusive"
-                            value={(currentForm as any).is_tax_inclusive !== false ? "true" : "false"}
-                            onChange={(e) => setCurrentForm(prev => ({ ...prev, is_tax_inclusive: e.target.value === "true" }))}
-                            className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                          >
-                            <option value="true">With GST</option>
-                            <option value="false">Without GST</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">MRP (Max Retail Price)</label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
-                            <input
-                              type="number"
-                              step="any"
-                              min="0"
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                              name="mrp"
-                              value={(currentForm as any).mrp ?? ""}
-                              onChange={handleFormChange}
-                              placeholder=""
-                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Discount Limit (%)</label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              min="0"
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                              name="discount_limit"
-                              value={(currentForm as any).discount_limit ?? ""}
-                              onChange={handleFormChange}
-                              placeholder=""
-                              className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            />
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Section 3: Multi-Tier B2B & Wholesale Pricing */}
-                    <div className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
-                      <div>
-                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">3. Multi-Tier B2B, Wholesale & Distributor Pricing</span>
-                        <span className="text-[11px] text-slate-500">Tiered contract pricing automatically applied at POS & invoices based on customer type and quantity.</span>
-                      </div>
-                      <div className="space-y-3">
-                        {/* Wholesale Tier */}
-                        <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 shadow-2xs">
-                          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                            <span className="text-xs font-bold text-indigo-900">Wholesale Tier</span>
-                            <span className="text-[10px] bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">Bulk Volume Rate</span>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Wholesale Price</label>
-                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                                  name="wholesale_price"
-                                  value={(currentForm as any).wholesale_price ?? ""}
-                                  onChange={handleFormChange}
-                                  placeholder=""
-                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
-                              <select
-                                value={(currentForm as any).wholesale_is_tax_inclusive !== false ? "true" : "false"}
-                                onChange={(e) => setCurrentForm(prev => ({ ...prev, wholesale_is_tax_inclusive: e.target.value === "true" }))}
-                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                              >
-                                <option value="true">With GST</option>
-                                <option value="false">Without GST</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min Wholesale Qty</label>
-                              <input
-                                type="number"
-                                min="0"
-                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                                name="min_wholesale_qty"
-                                value={(currentForm as any).min_wholesale_qty ?? ""}
-                                onChange={handleFormChange}
-                                placeholder=""
-                                className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* B2B Tier */}
-                        <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 shadow-2xs">
-                          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                            <span className="text-xs font-bold text-indigo-900">B2B Business Tier</span>
-                            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-medium">GST Clients</span>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">B2B Price</label>
-                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                                  name="b2b_price"
-                                  value={(currentForm as any).b2b_price ?? ""}
-                                  onChange={handleFormChange}
-                                  placeholder=""
-                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
-                              <select
-                                value={(currentForm as any).b2b_is_tax_inclusive !== false ? "true" : "false"}
-                                onChange={(e) => setCurrentForm(prev => ({ ...prev, b2b_is_tax_inclusive: e.target.value === "true" }))}
-                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                              >
-                                <option value="true">With GST</option>
-                                <option value="false">Without GST</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min B2B Qty</label>
-                              <input
-                                type="number"
-                                min="0"
-                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                                name="min_b2b_qty"
-                                value={(currentForm as any).min_b2b_qty ?? ""}
-                                onChange={handleFormChange}
-                                placeholder=""
-                                className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Distributor Tier */}
-                        <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3 shadow-2xs">
-                          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                            <span className="text-xs font-bold text-indigo-900">Distributor / Stockist Tier</span>
-                            <span className="text-[10px] bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full font-medium">Dealer & Stockist Rate</span>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Distributor Price</label>
-                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">{currency.symbol}</span>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                                  name="distributor_price"
-                                  value={(currentForm as any).distributor_price ?? ""}
-                                  onChange={handleFormChange}
-                                  placeholder=""
-                                  className="w-full h-11 pl-7 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Tax Mode</label>
-                              <select
-                                value={(currentForm as any).distributor_is_tax_inclusive !== false ? "true" : "false"}
-                                onChange={(e) => setCurrentForm(prev => ({ ...prev, distributor_is_tax_inclusive: e.target.value === "true" }))}
-                                className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                              >
-                                <option value="true">With GST</option>
-                                <option value="false">Without GST</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Min Distributor Qty</label>
-                              <input
-                                type="number"
-                                min="0"
-                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                                name="min_distributor_qty"
-                                value={(currentForm as any).min_distributor_qty ?? ""}
-                                onChange={handleFormChange}
-                                placeholder=""
-                                className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Section 4: Purchase & Sourcing */}
-                    <div className="p-5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-4">
-                      <div>
-                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 block">4. Purchase & Sourcing Costs</span>
-                        <span className="text-[11px] text-slate-500">Cost price paid to vendors for margin tracking and procurement.</span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Purchase / Cost Price</label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{currency.symbol}</span>
-                            <input
-                              type="number"
-                              step="any"
-                              min="0"
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
-                              name="purchase_price"
-                              value={(currentForm as any).purchase_price ?? ""}
-                              onChange={handleFormChange}
-                              placeholder=""
-                              className="w-full h-11 pl-8 pr-3 text-sm rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Purchase Tax Mode</label>
-                          <select
-                            name="is_purchase_tax_inclusive"
-                            value={(currentForm as any).is_purchase_tax_inclusive !== false ? "true" : "false"}
-                            onChange={(e) => setCurrentForm(prev => ({ ...prev, is_purchase_tax_inclusive: e.target.value === "true" }))}
-                            className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-                          >
-                            <option value="true">With GST</option>
-                            <option value="false">Without GST</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 h-5 mb-1.5 flex items-center">Preferred Supplier / Vendor</label>
-                          <input
-                            type="text"
-                            name="supplier"
-                            value={(currentForm as any).supplier || ""}
-                            onChange={handleFormChange}
-                            placeholder="e.g. Global Beverages Ltd"
-                            className="w-full h-11 px-4 text-sm rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeModalTab === "custom_fields" && (
-                  <div className="space-y-6 max-w-3xl">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900">Custom Fields & Attributes</h3>
-                      <p className="text-sm text-slate-500 mb-6">Add specialized identifiers, catalog attributes, and custom specifications.</p>
-                    </div>
-
-                    {/* Preset Catalog Identifiers */}
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
-                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 block">Standard Catalog Attributes</span>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-900 mb-1.5">Sub Category</label>
-                          <input
-                            type="text"
-                            name="sub_category"
-                            value={(currentForm as any).sub_category || ""}
-                            onChange={handleFormChange}
-                            placeholder="e.g. Milk Drinks, Bath Towels"
-                            className="w-full h-11 px-4 text-sm rounded-xl border bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-900 mb-1.5">Internal Item Code</label>
-                          <input
-                            type="text"
-                            name="item_code"
-                            value={(currentForm as any).item_code || ""}
-                            onChange={handleFormChange}
-                            placeholder="e.g. ITM-001"
-                            className="w-full h-11 px-4 text-sm rounded-xl border bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-900 mb-1.5">Weighing Scale Item Code</label>
-                          <input
-                            type="text"
-                            name="weighing_scale_code"
-                            value={(currentForm as any).weighing_scale_code || ""}
-                            onChange={handleFormChange}
-                            placeholder="e.g. 101"
-                            className="w-full h-11 px-4 text-sm rounded-xl border bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-900 mb-1.5">Conversion Factor</label>
-                          <input
-                            type="text"
-                            name="conversion_factor"
-                            value={(currentForm as any).conversion_factor || ""}
-                            onChange={handleFormChange}
-                            placeholder="e.g. 1, 1000"
-                            className="w-full h-11 px-4 text-sm rounded-xl border bg-white"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Paint & Colorant Specific Attributes (Asian Paints Columns C, D, E) */}
-                    <div className="p-4 bg-indigo-50/60 rounded-2xl border border-indigo-200/80 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-900 block">Paint & Colorant Specifications</span>
-                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-semibold">Asian Paints & Hardware</span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-900 mb-1.5">Base Code / Name (Col C)</label>
-                          <input
-                            type="text"
-                            name="base_name"
-                            value={(currentForm as any).base_name || ""}
-                            onChange={handleFormChange}
-                            placeholder="e.g. Brilliant White, Deep Base"
-                            className="w-full h-11 px-4 text-sm rounded-xl border border-indigo-200 bg-white font-medium focus:ring-2 focus:ring-indigo-500/20"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-900 mb-1.5">Product Base Code (Col D)</label>
-                          <input
-                            type="text"
-                            name="product_base_code"
-                            value={(currentForm as any).product_base_code || ""}
-                            onChange={handleFormChange}
-                            placeholder="e.g. 912, 0W06"
-                            className="w-full h-11 px-4 text-sm rounded-xl border border-indigo-200 bg-white font-mono focus:ring-2 focus:ring-indigo-500/20"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-900 mb-1.5">Size (L / Kg) (Col E)</label>
-                          <input
-                            type="text"
-                            name="size_l_kg"
-                            value={(currentForm as any).size_l_kg || ""}
-                            onChange={handleFormChange}
-                            placeholder="e.g. 0.05, 1, 4, 10, 20"
-                            className="w-full h-11 px-4 text-sm rounded-xl border border-indigo-200 bg-white font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500/20"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Dynamic Key-Value Custom Fields */}
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Dynamic Custom Attributes</span>
                         <Button
                           type="button"
-                          size="sm"
+                          size="icon"
                           variant="outline"
-                          onClick={() => {
-                            setCurrentForm(prev => ({
-                              ...prev,
-                              custom_fields: [...((prev as any).custom_fields || []), { key: "", value: "" }]
-                            }));
-                          }}
-                          className="h-8 text-xs font-bold text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100"
+                          onClick={() => setCatPopoverOpen(!catPopoverOpen)}
+                          className="h-10 w-10 shrink-0 rounded-xl"
                         >
-                          <Plus className="size-3.5 mr-1" /> Add Custom Field
+                          <Plus className="size-4" />
                         </Button>
                       </div>
-
-                      {((currentForm as any).custom_fields || []).length === 0 ? (
-                        <div className="p-6 text-center bg-white rounded-xl border border-dashed border-slate-300 text-xs text-slate-500">
-                          No custom fields added yet. Click &quot;Add Custom Field&quot; to add specifications like Material, Color, Size, Warranty, etc.
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {((currentForm as any).custom_fields || []).map((f: any, idx: number) => (
-                            <div key={idx} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200">
-                              <input
-                                type="text"
-                                placeholder="Attribute Name (e.g. Color, Size, Material)"
-                                value={f.key}
-                                onChange={(e) => {
-                                  const updated = [...(currentForm as any).custom_fields];
-                                  updated[idx].key = e.target.value;
-                                  setCurrentForm(prev => ({ ...prev, custom_fields: updated }));
-                                }}
-                                className="flex-1 h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white font-semibold"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Value (e.g. Matte Black, XL, Cotton)"
-                                value={f.value}
-                                onChange={(e) => {
-                                  const updated = [...(currentForm as any).custom_fields];
-                                  updated[idx].value = e.target.value;
-                                  setCurrentForm(prev => ({ ...prev, custom_fields: updated }));
-                                }}
-                                className="flex-1 h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const updated = (currentForm as any).custom_fields.filter((_: any, i: number) => i !== idx);
-                                  setCurrentForm(prev => ({ ...prev, custom_fields: updated }));
-                                }}
-                                className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                              >
-                                <Trash2 className="size-4" />
-                              </button>
-                            </div>
-                          ))}
+                      {catPopoverOpen && (
+                        <div className="absolute top-full mt-2 left-0 w-64 bg-white border border-slate-200 rounded-xl shadow-xl p-3 z-30">
+                          <span className="text-xs font-bold text-slate-700 block mb-2">New Category</span>
+                          <input
+                            type="text"
+                            placeholder="Category Name"
+                            id="new_cat_input"
+                            className="w-full h-8 px-2 text-xs border rounded-lg mb-2"
+                            onKeyDown={async (e) => {
+                              if (e.key === "Enter") {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                if (val) {
+                                  try {
+                                    const res = await inventoryApi.createCategory({ name: val });
+                                    setCategories(prev => [...prev, res.category]);
+                                    setCurrentForm(prev => ({ ...prev, category_id: res.category.id }));
+                                    setCatPopoverOpen(false);
+                                    toast.success("Category created!");
+                                  } catch (err) { toast.error("Failed to create category"); }
+                                }
+                              }
+                            }}
+                          />
                         </div>
                       )}
                     </div>
+
+                    {/* Sub Category */}
+                    <div className="relative">
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Sub Category
+                      </label>
+                      <input
+                        type="text"
+                        name="sub_category"
+                        value={currentForm.sub_category}
+                        onChange={handleFormChange}
+                        placeholder="e.g. Interior Emulsion, Primers"
+                        className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    {/* Brand */}
+                    <div className="relative">
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Brand
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          name="brand_id"
+                          value={currentForm.brand_id}
+                          onChange={(e) => {
+                            const bId = e.target.value;
+                            const b = brands.find(x => x.id === bId);
+                            setCurrentForm(prev => ({ ...prev, brand_id: bId, brand: b ? b.name : "" }));
+                          }}
+                          className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                          <option value="">Select Brand</option>
+                          {brands.map((b) => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          onClick={() => setBrandPopoverOpen(!brandPopoverOpen)}
+                          className="h-10 w-10 shrink-0 rounded-xl"
+                        >
+                          <Plus className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                )}
 
-                {activeModalTab === "other" && (
-                  <div className="space-y-6 max-w-3xl">
+                  {/* Measuring Units */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <h3 className="text-lg font-bold text-slate-900">Other Details</h3>
-                      <p className="text-sm text-slate-500 mb-6">Add descriptions and manage product status.</p>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-900 mb-1.5">Short Description</label>
-                      <textarea
-                        name="short_description"
-                        value={currentForm.short_description || ""}
-                        onChange={handleFormChange}
-                        rows={3}
-                        placeholder="Enter short description"
-                        className="w-full p-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-900 mb-1.5">Long Description</label>
-                      <textarea
-                        name="long_description"
-                        value={currentForm.long_description || ""}
-                        onChange={handleFormChange}
-                        rows={5}
-                        placeholder="Enter detailed description"
-                        className="w-full p-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-900 mb-1.5">Status</label>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Base Unit of Measure (UOM)
+                      </label>
                       <select
-                        name="status"
-                        value={currentForm.status}
+                        name="uom_id"
+                        value={currentForm.uom_id}
                         onChange={handleFormChange}
-                        className="w-full h-11 px-4 text-sm rounded-xl border bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                       >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
+                        <option value="">Select Unit</option>
+                        {uoms.map((u) => (
+                          <option key={u.id} value={u.id}>{u.name} ({u.symbol || u.short_name || u.name})</option>
+                        ))}
                       </select>
                     </div>
-                  </div>
-                )}
 
-              </div>
-              
-              {/* Footer */}
-              <div className="p-5 border-t bg-slate-50 flex items-center justify-between shrink-0">
-                <Button type="button" variant="outline" className="h-11 px-6 rounded-xl font-semibold bg-white hover:bg-slate-100" onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); setActiveModalTab("basic"); }}>
-                  Cancel
-                </Button>
-                <div className="flex gap-3">
-                  {!editingProductId && (
-                    <Button type="submit" name="saveAndNew" value="true" disabled={isSubmitting} variant="outline" className="h-11 px-6 rounded-xl font-semibold text-indigo-700 border-indigo-200 bg-indigo-50 hover:bg-indigo-100">
-                      Save & New
-                    </Button>
-                  )}
-                  <Button type="submit" disabled={isSubmitting} className="h-11 px-6 rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all border-0">
-                    {isSubmitting ? "Saving..." : editingProductId ? "Update Product" : "Save Product"}
-                  </Button>
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Sales Measuring Unit
+                      </label>
+                      <input
+                        type="text"
+                        name="sales_measuring_unit"
+                        value={(currentForm as any).sales_measuring_unit || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. Litre, Can, Pcs, Box"
+                        className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Purchase Measuring Unit
+                      </label>
+                      <input
+                        type="text"
+                        name="purchase_measuring_unit"
+                        value={(currentForm as any).purchase_measuring_unit || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. Carton, Drum, Litre"
+                        className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Images & Display Index */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Item Image URL
+                      </label>
+                      <input
+                        type="text"
+                        name="image_url"
+                        value={currentForm.image_url}
+                        onChange={handleFormChange}
+                        placeholder="https://.../image.jpg"
+                        className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Category Image URL
+                      </label>
+                      <input
+                        type="text"
+                        name="category_image"
+                        value={(currentForm as any).category_image || ""}
+                        onChange={handleFormChange}
+                        placeholder="https://.../cat.jpg"
+                        className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Display Index (Catalog Sort)
+                      </label>
+                      <input
+                        type="number"
+                        name="display_index"
+                        value={(currentForm as any).display_index || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. 1, 2, 10"
+                        className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              {/* TAB 2: PRICING & TAX */}
+              {activeModalTab === "pricing" && (
+                <div className="space-y-6">
+                  {/* Retail Sales Price, Tax Mode & MRP */}
+                  <div className="p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 space-y-4">
+                    <span className="text-xs font-extrabold text-indigo-950 uppercase tracking-wider block">
+                      Primary Retail Selling Price & GST
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Sales Price (Selling Rate) <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">₹</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="selling_price"
+                            required
+                            value={currentForm.selling_price}
+                            onChange={handleFormChange}
+                            placeholder="0.00"
+                            className="w-full h-10 pl-7 pr-3 text-sm font-black rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Sales Tax Mode
+                        </label>
+                        <select
+                          name="is_tax_inclusive"
+                          value={(currentForm as any).is_tax_inclusive !== false ? "inclusive" : "exclusive"}
+                          onChange={(e) => {
+                            setCurrentForm(prev => ({
+                              ...prev,
+                              is_tax_inclusive: e.target.value === "inclusive"
+                            }));
+                          }}
+                          className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                          <option value="inclusive">Tax Inclusive (Price includes GST)</option>
+                          <option value="exclusive">Tax Exclusive (GST added on top)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Sales GST (%)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="tax_percent"
+                          value={currentForm.tax_percent}
+                          onChange={handleFormChange}
+                          placeholder="e.g. 18"
+                          className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          MRP (Maximum Retail Price)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">₹</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="mrp"
+                            value={currentForm.mrp}
+                            onChange={handleFormChange}
+                            placeholder="0.00"
+                            className="w-full h-10 pl-7 pr-3 text-xs font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          HSN / SAC Code
+                        </label>
+                        <input
+                          type="text"
+                          name="hsn_code"
+                          value={currentForm.hsn_code}
+                          onChange={handleFormChange}
+                          placeholder="e.g. 32091000"
+                          className="w-full h-10 px-3 text-xs font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Sales Tax Name
+                        </label>
+                        <input
+                          type="text"
+                          name="sales_tax_name"
+                          value={(currentForm as any).sales_tax_name || "GST"}
+                          onChange={handleFormChange}
+                          placeholder="e.g. GST, IGST, VAT"
+                          className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Discounts */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 border-t border-indigo-100">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Disc1 (%) Max Discount Percent
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="discount_limit"
+                          value={currentForm.discount_limit}
+                          onChange={handleFormChange}
+                          placeholder="e.g. 5"
+                          className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Disc1 (Rs) Fixed Discount Amount
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="discount_amount"
+                          value={(currentForm as any).discount_amount || ""}
+                          onChange={handleFormChange}
+                          placeholder="0.00"
+                          className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Multi-Tier Rates (Wholesale, B2B, Distributor) */}
+                  <div className="space-y-4">
+                    <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block">
+                      Multi-Tier B2B & Wholesale Rates
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Wholesale */}
+                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                        <span className="text-xs font-bold text-slate-800 block border-b pb-1">Wholesale Tier</span>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Wholesale Price</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="wholesale_price"
+                            value={currentForm.wholesale_price}
+                            onChange={handleFormChange}
+                            placeholder="0.00"
+                            className="w-full h-9 px-3 text-xs font-bold rounded-lg border bg-white outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Min Wholesale Qty</label>
+                          <input
+                            type="number"
+                            name="min_wholesale_qty"
+                            value={currentForm.min_wholesale_qty}
+                            onChange={handleFormChange}
+                            placeholder="e.g. 5"
+                            className="w-full h-9 px-3 text-xs rounded-lg border bg-white outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* B2B */}
+                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                        <span className="text-xs font-bold text-slate-800 block border-b pb-1">B2B Tier</span>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">B2B Price</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="b2b_price"
+                            value={currentForm.b2b_price}
+                            onChange={handleFormChange}
+                            placeholder="0.00"
+                            className="w-full h-9 px-3 text-xs font-bold rounded-lg border bg-white outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Min B2B Qty</label>
+                          <input
+                            type="number"
+                            name="min_b2b_qty"
+                            value={(currentForm as any).min_b2b_qty || ""}
+                            onChange={handleFormChange}
+                            placeholder="e.g. 10"
+                            className="w-full h-9 px-3 text-xs rounded-lg border bg-white outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Distributor */}
+                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                        <span className="text-xs font-bold text-slate-800 block border-b pb-1">Distributor Tier</span>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Distributor Price</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="distributor_price"
+                            value={(currentForm as any).distributor_price || ""}
+                            onChange={handleFormChange}
+                            placeholder="0.00"
+                            className="w-full h-9 px-3 text-xs font-bold rounded-lg border bg-white outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Min Distributor Qty</label>
+                          <input
+                            type="number"
+                            name="min_distributor_qty"
+                            value={(currentForm as any).min_distributor_qty || ""}
+                            onChange={handleFormChange}
+                            placeholder="e.g. 25"
+                            className="w-full h-9 px-3 text-xs rounded-lg border bg-white outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Realtime Billing Summary Card */}
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-black text-emerald-900 block">Calculated Customer Billing Total</span>
+                      <span className="text-[11px] text-emerald-700">
+                        {isSalesTaxIncl ? "Tax is inclusive in sales price" : `+${sTaxPct}% GST added to sales price`}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-lg font-black text-emerald-950">₹{computedSalesTotal.toFixed(2)}</span>
+                      <span className="text-[10px] text-emerald-700 block font-semibold">(GST component: ₹{computedSalesTaxAmt.toFixed(2)})</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: PURCHASING & VENDOR */}
+              {activeModalTab === "purchasing" && (
+                <div className="space-y-6">
+                  {/* Purchase Price & Tax */}
+                  <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
+                    <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">
+                      Cost & Purchase Tax Settings
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Purchase Price (Cost Rate)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">₹</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="purchase_price"
+                            value={currentForm.purchase_price}
+                            onChange={handleFormChange}
+                            placeholder="0.00"
+                            className="w-full h-10 pl-7 pr-3 text-sm font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Purchase Tax Mode
+                        </label>
+                        <select
+                          name="is_purchase_tax_inclusive"
+                          value={(currentForm as any).is_purchase_tax_inclusive !== false ? "inclusive" : "exclusive"}
+                          onChange={(e) => {
+                            setCurrentForm(prev => ({
+                              ...prev,
+                              is_purchase_tax_inclusive: e.target.value === "inclusive"
+                            }));
+                          }}
+                          className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                          <option value="inclusive">Tax Inclusive (Cost includes GST)</option>
+                          <option value="exclusive">Tax Exclusive (GST added to Cost)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Purchase Tax (%)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="purchase_tax_percent"
+                          value={(currentForm as any).purchase_tax_percent || ""}
+                          onChange={handleFormChange}
+                          placeholder="e.g. 18"
+                          className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Purchase Tax Name
+                        </label>
+                        <input
+                          type="text"
+                          name="purchase_tax_name"
+                          value={(currentForm as any).purchase_tax_name || "GST"}
+                          onChange={handleFormChange}
+                          placeholder="e.g. GST"
+                          className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Purchase Price After Tax
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="purchase_price_after_tax"
+                          value={(currentForm as any).purchase_price_after_tax || ""}
+                          onChange={handleFormChange}
+                          placeholder="0.00"
+                          className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Vendor & Invoicing */}
+                  <div className="space-y-4">
+                    <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block">
+                      Supplier & Inbound Invoicing Details
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Supplier Name
+                        </label>
+                        <input
+                          type="text"
+                          name="supplier"
+                          value={currentForm.supplier}
+                          onChange={handleFormChange}
+                          placeholder="e.g. Asian Paints Distribution Ltd"
+                          className="w-full h-10 px-3.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Preferred Supplier
+                        </label>
+                        <input
+                          type="text"
+                          name="preferred_supplier"
+                          value={(currentForm as any).preferred_supplier || ""}
+                          onChange={handleFormChange}
+                          placeholder="e.g. Asian Paints Main Hub"
+                          className="w-full h-10 px-3.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Supplier Invoice Number
+                        </label>
+                        <input
+                          type="text"
+                          name="supplier_invoice_number"
+                          value={(currentForm as any).supplier_invoice_number || ""}
+                          onChange={handleFormChange}
+                          placeholder="e.g. INV-AP-2026-001"
+                          className="w-full h-10 px-3 text-xs font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Supplier Invoice Date
+                        </label>
+                        <input
+                          type="date"
+                          name="supplier_invoice_date"
+                          value={(currentForm as any).supplier_invoice_date || ""}
+                          onChange={handleFormChange}
+                          className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Item Received Date
+                        </label>
+                        <input
+                          type="date"
+                          name="item_received_date"
+                          value={(currentForm as any).item_received_date || ""}
+                          onChange={handleFormChange}
+                          className="w-full h-10 px-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: STOCK, WAREHOUSE & BATCHES */}
+              {activeModalTab === "inventory" && (
+                <div className="space-y-6">
+                  {/* Stock Levels */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Opening Stock
+                      </label>
+                      <input
+                        type="number"
+                        name="initial_stock"
+                        value={currentForm.initial_stock}
+                        onChange={handleFormChange}
+                        placeholder="0"
+                        className="w-full h-10 px-3.5 text-sm font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Current Stock
+                      </label>
+                      <input
+                        type="number"
+                        name="stock"
+                        value={(currentForm as any).stock || ""}
+                        onChange={handleFormChange}
+                        placeholder="0"
+                        className="w-full h-10 px-3.5 text-sm font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Stock Alert (Reorder Level)
+                      </label>
+                      <input
+                        type="number"
+                        name="reorder_level"
+                        value={currentForm.reorder_level}
+                        onChange={handleFormChange}
+                        placeholder="10"
+                        className="w-full h-10 px-3.5 text-sm font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Safety Stock
+                      </label>
+                      <input
+                        type="number"
+                        name="safety_stock"
+                        value={currentForm.safety_stock}
+                        onChange={handleFormChange}
+                        placeholder="5"
+                        className="w-full h-10 px-3.5 text-sm font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Warehouse Location & Dates */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Warehouse Name
+                      </label>
+                      <select
+                        name="warehouse"
+                        value={currentForm.warehouse}
+                        onChange={handleFormChange}
+                        className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      >
+                        <option value="">Select Warehouse</option>
+                        {warehouses.map((w) => (
+                          <option key={w.id} value={w.name}>{w.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Location in Warehouse (Rack / Bin)
+                      </label>
+                      <input
+                        type="text"
+                        name="location_in_warehouse"
+                        value={(currentForm as any).location_in_warehouse || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. Aisle-4-Rack-2-Bin-10"
+                        className="w-full h-10 px-3.5 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Manufacturing & Expiry */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Manufacturing Date
+                      </label>
+                      <input
+                        type="date"
+                        name="mfg_date"
+                        value={(currentForm as any).mfg_date || ""}
+                        onChange={handleFormChange}
+                        className="w-full h-10 px-3.5 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Expiry Date
+                      </label>
+                      <input
+                        type="date"
+                        name="expiry_date"
+                        value={(currentForm as any).expiry_date || ""}
+                        onChange={handleFormChange}
+                        className="w-full h-10 px-3.5 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Batch Tracking Card */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">
+                          Batch Management & Expiry Tracking
+                        </span>
+                        <span className="text-[11px] text-slate-500">Enable manual batch tracking for this product</span>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean((currentForm as any).has_manual_batch)}
+                          onChange={(e) => {
+                            setCurrentForm(prev => ({
+                              ...prev,
+                              has_manual_batch: e.target.checked
+                            }));
+                          }}
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        Has Manual Batch
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Stock Batch Number</label>
+                        <input
+                          type="text"
+                          name="stock_batch_number"
+                          value={(currentForm as any).stock_batch_number || ""}
+                          onChange={handleFormChange}
+                          placeholder="e.g. BATCH-2026-01"
+                          className="w-full h-9 px-3 text-xs font-mono rounded-lg border bg-white outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Stock Batch Expiry Date</label>
+                        <input
+                          type="date"
+                          name="stock_batch_expiry_date"
+                          value={(currentForm as any).stock_batch_expiry_date || ""}
+                          onChange={handleFormChange}
+                          className="w-full h-9 px-3 text-xs rounded-lg border bg-white outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Opening Stock Batch Number</label>
+                        <input
+                          type="text"
+                          name="opening_stock_batch_number"
+                          value={(currentForm as any).opening_stock_batch_number || ""}
+                          onChange={handleFormChange}
+                          placeholder="e.g. OP-BATCH-01"
+                          className="w-full h-9 px-3 text-xs font-mono rounded-lg border bg-white outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Opening Stock Batch Expiry Date</label>
+                        <input
+                          type="date"
+                          name="opening_stock_batch_expiry_date"
+                          value={(currentForm as any).opening_stock_batch_expiry_date || ""}
+                          onChange={handleFormChange}
+                          className="w-full h-9 px-3 text-xs rounded-lg border bg-white outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: FLAGS & OPERATIONS */}
+              {activeModalTab === "operations" && (
+                <div className="space-y-6">
+                  {/* Boolean Switches Grid */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                    <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-3">
+                      Operational Flags & Portal Rules
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={(currentForm as any).status === "active"}
+                          onChange={(e) => setCurrentForm(prev => ({ ...prev, status: e.target.checked ? "active" : "inactive" }))}
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">Is Active Product</span>
+                          <span className="text-[10px] text-slate-500">Available for catalog display and sales</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={Boolean((currentForm as any).is_service_item)}
+                          onChange={(e) => setCurrentForm(prev => ({ ...prev, is_service_item: e.target.checked }))}
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">Is Service Item</span>
+                          <span className="text-[10px] text-slate-500">Non-inventory labour, delivery, or service item</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={Boolean((currentForm as any).not_for_sale)}
+                          onChange={(e) => setCurrentForm(prev => ({ ...prev, not_for_sale: e.target.checked }))}
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">Not For Sale</span>
+                          <span className="text-[10px] text-slate-500">Internal consumable, demo, or raw material</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={(currentForm as any).need_to_print_barcode_sticker !== false}
+                          onChange={(e) => setCurrentForm(prev => ({ ...prev, need_to_print_barcode_sticker: e.target.checked }))}
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">Need To Print Barcode Sticker</span>
+                          <span className="text-[10px] text-slate-500">Include in queue for thermal barcode printing</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={Boolean((currentForm as any).only_for_portal)}
+                          onChange={(e) => setCurrentForm(prev => ({ ...prev, only_for_portal: e.target.checked }))}
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">Only For Portal</span>
+                          <span className="text-[10px] text-slate-500">Exclusive to B2B eCommerce client portal</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={Boolean((currentForm as any).not_for_portal)}
+                          onChange={(e) => setCurrentForm(prev => ({ ...prev, not_for_portal: e.target.checked }))}
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">Not For Portal</span>
+                          <span className="text-[10px] text-slate-500">POS and retail in-store only</span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Hardware Scale & Conversion */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Weighing Scale Item Code
+                      </label>
+                      <input
+                        type="text"
+                        name="weighing_scale_code"
+                        value={(currentForm as any).weighing_scale_code || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. WS-102"
+                        className="w-full h-10 px-3.5 text-xs font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Conversion Factor
+                      </label>
+                      <input
+                        type="text"
+                        name="conversion_factor"
+                        value={(currentForm as any).conversion_factor || "1"}
+                        onChange={handleFormChange}
+                        placeholder="e.g. 1, 10, 1000"
+                        className="w-full h-10 px-3.5 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Label Headings & Keywords */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Label Headings
+                      </label>
+                      <input
+                        type="text"
+                        name="label_headings"
+                        value={(currentForm as any).label_headings || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. Premium High Sheen Interior"
+                        className="w-full h-10 px-3.5 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        Search Keywords
+                      </label>
+                      <input
+                        type="text"
+                        name="keywords"
+                        value={(currentForm as any).keywords || ""}
+                        onChange={handleFormChange}
+                        placeholder="e.g. paint, emulsion, washable, white"
+                        className="w-full h-10 px-3.5 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                      Accessories & Cross-Sell Keywords
+                    </label>
+                    <input
+                      type="text"
+                      name="accessories_keyword"
+                      value={(currentForm as any).accessories_keyword || ""}
+                      onChange={handleFormChange}
+                      placeholder="e.g. paint roller, wall primer, masking tape, sandpaper"
+                      className="w-full h-10 px-3.5 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: DESCRIPTIONS & CUSTOM SPECS */}
+              {activeModalTab === "other" && (
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                      Short Description
+                    </label>
+                    <textarea
+                      name="short_description"
+                      value={currentForm.short_description || ""}
+                      onChange={handleFormChange}
+                      rows={3}
+                      placeholder="Concise summary for invoices and POS display"
+                      className="w-full p-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                      Description HTML / Rich Content
+                    </label>
+                    <textarea
+                      name="description_html"
+                      value={(currentForm as any).description_html || ""}
+                      onChange={handleFormChange}
+                      rows={4}
+                      placeholder="<p>Full rich HTML formatted product details...</p>"
+                      className="w-full p-3 text-xs font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                      Long Description
+                    </label>
+                    <textarea
+                      name="long_description"
+                      value={currentForm.long_description || ""}
+                      onChange={handleFormChange}
+                      rows={4}
+                      placeholder="Comprehensive product specifications, user guides, or warranty info"
+                      className="w-full p-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                    />
+                  </div>
+
+                  {/* Dynamic Key-Value Custom Specifications */}
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 block">
+                          Dynamic Custom Specifications
+                        </span>
+                        <span className="text-[11px] text-slate-500">Add any custom key-value attributes</span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setCurrentForm(prev => ({
+                            ...prev,
+                            custom_fields: [...((prev as any).custom_fields || []), { key: "", value: "" }]
+                          }));
+                        }}
+                        className="h-8 text-xs font-bold text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100"
+                      >
+                        <Plus className="size-3.5 mr-1" /> Add Custom Field
+                      </Button>
+                    </div>
+
+                    {((currentForm as any).custom_fields || []).length === 0 ? (
+                      <div className="p-6 text-center bg-white rounded-xl border border-dashed border-slate-300 text-xs text-slate-500">
+                        No custom fields added yet. Click &quot;Add Custom Field&quot; to add specifications like Finish, Coverage, Thinner, Warranty, etc.
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {((currentForm as any).custom_fields || []).map((f: any, idx: number) => (
+                          <div key={idx} className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200">
+                            <input
+                              type="text"
+                              placeholder="Attribute Name (e.g. Finish, Coverage)"
+                              value={f.key}
+                              onChange={(e) => {
+                                const updated = [...(currentForm as any).custom_fields];
+                                updated[idx].key = e.target.value;
+                                setCurrentForm(prev => ({ ...prev, custom_fields: updated }));
+                              }}
+                              className="flex-1 h-9 px-3 text-xs font-semibold rounded-lg border bg-slate-50 focus:bg-white outline-none"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Value (e.g. High Gloss, 120 sq.ft/L)"
+                              value={f.value}
+                              onChange={(e) => {
+                                const updated = [...(currentForm as any).custom_fields];
+                                updated[idx].value = e.target.value;
+                                setCurrentForm(prev => ({ ...prev, custom_fields: updated }));
+                              }}
+                              className="flex-1 h-9 px-3 text-xs rounded-lg border bg-slate-50 focus:bg-white outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (currentForm as any).custom_fields.filter((_: any, i: number) => i !== idx);
+                                setCurrentForm(prev => ({ ...prev, custom_fields: updated }));
+                              }}
+                              className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t bg-slate-50 flex items-center justify-between shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 px-5 rounded-xl font-bold bg-white hover:bg-slate-100"
+                onClick={() => { setIsModalOpen(false); setEditingProductId(null); setCurrentForm(defaultFormData()); setActiveModalTab("basic"); }}
+              >
+                Cancel
+              </Button>
+              <div className="flex gap-3">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="h-10 px-6 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all border-0"
+                >
+                  {isSubmitting ? "Saving..." : editingProductId ? "Update Product" : "Save Product"}
+                </Button>
               </div>
-            </form>
-          </div>
+            </div>
+          </form>
         </motion.div>
       </div>
     );
   };
 
   // ══════════════════════════════════════════════════════════════════
-  //  RENDER: Table body for local products
+  //  RENDER: Local product table row renderer (Handles all 65 Columns)
   // ══════════════════════════════════════════════════════════════════
-  const renderLocalRow = (product: InventoryProduct, visible: string[], isExact = false) => (
-    <tr key={product.id} className={`hover:bg-muted/30 transition-colors ${isExact ? "bg-emerald-500/5 ring-1 ring-emerald-500/20" : ""}`}>
-      {LOCAL_COLUMNS.filter(c => visible.includes(c.id)).map(col => {
-        switch (col.id) {
-          case "image":
-            return (
-              <td key="image" className="px-6 py-4">
-                {product.image_url ? (
-                  <img src={resolveImageUrl(product.image_url)} alt={product.name}
-                    onClick={() => setPreviewImage(resolveImageUrl(product.image_url))}
-                    className="size-10 rounded-lg object-cover border bg-white cursor-zoom-in hover:opacity-90 transition-opacity" />
-                ) : (
-                  <div className="size-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                    <Package className="size-5 text-muted-foreground" />
-                  </div>
-                )}
-              </td>
-            );
-          case "name":
-            return (
-              <td key="name" className="px-6 py-4 font-bold">
-                {product.name}
-                {isExact && <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold text-[10px]">
-                  <Barcode className="size-3" /> Exact Match
-                </span>}
-              </td>
-            );
-          case "sku":
-            return <td key="sku" className="px-6 py-4 font-mono font-bold text-xs">{product.sku || '-'}</td>;
-          case "barcode":
-            return <td key="barcode" className="px-6 py-4 font-mono text-xs">{product.barcode || '-'}</td>;
-          case "base_name":
-            return <td key="base_name" className="px-6 py-4 text-xs font-semibold text-slate-800">{product.base_name || '-'}</td>;
-          case "product_base_code":
-            return <td key="product_base_code" className="px-6 py-4 text-xs font-mono font-medium text-slate-600">{product.product_base_code || '-'}</td>;
-          case "size_l_kg":
-            return <td key="size_l_kg" className="px-6 py-4 text-xs font-bold text-indigo-700">{product.size_l_kg || '-'}</td>;
-          case "category":
-            return <td key="category" className="px-6 py-4 text-xs font-medium">{product.category_name || (categories.find(c => c.id === product.category_id)?.name) || '-'}</td>;
-          case "brand":
-            return <td key="brand" className="px-6 py-4 text-xs font-medium">{product.brand_name || (brands.find(b => b.id === product.brand_id)?.name) || (product as any).brand || '-'}</td>;
-          case "uom":
-            return <td key="uom" className="px-6 py-4 text-xs font-medium">{product.uom_name || (uoms.find(u => u.id === product.uom_id)?.name) || '-'}</td>;
-          case "purchase_price":
-            return <td key="purchase_price" className="px-6 py-4">{formatCurrency(product.purchase_price)}</td>;
-          case "mrp":
-            return <td key="mrp" className="px-6 py-4 font-bold">{formatCurrency(product.mrp)}</td>;
-          case "selling_price":
-            return <td key="selling_price" className="px-6 py-4">{formatCurrency(product.selling_price)}</td>;
-          case "wholesale_price":
-            return <td key="wholesale_price" className="px-6 py-4 text-emerald-700 font-semibold">{formatCurrency((product as any).wholesale_price || 0)}</td>;
-          case "b2b_price": {
-            const bVal = (product as any).b2b_price ?? (product as any).specifications?.b2b_price ?? 0;
-            return <td key="b2b_price" className="px-6 py-4 text-indigo-700 font-semibold">{formatCurrency(bVal)}</td>;
-          }
-          case "min_wholesale_qty":
-            return <td key="min_wholesale_qty" className="px-6 py-4 text-xs font-mono">{(product as any).min_wholesale_qty || 1} pcs</td>;
-          case "tax_percent":
-            return <td key="tax_percent" className="px-6 py-4 text-xs">{product.tax_percent}%</td>;
-          case "initial_stock":
-            return (
-              <td key="initial_stock" className="px-6 py-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-full bg-muted rounded-full h-1.5 max-w-[80px]">
-                    <div className={`h-1.5 rounded-full ${(product.stock ?? product.initial_stock) <= product.reorder_level ? 'bg-rose-500' : 'bg-primary'}`}
-                      style={{ width: `${Math.min(100, ((product.stock ?? product.initial_stock) / (product.reorder_level > 0 ? product.reorder_level * 3 : 100)) * 100)}%` }} />
-                  </div>
-                  <span className="font-bold">{product.stock ?? product.initial_stock}</span>
-                </div>
-                {(product.stock ?? product.initial_stock) <= product.reorder_level && (
-                  <div className="text-[10px] text-rose-500 font-bold mt-1">Low Stock!</div>
-                )}
-              </td>
-            );
-          case "reorder_level":
-            return <td key="reorder_level" className="px-6 py-4 text-xs">{product.reorder_level}</td>;
-          case "safety_stock":
-            return <td key="safety_stock" className="px-6 py-4 text-xs">{product.safety_stock}</td>;
-          case "status":
-            return (
-              <td key="status" className="px-6 py-4">
-                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${product.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
-                  <span className={`size-1.5 rounded-full ${product.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                  {product.status === 'active' ? 'Active' : 'Inactive'}
-                </span>
-              </td>
-            );
-          case "source":
-            return <td key="source" className="px-6 py-4 text-xs"><span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold text-[10px]"><Store className="size-3" /> My Inventory</span></td>;
-          default:
-            return null;
-        }
-      })}
-      <td className="px-6 py-4 text-right">
-        <div className="flex justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-            title="Configure Free Item / Promotional Scheme for this product"
-            onClick={() => {
-              setFreeQtyTriggerProductId(product.id);
-              setIsFreeQtyModalOpen(true);
-            }}
-          >
-            <Gift className="size-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => handleDuplicate(product)}><Copy className="size-4" /></Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(product.id)}><Archive className="size-4" /></Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => handleEdit(product)}><Edit2 className="size-4" /></Button>
-        </div>
-      </td>
-    </tr>
-  );
+  const renderLocalRow = (product: InventoryProduct, visible: string[], isExact = false) => {
+    const specs = (product.specifications && typeof product.specifications === 'object') ? product.specifications : {};
 
-  // ══════════════════════════════════════════════════════════════════
-  //  RENDER: Table body for master catalog results
-  // ══════════════════════════════════════════════════════════════════
+    return (
+      <tr
+        key={product.id}
+        className={`hover:bg-slate-50/80 transition-colors border-b border-slate-100 text-xs text-slate-700 ${
+          isExact ? "bg-amber-50/40 font-semibold" : ""
+        }`}
+      >
+        {visible.map((colId) => {
+          switch (colId) {
+            case "image":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  <div className="size-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden">
+                    {product.image_url ? (
+                      <img src={resolveImageUrl(product.image_url)} alt={product.name} className="size-full object-cover" />
+                    ) : (
+                      <Package className="size-4 text-slate-400" />
+                    )}
+                  </div>
+                </td>
+              );
+
+            case "name":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-bold text-slate-900 min-w-[200px]">
+                  <div className="flex flex-col">
+                    <span className="truncate">{product.name}</span>
+                    {specs.unique_item_name && specs.unique_item_name !== product.name && (
+                      <span className="text-[10px] text-slate-400 font-normal truncate">{specs.unique_item_name}</span>
+                    )}
+                  </div>
+                </td>
+              );
+
+            case "unique_item_name":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-700 max-w-[220px] truncate">
+                  {specs.unique_item_name || product.name || "-"}
+                </td>
+              );
+
+            case "sku":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {product.sku || "-"}
+                </td>
+              );
+
+            case "barcode":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {product.barcode || "-"}
+                </td>
+              );
+
+            case "secondary_barcode":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {specs.secondary_barcode || (product as any).secondary_barcode || "-"}
+                </td>
+              );
+
+            case "item_code":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {specs.item_code || (product as any).item_code || "-"}
+                </td>
+              );
+
+            case "base_name":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  {(product.base_name || specs.base_name) ? (
+                    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                      {product.base_name || specs.base_name}
+                    </span>
+                  ) : "-"}
+                </td>
+              );
+
+            case "product_base_code":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {product.product_base_code || specs.product_base_code || "-"}
+                </td>
+              );
+
+            case "size_l_kg":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  {(product.size_l_kg || specs.size_l_kg) ? (
+                    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      {product.size_l_kg || specs.size_l_kg}
+                    </span>
+                  ) : "-"}
+                </td>
+              );
+
+            case "category":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap font-medium text-slate-700">
+                  {product.category_name || "-"}
+                </td>
+              );
+
+            case "sub_category":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap font-medium text-slate-600">
+                  {specs.sub_category || (product as any).sub_category || "-"}
+                </td>
+              );
+
+            case "brand":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap font-semibold text-slate-800">
+                  {product.brand_name || product.brand || "-"}
+                </td>
+              );
+
+            case "uom":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {product.uom_name || "-"}
+                </td>
+              );
+
+            case "sales_measuring_unit":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {specs.sales_measuring_unit || product.uom_name || "-"}
+                </td>
+              );
+
+            case "purchase_measuring_unit":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {specs.purchase_measuring_unit || product.uom_name || "-"}
+                </td>
+              );
+
+            case "mrp":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-600 whitespace-nowrap">
+                  {product.mrp ? formatCurrency(product.mrp) : "-"}
+                </td>
+              );
+
+            case "selling_price":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-black text-slate-900 whitespace-nowrap">
+                  {product.selling_price ? formatCurrency(product.selling_price) : "-"}
+                </td>
+              );
+
+            case "sales_tax_type":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-[10px] font-semibold text-slate-600">
+                  {specs.sales_tax_type || (product.is_tax_inclusive !== false ? "Inclusive" : "Exclusive")}
+                </td>
+              );
+
+            case "sales_tax_name":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-[10px] font-semibold text-slate-600">
+                  {specs.sales_tax_name || "GST"}
+                </td>
+              );
+
+            case "tax_percent":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600 font-semibold">
+                  {product.tax_percent !== undefined && product.tax_percent !== null ? `${product.tax_percent}%` : "-"}
+                </td>
+              );
+
+            case "sales_price_after_tax":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-bold text-indigo-700 whitespace-nowrap">
+                  {specs.sales_price_after_tax ? formatCurrency(specs.sales_price_after_tax) : (product.selling_price ? formatCurrency(product.selling_price) : "-")}
+                </td>
+              );
+
+            case "discount_limit":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {product.discount_limit ? `${product.discount_limit}%` : "-"}
+                </td>
+              );
+
+            case "discount_amount":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {specs.discount_amount ? formatCurrency(specs.discount_amount) : "-"}
+                </td>
+              );
+
+            case "wholesale_price":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                  {(product.wholesale_price || specs.wholesale_price) ? formatCurrency(product.wholesale_price || specs.wholesale_price) : "-"}
+                </td>
+              );
+
+            case "min_wholesale_qty":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {product.min_wholesale_qty || specs.min_wholesale_qty || "-"}
+                </td>
+              );
+
+            case "b2b_price":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                  {(product.b2b_price || specs.b2b_price) ? formatCurrency(product.b2b_price || specs.b2b_price) : "-"}
+                </td>
+              );
+
+            case "min_b2b_qty":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {specs.min_b2b_qty || "-"}
+                </td>
+              );
+
+            case "distributor_price":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                  {specs.distributor_price ? formatCurrency(specs.distributor_price) : "-"}
+                </td>
+              );
+
+            case "min_distributor_qty":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {specs.min_distributor_qty || "-"}
+                </td>
+              );
+
+            case "hsn_code":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {product.hsn_code || specs.hsn_code || "-"}
+                </td>
+              );
+
+            case "purchase_price":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {product.purchase_price ? formatCurrency(product.purchase_price) : "-"}
+                </td>
+              );
+
+            case "purchase_tax_type":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-[10px] text-slate-600">
+                  {specs.purchase_tax_type || (specs.is_purchase_tax_inclusive !== false ? "Inclusive" : "Exclusive")}
+                </td>
+              );
+
+            case "purchase_tax_name":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-[10px] text-slate-600">
+                  {specs.purchase_tax_name || "GST"}
+                </td>
+              );
+
+            case "purchase_tax_percent":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {specs.purchase_tax_percent ? `${specs.purchase_tax_percent}%` : "-"}
+                </td>
+              );
+
+            case "purchase_price_after_tax":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {specs.purchase_price_after_tax ? formatCurrency(specs.purchase_price_after_tax) : "-"}
+                </td>
+              );
+
+            case "supplier":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">
+                  {product.supplier || specs.supplier || "-"}
+                </td>
+              );
+
+            case "preferred_supplier":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">
+                  {specs.preferred_supplier || product.supplier || "-"}
+                </td>
+              );
+
+            case "supplier_invoice_number":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {specs.supplier_invoice_number || "-"}
+                </td>
+              );
+
+            case "supplier_invoice_date":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {specs.supplier_invoice_date || "-"}
+                </td>
+              );
+
+            case "item_received_date":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {specs.item_received_date || "-"}
+                </td>
+              );
+
+            case "initial_stock":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {product.initial_stock ?? 0}
+                </td>
+              );
+
+            case "stock":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap">
+                  {product.stock ?? product.initial_stock ?? 0}
+                </td>
+              );
+
+            case "reorder_level":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {product.reorder_level ?? 10}
+                </td>
+              );
+
+            case "safety_stock":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {product.safety_stock ?? "-"}
+                </td>
+              );
+
+            case "mfg_date":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {specs.mfg_date || (product as any).mfg_date || "-"}
+                </td>
+              );
+
+            case "expiry_date":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {specs.expiry_date || (product as any).expiry_date || "-"}
+                </td>
+              );
+
+            case "warehouse":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">
+                  {product.warehouse || specs.warehouse || "-"}
+                </td>
+              );
+
+            case "location_in_warehouse":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {specs.location_in_warehouse || (product as any).location_in_warehouse || "-"}
+                </td>
+              );
+
+            case "has_manual_batch":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    specs.has_manual_batch ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500"
+                  }`}>
+                    {specs.has_manual_batch ? "YES" : "NO"}
+                  </span>
+                </td>
+              );
+
+            case "stock_batch_number":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {specs.stock_batch_number || "-"}
+                </td>
+              );
+
+            case "stock_batch_expiry_date":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {specs.stock_batch_expiry_date || "-"}
+                </td>
+              );
+
+            case "opening_stock_batch_number":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {specs.opening_stock_batch_number || "-"}
+                </td>
+              );
+
+            case "opening_stock_batch_expiry_date":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {specs.opening_stock_batch_expiry_date || "-"}
+                </td>
+              );
+
+            case "status":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    product.status === "active" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500 border border-slate-200"
+                  }`}>
+                    {product.status === "active" ? "Active" : "Inactive"}
+                  </span>
+                </td>
+              );
+
+            case "has_label":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                  {specs.has_label !== false ? "Yes" : "No"}
+                </td>
+              );
+
+            case "label_headings":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">
+                  {specs.label_headings || "-"}
+                </td>
+              );
+
+            case "need_to_print_barcode_sticker":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    specs.need_to_print_barcode_sticker !== false ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-slate-100 text-slate-500"
+                  }`}>
+                    {specs.need_to_print_barcode_sticker !== false ? "PRINT" : "NO"}
+                  </span>
+                </td>
+              );
+
+            case "is_service_item":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  {specs.is_service_item ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">SERVICE</span>
+                  ) : "-"}
+                </td>
+              );
+
+            case "not_for_sale":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  {specs.not_for_sale ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">NOT FOR SALE</span>
+                  ) : "-"}
+                </td>
+              );
+
+            case "only_for_portal":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  {specs.only_for_portal ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">PORTAL ONLY</span>
+                  ) : "-"}
+                </td>
+              );
+
+            case "not_for_portal":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  {specs.not_for_portal ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">NO PORTAL</span>
+                  ) : "-"}
+                </td>
+              );
+
+            case "conversion_factor":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {specs.conversion_factor || "1"}
+                </td>
+              );
+
+            case "weighing_scale_code":
+              return (
+                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                  {specs.weighing_scale_code || "-"}
+                </td>
+              );
+
+            case "display_index":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap font-mono">
+                  {specs.display_index || "-"}
+                </td>
+              );
+
+            case "keywords":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">
+                  {specs.keywords || "-"}
+                </td>
+              );
+
+            case "accessories_keyword":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">
+                  {specs.accessories_keyword || "-"}
+                </td>
+              );
+
+            case "short_description":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[200px] truncate">
+                  {product.short_description || specs.short_description || "-"}
+                </td>
+              );
+
+            case "description_html":
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate font-mono text-[10px]">
+                  {specs.description_html || "-"}
+                </td>
+              );
+
+            case "source":
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                    Local
+                  </span>
+                </td>
+              );
+
+            default:
+              return (
+                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                  {String(specs[colId] || (product as any)[colId] || "-")}
+                </td>
+              );
+          }
+        })}
+
+        {/* Action column */}
+        <td className="py-2.5 px-3 whitespace-nowrap text-right sticky right-0 bg-white/95 backdrop-blur-xs border-l border-slate-100 shadow-sm">
+          <div className="flex items-center justify-end gap-1.5">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => handleEdit(product)}
+              className="size-8 rounded-lg hover:bg-slate-100 text-slate-600"
+              title="Edit Product"
+            >
+              <Edit2 className="size-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => handleDuplicate(product)}
+              className="size-8 rounded-lg hover:bg-slate-100 text-slate-600"
+              title="Duplicate Product"
+            >
+              <Copy className="size-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => handleDelete(product.id)}
+              className="size-8 rounded-lg hover:bg-rose-50 text-rose-600"
+              title="Delete Product"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
   const renderMasterRow = (item: MasterResult, visible: string[]) => {
     const isAISourced = item.source === "AI_WEB_SEARCH";
     const sourceLabel = isAISourced ? "AI Sourced" : "Global Catalog";

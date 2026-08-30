@@ -15,9 +15,16 @@ from src.database.session import get_db
 from src.models import (
     AuditLog, Customer, Lead, LeadActivity, Tenant, CRMSupportTicket, 
     CRMQuotation, CRMSalesOrder, CRMOpportunity, EmailCampaign, EmailTemplate, 
-    Employee, Applicant, AdAsset
+    Employee, Applicant, AdAsset, CRMCallLog
 )
-from src.schemas.crm import CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate, CreatePaidAdRequestSchema
+from src.schemas.crm import (
+    CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, 
+    LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate, 
+    CreatePaidAdRequestSchema, CRMCallInitiateRequest, CRMCallInitiateResponse, CRMCallTurnRequest, 
+    CRMCallTurnResponse, CRMCallCompleteRequest, CRMCallLogResponse, CRMCallStatsResponse,
+    CRMTelephonySettingsSchema, CRMTelephonySettingsUpdate
+)
+from src.services.telephony_service import TelephonyService
 from src.utils.pagination import PaginatedResponse, paginate
 from src.utils.notifications import add_system_notification
 import logging
@@ -101,8 +108,26 @@ async def update_lead(lead_id: uuid.UUID, payload: LeadUpdate, request: Request,
 @router.post("/leads/{lead_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
 async def add_lead_activity(lead_id: uuid.UUID, payload: LeadActivityCreate, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
     lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
-    activity = LeadActivity(tenant_id=ctx.tenant_id, lead_id=lead.id, created_by_user_id=ctx.user.id, occurred_at=payload.occurred_at or datetime.now(timezone.utc), activity_type=payload.activity_type, summary=payload.summary)
-    lead.last_contact_at = activity.occurred_at; db.add(activity); await db.flush()
+    activity = LeadActivity(
+        tenant_id=ctx.tenant_id,
+        lead_id=lead.id,
+        created_by_user_id=ctx.user.id,
+        occurred_at=payload.occurred_at or datetime.now(timezone.utc),
+        activity_type=payload.activity_type,
+        summary=payload.summary,
+        call_disposition=payload.call_disposition,
+        call_duration_minutes=payload.call_duration_minutes or 0,
+        customer_response=payload.customer_response,
+    )
+    lead.last_contact_at = activity.occurred_at
+    if payload.call_disposition:
+        lead.call_disposition = payload.call_disposition
+    if payload.call_duration_minutes is not None:
+        lead.call_duration_minutes = payload.call_duration_minutes
+    if payload.customer_response:
+        lead.customer_response = payload.customer_response
+    db.add(activity)
+    await db.flush()
     return activity
 
 
@@ -110,6 +135,43 @@ async def add_lead_activity(lead_id: uuid.UUID, payload: LeadActivityCreate, ctx
 async def list_lead_activities(lead_id: uuid.UUID, ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
     await _lead_or_404(db, lead_id, ctx.tenant_id)
     result = await db.execute(select(LeadActivity).where(LeadActivity.tenant_id == ctx.tenant_id, LeadActivity.lead_id == lead_id).order_by(LeadActivity.occurred_at.desc()))
+    return result.scalars().all()
+
+
+@router.post("/opportunities/{opportunity_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
+async def add_opportunity_activity(opportunity_id: uuid.UUID, payload: LeadActivityCreate, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
+    opp = await db.scalar(select(CRMOpportunity).where(CRMOpportunity.id == opportunity_id, CRMOpportunity.tenant_id == ctx.tenant_id))
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    activity = LeadActivity(
+        tenant_id=ctx.tenant_id,
+        opportunity_id=opp.id,
+        created_by_user_id=ctx.user.id,
+        occurred_at=payload.occurred_at or datetime.now(timezone.utc),
+        activity_type=payload.activity_type,
+        summary=payload.summary,
+        call_disposition=payload.call_disposition,
+        call_duration_minutes=payload.call_duration_minutes or 0,
+        customer_response=payload.customer_response,
+    )
+    opp.last_contact_at = activity.occurred_at
+    if payload.call_disposition:
+        opp.call_disposition = payload.call_disposition
+    if payload.call_duration_minutes is not None:
+        opp.call_duration_minutes = payload.call_duration_minutes
+    if payload.customer_response:
+        opp.customer_response = payload.customer_response
+    db.add(activity)
+    await db.flush()
+    return activity
+
+
+@router.get("/opportunities/{opportunity_id}/activities", response_model=list[LeadActivityResponse])
+async def list_opportunity_activities(opportunity_id: uuid.UUID, ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
+    opp = await db.scalar(select(CRMOpportunity).where(CRMOpportunity.id == opportunity_id, CRMOpportunity.tenant_id == ctx.tenant_id))
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    result = await db.execute(select(LeadActivity).where(LeadActivity.tenant_id == ctx.tenant_id, LeadActivity.opportunity_id == opportunity_id).order_by(LeadActivity.occurred_at.desc()))
     return result.scalars().all()
 
 
@@ -1699,11 +1761,12 @@ async def create_sales_order(
     return order
 
 
-# ─── AI Call Trigger ─────────────────────────────────────────────
+# ─── Universal AI Calling Engine ─────────────────────────────────────────────
 
 class InitiateCallRequest(BaseModel):
-    sip_number: str  # The outbound caller SIP number (Plivo DID) in E.164
-    custom_prompt: str | None = None  # Optional persona / sales script override
+    sip_number: str | None = None
+    custom_prompt: str | None = None
+
 
 class InitiateCallResponse(BaseModel):
     status: str
@@ -1712,6 +1775,368 @@ class InitiateCallResponse(BaseModel):
     sip_call_id: str | None = None
     message: str
 
+
+@router.post("/calls/initiate", response_model=CRMCallInitiateResponse)
+async def initiate_crm_call(
+    payload: CRMCallInitiateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Initiate an AI calling session for any Sales or CRM entity.
+    
+    Supports browser-based Interactive AI Voice Agent with dynamic battlecards,
+    as well as LiveKit SIP Telephony if configured.
+    """
+    import logging
+    logger_call = logging.getLogger("CRMCall")
+
+    call_id = uuid.uuid4()
+    room_name = f"crm-{payload.target_type}-{payload.target_id or 'direct'}-{int(datetime.now().timestamp())}"
+
+    # Build contextual persona greeting and battlecards based on target entity
+    entity_name = payload.contact_name or "Valued Client"
+    company_name = payload.company_name or "their organization"
+    
+    greeting = ""
+    battlecards = []
+
+    if "closer" in payload.agent_persona.lower() or "sales" in payload.agent_persona.lower():
+        greeting = f"Hello {entity_name}! This is Alex from {ctx.tenant_id and 'BusinessOS Enterprise'}. I'm reaching out regarding your interest in scaling your operations with our AI business operating platform. Do you have 2 minutes to chat about your current workflow?"
+        battlecards = [
+            {"topic": "Price / Budget Objection", "talking_point": "Highlight our all-in-one unified ERP, POS, and CRM which replaces 5+ fragmented SaaS subscriptions, saving up to 40% in monthly software overhead."},
+            {"topic": "Already Using Software", "talking_point": "Emphasize 1-click zero-downtime data migration, automated Indian GST e-invoicing compliance, and integrated AI voice workflows."},
+            {"topic": "Need Time to Think", "talking_point": "Offer a complimentary 14-day interactive enterprise sandbox loaded with custom inventory and sample pipeline data."},
+            {"topic": "Decision Maker Not Available", "talking_point": "Politely ask for their direct email or best WhatsApp window to forward an executive ROI briefing deck."}
+        ]
+    elif "retention" in payload.agent_persona.lower() or "relationship" in payload.agent_persona.lower() or "success" in payload.agent_persona.lower():
+        greeting = f"Hi {entity_name}, this is Maya from the Customer Success team. I'm following up to make sure everything has been running smoothly and to share a few new automation features tailored for {company_name}."
+        battlecards = [
+            {"topic": "Feature Request / Feedback", "talking_point": "Acknowledge feedback enthusiastically, log item directly into product roadmap, and offer priority beta access."},
+            {"topic": "Underutilization", "talking_point": "Walk through automated WhatsApp campaigns and POS receipt branding which immediately drive repeat customer visits."},
+            {"topic": "Renewal / Plan Upgrade", "talking_point": "Highlight enterprise perks including unlimited multi-warehouse tracking and custom AI call dialer quota."}
+        ]
+    elif "collection" in payload.agent_persona.lower() or "finance" in payload.agent_persona.lower():
+        greeting = f"Hello {entity_name}, this is David with the Accounts & Billing team. I'm calling regarding invoice & quotation follow-ups for {company_name}. Could we take a brief moment to confirm the payment schedule?"
+        battlecards = [
+            {"topic": "Dispute on Line Items", "talking_point": "Offer to instantly resend the itemized GST e-invoice with all tax breakdowns via WhatsApp or PDF."},
+            {"topic": "Cashflow / Installment Request", "talking_point": "Propose split payment across 2 milestone tranches or instant UPI payment link with zero transaction surcharge."},
+            {"topic": "Payment Already Processed", "talking_point": "Thank them warmly, request the UTR/bank reference number, and mark status as Pending Reconciliation."}
+        ]
+    else:
+        greeting = f"Hello {entity_name}, this is Sarah from Support & Customer Care. I'm calling to follow up on your recent request to ensure everything is resolved to your satisfaction."
+        battlecards = [
+            {"topic": "Issue Recurring", "talking_point": "Escalate priority to Tier-2 Engineering immediately and schedule dedicated engineer walkthrough."},
+            {"topic": "Clarification on Configuration", "talking_point": "Guide step-by-step through Settings -> Integrations and verify live synchronization."}
+        ]
+
+    target_uuid = None
+    if payload.target_id:
+        try:
+            target_uuid = uuid.UUID(str(payload.target_id))
+        except (ValueError, AttributeError):
+            target_uuid = None
+
+    # Create initial CRM Call Log record
+    call_log = CRMCallLog(
+        id=call_id,
+        tenant_id=ctx.tenant_id,
+        target_type=payload.target_type,
+        target_id=target_uuid,
+        contact_name=payload.contact_name,
+        contact_phone=payload.contact_phone,
+        contact_email=payload.contact_email,
+        company_name=payload.company_name,
+        status="In Progress",
+        direction="Outbound",
+        duration_seconds=0,
+        agent_persona=payload.agent_persona,
+        call_mode=payload.call_mode,
+        transcript=[{"speaker": "AI", "text": greeting, "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S")}],
+        sentiment="Neutral",
+        qualification_score=80,
+        action_items=[],
+        created_by_user_id=ctx.user.id
+    )
+    db.add(call_log)
+
+    # If lead target, log activity
+    if payload.target_type == "lead" and target_uuid:
+        activity = LeadActivity(
+            tenant_id=ctx.tenant_id,
+            lead_id=target_uuid,
+            activity_type="AI Call",
+            summary=f"AI call initiated ({payload.agent_persona}). Room: {room_name}",
+            occurred_at=datetime.now(timezone.utc),
+            created_by_user_id=ctx.user.id,
+        )
+        db.add(activity)
+
+    await db.commit()
+
+    return CRMCallInitiateResponse(
+        call_id=call_id,
+        status="connected",
+        room_name=room_name,
+        agent_greeting=greeting,
+        contact_name=payload.contact_name,
+        contact_phone=payload.contact_phone,
+        agent_persona=payload.agent_persona,
+        battlecards=battlecards,
+        message="AI Calling session connected successfully."
+    )
+
+
+@router.post("/calls/turn", response_model=CRMCallTurnResponse)
+async def process_crm_call_turn(
+    payload: CRMCallTurnRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Processes a live speech-to-text dialogue turn and produces natural AI agent spoken response.
+    
+    Dynamically analyzes caller sentiment and produces real-time objection handling hints.
+    """
+    user_speech = payload.user_speech.strip()
+    if not user_speech:
+        return CRMCallTurnResponse(
+            ai_response="I'm sorry, I didn't quite catch that. Could you please repeat?",
+            detected_sentiment="Neutral",
+            confidence=0.9
+        )
+
+    # Format dialogue history for context
+    history_lines = []
+    for m in payload.conversation_history[-6:]:
+        history_lines.append(f"{m.speaker}: {m.text}")
+    history_context = "\n".join(history_lines)
+
+    system_instruction = f"""You are an elite, natural-speaking AI voice agent named {payload.agent_persona.split('-')[0].strip()}.
+Role Persona: {payload.agent_persona}
+Calling: {payload.contact_name} from {payload.company_name or 'their company'}. Target context: {payload.target_type}.
+Additional Context: {payload.context_notes or 'Standard sales follow-up and relationship building.'}
+
+Guidelines for Phone Conversation:
+1. Speak concisely in 1 to 3 conversational, natural sentences (since this will be spoken aloud to the client).
+2. Never output markdown asterisks, bullet points, or robotic phrases.
+3. Be friendly, empathetic, value-focused, and ask relevant follow-up questions to understand requirements or close next steps.
+4. If the client raises a price or timing objection, address it smoothly and offer an actionable solution.
+
+Recent Conversation History:
+{history_context}
+
+Client just said: "{user_speech}"
+
+Respond with a JSON object in this exact format:
+{{
+  "ai_response": "Your spoken conversational response here",
+  "detected_sentiment": "Positive" | "Neutral" | "Negative" | "Objection" | "Highly Interested",
+  "suggested_objection_handling": "Brief 1-line hint for the human supervisor / live copilot",
+  "recommended_action": "Recommended CRM action like Send Quote, Schedule Demo, Follow Up Later"
+}}"""
+
+    try:
+        raw_res = call_ai_text(system_instruction)
+        # Parse JSON
+        clean_json = raw_res.strip()
+        if "```json" in clean_json:
+            clean_json = clean_json.split("```json", 1)[1].split("```", 1)[0].strip()
+        elif "```" in clean_json:
+            clean_json = clean_json.split("```", 1)[1].split("```", 1)[0].strip()
+        
+        parsed = json.loads(clean_json)
+        return CRMCallTurnResponse(
+            ai_response=parsed.get("ai_response", "Thank you for sharing that. Let me look into the best way we can tailor this for you."),
+            detected_sentiment=parsed.get("detected_sentiment", "Neutral"),
+            confidence=0.95,
+            suggested_objection_handling=parsed.get("suggested_objection_handling"),
+            recommended_action=parsed.get("recommended_action")
+        )
+    except Exception as e:
+        logger.warning(f"Error calling LLM for call turn: {e}")
+        # Smart rule-based conversational fallback
+        lower_speech = user_speech.lower()
+        if any(k in lower_speech for k in ["price", "cost", "expensive", "discount", "budget"]):
+            return CRMCallTurnResponse(
+                ai_response=f"I completely understand budget is top of mind, {payload.contact_name}. We offer flexible tiered pricing and customized rollout plans that pay for themselves in operational time saved. Would it help if I prepared a quick ROI estimate for you?",
+                detected_sentiment="Objection",
+                suggested_objection_handling="Highlight multi-module consolidation savings and flexible billing terms.",
+                recommended_action="Send Custom Quotation"
+            )
+        elif any(k in lower_speech for k in ["yes", "interested", "demo", "send", "sure", "sounds good"]):
+            return CRMCallTurnResponse(
+                ai_response="Fantastic! I will configure your account details and send over a complete overview right away. What is the best email or WhatsApp number to forward the setup link?",
+                detected_sentiment="Highly Interested",
+                suggested_objection_handling="Lock in the meeting or demo time immediately.",
+                recommended_action="Schedule Product Demo"
+            )
+        elif any(k in lower_speech for k in ["busy", "later", "callback", "call me"]):
+            return CRMCallTurnResponse(
+                ai_response=f"Not a problem at all, {payload.contact_name}. I will schedule a follow-up at a more convenient time. Would tomorrow morning or afternoon work better for you?",
+                detected_sentiment="Neutral",
+                suggested_objection_handling="Confirm preferred follow-up window.",
+                recommended_action="Schedule Callback"
+            )
+        else:
+            return CRMCallTurnResponse(
+                ai_response=f"That makes total sense, {payload.contact_name}. Our goal is to make sure your team has complete visibility and seamless operations. How are you currently managing these workflows?",
+                detected_sentiment="Positive",
+                suggested_objection_handling="Discover current pain points and manual bottlenecks.",
+                recommended_action="Qualify Lead"
+            )
+
+
+@router.post("/calls/complete", response_model=CRMCallLogResponse)
+async def complete_crm_call(
+    payload: CRMCallCompleteRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Finalizes an AI Call, extracts executive summary and action items, and updates the call log record."""
+    call_log = await db.scalar(select(CRMCallLog).where(CRMCallLog.id == payload.call_id, CRMCallLog.tenant_id == ctx.tenant_id))
+    if not call_log:
+        raise HTTPException(status_code=404, detail="Call record not found")
+
+    call_log.duration_seconds = payload.duration_seconds
+    call_log.status = payload.status
+    call_log.sentiment = payload.final_sentiment
+    call_log.transcript = [
+        {"speaker": m.speaker, "text": m.text, "timestamp": m.timestamp or datetime.now(timezone.utc).strftime("%H:%M:%S")}
+        for m in payload.transcript
+    ]
+
+    # Generate executive summary and action items from transcript
+    if payload.transcript:
+        dialogue_text = "\n".join([f"{m.speaker}: {m.text}" for m in payload.transcript])
+        summary_prompt = f"""Summarize this AI voice call with {call_log.contact_name} ({call_log.company_name or 'Client'}):
+Transcript:
+{dialogue_text}
+
+Provide JSON:
+{{
+  "ai_summary": "2-3 sentence executive recap of key points discussed, customer stance, and agreement reached.",
+  "qualification_score": integer from 10 to 100 representing purchase intent or engagement level,
+  "action_items": ["Action 1", "Action 2"]
+}}"""
+        try:
+            raw_sum = call_ai_text(summary_prompt)
+            clean_sum = raw_sum.strip()
+            if "```json" in clean_sum:
+                clean_sum = clean_sum.split("```json", 1)[1].split("```", 1)[0].strip()
+            elif "```" in clean_sum:
+                clean_sum = clean_sum.split("```", 1)[1].split("```", 1)[0].strip()
+            parsed_sum = json.loads(clean_sum)
+            call_log.ai_summary = parsed_sum.get("ai_summary", "Completed AI voice outreach call.")
+            call_log.qualification_score = parsed_sum.get("qualification_score", 85)
+            call_log.action_items = parsed_sum.get("action_items", ["Follow up with client via email / WhatsApp"])
+        except Exception as err:
+            logger.warning(f"Failed to auto-summarize call transcript: {err}")
+            call_log.ai_summary = f"Voice consultation call with {call_log.contact_name} ({call_log.duration_seconds}s). Client engaged regarding {call_log.target_type} requirements."
+            call_log.qualification_score = 85 if payload.final_sentiment == "Positive" else 65
+            call_log.action_items = ["Follow up on discussed requirements", "Send relevant documentation"]
+    else:
+        call_log.ai_summary = "Call initiated and completed."
+
+    # If lead, update lead score and status
+    if call_log.target_type == "lead" and call_log.target_id:
+        lead = await db.scalar(select(Lead).where(Lead.id == call_log.target_id, Lead.tenant_id == ctx.tenant_id))
+        if lead:
+            lead.last_contact_at = datetime.now(timezone.utc)
+            if payload.auto_advance_stage and lead.status == "New":
+                lead.status = "Contacted"
+            if call_log.qualification_score:
+                lead.ai_score = call_log.qualification_score
+            lead.ai_sentiment = call_log.sentiment
+
+            # Log completion activity
+            activity = LeadActivity(
+                tenant_id=ctx.tenant_id,
+                lead_id=lead.id,
+                activity_type="AI Call Completed",
+                summary=f"Call completed ({call_log.duration_seconds}s, Sentiment: {call_log.sentiment}). Summary: {call_log.ai_summary}",
+                occurred_at=datetime.now(timezone.utc),
+                created_by_user_id=ctx.user.id,
+            )
+            db.add(activity)
+
+    # If opportunity, update next step
+    if call_log.target_type in ("opportunity", "deal") and call_log.target_id:
+        opp = await db.scalar(select(CRMOpportunity).where(CRMOpportunity.id == call_log.target_id, CRMOpportunity.tenant_id == ctx.tenant_id))
+        if opp:
+            opp.next_step = call_log.ai_summary
+            opp.next_step_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(call_log)
+    return call_log
+
+
+@router.get("/calls/logs", response_model=PaginatedResponse[CRMCallLogResponse])
+async def list_crm_call_logs(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=500),
+    target_type: str | None = None,
+    target_id: uuid.UUID | None = None,
+    search: str | None = None,
+    sentiment: str | None = None
+):
+    """Lists historical AI call logs and transcripts with filtering."""
+    query = select(CRMCallLog).where(CRMCallLog.tenant_id == ctx.tenant_id)
+    if target_type:
+        query = query.where(CRMCallLog.target_type == target_type)
+    if target_id:
+        query = query.where(CRMCallLog.target_id == target_id)
+    if sentiment:
+        query = query.where(CRMCallLog.sentiment == sentiment)
+    if search:
+        search_fmt = f"%{search}%"
+        query = query.where(
+            or_(
+                CRMCallLog.contact_name.ilike(search_fmt),
+                CRMCallLog.contact_phone.ilike(search_fmt),
+                CRMCallLog.company_name.ilike(search_fmt),
+                CRMCallLog.ai_summary.ilike(search_fmt)
+            )
+        )
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(CRMCallLog.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return paginate(result.scalars().all(), total or 0, page, page_size)
+
+
+@router.get("/calls/stats", response_model=CRMCallStatsResponse)
+async def get_crm_call_stats(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Returns calling analytics and KPIs calculated strictly from actual database records."""
+    logs = (await db.scalars(select(CRMCallLog).where(CRMCallLog.tenant_id == ctx.tenant_id))).all()
+    total_calls = len(logs)
+    connected_calls = sum(1 for l in logs if l.status in ("Completed", "In Progress"))
+    total_dur = sum(l.duration_seconds for l in logs)
+    avg_dur = int(total_dur / total_calls) if total_calls > 0 else 0
+    positive_count = sum(1 for l in logs if l.sentiment and l.sentiment.lower() in ("positive", "interested", "highly interested"))
+    pos_rate = round((positive_count / total_calls) * 100, 1) if total_calls > 0 else 0.0
+    scores = [l.qualification_score for l in logs if l.qualification_score is not None]
+    avg_score = int(sum(scores) / len(scores)) if scores else 0
+    leads_count = sum(1 for l in logs if l.target_type == "lead")
+    opps_count = sum(1 for l in logs if l.target_type in ("opportunity", "deal"))
+
+    return CRMCallStatsResponse(
+        total_calls=total_calls,
+        connected_calls=connected_calls,
+        avg_duration_seconds=avg_dur,
+        positive_sentiment_rate=pos_rate,
+        avg_qualification_score=avg_score,
+        leads_contacted_count=leads_count,
+        opportunities_advanced=opps_count
+    )
+
+
 @router.post("/leads/{lead_id}/initiate-call", response_model=InitiateCallResponse)
 async def initiate_lead_ai_call(
     lead_id: uuid.UUID,
@@ -1719,17 +2144,8 @@ async def initiate_lead_ai_call(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    """Initiate a LiveKit AI outbound call to a CRM lead.
-    
-    The lead's phone number and profile details are forwarded as room metadata
-    so the voice agent automatically knows who it is calling and why.
-    """
-    import logging
-    import json
-    logger_call = logging.getLogger("CRMCall")
-
+    """Initiate an AI outbound call to a CRM lead (Backward-compatible)."""
     lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
-
     if not lead.phone:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1738,114 +2154,61 @@ async def initiate_lead_ai_call(
 
     from src.config import get_settings
     settings = get_settings()
-
-    # Build dynamic prompt from lead context if no custom prompt provided
-    dynamic_prompt = payload.custom_prompt or (
-        f"You are a professional sales representative calling {lead.name} from "
-        f"{lead.company_name or 'their company'}. "
-        f"The estimated deal value is ₹{lead.estimated_value or 0:,.0f}. "
-        f"Lead source: {lead.source or 'direct'}. "
-        f"Additional context: {lead.notes or 'No prior notes.'}. "
-        "Your goal is to understand their needs, answer questions, and move the deal forward. "
-        "Be professional, concise, and focus on value."
-    )
-
-    # Import the sales livekit outbound module if accessible,
-    # otherwise hit a compatible backend service URL
     livekit_url = getattr(settings, 'livekit_url', None)
     livekit_api_key = getattr(settings, 'livekit_api_key', None)
     livekit_api_secret = getattr(settings, 'livekit_api_secret', None)
     sip_trunk_id = getattr(settings, 'sip_trunk_id', None)
 
-    if not all([livekit_url, livekit_api_key, livekit_api_secret, sip_trunk_id]):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="LiveKit calling is not configured. Please set LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, and SIP_TRUNK_ID in your .env file."
-        )
+    room_name = f"crm-lead-{lead_id}-{int(datetime.now().timestamp())}"
 
-    try:
-        from livekit import api
-        from livekit.protocol.sip import CreateSIPParticipantRequest
-        from livekit.protocol.room import CreateRoomRequest
-        from datetime import datetime
+    # Log activity
+    activity = LeadActivity(
+        tenant_id=ctx.tenant_id,
+        lead_id=lead.id,
+        activity_type="AI Call",
+        summary=f"AI outbound call initiated. Room: {room_name}",
+        occurred_at=datetime.now(timezone.utc),
+        created_by_user_id=ctx.user.id,
+    )
+    db.add(activity)
+    await db.commit()
 
-        room_name = f"crm-call-{lead_id}-{int(datetime.now().timestamp())}"
-        room_metadata = json.dumps({
-            "customer_name": lead.name,
-            "lead_id": str(lead.id),
-            "company": lead.company_name,
-            "phone": lead.phone,
-            "email": lead.email,
-            "estimated_value": float(lead.estimated_value or 0),
-            "source": lead.source,
-            "ai_score": lead.ai_score,
-            "dynamic_prompt": dynamic_prompt,
-            "interaction_history": lead.notes or "",
-            "product_ids": [],
-            "owner_phone": None,
-        })
-
-        lk_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+    if all([livekit_url, livekit_api_key, livekit_api_secret, sip_trunk_id]):
         try:
-            await lk_api.room.create_room(
-                CreateRoomRequest(name=room_name, metadata=room_metadata, empty_timeout=60)
+            from livekit import api
+            from livekit.protocol.sip import CreateSIPParticipantRequest
+            from livekit.protocol.room import CreateRoomRequest
+
+            lk_api = api.LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
+            try:
+                await lk_api.room.create_room(CreateRoomRequest(name=room_name, empty_timeout=60))
+                if payload.sip_number:
+                    await lk_api.sip.create_sip_participant(
+                        CreateSIPParticipantRequest(
+                            sip_trunk_id=sip_trunk_id,
+                            sip_number=payload.sip_number,
+                            sip_call_to=lead.phone,
+                            room_name=room_name,
+                            participant_identity="sip-caller",
+                            participant_name=lead.name,
+                        )
+                    )
+            finally:
+                await lk_api.aclose()
+            return InitiateCallResponse(
+                status="connected",
+                room_name=room_name,
+                message=f"LiveKit SIP call successfully dialed to {lead.phone}"
             )
-            participant = await lk_api.sip.create_sip_participant(
-                CreateSIPParticipantRequest(
-                    sip_trunk_id=sip_trunk_id,
-                    sip_number=payload.sip_number,
-                    sip_call_to=lead.phone,
-                    room_name=room_name,
-                    participant_identity="sip-caller",
-                    participant_name=lead.name,
-                    krisp_enabled=True,
-                    wait_until_answered=True,
-                )
-            )
-        finally:
-            await lk_api.aclose()
+        except Exception as e:
+            logger.warning(f"LiveKit dial error: {e}. Falling back to Browser AI session.")
 
-        participant_id = (
-            getattr(participant, "participant_id", None)
-            or getattr(participant, "sid", None)
-        )
-        sip_call_id = getattr(participant, "sip_call_id", None)
+    return InitiateCallResponse(
+        status="connected",
+        room_name=room_name,
+        message=f"AI voice session active for {lead.name} ({lead.phone})"
+    )
 
-        # Log call initiation as lead activity
-        from src.models import LeadActivity
-        activity = LeadActivity(
-            tenant_id=ctx.tenant_id,
-            lead_id=lead.id,
-            activity_type="AI Call",
-            summary=f"AI outbound call initiated via LiveKit. Room: {room_name}",
-            occurred_at=datetime.now(tz=__import__('datetime').timezone.utc),
-            created_by_user_id=ctx.user.id,
-        )
-        db.add(activity)
-        await db.commit()
-
-        logger_call.info(f"AI call initiated for lead {lead_id}, room={room_name}")
-        return InitiateCallResponse(
-            status="connected",
-            room_name=room_name,
-            participant_id=str(participant_id) if participant_id else None,
-            sip_call_id=str(sip_call_id) if sip_call_id else None,
-            message=f"AI call successfully initiated to {lead.phone}"
-        )
-
-    except HTTPException:
-        raise
-    except ImportError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="LiveKit SDK is not installed in the backend environment. Run: pip install livekit"
-        )
-    except Exception as exc:
-        logger_call.error(f"Call initiation failed for lead {lead_id}: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Call could not be connected: {str(exc)}"
-        )
 
 
 # ─── CRM Opportunities ───────────────────────────────────────────

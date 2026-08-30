@@ -34,7 +34,7 @@ export function SalesPipeline({ tab = "kanban" }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     void fetchPipelineData();
-  }, [tenant.id]);
+  }, [tenant?.id]);
 
   // 1. Calculate Pipeline Statistics
   const activeDeals = deals.filter(d => d.stage !== "Closed Lost");

@@ -19,8 +19,10 @@ import { toast } from "sonner";
 import { crmCustomersApi, inventoryApi, type CrmCustomer } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock } from "lucide-react";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
+import { AiCallingModal } from "./AiCallingModal";
+import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
 
 const CUSTOMER_TYPES = [
   "Retail",
@@ -78,6 +80,8 @@ export function Customers() {
   const [verifyingGst, setVerifyingGst] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CrmCustomer | null>(null);
+  const [callingCustomer, setCallingCustomer] = useState<CrmCustomer | null>(null);
+  const [callStatusMap, setCallStatusMap] = useState<Record<string, CRMCallLog>>({});
   const [form, setForm] = useState<Record<string, unknown>>(blankCustomer);
 
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
@@ -147,6 +151,17 @@ export function Customers() {
       );
       setCustomers(response.items);
       setTotal(response.total);
+      // Load call statuses in background
+      try {
+        const callRes = await crmCallsApi.listLogs(1, 200, "customer");
+        const map: Record<string, CRMCallLog> = {};
+        for (const log of (callRes.items || [])) {
+          if (log.target_id && !map[log.target_id]) {
+            map[log.target_id] = log;
+          }
+        }
+        setCallStatusMap(map);
+      } catch { /* silent */ }
     } catch {
       toast.error("Could not load customers");
     } finally {
@@ -506,8 +521,27 @@ export function Customers() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {customer.email || customer.phone || "—"}
+                    <td className="px-4 py-3">
+                      {/* Contact info with call status indicator */}
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground text-xs">{customer.email || customer.phone || "—"}</p>
+                        {(() => {
+                          const log = callStatusMap[customer.id];
+                          if (!log) return null;
+                          const days = Math.floor((Date.now() - new Date(log.created_at).getTime()) / (1000 * 60 * 60 * 24));
+                          const overdue = days >= 3;
+                          return (
+                            <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                              overdue
+                                ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                            }`}>
+                              {overdue ? <Clock className="size-2.5" /> : <CheckCircle2 className="size-2.5" />}
+                              {overdue ? `Follow-up ${days}d ago` : days === 0 ? "Called today" : `Called ${days}d ago`}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
@@ -530,7 +564,20 @@ export function Customers() {
                     <td className="px-4 py-3 text-right font-bold text-foreground">{currency.symbol}{(customer.lifetime_value || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-bold text-foreground">{customer.total_orders ?? 0}</td>
                     <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setCallingCustomer(customer); }}
+                          className={`p-1.5 rounded-lg transition ${
+                            callStatusMap[customer.id]
+                              ? Math.floor((Date.now() - new Date(callStatusMap[customer.id].created_at).getTime()) / (1000 * 60 * 60 * 24)) >= 3
+                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 animate-pulse"
+                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                              : "hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400"
+                          }`}
+                          title={callStatusMap[customer.id] ? "Called — Click to call again" : "Start AI Call"}
+                        >
+                          <PhoneCall className="size-3.5" />
+                        </button>
                         <button onClick={(e) => { e.stopPropagation(); openEdit(customer); }} className="p-1 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground" title="Edit">
                           <Plus className="size-3.5 rotate-45" />
                         </button>
@@ -540,6 +587,7 @@ export function Customers() {
                       </div>
                     </td>
                   </tr>
+
                 ))}
                 {filtered.length === 0 && (
                   <tr>
@@ -564,9 +612,18 @@ export function Customers() {
             <h3 className="font-semibold text-lg flex items-center gap-2">
               <Building2 className="size-5 text-primary" /> Customer Details
             </h3>
-            <button onClick={() => setSelectedCustomer(null)}>
-              <X className="size-5 text-muted-foreground hover:text-foreground" />
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setCallingCustomer(selectedCustomer)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition"
+              >
+                <PhoneCall className="size-3.5" />
+                Start AI Voice Call
+              </button>
+              <button onClick={() => setSelectedCustomer(null)}>
+                <X className="size-5 text-muted-foreground hover:text-foreground" />
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Detail label="Name" value={selectedCustomer.name} />
@@ -593,6 +650,25 @@ export function Customers() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Universal AI Calling Modal */}
+      {callingCustomer && (
+        <AiCallingModal
+          open={!!callingCustomer}
+          onClose={() => setCallingCustomer(null)}
+          targetType="customer"
+          targetId={callingCustomer.id}
+          contactName={callingCustomer.name}
+          contactPhone={callingCustomer.phone || undefined}
+          contactEmail={callingCustomer.email || undefined}
+          companyName={callingCustomer.company_name || undefined}
+          dealValue={callingCustomer.lifetime_value}
+          defaultNotes={callingCustomer.city ? `Customer based in ${callingCustomer.city}, ${callingCustomer.state}. Total orders: ${callingCustomer.total_orders || 0}.` : undefined}
+          onCallCompleted={async () => {
+            await load();
+          }}
+        />
       )}
     </div>
   );

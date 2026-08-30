@@ -4,6 +4,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { getActiveReceiptTemplate, ReceiptTemplate } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 
 interface ThermalReceiptPrinterProps {
   bill: {
@@ -43,6 +44,7 @@ interface ThermalReceiptPrinterProps {
 
 export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPrinterProps) {
     const { currency, formatCurrency } = useCurrency();
+    const { tenant } = useTenant();
   if (!bill) return null;
   if (typeof document === 'undefined') return null;
 
@@ -122,11 +124,19 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
       {/* Header */}
       <div className="text-center border-b-[1.5px] border-dashed border-black pb-2">
         {f.showLogo && (
-          <div className="mx-auto h-7 w-7 bg-black text-white font-extrabold flex items-center justify-center text-xs rounded mb-1">
-            IS
-          </div>
+          (invTemplate?.logoUrl || fallbackStore.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url) ? (
+            <img
+              src={invTemplate?.logoUrl || fallbackStore.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url}
+              alt="Logo"
+              className="mx-auto max-h-8 max-w-[120px] object-contain mb-1 filter grayscale contrast-200"
+            />
+          ) : (
+            <div className="mx-auto h-7 w-7 bg-black text-white font-extrabold flex items-center justify-center text-xs rounded mb-1">
+              {storeName ? storeName.substring(0, 2).toUpperCase() : (tenant?.name ? tenant.name.substring(0, 2).toUpperCase() : 'IS')}
+            </div>
+          )
         )}
-        <h2 className="font-extrabold text-[15px] tracking-wide uppercase">{storeName}</h2>
+        <h2 className="font-extrabold text-[15px] tracking-wide uppercase">{storeName || tenant?.name}</h2>
         {f.showStoreAddress && storeAddress && (
           <p className="text-[11px] font-semibold mt-0.5 whitespace-pre-line">{storeAddress}</p>
         )}

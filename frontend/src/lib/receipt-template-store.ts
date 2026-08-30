@@ -13,6 +13,7 @@ export interface ReceiptTemplate {
   email: string;
   gstin: string;
   cin: string;
+  logoUrl?: string;
   
   // Toggle Options
   showLogo: boolean;
@@ -84,7 +85,98 @@ export function getStoredReceiptTemplates(): ReceiptTemplate[] {
   }
 }
 
+export interface ActiveGstDetails {
+  gstin: string;
+  trade_name: string;
+  legal_name: string;
+  state_code: string;
+  state_name: string;
+  address: string;
+  phone?: string;
+  email?: string;
+  cin?: string;
+  pan?: string;
+  logo_url?: string;
+}
+
+export function getActiveBillingGst(): ActiveGstDetails | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    // 1. Explicitly stored active billing GST object
+    const storedGstRaw = localStorage.getItem('bos_active_billing_gst_details');
+    if (storedGstRaw) {
+      const parsed = JSON.parse(storedGstRaw);
+      if (parsed && parsed.gstin) return parsed;
+    }
+
+    // 2. Active Company in localStorage
+    const activeCompanyRaw = localStorage.getItem('bos_active_company') || localStorage.getItem('bos_selected_company');
+    if (activeCompanyRaw) {
+      const comp = JSON.parse(activeCompanyRaw);
+      if (comp) {
+        const activeReg = comp.gst_registrations?.find((r: any) => r.is_primary) || comp.gst_registrations?.[0];
+        const gstin = activeReg?.gstin || comp.gst_number;
+        if (gstin) {
+          const stateCode = activeReg?.state_code || gstin.slice(0, 2);
+          return {
+            gstin,
+            trade_name: activeReg?.trade_name || comp.name || 'Organization',
+            legal_name: comp.legal_name || comp.name || 'Organization',
+            state_code: stateCode,
+            state_name: activeReg?.state_name || comp.state || 'State',
+            address: activeReg?.address || comp.address || '',
+            phone: comp.phone || '',
+            email: comp.email || '',
+            cin: comp.registration_number || '',
+            pan: comp.pan_number || '',
+            logo_url: comp.logo_url || '',
+          };
+        }
+      }
+    }
+
+    // 3. Tenant in localStorage
+    const tenantRaw = localStorage.getItem('bos_current_tenant');
+    if (tenantRaw) {
+      const tenant = JSON.parse(tenantRaw);
+      if (tenant?.settings?.gstin || tenant?.settings?.gst_number || tenant?.name) {
+        const gstin = tenant.settings?.gstin || tenant.settings?.gst_number || '36AAAAA0000A1Z5';
+        return {
+          gstin,
+          trade_name: tenant.name || 'Organization',
+          legal_name: tenant.legal_name || tenant.name || 'Organization',
+          state_code: gstin.slice(0, 2),
+          state_name: tenant.settings?.state || 'State',
+          address: tenant.settings?.address || '',
+          phone: tenant.settings?.phone || '',
+          email: tenant.settings?.email || '',
+          cin: tenant.settings?.cin || '',
+          pan: tenant.settings?.pan || '',
+          logo_url: tenant.logo_url || tenant.raw?.logo_url || '',
+        };
+      }
+    }
+  } catch (err) {
+    console.error('Error resolving active billing GST:', err);
+  }
+  return null;
+}
+
+export function setActiveBillingGst(details: ActiveGstDetails): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('bos_active_billing_gst_details', JSON.stringify(details));
+    localStorage.setItem('bos_active_billing_gstin', details.gstin);
+    window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: details }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error saving active billing GST:', err);
+  }
+}
+
 export function getActiveReceiptTemplate(): ReceiptTemplate {
+  const activeGst = getActiveBillingGst();
+
   if (typeof window !== 'undefined') {
     try {
       const invTemplatesRaw = localStorage.getItem('businessos_print_templates_v1');
@@ -111,15 +203,16 @@ export function getActiveReceiptTemplate(): ReceiptTemplate {
             isDefault: true,
             paperSize: matched.paperSize === '58mm' ? '58mm' : '80mm',
             fontDensity: 'normal',
-            storeName: matched.storeName || 'LazyMonkeyAI',
+            storeName: activeGst?.trade_name || activeGst?.legal_name || matched.storeName || 'LazyMonkeyAI Store',
             branchName: matched.branchName || '',
             headerTagline: matched.headerTagline || '',
             invoiceTitle: matched.headerTitle || 'TAX INVOICE',
-            address: matched.storeAddress || '',
-            phone: matched.storePhone || '',
-            email: matched.storeEmail || '',
-            gstin: matched.gstin || '',
-            cin: matched.cin || '',
+            address: activeGst?.address || matched.storeAddress || '',
+            phone: activeGst?.phone || matched.storePhone || '',
+            email: activeGst?.email || matched.storeEmail || '',
+            gstin: activeGst?.gstin || matched.gstin || '',
+            cin: activeGst?.cin || matched.cin || '',
+            logoUrl: activeGst?.logo_url || matched.logoUrl || '',
 
             showLogo: fields.showLogo !== false,
             showStoreAddress: fields.showStoreAddress !== false,
@@ -146,8 +239,22 @@ export function getActiveReceiptTemplate(): ReceiptTemplate {
   }
 
   const templates = getStoredReceiptTemplates();
-  const active = templates.find((t) => t.isDefault);
-  return active || templates[0] || DEFAULT_RECEIPT_TEMPLATE;
+  const active = templates.find((t) => t.isDefault) || templates[0] || DEFAULT_RECEIPT_TEMPLATE;
+
+  if (activeGst) {
+    return {
+      ...active,
+      storeName: activeGst.trade_name || activeGst.legal_name || active.storeName,
+      address: activeGst.address || active.address,
+      phone: activeGst.phone || active.phone,
+      email: activeGst.email || active.email,
+      gstin: activeGst.gstin || active.gstin,
+      cin: activeGst.cin || active.cin,
+      logoUrl: activeGst.logo_url || active.logoUrl || '',
+    };
+  }
+
+  return active;
 }
 
 export function getActiveBarcodeTemplate(): any {
@@ -200,6 +307,8 @@ export function getActiveBarcodeTemplate(): any {
 }
 
 export function getActiveInvoicePrintTemplate(): any {
+  const activeGst = getActiveBillingGst();
+
   if (typeof window !== 'undefined') {
     try {
       const invTemplatesRaw = localStorage.getItem('businessos_print_templates_v1');
@@ -218,14 +327,28 @@ export function getActiveInvoicePrintTemplate(): any {
                     invTemplates.find((t: any) => t.id === 'tpl-inv-stylish');
         }
 
-        if (matched) return matched;
+        if (matched) {
+          if (activeGst) {
+            return {
+              ...matched,
+              gstin: activeGst.gstin || matched.gstin,
+              storeName: activeGst.trade_name || activeGst.legal_name || matched.storeName,
+              storeAddress: activeGst.address || matched.storeAddress,
+              storePhone: activeGst.phone || matched.storePhone,
+              storeEmail: activeGst.email || matched.storeEmail,
+              cin: activeGst.cin || matched.cin,
+              logoUrl: activeGst.logo_url || matched.logoUrl || '',
+            };
+          }
+          return matched;
+        }
       }
     } catch (e) {
       console.error('Error loading active invoice template:', e);
     }
   }
 
-  return {
+  const base = {
     id: 'tpl-inv-stylish',
     name: 'Stylish Theme',
     category: 'invoices',
@@ -234,10 +357,10 @@ export function getActiveInvoicePrintTemplate(): any {
     primaryColor: '#2563eb',
     fontFamily: 'Inter, sans-serif',
     headerTitle: 'TAX INVOICE',
-    storeName: 'LazyMonkeyAI Store',
-    storeAddress: 'KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360',
-    storePhone: '+91 9849344919',
-    gstin: '37AABCCH694G1Z4',
+    storeName: activeGst?.trade_name || activeGst?.legal_name || 'LazyMonkeyAI Store',
+    storeAddress: activeGst?.address || 'KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360',
+    storePhone: activeGst?.phone || '+91 9849344919',
+    gstin: activeGst?.gstin || '37AABCCH694G1Z4',
     footerText: 'Thank you for shopping at LazyMonkeyAI!',
     termsText: '1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. will be charged if payment is not made within due date.',
     bankDetails: '',
@@ -257,6 +380,8 @@ export function getActiveInvoicePrintTemplate(): any {
       showTime: true,
     }
   };
+
+  return base;
 }
 
 export function saveReceiptTemplates(templates: ReceiptTemplate[]): void {
