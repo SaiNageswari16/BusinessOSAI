@@ -4674,91 +4674,61 @@ export const whitebooksApi = {
   settings: whitebooksSettingsApi,
 };
 
-// ─── CRM AI Calling Types ──────────────────────────────────────────────────────
-export interface CRMCallTurnMessage {
-  speaker: "AI" | "User";
-  text: string;
-  timestamp: string;
-}
+export const marketplaceApi = {
+  getVendors: (params?: { status?: string; category?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.category) q.set("category", params.category);
+    const qs = q.toString();
+    return request<any[]>("GET", `/marketplace/vendors${qs ? `?${qs}` : ""}`);
+  },
+  createVendor: (data: any) => request<any>("POST", "/marketplace/vendors", data),
+  updateKYC: (vendorId: string, kycStatus: string) =>
+    request<any>("PUT", `/marketplace/vendors/${vendorId}/kyc?kyc_status=${kycStatus}`),
 
-export interface CRMCallInitiateRequest {
-  target_type: "lead" | "customer" | "opportunity" | "deal" | "quotation" | "order" | "ticket" | "complaint";
-  target_id?: string | null;
-  contact_name: string;
-  contact_phone?: string | null;
-  contact_email?: string | null;
-  company_name?: string | null;
-  agent_persona?: string;
-  custom_prompt?: string;
-  sip_number?: string;
-  call_mode?: "browser_ai" | "livekit_sip";
-}
+  getProducts: (params?: { vendor_id?: string; status?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.vendor_id) q.set("vendor_id", params.vendor_id);
+    if (params?.status) q.set("status", params.status);
+    const qs = q.toString();
+    return request<any[]>("GET", `/marketplace/products${qs ? `?${qs}` : ""}`);
+  },
+  createProduct: (data: any) => request<any>("POST", "/marketplace/products", data),
+  updateProductStatus: (productId: string, status: string) =>
+    request<any>("PUT", `/marketplace/products/${productId}/status?product_status=${status}`),
 
-export interface CRMCallInitiateResponse {
-  call_id: string;
-  agent_greeting: string;
-  battlecards: Array<{ topic: string; talking_point: string }>;
-  call_mode: "browser_ai" | "livekit_sip";
-  room_name?: string;
-  status: string;
-}
+  getOrders: (params?: { vendor_id?: string; status?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.vendor_id) q.set("vendor_id", params.vendor_id);
+    if (params?.status) q.set("status", params.status);
+    const qs = q.toString();
+    return request<any[]>("GET", `/marketplace/orders${qs ? `?${qs}` : ""}`);
+  },
+  createOrder: (data: any) => request<any>("POST", "/marketplace/orders", data),
+  dispatchOrder: (orderId: string, courier?: string) =>
+    request<any>("PUT", `/marketplace/orders/${orderId}/dispatch${courier ? `?courier=${encodeURIComponent(courier)}` : ""}`),
 
-export interface CRMCallTurnRequest {
-  call_id: string;
-  user_speech: string;
-  conversation_history: CRMCallTurnMessage[];
-  agent_persona?: string;
-  target_type?: string;
-  contact_name?: string;
-  company_name?: string | null;
-  context_notes?: string;
-}
+  getStats: () => request<any>("GET", `/marketplace/stats`),
+  getPayouts: () => request<any[]>("GET", `/marketplace/payouts`),
+  createPayout: (data: any) => request<any>("POST", "/marketplace/payouts", data),
 
-export interface CRMCallTurnResponse {
-  ai_response: string;
-  detected_sentiment: string;
-  suggested_objection_handling?: string;
-}
+  getCoupons: () => request<any[]>("GET", `/marketplace/coupons`),
+  createCoupon: (data: any) => request<any>("POST", "/marketplace/coupons", data),
 
-export interface CRMCallCompleteRequest {
-  call_id: string;
-  duration_seconds: number;
-  transcript: CRMCallTurnMessage[];
-  final_sentiment?: string;
-  status?: string;
-  auto_advance_stage?: boolean;
-}
+  getDeliveryPartners: () => request<any[]>("GET", `/marketplace/delivery-partners`),
+  getVendorCategories: () => request<any[]>("GET", `/marketplace/vendor-categories`),
+  getVendorContracts: () => request<any[]>("GET", `/marketplace/vendor-contracts`),
 
-export interface CRMCallLog {
-  id: string;
-  call_id: string;
-  target_type: string;
-  target_id?: string;
-  contact_name: string;
-  contact_phone?: string;
-  contact_email?: string;
-  company_name?: string;
-  agent_persona: string;
-  call_mode: string;
-  duration_seconds: number;
-  sentiment?: string;
-  qualification_score?: number;
-  ai_summary?: string;
-  action_items?: string[];
-  transcript?: CRMCallTurnMessage[];
-  status: string;
-  created_at: string;
-  updated_at?: string;
-}
+  getPricingRules: () => request<any[]>("GET", `/marketplace/pricing-rules`),
+  createPricingRule: (data: any) => request<any>("POST", "/marketplace/pricing-rules", data),
 
-export interface CRMCallStats {
-  total_calls: number;
-  calls_today: number;
-  avg_duration_seconds: number;
-  sentiment_breakdown: Record<string, number>;
-  calls_by_target_type: Record<string, number>;
-  top_agents: Array<{ persona: string; call_count: number }>;
-}
+  getRFQs: () => request<any[]>("GET", `/marketplace/rfqs`),
+  createRFQ: (data: any) => request<any>("POST", "/marketplace/rfqs", data),
+  submitRFQBid: (rfqId: string, data: any) => request<any>("POST", `/marketplace/rfqs/${rfqId}/bid`, data),
+  acceptRFQBid: (rfqId: string, bidId: string) => request<any>("PUT", `/marketplace/rfqs/${rfqId}/accept-bid?bid_id=${bidId}`),
+
+  getTradeCredits: () => request<any[]>("GET", `/marketplace/trade-credit`),
+};
 
 // ─── CRM AI Calling API ────────────────────────────────────────────────────────
 export const crmCallsApi = {

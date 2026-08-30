@@ -1856,7 +1856,7 @@ export function CompanyManagement() {
                             {companyTaxes.map((t) => (
                               <Card key={t.id} className="p-3">
                                 <div className="font-bold text-xs">{t.name}</div>
-                                <div className="text-xs font-mono text-primary font-bold mt-1">{t.rate}%</div>
+                                <div className="text-xs font-mono text-primary font-bold mt-1">{t.rate_percent}%</div>
                               </Card>
                             ))}
                           </div>

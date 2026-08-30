@@ -309,7 +309,7 @@ function ChartOfAccountsTab() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-4">
       <div className="flex justify-between items-start gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Chart of Accounts</h1>
@@ -535,7 +535,7 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
   };
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-4">
       <div className="flex justify-between items-start gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{filterClosing ? "Closing Entries" : "Journal Entries"}</h1>
@@ -714,7 +714,7 @@ function GeneralLedgerTab() {
   const accountOptions = glData.map(a => ({ id: a.account_id, code: a.account_code, name: a.account_name }));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground">General Ledger</h1><p className="text-sm text-muted-foreground">Detailed transaction-level view of all account postings.</p></div>
       </div>
@@ -828,7 +828,7 @@ function OpeningBalancesTab() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground">Opening Balances</h1><p className="text-sm text-muted-foreground">Set account opening balances at the start of a new fiscal year.</p></div>
         <div className="relative">

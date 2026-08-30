@@ -305,7 +305,7 @@ export function Receivables({ tab = "invoices" }: Props) {
   if (tab === "customers") {
     const totalOutstanding = customers.reduce((s, c) => s + c.outstanding, 0);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">AR Customers</h1>
@@ -367,7 +367,7 @@ export function Receivables({ tab = "invoices" }: Props) {
     const paidInvoices = useMemo(() => invoices.filter(inv => inv.amount_paid > 0), [invoices]);
     const totalReceived = paidInvoices.reduce((s, inv) => s + inv.amount_paid, 0);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Payments Received</h1>
           <p className="text-sm text-muted-foreground">Track all customer payments received against invoices.</p>
@@ -416,7 +416,7 @@ export function Receivables({ tab = "invoices" }: Props) {
     const outstandingInvoices = useMemo(() => invoices.filter(inv => inv.balance_due > 0), [invoices]);
     const totalOutstanding = outstandingInvoices.reduce((s, inv) => s + inv.balance_due, 0);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Outstanding Invoices</h1>
           <p className="text-sm text-muted-foreground">Invoices with unpaid or partially paid balances.</p>
@@ -488,7 +488,7 @@ export function Receivables({ tab = "invoices" }: Props) {
     }, [invoices]);
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Collections Aging</h1>
           <p className="text-sm text-muted-foreground">Accounts receivable aging analysis by overdue bucket.</p>
@@ -540,7 +540,7 @@ export function Receivables({ tab = "invoices" }: Props) {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Invoices</h1>

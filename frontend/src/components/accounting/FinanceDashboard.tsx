@@ -116,7 +116,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
     ];
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground font-bold">Cash Flow Statement</h1>
           <p className="text-sm text-muted-foreground">Period: {cfRange.from && cfRange.to ? `${cfRange.from} to ${cfRange.to}` : "loading…"}</p>
@@ -168,7 +168,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
       { channel: "Invoice Revenue", amount: totalRevenue, pct: totalRevenue > 0 ? 100 : 0 },
     ];
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div><h1 className="text-2xl font-bold text-foreground font-bold">Revenue</h1><p className="text-sm text-muted-foreground">Revenue breakdown by channel — {dateRange.from ? `YTD ${dateRange.from.slice(0,4)}` : "YTD"}.</p></div>
         <div className="glass-panel p-5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex items-center gap-4">
           <TrendingUp className="size-8 text-emerald-500" />
@@ -189,7 +189,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
       { category: "Vendor Bills", amount: totalExpenses, pct: totalExpenses > 0 ? 100 : 0, color: "bg-red-500" },
     ];
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div><h1 className="text-2xl font-bold text-foreground font-bold">Expenses</h1><p className="text-sm text-muted-foreground">Expense breakdown by category — {dateRange.from ? `from ${dateRange.from}` : "YTD"}.</p></div>
         <div className="glass-panel p-5 rounded-xl border border-red-500/30 bg-red-500/5 flex items-center gap-4">
           <TrendingDown className="size-8 text-red-500" />
@@ -238,7 +238,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
     const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0;
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div><h1 className="text-2xl font-bold text-foreground font-bold">Profit Analysis</h1><p className="text-sm text-muted-foreground">Aggregated profit from invoices and bills — {dateRange.from ? `${dateRange.from} to ${dateRange.to}` : "all time"}.</p></div>
         <div className="grid grid-cols-3 gap-4">
           {[
@@ -297,7 +297,7 @@ export function FinanceDashboard({ tab = "overview" }: Props) {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground font-bold">Finance Dashboard</h1><p className="text-sm text-muted-foreground">Real-time financial overview.</p></div>
       </div>

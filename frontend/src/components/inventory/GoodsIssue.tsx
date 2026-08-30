@@ -185,7 +185,7 @@ export function GoodsIssue() {
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
               <Button variant="outline" className="rounded-xl"><FileDown className="size-4 mr-2" /> Export</Button>
-              <Button onClick={openCreateView} className="bg-rose-600 hover:bg-rose-700 text-white border-0 shadow-lg shadow-rose-500/20 rounded-xl">
+              <Button onClick={openCreateView} className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-sm rounded-xl font-semibold">
                 <Plus className="size-4 mr-2" /> Create New Goods Issue
               </Button>
             </div>
@@ -195,7 +195,7 @@ export function GoodsIssue() {
           <div className="relative max-w-md">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border bg-white shadow-sm focus:ring-2 focus:ring-rose-500 outline-none"
+              className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border bg-white shadow-sm focus:ring-2 focus:ring-purple-500 outline-none"
               placeholder="Search by Issue #, Recipient, or Ref..." />
           </div>
 
@@ -366,7 +366,7 @@ export function GoodsIssue() {
 
             <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
               <Button variant="outline" onClick={() => setViewMode("list")} className="rounded-xl">Cancel</Button>
-              <Button onClick={() => handleSubmit()} disabled={isSubmitting} className="bg-rose-600 hover:bg-rose-700 text-white border-0 shadow-lg shadow-rose-500/20 rounded-xl px-6 font-bold">
+              <Button onClick={() => handleSubmit()} disabled={isSubmitting} className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-md shadow-purple-500/20 rounded-xl px-6 font-bold">
                 {isSubmitting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Dispatching...</> : <><CheckCircle2 className="size-4 mr-2" /> Post Goods Issue</>}
               </Button>
             </div>
@@ -546,7 +546,7 @@ export function GoodsIssue() {
 
                 <div className="pt-2 space-y-2">
                   <Button type="button" onClick={() => handleSubmit()} disabled={isSubmitting || items.length === 0}
-                    className="w-full h-12 bg-rose-600 hover:bg-rose-700 text-white border-0 font-bold shadow-lg shadow-rose-500/20 rounded-xl text-base">
+                    className="w-full h-12 bg-purple-700 hover:bg-purple-800 text-white border-0 font-bold shadow-md shadow-purple-500/20 rounded-xl text-base">
                     {isSubmitting ? <><Loader2 className="size-5 mr-2 animate-spin" /> Processing...</> : "Post & Issue Stock"}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setViewMode("list")} className="w-full rounded-xl">

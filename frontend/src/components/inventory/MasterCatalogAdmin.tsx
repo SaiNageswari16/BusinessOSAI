@@ -209,7 +209,7 @@ export function MasterCatalogAdmin() {
             <button
               onClick={handlePauseResume}
               className={`h-9 px-4 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition ${ragStatus.paused
-                  ? "bg-blue-600 hover:bg-blue-700 border-blue-600 text-white"
+                  ? "bg-purple-700 hover:bg-purple-800 border-purple-700 text-white"
                   : "bg-white hover:bg-gray-50 border-gray-200 text-gray-700"
                 }`}
             >
@@ -220,7 +220,7 @@ export function MasterCatalogAdmin() {
             <button
               onClick={handleTriggerBulkRAG}
               disabled={isTriggeringRAG}
-              className="h-9 px-4 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-md disabled:opacity-50"
+              className="h-9 px-4 rounded-xl text-xs font-semibold bg-purple-700 hover:bg-purple-800 text-white flex items-center gap-1.5 shadow-md disabled:opacity-50"
             >
               <Zap className="w-4 h-4 text-white" />
               <span>Queue All Barcodes</span>
@@ -234,74 +234,60 @@ export function MasterCatalogAdmin() {
             <div className="text-xs text-muted-foreground font-medium">Total Products</div>
             <div className="text-2xl font-bold text-foreground mt-1">{ragStatus.total}</div>
           </div>
-          <div className="bg-muted/50 p-4 rounded-xl border border-border text-center">
-            <div className="text-xs text-muted-foreground font-medium">Pending Enrichment</div>
-            <div className="text-2xl font-bold text-blue-600 mt-1">{ragStatus.pending}</div>
+          <div className="bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/20 text-center">
+            <div className="text-xs text-emerald-600 font-medium">Enriched & Ready</div>
+            <div className="text-2xl font-bold text-emerald-600 mt-1">{ragStatus.completed}</div>
           </div>
-          <div className="bg-muted/50 p-4 rounded-xl border border-border text-center">
-            <div className="text-xs text-muted-foreground font-medium">Sourcing (Active)</div>
-            <div className="text-2xl font-bold text-blue-600 mt-1 flex items-center justify-center gap-1.5">
-              {ragStatus.processing > 0 && !ragStatus.paused && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
-              <span>{ragStatus.processing}</span>
+          <div className="bg-amber-500/10 p-4 rounded-xl border border-amber-500/20 text-center">
+            <div className="text-xs text-amber-600 font-medium">Queued for RAG</div>
+            <div className="text-2xl font-bold text-amber-600 mt-1">{ragStatus.pending}</div>
+          </div>
+          <div className="bg-purple-500/10 p-4 rounded-xl border border-purple-500/20 text-center">
+            <div className="text-xs text-purple-700 font-medium">Processing Live</div>
+            <div className="text-2xl font-bold text-purple-700 mt-1 flex items-center justify-center gap-1">
+              {ragStatus.processing > 0 && <Loader2 className="w-4 h-4 animate-spin text-purple-700" />}
+              {ragStatus.processing}
             </div>
           </div>
-          <div className="bg-muted/50 p-4 rounded-xl border border-border text-center">
-            <div className="text-xs text-muted-foreground font-medium">Completed (Enriched)</div>
-            <div className="text-2xl font-bold text-blue-600 mt-1">{ragStatus.completed}</div>
-          </div>
-          <div className="bg-muted/50 p-4 rounded-xl border border-border text-center col-span-2 md:col-span-1">
-            <div className="text-xs text-muted-foreground font-medium">Failed Updates</div>
-            <div className="text-2xl font-bold text-blue-600 mt-1">{ragStatus.failed}</div>
+          <div className="bg-rose-500/10 p-4 rounded-xl border border-rose-500/20 text-center">
+            <div className="text-xs text-rose-600 font-medium">Failed / Missing</div>
+            <div className="text-2xl font-bold text-rose-600 mt-1">{ragStatus.failed}</div>
           </div>
         </div>
 
-        {/* Progress gauge */}
-        {ragStatus.total > 0 && (
-          <div className="space-y-1.5 pt-2">
-            <div className="flex justify-between text-xs font-semibold text-muted-foreground">
-              <span>System Sourcing Completion Rate</span>
-              <span>{Math.round((ragStatus.completed / (ragStatus.total || 1)) * 100)}%</span>
-            </div>
-            <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden border border-border">
-              <div
-                className="h-full bg-blue-600 transition-all duration-500"
-                style={{ width: `${(ragStatus.completed / (ragStatus.total || 1)) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-      </Card>
+        {/* Progress Bar */}
+        <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+          <div
+            style={{ width: `${ragStatus.total > 0 ? Math.round((ragStatus.completed / ragStatus.total) * 100) : 0}%` }}
+            className="h-full bg-purple-700 transition-all duration-500"
+          />
+        </div>
 
-      {/* Grid Controller Header */}
-      <Card className="bg-card border-border p-6 space-y-6">
-        {/* Filters Toolbar */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex-1 flex flex-col md:flex-row gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-muted-foreground" />
+        {/* Filter Toolbar */}
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between pt-2">
+          <div className="flex gap-2 w-full md:w-auto items-center">
+            <div className="relative flex-1 md:w-64">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search master database by Name, Brand, or Barcode..."
+                placeholder="Search catalog or barcodes..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500 text-sm"
+                className="w-full pl-9 pr-3 py-1.5 border border-border rounded-xl text-xs bg-background"
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">RAG Status:</span>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-background border border-border rounded-xl text-xs font-medium text-foreground py-2.5 px-4 focus:outline-none focus:border-blue-500 cursor-pointer"
-              >
-                <option value="all">All Statuses</option>
-                <option value="enriched">AI Enriched (Completed)</option>
-                <option value="pending">Pending AI</option>
-                <option value="processing">Active Sourcing</option>
-                <option value="failed">Failed</option>
-              </select>
-            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="py-1.5 px-3 border border-border rounded-xl text-xs bg-background text-foreground"
+            >
+              <option value="all">All Sync Statuses</option>
+              <option value="enriched">Enriched</option>
+              <option value="queued">Queued</option>
+              <option value="failed">Failed</option>
+              <option value="idle">Idle</option>
+            </select>
           </div>
 
           <div>
@@ -309,7 +295,7 @@ export function MasterCatalogAdmin() {
               <button
                 onClick={handleTriggerSelectedRAG}
                 disabled={isTriggeringRAG}
-                className="h-9 px-4 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-foreground flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                className="h-9 px-4 rounded-xl text-xs font-semibold bg-purple-700 hover:bg-purple-800 text-white flex items-center gap-1.5 shadow-md disabled:opacity-50"
               >
                 <Sparkles className="w-4 h-4 text-white" />
                 <span>Enrich Selected ({selectedProductIds.length})</span>

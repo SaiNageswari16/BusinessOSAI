@@ -192,7 +192,7 @@ export function DeliveryChallans() {
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" onClick={() => setIsCreating(false)} className="px-6 border-slate-200">Cancel</Button>
-            <Button onClick={handleSubmit} disabled={submitting} className="px-6 bg-rose-600 hover:bg-rose-700 text-white border-0 shadow-md shadow-rose-500/20">
+            <Button onClick={handleSubmit} disabled={submitting} className="px-6 bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-md shadow-purple-500/20">
               {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
               Post Delivery Challan
             </Button>
@@ -404,7 +404,7 @@ export function DeliveryChallans() {
             </div>
 
             <div className="mt-6 pt-6 border-t border-slate-200">
-              <Button onClick={handleSubmit} disabled={submitting || voucher.items.length === 0} className="w-full h-12 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-md shadow-rose-500/20 border-0">
+              <Button onClick={handleSubmit} disabled={submitting || voucher.items.length === 0} className="w-full h-12 bg-purple-700 hover:bg-purple-800 text-white font-bold text-sm shadow-md shadow-purple-500/20 border-0">
                 {submitting ? "Processing..." : "Post Delivery Challan"}
               </Button>
             </div>
@@ -422,7 +422,7 @@ export function DeliveryChallans() {
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Delivery Challans</h2>
           <p className="text-sm text-slate-500 mt-1">Manage outward dispatch documents and gate passes.</p>
         </div>
-        <Button onClick={() => setIsCreating(true)} className="bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm font-semibold h-11 px-6">
+        <Button onClick={() => setIsCreating(true)} className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-sm font-semibold h-11 px-6">
           <Plus className="size-4 mr-2" /> Generate Challan
         </Button>
       </div>
@@ -433,10 +433,10 @@ export function DeliveryChallans() {
           <input
             type="text"
             placeholder="Search challans..."
-            className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all"
+            className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-purple-500 outline-none shadow-sm transition-all"
           />
         </div>
-        <select className="h-11 px-4 text-sm rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 outline-none shadow-sm text-slate-700 font-medium cursor-pointer">
+        <select className="h-11 px-4 text-sm rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-purple-500 outline-none shadow-sm text-slate-700 font-medium cursor-pointer">
           <option value="">All Statuses</option>
           <option value="draft">Draft</option>
           <option value="dispatched">Dispatched</option>

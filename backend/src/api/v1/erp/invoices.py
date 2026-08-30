@@ -155,12 +155,11 @@ async def get_customer_invoice_summary(
 
     for inv in invoices:
         raw_status = str(inv.status or "").lower().strip()
-        pay_st = str(inv.payment_status or "").lower().strip()
         tot = float(inv.total_amount or 0)
         paid = float(inv.amount_paid or 0)
 
         # Ignore invoices that are fully settled, paid, or voided
-        if raw_status in ("paid", "voided", "cancelled", "completed") or pay_st in ("paid", "voided", "cancelled", "completed") or (tot > 0 and paid >= tot - 0.05):
+        if raw_status in ("paid", "voided", "cancelled", "completed") or (tot > 0 and paid >= tot - 0.05):
             continue
 
         due = float(inv.balance_due) if (inv.balance_due is not None and float(inv.balance_due) > 0) else max(0.0, tot - paid)
@@ -302,72 +301,76 @@ async def create_invoice(
     db.add(invoice)
     await db.flush()
 
-    # Handle automatic Customer Wallet deduction if paid via Wallet
-    is_wallet_payment = bool(
-        payload.payment_method and "wallet" in payload.payment_method.lower()
-    )
-    if is_wallet_payment and payload.customer_id and actual_paid > 0:
-        wallet = await db.scalar(
-            select(CustomerWallet).where(
-                CustomerWallet.customer_id == payload.customer_id,
-                CustomerWallet.tenant_id == ctx.tenant_id
-            ).with_for_update()
-        )
-        if not wallet:
-            wallet = CustomerWallet(
-                tenant_id=ctx.tenant_id,
-                customer_id=payload.customer_id,
-                balance=0.0
+    async def _process_payment(method: str, amt: float, ref: str):
+        is_wallet = "wallet" in method.lower()
+        if is_wallet and payload.customer_id and amt > 0:
+            wallet = await db.scalar(
+                select(CustomerWallet).where(
+                    CustomerWallet.customer_id == payload.customer_id,
+                    CustomerWallet.tenant_id == ctx.tenant_id
+                ).with_for_update()
             )
-            db.add(wallet)
-            await db.flush()
+            if not wallet:
+                wallet = CustomerWallet(
+                    tenant_id=ctx.tenant_id,
+                    customer_id=payload.customer_id,
+                    balance=0.0
+                )
+                db.add(wallet)
+                await db.flush()
 
-        # Debit customer wallet balance (allows negative / debit balance)
-        wallet.balance = float(wallet.balance or 0.0) - actual_paid
+            wallet.balance = float(wallet.balance or 0.0) - amt
 
-        tx = CustomerWalletTransaction(
-            tenant_id=ctx.tenant_id,
-            wallet_id=wallet.id,
-            transaction_type="payment",
-            amount=actual_paid,
-            balance_after=wallet.balance,
-            reference_type="invoice",
-            reference_id=invoice_number,
-            description=f"Payment for Sales Invoice #{invoice_number} ({initial_status})",
-        )
-        db.add(tx)
+            tx = CustomerWalletTransaction(
+                tenant_id=ctx.tenant_id,
+                wallet_id=wallet.id,
+                transaction_type="payment",
+                amount=amt,
+                balance_after=wallet.balance,
+                reference_type="invoice",
+                reference_id=invoice_number,
+                description=f"Payment for Sales Invoice #{invoice_number} ({initial_status})",
+            )
+            db.add(tx)
 
-        cust = await db.scalar(
-            select(Customer).where(
-                Customer.id == payload.customer_id,
-                Customer.tenant_id == ctx.tenant_id
-            ).with_for_update()
-        )
-        if cust:
-            cust.wallet_balance = wallet.balance
+            cust = await db.scalar(
+                select(Customer).where(
+                    Customer.id == payload.customer_id,
+                    Customer.tenant_id == ctx.tenant_id
+                ).with_for_update()
+            )
+            if cust:
+                cust.wallet_balance = wallet.balance
 
-        inv_pay = InvoicePayment(
-            tenant_id=ctx.tenant_id,
-            invoice_id=invoice.id,
-            payment_date=invoice.invoice_date,
-            amount=actual_paid,
-            payment_method="wallet",
-            reference_number=f"PAY-{invoice_number}",
-            notes=f"Paid via Customer Wallet ({initial_status})",
-        )
-        db.add(inv_pay)
+            inv_pay = InvoicePayment(
+                tenant_id=ctx.tenant_id,
+                invoice_id=invoice.id,
+                payment_date=invoice.invoice_date,
+                amount=amt,
+                payment_method="wallet",
+                reference_number=ref,
+                notes=f"Paid via Customer Wallet ({initial_status})",
+            )
+            db.add(inv_pay)
+        elif amt > 0:
+            inv_pay = InvoicePayment(
+                tenant_id=ctx.tenant_id,
+                invoice_id=invoice.id,
+                payment_date=invoice.invoice_date,
+                amount=amt,
+                payment_method=method.lower(),
+                reference_number=ref,
+                notes=f"Upfront payment for Sales Invoice #{invoice_number} ({initial_status})",
+            )
+            db.add(inv_pay)
+
+    # Handle payments (including Split Payments)
+    if payload.payment_method and payload.payment_method.lower() == "split" and payload.split_payments:
+        for idx, (method, amt) in enumerate(payload.split_payments.items()):
+            if amt > 0:
+                await _process_payment(method, amt, f"PAY-{invoice_number}-{idx+1}")
     elif actual_paid > 0 and not is_credit:
-        # Record upfront initial payment (Cash, UPI, Card, etc.)
-        inv_pay = InvoicePayment(
-            tenant_id=ctx.tenant_id,
-            invoice_id=invoice.id,
-            payment_date=invoice.invoice_date,
-            amount=actual_paid,
-            payment_method=(payload.payment_method or "cash").lower(),
-            reference_number=f"PAY-{invoice_number}",
-            notes=f"Upfront payment for Sales Invoice #{invoice_number} ({initial_status})",
-        )
-        db.add(inv_pay)
+        await _process_payment(payload.payment_method or "cash", actual_paid, f"PAY-{invoice_number}")
 
     for idx, line_payload in enumerate(payload.lines):
         line_dict = line_payload.model_dump()

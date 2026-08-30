@@ -273,7 +273,7 @@ export function LazyMonkeyAiWorkspace() {
           <button
             onClick={handleNewConversation}
             className={cn(
-              "w-full bg-[#4F46E5] hover:bg-[#4338CA] text-white font-semibold text-xs h-10 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm",
+              "w-full gradient-brand hover:opacity-95 text-white font-semibold text-xs h-10 rounded-xl transition-all flex items-center justify-center gap-2 shadow-xs",
               leftSidebarCollapsed && "px-0 justify-center"
             )}
           >
@@ -287,7 +287,7 @@ export function LazyMonkeyAiWorkspace() {
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full h-9 pl-9 pr-8 text-xs rounded-xl border border-slate-200 dark:border-border bg-slate-50/50 dark:bg-background focus:outline-none focus:ring-2 focus:ring-indigo-500/20 placeholder:text-slate-400"
+                className="w-full h-9 pl-9 pr-8 text-xs rounded-xl border border-slate-200 dark:border-border bg-slate-50/50 dark:bg-background focus:outline-none focus:ring-2 focus:ring-purple-500/20 placeholder:text-slate-400"
                 placeholder="Search conversations..."
               />
               <Filter className="absolute right-3 top-1/2 -translate-y-1/2 size-3 text-slate-400" />
@@ -313,12 +313,12 @@ export function LazyMonkeyAiWorkspace() {
                       className={cn(
                         "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs cursor-pointer transition-all",
                         isActive
-                          ? "bg-[#EEF2FF] text-[#4F46E5] font-semibold border border-indigo-100"
+                          ? "bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 font-semibold border border-purple-200 dark:border-purple-800"
                           : "hover:bg-slate-50 dark:hover:bg-muted text-slate-600 dark:text-slate-300 font-medium"
                       )}
                     >
                       <div className="flex items-center gap-2.5 truncate">
-                        <MessageSquare className={cn("size-3.5 shrink-0", isActive ? "text-[#4F46E5]" : "text-slate-400")} />
+                        <MessageSquare className={cn("size-3.5 shrink-0", isActive ? "text-purple-600 dark:text-purple-400" : "text-slate-400")} />
                         <span className="truncate">{s.title}</span>
                       </div>
                       <span className="text-[10px] text-slate-400 shrink-0 ml-1 font-sans">
@@ -348,7 +348,7 @@ export function LazyMonkeyAiWorkspace() {
                 ))}
                 <button
                   onClick={() => send("Show me all platform capabilities")}
-                  className="px-2 text-xs font-semibold text-[#4F46E5] hover:underline mt-2 block"
+                  className="px-2 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline mt-2 block"
                 >
                   View all
                 </button>
@@ -379,7 +379,7 @@ export function LazyMonkeyAiWorkspace() {
                   href="/settings?tab=payment_gateways"
                   className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-muted transition-colors font-medium"
                 >
-                  <Zap className="size-4 text-emerald-500 shrink-0" />
+                  <Zap className="size-4 text-purple-500 shrink-0" />
                   <span>Payment Integrations</span>
                 </a>
                 <a
@@ -394,7 +394,7 @@ export function LazyMonkeyAiWorkspace() {
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center py-4 space-y-4">
-            <button onClick={handleNewConversation} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-muted text-slate-500 hover:text-[#4F46E5]">
+            <button onClick={handleNewConversation} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-muted text-slate-500 hover:text-purple-600">
               <Plus className="size-4" />
             </button>
             <button onClick={() => send("Show today's sales")} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-muted text-emerald-500">
@@ -403,7 +403,7 @@ export function LazyMonkeyAiWorkspace() {
             <button onClick={() => send("Find low stock products")} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-muted text-amber-500">
               <Activity className="size-4" />
             </button>
-            <button onClick={() => send("How do I configure payment gateways?")} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-muted text-[#4F46E5]">
+            <button onClick={() => send("How do I configure payment gateways?")} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-muted text-purple-600">
               <Zap className="size-4" />
             </button>
           </div>
@@ -426,7 +426,7 @@ export function LazyMonkeyAiWorkspace() {
         {/* Top Header */}
         <div className="px-8 py-3.5 border-b border-slate-200 dark:border-border bg-white dark:bg-card flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-[#4F46E5] grid place-items-center text-white shadow-sm">
+            <div className="size-10 rounded-xl gradient-brand grid place-items-center text-white shadow-xs">
               <Sparkles className="size-5" />
             </div>
             <div>
@@ -434,7 +434,7 @@ export function LazyMonkeyAiWorkspace() {
                 LazyMonkeyAI
               </div>
               <div className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-emerald-500" /> Enterprise AI Copilot & Assistant
+                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" /> Enterprise AI Copilot & Assistant
               </div>
             </div>
           </div>
@@ -476,10 +476,10 @@ export function LazyMonkeyAiWorkspace() {
                       <span>{m.content}</span>
                       <div className="flex items-center gap-1 text-[10px] text-slate-400 shrink-0 font-sans">
                         <span>{m.timestamp}</span>
-                        <Check className="size-3 text-[#4F46E5]" />
+                        <Check className="size-3 text-emerald-600" />
                       </div>
                     </div>
-                    <div className="size-8 rounded-full bg-slate-100 dark:bg-muted text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs border border-slate-200 shadow-xs">
+                    <div className="size-8 rounded-full bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 flex items-center justify-center font-bold text-xs border border-purple-200 shadow-xs">
                       {((user as any)?.full_name || user?.name || user?.email || "T").charAt(0).toUpperCase()}
                     </div>
                   </div>
@@ -488,84 +488,33 @@ export function LazyMonkeyAiWorkspace() {
                 {/* AI Message Card */}
                 {m.role === "ai" && (
                   <div className="space-y-3">
-                    <div className="flex items-start gap-3">
-                      <div className="size-9 rounded-xl bg-[#818CF8] text-white flex items-center justify-center shadow-xs shrink-0 mt-0.5">
-                        <Sparkles className="size-5" />
+                    <div className="flex items-start gap-4">
+                      <div className="size-9 rounded-xl gradient-brand grid place-items-center text-white shrink-0 shadow-xs mt-1">
+                        <Sparkles className="size-4.5" />
                       </div>
-
-                      <div className="flex-1 bg-white dark:bg-card border border-slate-200 dark:border-border rounded-2xl p-6 shadow-sm space-y-4 text-xs sm:text-sm text-slate-800 dark:text-slate-100">
-                        {/* Title Header */}
-                        <div className="font-bold text-sm text-slate-900 dark:text-white">
-                          LazyMonkeyAI Assistant
-                        </div>
-
-                        {/* Top Paragraphs */}
-                        <div className="space-y-3 text-slate-700 dark:text-slate-200 leading-relaxed text-xs sm:text-sm">
-                          <p>I've analyzed your platform request regarding <strong className="font-semibold text-slate-900 dark:text-white">"how do i generate e invoice in whats app?"</strong>.</p>
-                          <p>Your BusinessOS environment is active with:</p>
-                        </div>
-
-                        {/* 4 Metric Cards Grid */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-                          {/* 1. Products */}
-                          <div className="p-3.5 bg-[#F5F3FF] dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/30 rounded-xl flex items-center gap-3">
-                            <div className="size-9 rounded-lg bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                              <Package className="size-4" />
-                            </div>
-                            <div>
-                              <div className="text-lg font-bold text-slate-900 dark:text-white leading-tight">30</div>
-                              <div className="text-[11px] text-slate-500 font-medium">Products</div>
-                            </div>
-                          </div>
-
-                          {/* 2. POS Transactions */}
-                          <div className="p-3.5 bg-[#F0FDF4] dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-xl flex items-center gap-3">
-                            <div className="size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                              <ShoppingCart className="size-4" />
-                            </div>
-                            <div>
-                              <div className="text-lg font-bold text-slate-900 dark:text-white leading-tight">0</div>
-                              <div className="text-[11px] text-slate-500 font-medium">POS Transactions</div>
-                            </div>
-                          </div>
-
-                          {/* 3. Open Support Cases */}
-                          <div className="p-3.5 bg-[#FDF4FF] dark:bg-fuchsia-950/20 border border-fuchsia-100 dark:border-fuchsia-900/30 rounded-xl flex items-center gap-3">
-                            <div className="size-9 rounded-lg bg-fuchsia-100 dark:bg-fuchsia-900/40 text-fuchsia-600 dark:text-fuchsia-400 flex items-center justify-center shrink-0">
-                              <PenSquare className="size-4" />
-                            </div>
-                            <div>
-                              <div className="text-lg font-bold text-slate-900 dark:text-white leading-tight">0</div>
-                              <div className="text-[11px] text-slate-500 font-medium">Open Support Cases</div>
-                            </div>
-                          </div>
-
-                          {/* 4. Active Users */}
-                          <div className="p-3.5 bg-[#EFF6FF] dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-xl flex items-center gap-3">
-                            <div className="size-9 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                              <Users className="size-4" />
-                            </div>
-                            <div>
-                              <div className="text-lg font-bold text-slate-900 dark:text-white leading-tight">12</div>
-                              <div className="text-[11px] text-slate-500 font-medium">Active Users</div>
-                            </div>
-                          </div>
+                      <div className="flex-1 bg-white dark:bg-card border border-slate-200 dark:border-border rounded-2xl p-5 shadow-xs space-y-4">
+                        <div className="text-xs sm:text-sm leading-relaxed text-slate-800 dark:text-slate-100">
+                          {m.content || (m.streaming ? (
+                            <span className="inline-flex items-center gap-2 text-slate-400">
+                              <Loader2 className="size-3.5 animate-spin text-purple-600" /> Thinking...
+                            </span>
+                          ) : null)}
                         </div>
 
                         {/* Step-by-step guidance list */}
                         <div className="space-y-2.5 pt-2">
                           <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">How would you like to proceed? I can assist you with:</p>
                           <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
-                            <div className="flex items-center gap-3 cursor-pointer hover:text-[#4F46E5] transition-colors" onClick={() => send("Navigating to ERP, POS, or CRM module")}>
-                              <span className="size-6 rounded-full bg-[#EEF2FF] text-[#4F46E5] font-bold text-xs flex items-center justify-center shrink-0">1</span>
+                            <div className="flex items-center gap-3 cursor-pointer hover:text-purple-600 transition-colors" onClick={() => send("Navigating to ERP, POS, or CRM module")}>
+                              <span className="size-6 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 font-bold text-xs flex items-center justify-center shrink-0">1</span>
                               <span>Navigating to any ERP, POS, or CRM module</span>
                             </div>
-                            <div className="flex items-center gap-3 cursor-pointer hover:text-[#4F46E5] transition-colors" onClick={() => send("Generating financial, inventory, or payroll reports")}>
-                              <span className="size-6 rounded-full bg-[#EEF2FF] text-[#4F46E5] font-bold text-xs flex items-center justify-center shrink-0">2</span>
+                            <div className="flex items-center gap-3 cursor-pointer hover:text-purple-600 transition-colors" onClick={() => send("Generating financial, inventory, or payroll reports")}>
+                              <span className="size-6 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 font-bold text-xs flex items-center justify-center shrink-0">2</span>
                               <span>Generating financial, inventory, or payroll reports</span>
                             </div>
-                            <div className="flex items-center gap-3 cursor-pointer hover:text-[#4F46E5] transition-colors" onClick={() => send("Configuring payment gateways, print templates, and security policies")}>
-                              <span className="size-6 rounded-full bg-[#EEF2FF] text-[#4F46E5] font-bold text-xs flex items-center justify-center shrink-0">3</span>
+                            <div className="flex items-center gap-3 cursor-pointer hover:text-purple-600 transition-colors" onClick={() => send("Configuring payment gateways, print templates, and security policies")}>
+                              <span className="size-6 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 font-bold text-xs flex items-center justify-center shrink-0">3</span>
                               <span>Configuring payment gateways, print templates, and security policies</span>
                             </div>
                           </div>
@@ -598,7 +547,7 @@ export function LazyMonkeyAiWorkspace() {
                         onClick={() => send("Show today's sales & revenue")}
                         className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-border bg-white dark:bg-card hover:bg-slate-50 dark:hover:bg-muted text-xs font-medium text-slate-700 dark:text-slate-200 transition-all shadow-2xs"
                       >
-                        <BarChart3 className="size-3.5 text-indigo-500" />
+                        <BarChart3 className="size-3.5 text-purple-600" />
                         <span>Show today's sales & revenue</span>
                       </button>
                       <button
@@ -612,14 +561,14 @@ export function LazyMonkeyAiWorkspace() {
                         onClick={() => send("How do I configure payment gateways?")}
                         className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-border bg-white dark:bg-card hover:bg-slate-50 dark:hover:bg-muted text-xs font-medium text-slate-700 dark:text-slate-200 transition-all shadow-2xs"
                       >
-                        <Settings className="size-3.5 text-indigo-500" />
+                        <Settings className="size-3.5 text-purple-600" />
                         <span>How do I configure payment gateways?</span>
                       </button>
                       <button
                         onClick={() => send("Check open support tickets")}
                         className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-border bg-white dark:bg-card hover:bg-slate-50 dark:hover:bg-muted text-xs font-medium text-slate-700 dark:text-slate-200 transition-all shadow-2xs"
                       >
-                        <LifeBuoy className="size-3.5 text-purple-500" />
+                        <LifeBuoy className="size-3.5 text-emerald-600" />
                         <span>Check open support tickets</span>
                       </button>
                     </div>
@@ -635,7 +584,7 @@ export function LazyMonkeyAiWorkspace() {
           <div className="max-w-4xl mx-auto">
             <div className="bg-white dark:bg-card border border-slate-200 dark:border-border rounded-2xl shadow-md p-2.5 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 flex-1">
-                <div className="size-8 rounded-xl bg-[#EEF2FF] text-[#4F46E5] flex items-center justify-center shrink-0">
+                <div className="size-8 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-300 flex items-center justify-center shrink-0">
                   <Sparkles className="size-4" />
                 </div>
                 <input
@@ -648,7 +597,7 @@ export function LazyMonkeyAiWorkspace() {
                       send();
                     }
                   }}
-                  placeholder="Ask anything about your BusinessOS platform..."
+                  placeholder="Ask anything about your LazyMonkeyAI platform..."
                   className="flex-1 bg-transparent border-0 text-xs sm:text-sm px-2 focus:outline-none placeholder:text-slate-400 text-slate-800 dark:text-white"
                 />
               </div>
@@ -664,7 +613,7 @@ export function LazyMonkeyAiWorkspace() {
                   type="button"
                   onClick={() => send()}
                   disabled={!input.trim() || sending}
-                  className="size-9 rounded-xl bg-[#4F46E5] text-white flex items-center justify-center hover:bg-[#4338CA] transition-colors shadow-sm disabled:opacity-50"
+                  className="size-9 rounded-xl gradient-brand text-white flex items-center justify-center hover:opacity-90 transition-opacity shadow-xs disabled:opacity-50"
                 >
                   {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                 </button>
@@ -678,32 +627,25 @@ export function LazyMonkeyAiWorkspace() {
       </div>
 
       {/* ── 3. RIGHT SIDEBAR: Business Context & System Health ── */}
-      <aside className="w-[300px] shrink-0 border-l border-slate-200 dark:border-border bg-white dark:bg-card hidden xl:flex flex-col z-10">
-        <div className="p-4 border-b border-slate-100 dark:border-border flex items-center justify-between">
-          <span className="font-bold text-xs uppercase tracking-wider text-slate-800 dark:text-white">BUSINESS CONTEXT</span>
-          <button onClick={() => toast.success("Context refreshed")} className="p-1 rounded hover:bg-slate-50 text-slate-400 hover:text-slate-600">
-            <RefreshCw className="size-3.5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 text-xs scrollbar-thin">
-          {/* Active Scope Card */}
+      <aside className="w-80 bg-slate-50/60 dark:bg-card/40 border-l border-slate-200 dark:border-border hidden xl:flex flex-col min-w-0">
+        <div className="p-4 space-y-5 overflow-y-auto scrollbar-thin">
+          {/* Active Workspace Scope */}
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2.5">
-              ACTIVE SCOPE
+              ACTIVE WORKSPACE
             </div>
-            <div className="p-3.5 bg-slate-50 dark:bg-muted/40 border border-slate-200/80 dark:border-border rounded-xl">
+            <div className="p-3.5 bg-white dark:bg-muted/20 border border-slate-200 dark:border-border rounded-xl shadow-2xs">
               <div className="flex items-center gap-3">
-                <div className="size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
+                <div className="size-9 rounded-xl gradient-brand text-white flex items-center justify-center font-black text-sm shadow-xs">
                   LM
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="font-bold text-slate-900 dark:text-white truncate">Enterprise BusinessOS</div>
+                  <div className="font-bold text-slate-900 dark:text-white truncate">LazyMonkeyAI Workspace</div>
                   <div className="text-[11px] text-slate-500 truncate">Multi-Branch & POS Ready</div>
                 </div>
               </div>
               <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-border/50 text-right">
-                <button className="text-[11px] font-semibold text-[#4F46E5] hover:underline">Change Scope</button>
+                <button className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 hover:underline">Change Scope</button>
               </div>
             </div>
           </div>
@@ -768,14 +710,14 @@ export function LazyMonkeyAiWorkspace() {
                   className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 dark:border-border bg-white dark:bg-card hover:bg-slate-50 dark:hover:bg-muted transition-colors text-xs font-semibold text-slate-700 dark:text-slate-200 group"
                 >
                   <div className="flex items-center gap-2.5">
-                    <item.icon className="size-3.5 text-[#4F46E5]" />
+                    <item.icon className="size-3.5 text-purple-600 dark:text-purple-400" />
                     <span>{item.label}</span>
                   </div>
                   <ChevronRight className="size-3.5 text-slate-400 group-hover:text-slate-700 transition-transform group-hover:translate-x-0.5" />
                 </a>
               ))}
             </div>
-            <button className="flex items-center gap-1.5 text-xs font-semibold text-[#4F46E5] hover:underline mt-3 px-1">
+            <button className="flex items-center gap-1.5 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline mt-3 px-1">
               <Settings className="size-3.5" />
               <span>Customize Quick Links</span>
             </button>

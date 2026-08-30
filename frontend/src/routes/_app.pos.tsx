@@ -5,7 +5,7 @@ import { posApi } from "../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRbac } from "@/contexts/rbac-context";
 import { Unauthorized } from "@/components/unauthorized";
-import { PosDashboard } from "../components/pos/PosDashboard";
+
 import { PosTerminal } from "../components/pos/POSTerminal";
 import { PosSalesInvoice } from "../components/pos/PosSalesInvoice";
 import { PosPaymentIn } from "../components/pos/PosPaymentIn";
@@ -1156,7 +1156,6 @@ function PosAiAssistant() {
 /* ─────────────────── ROUTER ─────────────────── */
 
 const componentMap: Record<string, React.ElementType> = {
-  dashboard: PosDashboard,
   terminal: PosTerminal,
   sales: PosSalesInvoice,
   sales_history: PosInvoicesHistory,
@@ -1181,8 +1180,8 @@ function PosModule() {
   if (!hasPermission("view:pos")) return <Unauthorized />;
 
   const params = new URLSearchParams(searchStr);
-  const activeTab = params.get("tab") || "dashboard";
-  const ActiveComponent = componentMap[activeTab] || PosDashboard;
+  const activeTab = params.get("tab") || "sales";
+  const ActiveComponent = componentMap[activeTab] || PosSalesInvoice;
   const isFullBleed = activeTab === "terminal" || activeTab === "sales";
 
   return (

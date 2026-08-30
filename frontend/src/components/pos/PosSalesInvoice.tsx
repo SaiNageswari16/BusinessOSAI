@@ -46,7 +46,8 @@ import {
   MapPin,
   ShoppingCart,
   Eye,
-  MoreVertical
+  MoreVertical,
+  Gift
 } from "lucide-react";
 import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -145,6 +146,8 @@ export function PosSalesInvoice() {
   );
   const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [paymentMode, setPaymentMode] = useState("Cash");
+  const [splitCash, setSplitCash] = useState<string>("");
+  const [splitOnline, setSplitOnline] = useState<string>("");
   const [customerWalletBalance, setCustomerWalletBalance] = useState<number>(0);
   const [bankAccounts, setBankAccounts] = useState<BankAccountRecord[]>([]);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>("");
@@ -199,7 +202,7 @@ export function PosSalesInvoice() {
   const [newProdTax, setNewProdTax] = useState<number>(18);
   const [newProdStock, setNewProdStock] = useState<number>(100);
 
-  // Add Party Modal State
+  // Add Party Modal State (Multi-Address Book Support)
   const [isAddPartyOpen, setIsAddPartyOpen] = useState(false);
   const [newPartyName, setNewPartyName] = useState("");
   const [newPartyPhone, setNewPartyPhone] = useState("");
@@ -207,19 +210,32 @@ export function PosSalesInvoice() {
   const [newPartyCompany, setNewPartyCompany] = useState("");
   const [newPartyType, setNewPartyType] = useState("Retail");
   const [newPartyGST, setNewPartyGST] = useState("");
-
-  // Detailed Structured Address
-  const [newPartyStreet, setNewPartyStreet] = useState("");
-  const [newPartyCity, setNewPartyCity] = useState("");
-  const [newPartyState, setNewPartyState] = useState("Andhra Pradesh");
-  const [newPartyPincode, setNewPartyPincode] = useState("");
-
-  const [newPartyShipStreet, setNewPartyShipStreet] = useState("");
-  const [newPartyShipCity, setNewPartyShipCity] = useState("");
-  const [newPartyShipState, setNewPartyShipState] = useState("Andhra Pradesh");
-  const [newPartyShipPincode, setNewPartyShipPincode] = useState("");
-  const [isShippingSameAsBilling, setIsShippingSameAsBilling] = useState(true);
   const [isVerifyingGstin, setIsVerifyingGstin] = useState(false);
+
+  // Multi-Address List for the single customer phone/account
+  const [newPartyAddresses, setNewPartyAddresses] = useState<Array<{
+    id: string;
+    tag: "Home" | "Office" | "Warehouse" | "Branch" | "Other";
+    street: string;
+    city: string;
+    state: string;
+    pincode: string;
+    is_billing: boolean;
+    is_shipping: boolean;
+  }>>([
+    {
+      id: "addr-1",
+      tag: "Home",
+      street: "",
+      city: "",
+      state: "Andhra Pradesh",
+      pincode: "",
+      is_billing: true,
+      is_shipping: true,
+    },
+  ]);
+  const [activeAddrIndex, setActiveAddrIndex] = useState<number>(0);
+  const [selectedDeliveryAddress, setSelectedDeliveryAddress] = useState<any | null>(null);
 
   // Free Quantity / Schemes State
   const [freeItems, setFreeItems] = useState<FreeQtyItem[]>([]);
@@ -227,47 +243,53 @@ export function PosSalesInvoice() {
   // Pincode Lookup Hook
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
 
-  const handlePartyPincodeChange = async (val: string) => {
-    setNewPartyPincode(val);
-    if (isShippingSameAsBilling) setNewPartyShipPincode(val);
+  const handleActiveAddrPincodeChange = async (val: string) => {
+    const updated = [...newPartyAddresses];
+    const curr = { ...updated[activeAddrIndex], pincode: val };
+    updated[activeAddrIndex] = curr;
+    setNewPartyAddresses(updated);
+
     const clean = val.replace(/\D/g, "").slice(0, 6);
     if (clean.length === 6) {
       const res = await lookupPincode(clean);
       if (res) {
-        if (res.city) setNewPartyCity(res.city);
+        if (res.city) curr.city = res.city;
         if (res.state) {
           const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
-          setNewPartyState(matched?.name || res.state);
+          curr.state = matched?.name || res.state;
         }
-        if (!newPartyStreet && res.area) {
-          setNewPartyStreet(res.area);
+        if (!curr.street && res.area) {
+          curr.street = res.area;
         }
-        if (isShippingSameAsBilling) {
-          if (res.city) setNewPartyShipCity(res.city);
-          if (res.state) {
-            const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
-            setNewPartyShipState(matched?.name || res.state);
-          }
-          if (!newPartyShipStreet && res.area) setNewPartyShipStreet(res.area);
-        }
+        updated[activeAddrIndex] = curr;
+        setNewPartyAddresses([...updated]);
       }
     }
   };
 
-  const handlePartyShipPincodeChange = async (val: string) => {
-    setNewPartyShipPincode(val);
-    const clean = val.replace(/\D/g, "").slice(0, 6);
-    if (clean.length === 6) {
-      const res = await lookupPincode(clean);
-      if (res) {
-        if (res.city) setNewPartyShipCity(res.city);
-        if (res.state) {
-          const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
-          setNewPartyShipState(matched?.name || res.state);
-        }
-        if (!newPartyShipStreet && res.area) setNewPartyShipStreet(res.area);
-      }
+  const handleAddNewAddressSlot = (tag: "Home" | "Office" | "Warehouse" | "Branch" | "Other" = "Office") => {
+    const newSlot = {
+      id: `addr-${Date.now()}`,
+      tag,
+      street: "",
+      city: newPartyAddresses[0]?.city || "",
+      state: newPartyAddresses[0]?.state || "Andhra Pradesh",
+      pincode: "",
+      is_billing: false,
+      is_shipping: true,
+    };
+    setNewPartyAddresses([...newPartyAddresses, newSlot]);
+    setActiveAddrIndex(newPartyAddresses.length);
+  };
+
+  const handleRemoveAddressSlot = (idx: number) => {
+    if (newPartyAddresses.length <= 1) {
+      toast.error("Customer must have at least one address");
+      return;
     }
+    const filtered = newPartyAddresses.filter((_, i) => i !== idx);
+    setNewPartyAddresses(filtered);
+    setActiveAddrIndex(Math.max(0, idx - 1));
   };
 
   // Customer History & Pending Due Tracking
@@ -484,24 +506,20 @@ export function PosSalesInvoice() {
         if (res.legal_name) setNewPartyCompany(res.legal_name);
         setNewPartyType("B2B");
 
-        if (res.state) {
-          setNewPartyState(res.state);
-          if (isShippingSameAsBilling) setNewPartyShipState(res.state);
-        }
-        if (res.pincode) {
-          setNewPartyPincode(res.pincode);
-          if (isShippingSameAsBilling) setNewPartyShipPincode(res.pincode);
-        }
+        const updated = [...newPartyAddresses];
+        const primary = { ...updated[0], tag: "Office" as const };
+
+        if (res.state) primary.state = res.state;
+        if (res.pincode) primary.pincode = res.pincode;
+
         const rawAddr: any = (res as any).address;
         const addrObj = typeof rawAddr === 'object' && rawAddr !== null ? rawAddr : null;
-        if (addrObj?.city) {
-          setNewPartyCity(addrObj.city);
-          if (isShippingSameAsBilling) setNewPartyShipCity(addrObj.city);
-        }
-        if (addrObj?.street) {
-          setNewPartyStreet(addrObj.street);
-          if (isShippingSameAsBilling) setNewPartyShipStreet(addrObj.street);
-        }
+        if (addrObj?.city) primary.city = addrObj.city;
+        if (addrObj?.street) primary.street = addrObj.street;
+
+        updated[0] = primary;
+        setNewPartyAddresses(updated);
+
         toast.success(`GSTIN Verified: ${res.legal_name} (${res.state || 'Active'})`);
       } else {
         toast.error("GSTIN lookup returned invalid or inactive status");
@@ -924,6 +942,27 @@ export function PosSalesInvoice() {
     ]);
   };
 
+  const handleAddFreeItem = () => {
+    setItems([
+      ...items,
+      {
+        id: Math.random().toString(36).substr(2, 9),
+        product_name: "Free / Promo Item",
+        quantity: 1,
+        unit_price: 0,
+        discount_value: 100,
+        discount_type: "percent",
+        tax_rate: 0,
+        is_tax_inclusive: false,
+        is_free: true,
+        custom_note: "FREE",
+        is_note_open: false,
+        is_search_open: false,
+        search_query: "Free / Promo Item",
+      },
+    ]);
+  };
+
   const toggleMultiSelectProduct = (productId: string) => {
     setSelectedProductQuantities((prev) => {
       const next = { ...prev };
@@ -1180,10 +1219,11 @@ export function PosSalesInvoice() {
     e.preventDefault();
     if (!newPartyName.trim()) return toast.error("Party name is required");
 
-    const fullBillingAddress = [newPartyStreet, newPartyCity, newPartyState, newPartyPincode].filter(Boolean).join(", ");
-    const fullShippingAddress = isShippingSameAsBilling
-      ? fullBillingAddress
-      : [newPartyShipStreet, newPartyShipCity, newPartyShipState, newPartyShipPincode].filter(Boolean).join(", ");
+    const primaryBilling = newPartyAddresses.find(a => a.is_billing) || newPartyAddresses[0];
+    const primaryShipping = newPartyAddresses.find(a => a.is_shipping) || newPartyAddresses[0];
+
+    const fullBillingAddress = [primaryBilling?.street, primaryBilling?.city, primaryBilling?.state, primaryBilling?.pincode].filter(Boolean).join(", ");
+    const fullShippingAddress = [primaryShipping?.street, primaryShipping?.city, primaryShipping?.state, primaryShipping?.pincode].filter(Boolean).join(", ");
 
     try {
       const created = await crmApi.createCustomer({
@@ -1196,22 +1236,30 @@ export function PosSalesInvoice() {
         address: fullBillingAddress || undefined,
         billing_address: fullBillingAddress || undefined,
         shipping_address: fullShippingAddress || undefined,
+        meta: {
+          addresses: newPartyAddresses,
+        },
       });
       const customerObj = created.data || created;
-      customerObj.state = newPartyState;
+      customerObj.state = primaryBilling?.state || "Andhra Pradesh";
       customerObj.billing_address = fullBillingAddress;
       customerObj.shipping_address = fullShippingAddress;
+      customerObj.addresses = newPartyAddresses;
+      customerObj.selectedDeliveryAddress = primaryShipping;
+
       setCustomers([customerObj, ...customers]);
       setSelectedCustomer(customerObj.id);
+      setSelectedDeliveryAddress(primaryShipping);
 
       // Check Inter-State vs Intra-State
+      const primaryState = primaryBilling?.state || "";
       const cleanGst = newPartyGST.trim().toUpperCase();
       if (
         (cleanGst.length >= 2 && !cleanGst.startsWith("37")) ||
-        (!newPartyState.toLowerCase().includes("andhra") && !newPartyState.toLowerCase().includes("ap"))
+        (!primaryState.toLowerCase().includes("andhra") && !primaryState.toLowerCase().includes("ap"))
       ) {
         setGstType("igst");
-        toast.info(`Inter-State Customer Created (${newPartyState}). Tax switched to IGST.`);
+        toast.info(`Inter-State Customer Created (${primaryState}). Tax switched to IGST.`);
       } else {
         setGstType("cgst_sgst");
       }
@@ -1222,18 +1270,23 @@ export function PosSalesInvoice() {
       setNewPartyEmail("");
       setNewPartyCompany("");
       setNewPartyGST("");
-      setNewPartyStreet("");
-      setNewPartyCity("");
-      setNewPartyState("Andhra Pradesh");
-      setNewPartyPincode("");
-      setNewPartyShipStreet("");
-      setNewPartyShipCity("");
-      setNewPartyShipState("Andhra Pradesh");
-      setNewPartyShipPincode("");
-      setIsShippingSameAsBilling(true);
+      setNewPartyAddresses([
+        {
+          id: "addr-1",
+          tag: "Home",
+          street: "",
+          city: "",
+          state: "Andhra Pradesh",
+          pincode: "",
+          is_billing: true,
+          is_shipping: true,
+        },
+      ]);
+      setActiveAddrIndex(0);
       setNewPartyType("Retail");
-      toast.success(`Party "${customerObj.name}" saved & selected!`);
+      toast.success(`Party "${customerObj.name}" saved with ${newPartyAddresses.length} address location(s)!`);
     } catch (err: any) {
+      toast.error(err?.detail || err?.message || "Failed to create party");
     }
   };
 
@@ -1439,6 +1492,12 @@ export function PosSalesInvoice() {
       const numericAmountReceived = amountReceived === "" ? grandTotal : (Number(amountReceived) || 0);
       const actualAmountPaid = isCredit ? 0 : (numericAmountReceived > 0 ? numericAmountReceived : 0);
 
+      const splitPaymentsPayload: Record<string, number> = {};
+      if (paymentMode === "Split") {
+        if (Number(splitCash) > 0) splitPaymentsPayload["cash"] = Number(splitCash);
+        if (Number(splitOnline) > 0) splitPaymentsPayload["upi"] = Number(splitOnline);
+      }
+
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
         invoice_number: invoiceNumber.trim(),
@@ -1454,9 +1513,10 @@ export function PosSalesInvoice() {
         due_date: dueDate,
         payment_terms: isCredit ? "Credit / Due" : paymentMode,
         payment_status: calculatedPaymentStatus,
-        payment_method: isCredit ? "Credit" : paymentMode,
-        amount_paid: actualAmountPaid,
-        amount_received: actualAmountPaid,
+        payment_method: isCredit ? "Credit" : (paymentMode === "Split" ? "split" : paymentMode),
+        amount_paid: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
+        amount_received: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
+        split_payments: paymentMode === "Split" ? splitPaymentsPayload : null,
         notes: notes || (settlingInvoice ? `Settlement for Invoice #${settlingInvoice.invoice_number}` : undefined),
         lines: items.map((it) => ({
           product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
@@ -1594,7 +1654,7 @@ export function PosSalesInvoice() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f8fafc] font-sans text-slate-800 p-2.5 md:p-3.5 space-y-2.5">
+    <div className="flex flex-col min-h-screen bg-[#f8fafc] font-sans text-slate-800 space-y-2.5">
       <ThermalReceiptPrinter bill={printedBill} />
 
       {/* Top Filters & Controls - Fluid Responsive Toolbar */}
@@ -1709,10 +1769,10 @@ export function PosSalesInvoice() {
       </div>
 
       <div className="space-y-3 w-full max-w-full">
-        {/* Top Info Grid: Bill To & Invoice Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 lg:gap-4">
+        {/* Top Info Grid: Bill To, Ship To & Invoice Info */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 lg:gap-2.5">
           {/* Bill To Card */}
-          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+          <div className="bg-white p-1.5 sm:p-2 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
             <div className="flex items-center justify-between pb-0.5">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <User className="size-4 text-indigo-600" /> BILL TO / CUSTOMER PARTY
@@ -1741,82 +1801,93 @@ export function PosSalesInvoice() {
               </select>
 
               {activeCustomerObj ? (
-                <div className="space-y-2">
-                  <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                    <div className="space-y-0.5">
-                      <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
-                        {activeCustomerObj.name}
-                        <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                          Active Party
-                        </span>
+                <div className="space-y-3 transition-all">
+                  {/* Party Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="size-9 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs shrink-0">
+                        {activeCustomerObj.name.charAt(0).toUpperCase()}
                       </div>
-                      <div className="text-slate-500 flex items-center gap-3 text-[11px]">
-                        {activeCustomerObj.phone && (
-                          <span className="flex items-center gap-1">
-                            <Phone className="size-3 text-slate-400" /> {activeCustomerObj.phone}
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                            {activeCustomerObj.name}
                           </span>
-                        )}
-                        {activeCustomerObj.email && (
-                          <span className="flex items-center gap-1">
-                            <Mail className="size-3 text-slate-400" /> {activeCustomerObj.email}
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            Active Party
                           </span>
-                        )}
+                        </div>
+                        <div className="text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] mt-0.5">
+                          {activeCustomerObj.phone && (
+                            <span className="inline-flex items-center gap-1 font-medium">
+                              <Phone className="size-3 text-slate-400" /> {activeCustomerObj.phone}
+                            </span>
+                          )}
+                          {activeCustomerObj.email && (
+                            <span className="inline-flex items-center gap-1 font-medium">
+                              <Mail className="size-3 text-slate-400" /> {activeCustomerObj.email}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
+
                     <button
                       type="button"
                       onClick={() => setSelectedCustomer("")}
-                      className="text-xs text-slate-400 hover:text-red-500 font-semibold cursor-pointer"
+                      className="px-2.5 py-1 text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200/80 transition-colors cursor-pointer shrink-0"
                     >
                       Change Party
                     </button>
                   </div>
 
-                  {/* Customer History & Outstanding Dues Summary */}
+                  {/* Unified Purchase History & Financial Summary */}
                   {customerSummary && (
-                    <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-3 space-y-2 shadow-md border border-indigo-900/50">
-                      <div className="flex items-center justify-between text-xs border-b border-white/10 pb-1.5">
-                        <span className="font-bold text-indigo-200 flex items-center gap-1.5">
-                          <History className="w-3.5 h-3.5 text-indigo-400" /> Purchase History
-                        </span>
-                        <span className="text-[11px] text-slate-300">
-                          Orders: <strong className="text-white">{customerSummary.total_invoices}</strong> | Spent: <strong className="text-emerald-400">{currency.symbol}{Number(customerSummary.total_spent || 0).toFixed(2)}</strong>
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between text-xs pt-0.5">
-                        <div className="flex items-center gap-2">
-                          <Wallet className="w-3.5 h-3.5 text-amber-400" />
-                          <div>
-                            <div className="text-[10px] text-slate-300 font-medium">Pending Due</div>
-                            <div className={`text-xs font-extrabold ${Number(customerSummary.total_pending_due || 0) > 0 ? "text-amber-300" : "text-emerald-400"}`}>
-                              {currency.symbol}{Number(customerSummary.total_pending_due || 0).toFixed(2)}
-                            </div>
-                          </div>
+                    <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-100 gap-2">
+                      <div className="flex items-center gap-3 text-[11px]">
+                        <div className="flex items-center gap-1 font-bold text-indigo-700">
+                          <History className="size-3 text-indigo-600" />
+                          <span>History</span>
                         </div>
-
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-500">
+                            Orders: <strong className="text-slate-900 font-bold">{customerSummary.total_invoices}</strong>
+                          </span>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-slate-500">
+                            Spent: <strong className="text-emerald-600 font-bold">{currency.symbol}{Number(customerSummary.total_spent || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                          </span>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-slate-500 flex items-center gap-1">
+                            Due: <strong className={`font-bold ${Number(customerSummary.total_pending_due || 0) > 0 ? "text-amber-600" : "text-emerald-600"}`}>{currency.symbol}{Number(customerSummary.total_pending_due || 0).toFixed(2)}</strong>
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {customerSummary.total_pending_due > 0 ? (
-                          <div className="flex gap-1.5">
+                          <>
                             <button
                               type="button"
                               onClick={() => setShowCustomerLedger(true)}
-                              className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm border border-indigo-500"
+                              className="px-2 py-0.5 rounded-md text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
                             >
                               Ledger
                             </button>
                             <button
                               type="button"
                               onClick={() => setIncludePreviousDueInBill(!includePreviousDueInBill)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${includePreviousDueInBill
-                                ? "bg-amber-500 text-slate-950 shadow-sm"
-                                : "bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 border border-amber-500/40"
-                                }`}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                includePreviousDueInBill
+                                  ? "bg-amber-500 text-white shadow-xs"
+                                  : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                              }`}
                             >
-                              {includePreviousDueInBill ? "✓ Due Added" : `+ Add Due (${currency.symbol}${customerSummary.total_pending_due.toFixed(0)})`}
+                              {includePreviousDueInBill ? "✓ Added" : `+ Add Due`}
                             </button>
-                          </div>
+                          </>
                         ) : (
-                          <span className="text-[10px] font-semibold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-lg border border-emerald-500/30">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                             ✓ Clear Account
                           </span>
                         )}
@@ -1838,16 +1909,101 @@ export function PosSalesInvoice() {
             </div>
           </div>
 
+          {/* Ship To / Delivery Destination Card */}
+          <div className="bg-white p-1.5 sm:p-2 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col">
+            <div className="flex items-center justify-between pb-3">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Truck className="size-4 text-indigo-600" /> SHIP TO / DESTINATION
+              </span>
+              <button
+                type="button"
+                onClick={() => toast.info("Change/Add Address feature coming soon")}
+                className="px-2.5 py-1 text-[10px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg border border-slate-200/80 transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+              >
+                <RefreshCw className="size-3" /> Change Address
+              </button>
+            </div>
+
+            <div className="flex-1">
+              {activeCustomerObj ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-slate-700 flex items-center gap-1">
+                      Delivery Address:
+                    </span>
+                    <span className="text-[10px] text-indigo-600 font-semibold">
+                      {activeCustomerObj.addresses?.length ? `${activeCustomerObj.addresses.length} Location(s) Saved` : "Default Address"}
+                    </span>
+                  </div>
+                  
+                  {activeCustomerObj.addresses && activeCustomerObj.addresses.length > 1 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {activeCustomerObj.addresses.map((addr: any, idx: number) => {
+                        const isSel = selectedDeliveryAddress?.id === addr.id || (!selectedDeliveryAddress && idx === 0);
+                        return (
+                          <button
+                            key={addr.id || idx}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDeliveryAddress(addr);
+                              if (addr.state && (!addr.state.toLowerCase().includes("andhra") && !addr.state.toLowerCase().includes("ap"))) {
+                                setGstType("igst");
+                                toast.info(`Switched destination to ${addr.tag} (${addr.state}). Tax: IGST.`);
+                              } else {
+                                setGstType("cgst_sgst");
+                              }
+                            }}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer ${
+                              isSel
+                                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
+                            }`}
+                          >
+                            <span className="text-sm">{addr.tag === "Home" ? "🏠" : addr.tag === "Office" ? "🏢" : addr.tag === "Warehouse" ? "🏭" : addr.tag === "Branch" ? "🏬" : "📍"}</span>
+                            <span className="truncate max-w-[140px] text-left">
+                              <span className="block leading-tight">{addr.tag}</span>
+                              <span className="block text-[9px] font-medium opacity-80 truncate">{addr.street || addr.city}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-600 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-200 flex flex-col gap-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">Standard Registered Address</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-white px-2 py-0.5 rounded border border-slate-100">Primary</span>
+                      </div>
+                      <span className="text-[11px] leading-relaxed">
+                        {activeCustomerObj.shipping_address || activeCustomerObj.billing_address || activeCustomerObj.address || "No detailed address provided."}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="py-6 px-4 rounded-2xl bg-slate-50/40 border border-slate-100 flex items-center justify-center gap-3.5">
+                  <div className="size-9 rounded-full bg-indigo-50/80 border border-indigo-100 flex items-center justify-center text-indigo-500 shrink-0">
+                    <MapPin className="size-4" />
+                  </div>
+                  <div className="text-left text-xs text-slate-400 font-medium leading-tight">
+                    <div>Select a party first</div>
+                    <div>to view shipping addresses</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Invoice Metadata Card */}
-          <div className="bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-2">
+          <div className="bg-white p-1.5 sm:p-2 rounded-xl border border-slate-200/80 shadow-2xs space-y-2">
             <div className="flex items-center justify-between pb-0.5">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <FileText className="size-3.5 text-indigo-600" /> INVOICE METADATA
               </span>
             </div>
 
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-semibold text-slate-600">
@@ -1867,12 +2023,12 @@ export function PosSalesInvoice() {
                       type="text"
                       value={invoiceNumber}
                       onChange={(e) => setInvoiceNumber(e.target.value)}
-                      className="w-full h-9 px-3 text-xs font-bold text-slate-800 outline-none bg-transparent"
+                      className="w-full h-8 px-2.5 text-[11px] font-bold text-slate-800 outline-none bg-transparent"
                     />
                     <select
                       value={invoiceType}
                       onChange={(e) => handleInvoiceTypeChange(e.target.value as "TAX_INVOICE" | "ESTIMATE_NON_GST")}
-                      className="h-9 px-2.5 bg-slate-50 border-l border-slate-200 text-xs font-bold text-indigo-700 outline-none cursor-pointer hover:bg-slate-100 transition-all shrink-0"
+                      className="h-8 px-2 bg-slate-50 border-l border-slate-200 text-[11px] font-bold text-indigo-700 outline-none cursor-pointer hover:bg-slate-100 transition-all shrink-0"
                     >
                       <option value="TAX_INVOICE">Tax Invoice</option>
                       <option value="ESTIMATE_NON_GST">Estimate</option>
@@ -1896,12 +2052,12 @@ export function PosSalesInvoice() {
                         }
                       }
                     }}
-                    className="w-full h-9 bg-white border border-slate-200 rounded-xl px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full h-8 bg-white border border-slate-200 rounded-xl px-2.5 text-[11px] text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-600">Payment Terms</label>
                   <select
@@ -1917,7 +2073,7 @@ export function PosSalesInvoice() {
                         }
                       }
                     }}
-                    className="w-full h-9 bg-white border border-slate-200 rounded-xl px-3 text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    className="w-full h-8 bg-white border border-slate-200 rounded-xl px-2.5 text-[11px] font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                   >
                     <option value="0">Immediate / Cash (Net 0)</option>
                     <option value="7">Net 7 Days</option>
@@ -1936,7 +2092,7 @@ export function PosSalesInvoice() {
                     type="date"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full h-9 bg-white border border-slate-200 rounded-xl px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full h-8 bg-white border border-slate-200 rounded-xl px-2.5 text-[11px] text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
@@ -2146,12 +2302,17 @@ export function PosSalesInvoice() {
 
                     return (
                       <React.Fragment key={item.id}>
-                        <tr className={`transition-colors ${isMrpExceeded ? "bg-red-50/40" : "hover:bg-slate-50/80"}`}>
+                        <tr className={`transition-colors ${item.is_free ? "bg-emerald-50/60 border-l-2 border-l-emerald-400" : isMrpExceeded ? "bg-red-50/40" : "hover:bg-slate-50/80"}`}>
                           <td className="px-3 py-2.5 text-slate-400 font-mono font-medium text-left align-middle">{idx + 1}</td>
 
                           {/* Product Search & Dropdown */}
                           <td className="px-3 py-2.5 align-middle">
                             <div className="relative">
+                              {item.is_free && (
+                                <div className="absolute -top-2.5 -right-1 bg-emerald-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full z-10 shadow-sm border border-emerald-600 shadow-emerald-200">
+                                  FREE
+                                </div>
+                              )}
                               <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:bg-white rounded-lg px-2 py-1.5 transition-all">
                                 <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 <input
@@ -2370,8 +2531,15 @@ export function PosSalesInvoice() {
                           </td>
 
                           {/* Amount */}
-                          <td className="px-3 py-2.5 text-left font-extrabold text-slate-900 text-xs sm:text-sm whitespace-nowrap align-middle">
-                            {currency.symbol}{Number(lineAmount || 0).toFixed(2)}
+                          <td className="px-3 py-2.5 text-left font-extrabold text-xs sm:text-sm whitespace-nowrap align-middle">
+                            {item.is_free ? (
+                              <span className="flex items-center gap-1.5">
+                                <span className="line-through text-slate-400 font-semibold text-[10px]">{currency.symbol}{(Number(item.quantity) * Number(item.unit_price)).toFixed(2)}</span>
+                                <span className="text-emerald-600 font-extrabold">FREE</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-900">{currency.symbol}{Number(lineAmount || 0).toFixed(2)}</span>
+                            )}
                           </td>
 
                           {/* Action */}
@@ -2423,6 +2591,14 @@ export function PosSalesInvoice() {
                 className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="size-3.5 text-slate-500" /> Add Single Blank Row
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAddFreeItem}
+                className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl border border-emerald-200 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Gift className="size-3.5 text-emerald-600" /> Add Free Item
               </button>
 
               <button
@@ -2714,31 +2890,71 @@ export function PosSalesInvoice() {
                   <option value="Card">Credit/Debit Card</option>
                   <option value="NetBanking">Net Banking</option>
                   <option value="Wallet">Wallet (B2B / Store Credit)</option>
+                  <option value="Split">Split Bills (Cash + Online)</option>
                   <option value="Credit">Credit (Pay Later)</option>
                 </select>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-500 block">Amount Received</label>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                    amountReceived === "" || Number(amountReceived) >= grandTotal
-                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                      : Number(amountReceived) > 0
-                      ? "bg-amber-50 text-amber-700 border border-amber-200"
-                      : "bg-purple-50 text-purple-700 border border-purple-200"
-                  }`}>
-                    {amountReceived === "" || Number(amountReceived) >= grandTotal ? "Full Paid" : Number(amountReceived) > 0 ? "Partial" : "Pay Later"}
-                  </span>
+              {paymentMode === "Split" ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Cash</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 500"
+                      value={splitCash}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSplitCash(val);
+                        const parsed = parseFloat(val) || 0;
+                        if (parsed <= grandTotal) {
+                           setSplitOnline((grandTotal - parsed).toFixed(2));
+                        }
+                      }}
+                      className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Online</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 500"
+                      value={splitOnline}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSplitOnline(val);
+                        const parsed = parseFloat(val) || 0;
+                        if (parsed <= grandTotal) {
+                           setSplitCash((grandTotal - parsed).toFixed(2));
+                        }
+                      }}
+                      className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
                 </div>
-                <input
-                  type="number"
-                  placeholder="e.g. 1000"
-                  value={amountReceived}
-                  onChange={(e) => setAmountReceived(e.target.value ? Number(e.target.value) : "")}
-                  className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-semibold text-slate-500 block">Amount Received</label>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      amountReceived === "" || Number(amountReceived) >= grandTotal
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : Number(amountReceived) > 0
+                        ? "bg-amber-50 text-amber-700 border border-amber-200"
+                        : "bg-purple-50 text-purple-700 border border-purple-200"
+                    }`}>
+                      {amountReceived === "" || Number(amountReceived) >= grandTotal ? "Full Paid" : Number(amountReceived) > 0 ? "Partial" : "Pay Later"}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    placeholder="e.g. 1000"
+                    value={amountReceived}
+                    onChange={(e) => setAmountReceived(e.target.value ? Number(e.target.value) : "")}
+                    className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Quick Partial Percentage Buttons */}
@@ -2970,259 +3186,339 @@ export function PosSalesInvoice() {
         </div>
       )}
 
-      {/* Add Party Modal */}
+      {/* Add Party Modal — Landscape Rectangular Multi-Address Book Dialog */}
       {isAddPartyOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-[480px] w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-blue-600" /> Create New Customer / Party
-              </h3>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-4xl w-full p-6 md:p-7 shadow-2xl space-y-5 animate-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100 shrink-0">
+                  <UserPlus className="size-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base md:text-lg text-slate-900 leading-tight">
+                    Create New Customer / Party
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Single customer account with multiple delivery & billing address locations (Home, Office, Warehouse).
+                  </p>
+                </div>
+              </div>
               <button
+                type="button"
                 onClick={() => setIsAddPartyOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="size-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateNewParty} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Party / Customer Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Acme Corp / John Doe"
-                  value={newPartyName}
-                  onChange={(e) => setNewPartyName(e.target.value)}
-                  required
-                  className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+            <form onSubmit={handleCreateNewParty} className="space-y-4 overflow-y-auto pr-1 flex-1">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                
+                {/* ── Left Column (5 Cols): Primary Customer Profile & Tax ── */}
+                <div className="lg:col-span-5 space-y-3.5">
+                  <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 space-y-3">
+                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <User className="size-3.5 text-indigo-600" /> Primary Customer Identity
+                    </span>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
-                  <input
-                    type="text"
-                    placeholder="+91 9876543210"
-                    value={newPartyPhone}
-                    onChange={(e) => setNewPartyPhone(e.target.value)}
-                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    placeholder="contact@company.com"
-                    value={newPartyEmail}
-                    onChange={(e) => setNewPartyEmail(e.target.value)}
-                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Company Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Acme Pvt Ltd"
-                    value={newPartyCompany}
-                    onChange={(e) => setNewPartyCompany(e.target.value)}
-                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Customer Category / Type</label>
-                  <select
-                    value={newPartyType}
-                    onChange={(e) => setNewPartyType(e.target.value)}
-                    className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="Retail">Retail Customer</option>
-                    <option value="Wholesale">Wholesale Client</option>
-                    <option value="B2B">B2B Business Party</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* GSTIN Field with Live Verification */}
-              <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800">GSTIN / Tax ID Number</label>
-                  <span className="text-[10px] text-slate-500 font-medium">Auto-populates company & address</span>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g. 37AABCU9603R1ZM"
-                    value={newPartyGST}
-                    onChange={(e) => setNewPartyGST(e.target.value.toUpperCase())}
-                    maxLength={15}
-                    className="flex-1 h-10 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono font-bold"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleVerifyGstin}
-                    disabled={isVerifyingGstin || !newPartyGST.trim()}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 shrink-0"
-                  >
-                    {isVerifyingGstin ? (
-                      <span className="animate-spin text-xs">⏳</span>
-                    ) : (
-                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    )}
-                    {isVerifyingGstin ? "Verifying..." : "⚡ Verify & Auto-fill"}
-                  </button>
-                </div>
-              </div>
-
-              {/* Billing Address Structured Fields */}
-              <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-                  🏢 Billing Address Details
-                </span>
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">Building, Street & Area</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Door 14/2, Market Street"
-                    value={newPartyStreet}
-                    onChange={(e) => setNewPartyStreet(e.target.value)}
-                    className="w-full h-9 bg-white border border-slate-300 rounded-lg px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">City / Town</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Proddatur"
-                      value={newPartyCity}
-                      onChange={(e) => setNewPartyCity(e.target.value)}
-                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">State / UT (GST)</label>
-                    <select
-                      value={newPartyState}
-                      onChange={(e) => {
-                        setNewPartyState(e.target.value);
-                        if (isShippingSameAsBilling) setNewPartyShipState(e.target.value);
-                      }}
-                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      {INDIAN_STATES.map((st) => (
-                        <option key={st.code} value={st.name}>
-                          {st.code} - {st.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                      PIN Code {isLookingUpPincode && <span className="text-indigo-600 animate-pulse text-[10px]">Detecting...</span>}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 516360"
-                      maxLength={6}
-                      value={newPartyPincode}
-                      onChange={(e) => handlePartyPincodeChange(e.target.value)}
-                      className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-800"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Shipping Address Header & Checkbox */}
-              <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-                    🚚 Shipping / Delivery Address
-                  </span>
-                  <label className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isShippingSameAsBilling}
-                      onChange={(e) => setIsShippingSameAsBilling(e.target.checked)}
-                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    Same as Billing Address
-                  </label>
-                </div>
-
-                {!isShippingSameAsBilling && (
-                  <div className="space-y-2 pt-2 border-t border-slate-200">
                     <div>
-                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">Shipping Building, Street & Area</label>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Party / Customer Name *</label>
                       <input
                         type="text"
-                        placeholder="e.g. Warehouse 3, Industrial Area"
-                        value={newPartyShipStreet}
-                        onChange={(e) => setNewPartyShipStreet(e.target.value)}
-                        className="w-full h-9 bg-white border border-slate-300 rounded-lg px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="e.g. Acme Corp / John Doe"
+                        value={newPartyName}
+                        onChange={(e) => setNewPartyName(e.target.value)}
+                        required
+                        className="w-full h-9.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                       />
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+
+                    <div className="grid grid-cols-2 gap-2.5">
                       <div>
-                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">City / Town</label>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
                         <input
                           type="text"
-                          placeholder="City"
-                          value={newPartyShipCity}
-                          onChange={(e) => setNewPartyShipCity(e.target.value)}
-                          className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                          placeholder="+91 9876543210"
+                          value={newPartyPhone}
+                          onChange={(e) => setNewPartyPhone(e.target.value)}
+                          className="w-full h-9.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">State / UT (GST)</label>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="contact@company.com"
+                          value={newPartyEmail}
+                          onChange={(e) => setNewPartyEmail(e.target.value)}
+                          className="w-full h-9.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Company / Brand</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Acme Pvt Ltd"
+                          value={newPartyCompany}
+                          onChange={(e) => setNewPartyCompany(e.target.value)}
+                          className="w-full h-9.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1">Customer Type</label>
                         <select
-                          value={newPartyShipState}
-                          onChange={(e) => setNewPartyShipState(e.target.value)}
-                          className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={newPartyType}
+                          onChange={(e) => setNewPartyType(e.target.value)}
+                          className="w-full h-9.5 bg-white border border-slate-300 rounded-xl px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                         >
-                          {INDIAN_STATES.map((st) => (
-                            <option key={st.code} value={st.name}>
-                              {st.code} - {st.name}
-                            </option>
-                          ))}
+                          <option value="Retail">Retail Customer</option>
+                          <option value="Wholesale">Wholesale Client</option>
+                          <option value="B2B">B2B Business Party</option>
                         </select>
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                          PIN Code {isLookingUpPincode && <span className="text-indigo-600 animate-pulse text-[10px]">Detecting...</span>}
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="PIN"
-                          maxLength={6}
-                          value={newPartyShipPincode}
-                          onChange={(e) => handlePartyShipPincodeChange(e.target.value)}
-                          className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-800"
-                        />
                       </div>
                     </div>
                   </div>
-                )}
+
+                  {/* GSTIN Verification Card */}
+                  <div className="p-3.5 bg-indigo-50/60 border border-indigo-100 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                        <Sparkles className="size-3.5 text-indigo-600" /> GSTIN / Tax ID Number
+                      </label>
+                      <span className="text-[10px] text-slate-500">Auto-populates company</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. 37AABCU9603R1ZM"
+                        value={newPartyGST}
+                        onChange={(e) => setNewPartyGST(e.target.value.toUpperCase())}
+                        maxLength={15}
+                        className="flex-1 h-9.5 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono font-bold"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyGstin}
+                        disabled={isVerifyingGstin || !newPartyGST.trim()}
+                        className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                      >
+                        {isVerifyingGstin ? (
+                          <span className="animate-spin text-xs">⏳</span>
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                        )}
+                        {isVerifyingGstin ? "Verifying..." : "⚡ Auto-fill"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Right Column (7 Cols): Swiggy/Zomato Multiple Address Book ── */}
+                <div className="lg:col-span-7 space-y-3.5">
+                  <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <MapPin className="size-3.5 text-indigo-600" /> Multi-Address Book ({newPartyAddresses.length})
+                        </span>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Save multiple locations for this customer (Home, Office, Warehouse).
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAddNewAddressSlot("Office")}
+                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Plus className="size-3" /> Add Location
+                      </button>
+                    </div>
+
+                    {/* Address Tag Selector Tabs (Swiggy / Zomato Style) */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {newPartyAddresses.map((addr, idx) => (
+                        <div
+                          key={addr.id || idx}
+                          onClick={() => setActiveAddrIndex(idx)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border ${
+                            activeAddrIndex === idx
+                              ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          <span>
+                            {addr.tag === "Home" ? "🏠" : addr.tag === "Office" ? "🏢" : addr.tag === "Warehouse" ? "🏭" : addr.tag === "Branch" ? "🏬" : "📍"} {addr.tag} #{idx + 1}
+                          </span>
+                          {newPartyAddresses.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveAddressSlot(idx);
+                              }}
+                              className={`p-0.5 rounded-full hover:bg-black/20 ${activeAddrIndex === idx ? "text-white" : "text-slate-400 hover:text-rose-600"}`}
+                            >
+                              <X className="size-3" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Active Address Form Editor */}
+                    {newPartyAddresses[activeAddrIndex] && (
+                      <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700">Location Tag:</span>
+                            <div className="flex gap-1">
+                              {(["Home", "Office", "Warehouse", "Branch", "Other"] as const).map((t) => (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...newPartyAddresses];
+                                    updated[activeAddrIndex].tag = t;
+                                    setNewPartyAddresses(updated);
+                                  }}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer ${
+                                    newPartyAddresses[activeAddrIndex].tag === t
+                                      ? "bg-indigo-100 text-indigo-700 border-indigo-300"
+                                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  {t === "Home" ? "🏠 Home" : t === "Office" ? "🏢 Office" : t === "Warehouse" ? "🏭 Warehouse" : t === "Branch" ? "🏬 Branch" : "📍 Other"}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-600 block mb-1">Building, Street & Area</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Door 14/2, Market Street / Tech Park"
+                            value={newPartyAddresses[activeAddrIndex].street}
+                            onChange={(e) => {
+                              const updated = [...newPartyAddresses];
+                              updated[activeAddrIndex].street = e.target.value;
+                              setNewPartyAddresses(updated);
+                            }}
+                            className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-lg px-2.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="text-[11px] font-semibold text-slate-600 block mb-1">City / Town</label>
+                            <input
+                              type="text"
+                              placeholder="City"
+                              value={newPartyAddresses[activeAddrIndex].city}
+                              onChange={(e) => {
+                                const updated = [...newPartyAddresses];
+                                updated[activeAddrIndex].city = e.target.value;
+                                setNewPartyAddresses(updated);
+                              }}
+                              className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-lg px-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-semibold text-slate-600 block mb-1">State / UT (GST)</label>
+                            <select
+                              value={newPartyAddresses[activeAddrIndex].state}
+                              onChange={(e) => {
+                                const updated = [...newPartyAddresses];
+                                updated[activeAddrIndex].state = e.target.value;
+                                setNewPartyAddresses(updated);
+                              }}
+                              className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-lg px-1.5 text-[11px] font-semibold outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                            >
+                              {INDIAN_STATES.map((st) => (
+                                <option key={st.code} value={st.name}>
+                                  {st.code} - {st.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                              PIN Code {isLookingUpPincode && <span className="text-indigo-600 animate-pulse text-[10px]">Detecting...</span>}
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 516360"
+                              maxLength={6}
+                              value={newPartyAddresses[activeAddrIndex].pincode}
+                              onChange={(e) => handleActiveAddrPincodeChange(e.target.value)}
+                              className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-lg px-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-800"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 pt-1 border-t border-slate-100 text-xs font-semibold text-slate-700">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={newPartyAddresses[activeAddrIndex].is_billing}
+                              onChange={(e) => {
+                                const updated = [...newPartyAddresses];
+                                updated[activeAddrIndex].is_billing = e.target.checked;
+                                setNewPartyAddresses(updated);
+                              }}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span>Default Billing Address</span>
+                          </label>
+
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={newPartyAddresses[activeAddrIndex].is_shipping}
+                              onChange={(e) => {
+                                const updated = [...newPartyAddresses];
+                                updated[activeAddrIndex].is_shipping = e.target.checked;
+                                setNewPartyAddresses(updated);
+                              }}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span>Default Delivery / Shipping</span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddPartyOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition-all"
-                >
-                  Create & Select Party
-                </button>
+              {/* Modal Action Buttons */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between shrink-0">
+                <div className="text-xs text-slate-400">
+                  Total {newPartyAddresses.length} address location(s) configured.
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddPartyOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="size-4" /> Create & Select Party
+                  </button>
+                </div>
               </div>
             </form>
           </div>

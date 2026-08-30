@@ -248,6 +248,7 @@ class InvoiceCreate(BaseModel):
     payment_method: str | None = None
     amount_paid: float | None = None
     amount_received: float | None = None
+    split_payments: dict[str, float] | None = None
     lines: list[InvoiceLineCreate] = Field(min_length=1)
 
 

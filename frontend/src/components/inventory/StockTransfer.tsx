@@ -187,7 +187,7 @@ export function StockTransfer() {
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
               <Button variant="outline" className="rounded-xl"><FileDown className="size-4 mr-2" /> Export</Button>
-              <Button onClick={openCreateView} className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-lg shadow-emerald-500/20 rounded-xl">
+              <Button onClick={openCreateView} className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-sm rounded-xl font-semibold">
                 <Plus className="size-4 mr-2" /> Create New Transfer
               </Button>
             </div>
@@ -197,105 +197,101 @@ export function StockTransfer() {
           <div className="relative max-w-md">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border bg-white shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+              className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border bg-white shadow-sm focus:ring-2 focus:ring-purple-500 outline-none"
               placeholder="Search by Transfer #, Source, or Destination..." />
           </div>
 
-          {/* Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative min-h-[350px]">
-            {loading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm rounded-2xl">
-                <Loader2 className="size-8 animate-spin text-emerald-600" />
-              </div>
-            )}
-            {filtered.length === 0 && !loading && (
-              <div className="col-span-full text-center text-slate-400 py-16 bg-white border rounded-2xl">
-                No Stock Transfers found. Click "Create New Transfer" to transfer stock.
-              </div>
-            )}
-            {filtered.map((tr) => {
-              const isExpanded = expandedId === tr.id;
-              const prodObj = productsList.find(p => p.id === tr.product_id);
-              return (
-                <Card key={tr.id} className={`p-6 relative overflow-hidden rounded-2xl border-slate-200 shadow-sm hover:shadow-md transition-shadow bg-white ${isExpanded ? "ring-2 ring-emerald-500" : ""}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <div className="font-mono font-bold text-lg text-emerald-900">{tr.movement_number}</div>
-                      <div className="text-xs text-slate-400 font-semibold mt-0.5">{tr.quantity} Units Transferred</div>
-                    </div>
-                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
-                      tr.status === "Completed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-blue-50 text-blue-700 border border-blue-200"
-                    }`}>
-                      <Truck className="size-3.5" /> {tr.status}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-dashed border-slate-200">
-                    <div className="flex-1">
-                      <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Source Warehouse</div>
-                      <div className="text-sm font-bold text-slate-800">{tr.source_location}</div>
-                    </div>
-                    <div className="bg-emerald-500 text-white rounded-full p-2 shadow-md">
-                      <ArrowRightLeft className="size-4" />
-                    </div>
-                    <div className="flex-1 text-right">
-                      <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Destination Warehouse</div>
-                      <div className="text-sm font-bold text-slate-800">{tr.destination_location}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex justify-end items-center gap-2 pt-3 border-t border-slate-100">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => {
-                        setForm({
-                          movement_number: tr.movement_number,
-                          source_location: tr.source_location || "",
-                          destination_location: tr.destination_location || "",
-                          notes: (tr as any).reference_note || (tr as any).notes || "",
-                          transfer_date: (tr as any).created_at ? (tr as any).created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
-                          status: tr.status || "In Transit",
-                        });
-                        setItems([{
-                          product_id: tr.product_id,
-                          product_name: (tr as any).product_name || tr.product_id,
-                          quantity: Number(tr.quantity) || 1,
-                          unit_price: 150
-                        }]);
-                        setViewMode("create");
-                      }}
-                      className="h-8 gap-1.5 font-bold rounded-lg hover:bg-emerald-50"
-                    >
-                      <Eye className="size-4" /> View / Edit Page
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(tr.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-slate-50 p-4 rounded-xl">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Product Item Transferred</span>
-                        <Button size="sm" variant="outline" onClick={() => window.print()} className="h-7 text-xs font-bold rounded-md">
-                          <Printer className="size-3.5 mr-1" /> Print Delivery Challan
-                        </Button>
-                      </div>
-                      <div className="bg-white p-3 border rounded-lg flex justify-between items-center">
-                        <div>
-                          <div className="font-bold text-sm text-slate-900">{prodObj?.name || tr.product_id}</div>
-                          <div className="text-xs text-slate-400 font-mono">SKU: {prodObj?.sku || "N/A"}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-black text-emerald-600">{tr.quantity} Units</div>
-                        </div>
-                      </div>
-                    </div>
+          {/* Table Section */}
+          <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+            <div className="overflow-x-auto min-h-[350px] relative">
+              {loading && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm">
+                  <Loader2 className="size-8 animate-spin text-purple-700" />
+                </div>
+              )}
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+                  <tr>
+                    <th className="px-6 py-4 text-left whitespace-nowrap">Transfer #</th>
+                    <th className="px-6 py-4 text-left whitespace-nowrap">Source Warehouse</th>
+                    <th className="px-6 py-4 text-left whitespace-nowrap">Destination Warehouse</th>
+                    <th className="px-6 py-4 text-right whitespace-nowrap">Quantity</th>
+                    <th className="px-6 py-4 text-left whitespace-nowrap">Date</th>
+                    <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
+                    <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30 font-medium">
+                  {filtered.length === 0 && !loading ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-16 text-center text-slate-400">
+                        No Stock Transfers found. Click "Create New Transfer" to transfer stock.
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((tr) => (
+                      <tr key={tr.id} className="hover:bg-muted/30 transition-colors group">
+                        <td className="px-6 py-4 font-mono font-bold text-purple-700 text-sm">
+                          {tr.movement_number}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="font-bold text-slate-900">{tr.source_location}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="font-bold text-slate-900">{tr.destination_location}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right font-bold text-slate-900">
+                          {tr.quantity} Units
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {(tr as any).created_at ? (tr as any).created_at.slice(0, 10) : "—"}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                            tr.status === "Completed"
+                              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                              : "bg-purple-500/10 text-purple-700 border-purple-500/20"
+                          }`}>
+                            <Truck className="size-3" /> {tr.status || "In Transit"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => {
+                                setForm({
+                                  movement_number: tr.movement_number,
+                                  source_location: tr.source_location || "",
+                                  destination_location: tr.destination_location || "",
+                                  notes: (tr as any).reference_note || (tr as any).notes || "",
+                                  transfer_date: (tr as any).created_at ? (tr as any).created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                  status: tr.status || "In Transit",
+                                });
+                                setItems([{
+                                  product_id: tr.product_id,
+                                  product_name: (tr as any).product_name || tr.product_id,
+                                  quantity: Number(tr.quantity) || 1,
+                                  unit_price: 150
+                                }]);
+                                setViewMode("create");
+                              }}
+                              className="h-8 text-xs font-semibold hover:bg-purple-50 hover:text-purple-700 rounded-lg"
+                            >
+                              <Eye className="size-3.5 mr-1" /> View / Edit
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(tr.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
                   )}
-                </Card>
-              );
-            })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       ) : (

@@ -1754,4 +1754,6 @@ class CRMCallLog(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 from .erp import *
 from .inventory import *
 from .procurement import *
+from .marketplace import *
+
 

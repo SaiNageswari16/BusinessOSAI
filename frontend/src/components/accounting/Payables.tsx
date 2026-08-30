@@ -306,7 +306,7 @@ export function Payables({ tab = "bills" }: Props) {
   if (tab === "credit_notes") {
     if (loading) return <div className="p-6 text-center text-muted-foreground">Loading credit notes…</div>;
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div><h1 className="text-2xl font-bold text-foreground">Credit Notes</h1><p className="text-sm text-muted-foreground">Vendor credits and refunds received.</p></div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -337,7 +337,7 @@ export function Payables({ tab = "bills" }: Props) {
   if (tab === "debit_notes") {
     if (loading) return <div className="p-6 text-center text-muted-foreground">Loading debit notes…</div>;
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div><h1 className="text-2xl font-bold text-foreground">Debit Notes</h1><p className="text-sm text-muted-foreground">Debit memos and charges from vendors.</p></div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -368,7 +368,7 @@ export function Payables({ tab = "bills" }: Props) {
   if (tab === "vendor_aging") {
     const aging = useMemo(() => bucketAging(bills), [bills]);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div><h1 className="text-2xl font-bold text-foreground">Vendor Aging</h1><p className="text-sm text-muted-foreground">Outstanding payables aging by vendor.</p></div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -402,7 +402,7 @@ export function Payables({ tab = "bills" }: Props) {
       return <div className="p-6 text-center text-muted-foreground">Loading payments…</div>;
     }
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground">Payments Made</h1><p className="text-sm text-muted-foreground">All outgoing vendor payments and disbursements.</p></div>
         </div>
@@ -451,7 +451,7 @@ export function Payables({ tab = "bills" }: Props) {
   const paidThisMonth = bills.filter(b => b.status === "Paid").reduce((sum, b) => sum + b.paidAmount, 0);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Vendor Bills</h1>

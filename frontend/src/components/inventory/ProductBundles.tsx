@@ -131,53 +131,55 @@ export function ProductBundles() {
           <p className="text-[11px] text-muted-foreground mt-0.5">Bundle related products together (e.g. "Laptop Kit" = laptop + bag + charger).</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((bundle) => (
-            <Card key={bundle.id} className="p-4 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 grid place-items-center shrink-0">
-                    <PackageCheck className="size-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-bold text-sm leading-tight truncate">{bundle.name}</h3>
-                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{bundle.sku}</div>
-                  </div>
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => openEdit(bundle)}>
-                    <Edit2 className="size-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(bundle.id)}>
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="bg-muted/30 rounded-lg p-2.5 border mb-3">
-                <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1.5">
-                  Items ({bundle.items.length})
-                </div>
-                <div className="space-y-1 max-h-36 overflow-y-auto">
-                  {bundle.items.length === 0 ? (
-                    <span className="text-xs text-muted-foreground italic">No items</span>
-                  ) : (
-                    bundle.items.map((item, i) => (
-                      <div key={i} className="flex justify-between text-xs">
-                        <span className="truncate max-w-[60%] text-muted-foreground">…{item.product_id.slice(-6)}</span>
-                        <span className="font-semibold">x{item.quantity}</span>
+        <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Bundle Name</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">SKU</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Description</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Items Count</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Bundle Price</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30 font-medium">
+                {filtered.map((bundle) => (
+                  <tr key={bundle.id} className="hover:bg-muted/30 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="size-8 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-100">
+                          <PackageCheck className="size-4" />
+                        </div>
+                        <div className="font-bold text-foreground text-sm">{bundle.name}</div>
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-2 border-t flex justify-between items-center text-xs">
-                <span className="text-muted-foreground">Bundle Price</span>
-                <span className="font-bold text-emerald-600">{currency.symbol}{bundle.price.toFixed(2)}</span>
-              </div>
-            </Card>
-          ))}
+                    </td>
+                    <td className="px-6 py-4 font-mono font-bold text-slate-700">{bundle.sku || "—"}</td>
+                    <td className="px-6 py-4 text-muted-foreground max-w-xs truncate">{bundle.description || "—"}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
+                        {bundle.items?.length || 0} items
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right font-black text-slate-900 text-sm">
+                      {currency.symbol}{bundle.price.toFixed(2)}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-700 hover:bg-purple-50" onClick={() => openEdit(bundle)}>
+                          <Edit2 className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(bundle.id)}>
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

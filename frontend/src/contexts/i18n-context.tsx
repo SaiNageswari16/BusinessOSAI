@@ -31,7 +31,6 @@ const translations: Record<Language, Record<string, string>> = {
     "greeting.morning": "Good morning",
     "greeting.afternoon": "Good afternoon",
     "greeting.evening": "Good evening",
-    "banner.subtitle": "Here is what is happening across your business today in the UAE region.",
     "banner.live_badge": "Live Workspace Updates",
 
     // KPI Metrics
@@ -92,7 +91,6 @@ const translations: Record<Language, Record<string, string>> = {
     "greeting.morning": "صباح الخير",
     "greeting.afternoon": "مساء الخير",
     "greeting.evening": "مساء الخير",
-    "banner.subtitle": "إليك ملخص ما يحدث في أعمالك التجارية اليوم في دولة الإمارات العربية المتحدة.",
     "banner.live_badge": "تحديثات مباشرة لمكان العمل",
 
     // KPI Metrics
@@ -138,7 +136,7 @@ const translations: Record<Language, Record<string, string>> = {
 const defaultValue: I18nContextType = {
   language: "en",
   direction: "ltr",
-  setLanguage: () => {},
+  setLanguage: () => { },
   t: (key: string, fallback?: string) => fallback || key,
 };
 

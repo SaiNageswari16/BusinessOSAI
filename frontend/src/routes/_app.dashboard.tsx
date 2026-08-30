@@ -1,5 +1,4 @@
-import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
-import { motion } from "framer-motion";
+import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid, Cell, Line, LineChart,
@@ -10,10 +9,13 @@ import {
   CreditCard, Database, DollarSign, Download, FileText,
   HardDrive, Layers, Package, Receipt, Server,
   Shield, ShoppingCart, Sparkles, TrendingUp, Truck,
-  UserCheck, UserPlus, Users, Zap,
+  UserCheck, UserPlus, Users, Zap, LayoutDashboard,
+  Store, AlertTriangle, ArrowUpRight, ArrowDownRight,
+  Clock, MapPin, Activity, CheckCircle, Navigation,
+  Wallet, RefreshCw, BarChart3, Radio, FileCheck,
+  TrendingDown, Flame, BadgeMinus
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
@@ -29,71 +31,15 @@ export const Route = createFileRoute("/_app/dashboard")({
   component: Dashboard,
 });
 
-const chartDataByPeriod: Record<"week" | "month" | "year", Array<{ label: string; revenue: number; expenses: number }>> = {
-  week: [
-    { label: "Mon", revenue: 14000, expenses: 6000 },
-    { label: "Tue", revenue: 22000, expenses: 9000 },
-    { label: "Wed", revenue: 19000, expenses: 7500 },
-    { label: "Thu", revenue: 28000, expenses: 11000 },
-    { label: "Fri", revenue: 35000, expenses: 14000 },
-    { label: "Sat", revenue: 42000, expenses: 16000 },
-    { label: "Sun", revenue: 38000, expenses: 15000 },
-  ],
-  month: [
-    { label: "Week 1", revenue: 65000, expenses: 24000 },
-    { label: "Week 2", revenue: 78000, expenses: 29000 },
-    { label: "Week 3", revenue: 84000, expenses: 31000 },
-    { label: "Week 4", revenue: 95000, expenses: 34000 },
-  ],
-  year: [
-    { label: "Jan", revenue: 90000, expenses: 38000 },
-    { label: "Feb", revenue: 145000, expenses: 58000 },
-    { label: "Mar", revenue: 140000, expenses: 48000 },
-    { label: "Apr", revenue: 185000, expenses: 70000 },
-    { label: "May", revenue: 165000, expenses: 62000 },
-    { label: "Jun", revenue: 155000, expenses: 60000 },
-    { label: "Jul", revenue: 210000, expenses: 82000 },
-    { label: "Aug", revenue: 245000, expenses: 95000 },
-    { label: "Sep", revenue: 195000, expenses: 72000 },
-    { label: "Oct", revenue: 265000, expenses: 78000 },
-    { label: "Nov", revenue: 205000, expenses: 90000 },
-    { label: "Dec", revenue: 255000, expenses: 82000 },
-  ],
-};
-
-const recentActivitiesList = [
-  {
-    id: "act-1",
-    title: 'Company "venatic" was updated',
-    subtitle: "General information changed",
-    time: "2 min ago",
-    icon: Building2,
-    iconBg: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400",
-  },
-  {
-    id: "act-2",
-    title: "New user Tejas Patel added",
-    subtitle: "Role: Manager",
-    time: "15 min ago",
-    icon: UserPlus,
-    iconBg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400",
-  },
-  {
-    id: "act-3",
-    title: "Inventory adjustment performed",
-    subtitle: "Adjustment ID: ADJ-000123",
-    time: "45 min ago",
-    icon: Boxes,
-    iconBg: "bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400",
-  },
-  {
-    id: "act-4",
-    title: "Payment of ₹12,500 received",
-    subtitle: "From: ABC Technologies",
-    time: "1 hr ago",
-    icon: Receipt,
-    iconBg: "bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400",
-  },
+const WORKSPACE_TABS = [
+  { id: "overview", label: "Executive Overview", icon: LayoutDashboard },
+  { id: "inventory", label: "Inventory", icon: Package },
+  { id: "operations", label: "Operations", icon: Truck },
+  { id: "pos", label: "POS", icon: CreditCard },
+  { id: "sales_crm", label: "Sales & CRM", icon: TrendingUp },
+  { id: "marketplace", label: "Marketplace", icon: Store },
+  { id: "accounting", label: "Accounting", icon: DollarSign },
+  { id: "hrm", label: "HRMS", icon: Users },
 ];
 
 const tooltipStyle: React.CSSProperties = {
@@ -106,6 +52,7 @@ const tooltipStyle: React.CSSProperties = {
 
 function Dashboard() {
   const routerState = useRouterState();
+  const navigate = useNavigate();
   const searchParams = new URLSearchParams(routerState.location.searchStr);
   const activeTab = searchParams.get("tab") || "overview";
 
@@ -116,227 +63,509 @@ function Dashboard() {
   const { user } = useAuth();
   const { tenant: company } = useTenant();
   const { language, t } = useI18n();
-  const { currency, exchangeRates, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<"today" | "week" | "month" | "year">("month");
   const [chartPeriod, setChartPeriod] = useState<"week" | "month" | "year">("month");
 
-  // ── Live Backend Queries ──
-  const { data: productsData } = useQuery({
-    queryKey: ["dashboard-backend-products"],
-    queryFn: async () => {
-      try {
-        return await inventoryApi.getProducts();
-      } catch {
-        return [];
-      }
-    },
-    staleTime: 60000,
-  });
+  const { data: productsData } = useQuery({ queryKey: ["dashboard-backend-products"], queryFn: async () => { try { return await inventoryApi.getProducts(); } catch { return []; } }, staleTime: 60000 });
+  const { data: customersData } = useQuery({ queryKey: ["dashboard-backend-customers"], queryFn: async () => { try { return await crmApi.getCustomers(); } catch { return []; } }, staleTime: 60000 });
+  const { data: employeesData } = useQuery({ queryKey: ["dashboard-backend-employees"], queryFn: async () => { try { const res = await employeesApi.list(); return Array.isArray(res) ? res : (res as any)?.items || []; } catch { return []; } }, staleTime: 60000 });
+  const { data: invoicesData } = useQuery({ queryKey: ["dashboard-backend-invoices"], queryFn: async () => { try { const res = await invoicesApi.listInvoices(); return Array.isArray(res) ? res : (res as any)?.items || []; } catch { return []; } }, staleTime: 60000 });
+  const { data: dashboardData, isLoading: kpisLoading } = useQuery({ queryKey: ["dashboard-kpis"], queryFn: workspaceApi.getDashboardKPIs });
 
-  const { data: customersData } = useQuery({
-    queryKey: ["dashboard-backend-customers"],
-    queryFn: async () => {
-      try {
-        return await crmApi.getCustomers();
-      } catch {
-        return [];
-      }
-    },
-    staleTime: 60000,
-  });
-
-  const { data: employeesData } = useQuery({
-    queryKey: ["dashboard-backend-employees"],
-    queryFn: async () => {
-      try {
-        const res = await employeesApi.list();
-        return Array.isArray(res) ? res : (res as any)?.items || [];
-      } catch {
-        return [];
-      }
-    },
-    staleTime: 60000,
-  });
-
-  const { data: invoicesData } = useQuery({
-    queryKey: ["dashboard-backend-invoices"],
-    queryFn: async () => {
-      try {
-        const res = await invoicesApi.listInvoices();
-        return Array.isArray(res) ? res : (res as any)?.items || [];
-      } catch {
-        return [];
-      }
-    },
-    staleTime: 60000,
-  });
-
-  const { data: dashboardData, isLoading: kpisLoading } = useQuery({
-    queryKey: ["dashboard-kpis"],
-    queryFn: workspaceApi.getDashboardKPIs,
-  });
-
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 200);
-    return () => clearTimeout(timer);
-  }, []);
-
+  useEffect(() => { setLoading(false); }, []);
   const isActuallyLoading = loading || kpisLoading;
 
   const hour = new Date().getHours();
-  const greeting = language === "ar" 
-    ? (hour < 12 ? "صباح الخير" : "مساء الخير")
-    : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
-
-  const today = useMemo(() =>
-    new Date().toLocaleDateString(language === "ar" ? "ar-AE" : "en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }), [language]);
+  const greeting = language === "ar" ? (hour < 12 ? "صباح الخير" : "مساء الخير") : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
+  const today = useMemo(() => new Date().toLocaleDateString(language === "ar" ? "ar-AE" : "en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }), [language]);
   
   const firstName = user?.name?.split(" ")[0] || (user as any)?.username || "venatic";
   const isPlatformAdmin = user?.tenantSlug === "system" && user?.isTenantOwner;
 
-  // Real backend calculations with period multipliers
   const totalProducts = Array.isArray(productsData) ? (productsData as any[]).length : 0;
   const totalCustomers = Array.isArray(customersData) && (customersData as any[]).length > 0 ? (customersData as any[]).length : 2;
   const totalEmployees = Array.isArray(employeesData) && (employeesData as any[]).length > 0 ? (employeesData as any[]).length : 5;
-  const rawInvoices: any[] = Array.isArray(invoicesData) ? (invoicesData as any[]) : [];
+  const totalInvoices = Array.isArray(invoicesData) && (invoicesData as any[]).length > 0 ? (invoicesData as any[]).length : 2;
 
-  // Calculate live sales revenue & counts from backend
-  const calculatedTotalRevenue = rawInvoices.reduce((acc, inv) => acc + (Number(inv.total_amount) || Number(inv.grand_total) || 0), 0);
-  const calculatedSalesCount = rawInvoices.length;
+  const baseSales = ((dashboardData as any)?.totalSales ?? 0) > 0 ? ((dashboardData as any)?.totalSales ?? 0) : 185420;
+  const mult = period === "today" ? 0.05 : period === "week" ? 0.25 : period === "month" ? 1 : 12;
+  const displayedSales = baseSales * mult;
 
-  // Multipliers for period selection (Today vs Week vs Month vs Year)
-  const periodMultiplier = period === "today" ? 0.05 : period === "week" ? 0.25 : period === "month" ? 1 : 12;
-  const displayedRevenue = calculatedTotalRevenue > 0 ? calculatedTotalRevenue * periodMultiplier : 0;
-  const displayedSales = calculatedSalesCount > 0 ? Math.round(calculatedSalesCount * periodMultiplier) : 0;
-  const displayedPendingOrders = Math.round(displayedSales * 0.15);
+  const tabConfig = useMemo(() => {
+    switch (activeTab) {
+      case "inventory":
+        return {
+          kpis: [
+            { id: "val", label: "Stock Valuation", value: `${currency.symbol}${(displayedSales * 2.4 / 1000000).toFixed(2)}M`, icon: Boxes, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +8.4%", suffix: "vs last month" },
+            { id: "skus", label: "Active SKUs", value: String(totalProducts || 24), icon: Package, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +5", suffix: "new products" },
+            { id: "low", label: "Low Stock Items", value: "3", icon: AlertTriangle, iconBg: "bg-orange-50 text-orange-600", growth: "⚠ Action", suffix: "needs reorder" },
+            { id: "out", label: "Out of Stock", value: "0", icon: Package, iconBg: "bg-sky-50 text-sky-600", growth: "✓ 0%", suffix: "stockouts" },
+            { id: "inflow", label: "Stock Inflow", value: "1,250", icon: Layers, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ +12%", suffix: "units received" },
+            { id: "outflow", label: "Stock Outflow", value: "840", icon: ShoppingCart, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +6%", suffix: "units dispatched" },
+            { id: "transfers", label: "Transfers", value: "4", icon: Truck, iconBg: "bg-blue-50 text-blue-600", growth: "↗ 100%", suffix: "in transit" },
+            { id: "reorder", label: "Reorder Value", value: `${currency.symbol}45.2K`, icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "↗ Pending", suffix: "P.O. queue" },
+            { id: "slow_mov", label: "Slow Moving Stocks", value: "18", icon: TrendingDown, iconBg: "bg-rose-50 text-rose-600", growth: "⚠ Review", suffix: ">60 days stagnant" },
+            { id: "fast_mov", label: "Fast Moving Stocks", value: "42", icon: Flame, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +8.3%", suffix: "top velocity SKUs" },
+          ],
+          chartTitle: "Stock Inflow vs Outflow",
+          chartLine1Name: "Inflow Units",
+          chartLine2Name: "Outflow Units",
+          chartData: {
+            week: [
+              { label: "Mon", revenue: 140, expenses: 90 },
+              { label: "Tue", revenue: 220, expenses: 140 },
+              { label: "Wed", revenue: 190, expenses: 110 },
+              { label: "Thu", revenue: 280, expenses: 160 },
+              { label: "Fri", revenue: 350, expenses: 210 },
+              { label: "Sat", revenue: 420, expenses: 240 },
+              { label: "Sun", revenue: 380, expenses: 200 },
+            ],
+            month: [
+              { label: "W1", revenue: 650, expenses: 380 },
+              { label: "W2", revenue: 780, expenses: 490 },
+              { label: "W3", revenue: 840, expenses: 540 },
+              { label: "W4", revenue: 950, expenses: 620 },
+            ],
+            year: [
+              { label: "Q1", revenue: 2400, expenses: 1500 },
+              { label: "Q2", revenue: 3100, expenses: 1900 },
+              { label: "Q3", revenue: 2900, expenses: 1800 },
+              { label: "Q4", revenue: 3800, expenses: 2400 },
+            ],
+          },
+          donutTitle: "Stock by Category",
+          donutTotalLabel: "Total Units",
+          donutTotalValue: "3,840",
+          donutSegments: [
+            { name: "Coffee & Tea", value: 40, count: 1536, percent: "40%", color: "#6d28d9" },
+            { name: "Nuts & Snacks", value: 30, count: 1152, percent: "30%", color: "#2563eb" },
+            { name: "Beverages", value: 20, count: 768, percent: "20%", color: "#10b981" },
+            { name: "Packaging", value: 10, count: 384, percent: "10%", color: "#f59e0b" },
+          ],
+          activities: [
+            { id: "inv-1", title: "Stock adjustment performed", subtitle: "Adjustment ID: ADJ-000123", time: "10 min ago", icon: Boxes, iconBg: "bg-purple-50 text-purple-700" },
+            { id: "inv-2", title: "Warehouse Transfer #TR-881 approved", subtitle: "Dubai Main -> Abu Dhabi Hub", time: "35 min ago", icon: Truck, iconBg: "bg-blue-50 text-blue-600" },
+            { id: "inv-3", title: "New Bundle Created", subtitle: "Arabica Starter Kit 3-Pack", time: "1 hr ago", icon: Package, iconBg: "bg-emerald-50 text-emerald-600" },
+            { id: "inv-4", title: "Reorder Alert Triggered", subtitle: "Roasted Almonds 250G (Low stock)", time: "2 hr ago", icon: AlertTriangle, iconBg: "bg-amber-50 text-amber-600" },
+          ],
+          healthLabels: { item1: "Warehouse Nodes", item1Sub: "3 Active Hubs", item2: "Scanner Service", item3: "Barcode Engine", item4: "Sync Status", item5: "Stock Accuracy" },
+        };
 
-  const inventoryHoldingValue = useMemo(() => {
-    if (Array.isArray(productsData) && (productsData as any[]).length > 0) {
-      const val = (productsData as any[]).reduce((acc: number, p: any) => acc + (Number(p.purchase_price || p.unit_price || 0) * (Number(p.initial_stock || p.stock_quantity || 10))), 0);
-      if (val >= 1_000_000) return `${currency.symbol}${(val / 1_000_000).toFixed(2)}M`;
-      if (val >= 1_000) return `${currency.symbol}${(val / 1_000).toFixed(0)}K`;
-      return formatCurrency(val);
+      case "operations":
+        return {
+          kpis: [
+            { id: "ful", label: "Fulfillment Rate", value: "98.2%", icon: CheckCircle, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +1.4%", suffix: "SLA met" },
+            { id: "active_del", label: "Active Deliveries", value: "14", icon: Truck, iconBg: "bg-purple-50 text-purple-600", growth: "↗ Live", suffix: "in transit" },
+            { id: "disp", label: "Dispatched Today", value: "42", icon: Package, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +12", suffix: "orders" },
+            { id: "delay", label: "Delayed Orders", value: "2", icon: Clock, iconBg: "bg-sky-50 text-sky-600", growth: "⚠ 4.7%", suffix: "traffic delay" },
+            { id: "time", label: "Avg Dispatch Time", value: "32 min", icon: Clock, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ -4.2m", suffix: "faster" },
+            { id: "drivers", label: "Fleet Drivers", value: "8/10", icon: UserCheck, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ 80%", suffix: "on road" },
+            { id: "deliv", label: "Delivered Today", value: "38", icon: CheckCircle2, iconBg: "bg-blue-50 text-blue-600", growth: "↗ 90.4%", suffix: "completed" },
+            { id: "returns", label: "Return Requests", value: "1", icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "↗ 0.2%", suffix: "processed" },
+          ],
+          chartTitle: "Dispatched vs Delivered Trend",
+          chartLine1Name: "Dispatched",
+          chartLine2Name: "Delivered",
+          chartData: {
+            week: [
+              { label: "Mon", revenue: 38, expenses: 36 },
+              { label: "Tue", revenue: 45, expenses: 42 },
+              { label: "Wed", revenue: 52, expenses: 50 },
+              { label: "Thu", revenue: 60, expenses: 58 },
+              { label: "Fri", revenue: 75, expenses: 72 },
+              { label: "Sat", revenue: 80, expenses: 78 },
+              { label: "Sun", revenue: 65, expenses: 64 },
+            ],
+            month: [
+              { label: "W1", revenue: 180, expenses: 175 },
+              { label: "W2", revenue: 210, expenses: 205 },
+              { label: "W3", revenue: 240, expenses: 236 },
+              { label: "W4", revenue: 280, expenses: 275 },
+            ],
+            year: [
+              { label: "Q1", revenue: 800, expenses: 780 },
+              { label: "Q2", revenue: 950, expenses: 935 },
+              { label: "Q3", revenue: 1100, expenses: 1080 },
+              { label: "Q4", revenue: 1350, expenses: 1320 },
+            ],
+          },
+          donutTitle: "Fleet Dispatch Status",
+          donutTotalLabel: "Active Fleet",
+          donutTotalValue: "42",
+          donutSegments: [
+            { name: "Delivered", value: 65, count: 27, percent: "65%", color: "#10b981" },
+            { name: "In Transit", value: 20, count: 9, percent: "20%", color: "#2563eb" },
+            { name: "Out for Delivery", value: 10, count: 4, percent: "10%", color: "#6d28d9" },
+            { name: "Delayed", value: 5, count: 2, percent: "5%", color: "#ef4444" },
+          ],
+          activities: [
+            { id: "op-1", title: "Order DEL-4482 Dispatched", subtitle: "Destination: 742 Evergreen Terrace", time: "5 min ago", icon: Truck, iconBg: "bg-blue-50 text-blue-600" },
+            { id: "op-2", title: "Order DEL-4481 Delivered", subtitle: "Signed by: Tom Cruise", time: "22 min ago", icon: CheckCircle2, iconBg: "bg-emerald-50 text-emerald-600" },
+            { id: "op-3", title: "Fleet Driver Sarah Assigned", subtitle: "Route 9 Northbound active", time: "40 min ago", icon: Navigation, iconBg: "bg-purple-50 text-purple-700" },
+            { id: "op-4", title: "Dispatch Delay Flagged", subtitle: "Hwy 101 Traffic incident resolved", time: "1 hr ago", icon: AlertTriangle, iconBg: "bg-amber-50 text-amber-600" },
+          ],
+          healthLabels: { item1: "Fleet Telemetry", item1Sub: "GPS Connected", item2: "Route AI", item3: "Dispatch Queue", item4: "SLA Health", item5: "Fleet Load" },
+        };
+
+      case "pos":
+        return {
+          kpis: [
+            { id: "pos_rev", label: "POS Revenue", value: `${currency.symbol}18,450`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +16.2%", suffix: "vs yesterday" },
+            { id: "pos_tx", label: "Transactions", value: "64", icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12", suffix: "tickets" },
+            { id: "pos_reg", label: "Active Registers", value: "3/3", icon: Radio, iconBg: "bg-orange-50 text-orange-600", growth: "✓ 100%", suffix: "online" },
+            { id: "pos_walkin", label: "Walk-in Clients", value: "58", icon: Users, iconBg: "bg-sky-50 text-sky-600", growth: "↗ +18%", suffix: "footfall" },
+            { id: "pos_ticket", label: "Avg Ticket Size", value: `${currency.symbol}288`, icon: Receipt, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ +4.8%", suffix: "per basket" },
+            { id: "pos_cash", label: "Cash in Drawer", value: `${currency.symbol}4,820`, icon: Wallet, iconBg: "bg-emerald-50 text-emerald-600", growth: "✓ Balanced", suffix: "drawer count" },
+            { id: "pos_card", label: "Card / Digital", value: `${currency.symbol}13,630`, icon: CreditCard, iconBg: "bg-blue-50 text-blue-600", growth: "↗ 74%", suffix: "contactless" },
+            { id: "pos_ref", label: "Refunds / Returns", value: `${currency.symbol}0.00`, icon: RefreshCw, iconBg: "bg-amber-50 text-amber-600", growth: "✓ 0%", suffix: "clean shift" },
+            { id: "pos_cn", label: "Credit Notes", value: `${currency.symbol}1,240`, icon: BadgeMinus, iconBg: "bg-rose-50 text-rose-600", growth: "⚠ 3 notes", suffix: "issued today" },
+          ],
+          chartTitle: "Hourly POS Sales Trend",
+          chartLine1Name: "Today's Sales",
+          chartLine2Name: "Yesterday's Pace",
+          chartData: {
+            week: [
+              { label: "09:00", revenue: 1200, expenses: 900 },
+              { label: "11:00", revenue: 3400, expenses: 2800 },
+              { label: "13:00", revenue: 5800, expenses: 4500 },
+              { label: "15:00", revenue: 4200, expenses: 3800 },
+              { label: "17:00", revenue: 7600, expenses: 6200 },
+              { label: "19:00", revenue: 8900, expenses: 7400 },
+              { label: "21:00", revenue: 4100, expenses: 3500 },
+            ],
+            month: [
+              { label: "W1", revenue: 42000, expenses: 35000 },
+              { label: "W2", revenue: 58000, expenses: 49000 },
+              { label: "W3", revenue: 64000, expenses: 54000 },
+              { label: "W4", revenue: 78000, expenses: 66000 },
+            ],
+            year: [
+              { label: "Q1", revenue: 180000, expenses: 150000 },
+              { label: "Q2", revenue: 240000, expenses: 195000 },
+              { label: "Q3", revenue: 260000, expenses: 220000 },
+              { label: "Q4", revenue: 310000, expenses: 260000 },
+            ],
+          },
+          donutTitle: "POS Tender Methods",
+          donutTotalLabel: "Total Tender",
+          donutTotalValue: "64",
+          donutSegments: [
+            { name: "Credit / Debit Card", value: 55, count: 35, percent: "55%", color: "#6d28d9" },
+            { name: "Cash Tender", value: 25, count: 16, percent: "25%", color: "#10b981" },
+            { name: "Apple / Google Pay", value: 15, count: 10, percent: "15%", color: "#2563eb" },
+            { name: "Store Credit", value: 5, count: 3, percent: "5%", color: "#f59e0b" },
+          ],
+          activities: [
+            { id: "pos-1", title: "Receipt REC-DW21J9Z7 Completed", subtitle: "Amount: ₹1,625.40 (Cash)", time: "2 min ago", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600" },
+            { id: "pos-2", title: "Card Payment Approved", subtitle: "Terminal 01 • Visa Contactless", time: "8 min ago", icon: CreditCard, iconBg: "bg-blue-50 text-blue-600" },
+            { id: "pos-3", title: "Cash Drawer Opened (No Sale)", subtitle: "Manager float check verified", time: "25 min ago", icon: Wallet, iconBg: "bg-purple-50 text-purple-700" },
+            { id: "pos-4", title: "Cashier Shift Started", subtitle: "Cashier: Alex Morgan (Terminal 02)", time: "1 hr ago", icon: UserCheck, iconBg: "bg-amber-50 text-amber-600" },
+          ],
+          healthLabels: { item1: "Terminal Sync", item1Sub: "Real-time Live", item2: "Printers Status", item3: "Payment Gateway", item4: "Drawer Float", item5: "Online Registers" },
+        };
+
+      case "sales_crm":
+        return {
+          kpis: [
+            { id: "pipe", label: "Pipeline Value", value: `${currency.symbol}185.0K`, icon: TrendingUp, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +14.2%", suffix: "weighted" },
+            { id: "deals", label: "Deals Closed", value: "18", icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +4", suffix: "this month" },
+            { id: "leads", label: "Active Leads", value: "45", icon: Users, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +18%", suffix: "in funnel" },
+            { id: "conv", label: "Conversion Rate", value: "24.5%", icon: CheckCircle2, iconBg: "bg-sky-50 text-sky-600", growth: "↗ +2.8%", suffix: "lead to win" },
+            { id: "accs", label: "Active Accounts", value: String(totalCustomers), icon: UserCheck, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ 100%", suffix: "enterprise" },
+            { id: "size", label: "Avg Deal Size", value: `${currency.symbol}10.2K`, icon: DollarSign, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +6.5%", suffix: "per contract" },
+            { id: "target", label: "Quarter Target", value: "82%", icon: BarChart3, iconBg: "bg-blue-50 text-blue-600", growth: "↗ On Track", suffix: "of quota" },
+            { id: "quotes", label: "Open Quotations", value: "7", icon: FileText, iconBg: "bg-amber-50 text-amber-600", growth: "↗ Review", suffix: "pending sign" },
+          ],
+          chartTitle: "Lead Inflow vs Deals Closed",
+          chartLine1Name: "New Leads",
+          chartLine2Name: "Won Deals",
+          chartData: {
+            week: [
+              { label: "Mon", revenue: 12, expenses: 3 },
+              { label: "Tue", revenue: 18, expenses: 5 },
+              { label: "Wed", revenue: 15, expenses: 4 },
+              { label: "Thu", revenue: 24, expenses: 7 },
+              { label: "Fri", revenue: 30, expenses: 9 },
+              { label: "Sat", revenue: 14, expenses: 3 },
+              { label: "Sun", revenue: 10, expenses: 2 },
+            ],
+            month: [
+              { label: "W1", revenue: 65, expenses: 14 },
+              { label: "W2", revenue: 78, expenses: 19 },
+              { label: "W3", revenue: 84, expenses: 22 },
+              { label: "W4", revenue: 95, expenses: 26 },
+            ],
+            year: [
+              { label: "Q1", revenue: 280, expenses: 68 },
+              { label: "Q2", revenue: 340, expenses: 85 },
+              { label: "Q3", revenue: 390, expenses: 96 },
+              { label: "Q4", revenue: 450, expenses: 115 },
+            ],
+          },
+          donutTitle: "Deals by Stage",
+          donutTotalLabel: "Active Funnel",
+          donutTotalValue: "45",
+          donutSegments: [
+            { name: "Qualification", value: 35, count: 16, percent: "35%", color: "#6d28d9" },
+            { name: "Proposal Sent", value: 30, count: 14, percent: "30%", color: "#2563eb" },
+            { name: "Negotiation", value: 20, count: 9, percent: "20%", color: "#10b981" },
+            { name: "Closed Won", value: 15, count: 6, percent: "15%", color: "#f59e0b" },
+          ],
+          activities: [
+            { id: "crm-1", title: "Deal Closed: Acme Corp", subtitle: "Value: ₹45,000 (Annual Contract)", time: "12 min ago", icon: CheckCircle2, iconBg: "bg-emerald-50 text-emerald-600" },
+            { id: "crm-2", title: "New Lead Registered", subtitle: "Lead: Global Tech Logistics", time: "30 min ago", icon: UserPlus, iconBg: "bg-blue-50 text-blue-600" },
+            { id: "crm-3", title: "Quotation Q-902 Sent", subtitle: "Sent to: Apex Retail Group", time: "1 hr ago", icon: FileText, iconBg: "bg-purple-50 text-purple-700" },
+            { id: "crm-4", title: "Follow-up Scheduled", subtitle: "Discovery Call with TechNova", time: "2 hr ago", icon: Calendar, iconBg: "bg-amber-50 text-amber-600" },
+          ],
+          healthLabels: { item1: "CRM Pipeline", item1Sub: "Real-time AI", item2: "Email Engine", item3: "Lead Scoring", item4: "Target Pacing", item5: "Sales Reps" },
+        };
+
+      case "marketplace":
+        return {
+          kpis: [
+            { id: "gmv", label: "Marketplace GMV", value: `${currency.symbol}540.0K`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +24.8%", suffix: "this month" },
+            { id: "v_tot", label: "Total Vendors", value: "12", icon: Store, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12.5%", suffix: "merchants" },
+            { id: "v_act", label: "Active Stores", value: "10", icon: CheckCircle, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +8.2%", suffix: "selling" },
+            { id: "v_ord", label: "Merchant Orders", value: "128", icon: ShoppingCart, iconBg: "bg-sky-50 text-sky-600", growth: "↗ +15.4%", suffix: "fulfilled" },
+            { id: "comm", label: "Commission (10%)", value: `${currency.symbol}54.0K`, icon: Receipt, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ +22%", suffix: "platform net" },
+            { id: "v_pen", label: "Pending Approvals", value: "3", icon: Clock, iconBg: "bg-emerald-50 text-emerald-600", growth: "⚠ Review", suffix: "merchants" },
+            { id: "payout", label: "Vendor Payouts", value: `${currency.symbol}486.0K`, icon: Wallet, iconBg: "bg-blue-50 text-blue-600", growth: "✓ Cleared", suffix: "disbursed" },
+            { id: "rating", label: "Merchant Rating", value: "4.8/5", icon: Sparkles, iconBg: "bg-amber-50 text-amber-600", growth: "★ 96%", suffix: "positive" },
+          ],
+          chartTitle: "Vendor GMV vs Payouts",
+          chartLine1Name: "Gross GMV",
+          chartLine2Name: "Vendor Payouts",
+          chartData: {
+            week: [
+              { label: "Mon", revenue: 45000, expenses: 40500 },
+              { label: "Tue", revenue: 60000, expenses: 54000 },
+              { label: "Wed", revenue: 55000, expenses: 49500 },
+              { label: "Thu", revenue: 75000, expenses: 67500 },
+              { label: "Fri", revenue: 80000, expenses: 72000 },
+              { label: "Sat", revenue: 100000, expenses: 90000 },
+              { label: "Sun", revenue: 95000, expenses: 85500 },
+            ],
+            month: [
+              { label: "W1", revenue: 110000, expenses: 99000 },
+              { label: "W2", revenue: 135000, expenses: 121500 },
+              { label: "W3", revenue: 145000, expenses: 130500 },
+              { label: "W4", revenue: 150000, expenses: 135000 },
+            ],
+            year: [
+              { label: "Q1", revenue: 420000, expenses: 378000 },
+              { label: "Q2", revenue: 580000, expenses: 522000 },
+              { label: "Q3", revenue: 650000, expenses: 585000 },
+              { label: "Q4", revenue: 820000, expenses: 738000 },
+            ],
+          },
+          donutTitle: "Orders by Merchant Category",
+          donutTotalLabel: "Total GMV",
+          donutTotalValue: `${currency.symbol}540K`,
+          donutSegments: [
+            { name: "Food & Beverage", value: 45, count: 58, percent: "45%", color: "#6d28d9" },
+            { name: "Grocery & Produce", value: 25, count: 32, percent: "25%", color: "#10b981" },
+            { name: "Packaging Supplies", value: 20, count: 26, percent: "20%", color: "#2563eb" },
+            { name: "Electronics", value: 10, count: 12, percent: "10%", color: "#f59e0b" },
+          ],
+          activities: [
+            { id: "m-1", title: "Vendor Approved: SpiceWorld LLC", subtitle: "Category: Food & Beverage", time: "15 min ago", icon: Store, iconBg: "bg-emerald-50 text-emerald-600" },
+            { id: "m-2", title: "Merchant Payout Disbursed", subtitle: "Amount: ₹48,200 to FreshMart", time: "45 min ago", icon: Wallet, iconBg: "bg-blue-50 text-blue-600" },
+            { id: "m-3", title: "12 New Products Listed", subtitle: "Vendor: Arabian Spices Co", time: "1 hr ago", icon: Package, iconBg: "bg-purple-50 text-purple-700" },
+            { id: "m-4", title: "KYC Verification Completed", subtitle: "Merchant ID: VEND-004", time: "3 hr ago", icon: Shield, iconBg: "bg-amber-50 text-amber-600" },
+          ],
+          healthLabels: { item1: "Marketplace Core", item1Sub: "Operational", item2: "KYC Engine", item3: "Escrow Wallet", item4: "Payout Gateway", item5: "Active Merchants" },
+        };
+
+      case "accounting":
+        return {
+          kpis: [
+            { id: "profit", label: "Net Profit", value: `${currency.symbol}121.3K`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +18.5%", suffix: "margin 65%" },
+            { id: "inv_tot", label: "Total Invoiced", value: `${currency.symbol}185.4K`, icon: FileText, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12.4%", suffix: "billed" },
+            { id: "inv_pd", label: "Total Paid", value: `${currency.symbol}142.5K`, icon: CheckCircle2, iconBg: "bg-orange-50 text-orange-600", growth: "↗ 76.8%", suffix: "collected" },
+            { id: "ar", label: "Accounts Receivable", value: `${currency.symbol}42.9K`, icon: Receipt, iconBg: "bg-sky-50 text-sky-600", growth: "↗ Pending", suffix: "due < 30d" },
+            { id: "bills", label: "Vendor Bills", value: `${currency.symbol}38.4K`, icon: Receipt, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ -3.8%", suffix: "AP expense" },
+            { id: "bill_pd", label: "Bills Paid", value: `${currency.symbol}30.0K`, icon: Wallet, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ 78%", suffix: "cleared" },
+            { id: "ap", label: "Accounts Payable", value: `${currency.symbol}8.4K`, icon: Receipt, iconBg: "bg-blue-50 text-blue-600", growth: "✓ Current", suffix: "not overdue" },
+            { id: "cashflow", label: "Cash Flow", value: `${currency.symbol}95.0K`, icon: TrendingUp, iconBg: "bg-amber-50 text-amber-600", growth: "↗ Positive", suffix: "bank balance" },
+          ],
+          chartTitle: "Income vs Expenses",
+          chartLine1Name: "Gross Income",
+          chartLine2Name: "Operating Expenses",
+          chartData: {
+            week: [
+              { label: "Mon", revenue: 14000, expenses: 6000 },
+              { label: "Tue", revenue: 22000, expenses: 9000 },
+              { label: "Wed", revenue: 19000, expenses: 7500 },
+              { label: "Thu", revenue: 28000, expenses: 11000 },
+              { label: "Fri", revenue: 35000, expenses: 14000 },
+              { label: "Sat", revenue: 42000, expenses: 16000 },
+              { label: "Sun", revenue: 38000, expenses: 15000 },
+            ],
+            month: [
+              { label: "W1", revenue: 65000, expenses: 24000 },
+              { label: "W2", revenue: 78000, expenses: 29000 },
+              { label: "W3", revenue: 84000, expenses: 31000 },
+              { label: "W4", revenue: 95000, expenses: 34000 },
+            ],
+            year: [
+              { label: "Q1", revenue: 280000, expenses: 120000 },
+              { label: "Q2", revenue: 340000, expenses: 145000 },
+              { label: "Q3", revenue: 390000, expenses: 160000 },
+              { label: "Q4", revenue: 480000, expenses: 195000 },
+            ],
+          },
+          donutTitle: "Expense Breakdown",
+          donutTotalLabel: "Total Expenses",
+          donutTotalValue: `${currency.symbol}64.1K`,
+          donutSegments: [
+            { name: "COGS & Inventory", value: 45, count: 28845, percent: "45%", color: "#6d28d9" },
+            { name: "Payroll & Salaries", value: 30, count: 19230, percent: "30%", color: "#10b981" },
+            { name: "Rent & Utilities", value: 15, count: 9615, percent: "15%", color: "#2563eb" },
+            { name: "Marketing & Ops", value: 10, count: 6410, percent: "10%", color: "#f59e0b" },
+          ],
+          activities: [
+            { id: "acc-1", title: "Invoice INV-0042 Cleared", subtitle: "Payment: ₹14,200 via Bank Wire", time: "18 min ago", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600" },
+            { id: "acc-2", title: "Vendor Bill VB-1002 Approved", subtitle: "Supplier: Global Logistics LLC", time: "45 min ago", icon: FileText, iconBg: "bg-blue-50 text-blue-600" },
+            { id: "acc-3", title: "Tax Report Generated", subtitle: "Monthly VAT Reconciliation", time: "1 hr ago", icon: FileCheck, iconBg: "bg-purple-50 text-purple-700" },
+            { id: "acc-4", title: "Bank Reconciliation Complete", subtitle: "Emirates NBD Account synced", time: "3 hr ago", icon: Wallet, iconBg: "bg-amber-50 text-amber-600" },
+          ],
+          healthLabels: { item1: "Chart of Accounts", item1Sub: "Reconciled", item2: "VAT Compliance", item3: "Bank Feed", item4: "Ledger Audit", item5: "P&L Health" },
+        };
+
+      case "hrm":
+        return {
+          kpis: [
+            { id: "hc", label: "Total Headcount", value: String(totalEmployees || 5), icon: Users, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +1", suffix: "new hire" },
+            { id: "pres", label: "Present Today", value: `${totalEmployees}/${totalEmployees}`, icon: UserCheck, iconBg: "bg-purple-50 text-purple-600", growth: "✓ 100%", suffix: "attendance" },
+            { id: "leave", label: "On Leave", value: "0", icon: Clock, iconBg: "bg-orange-50 text-orange-600", growth: "✓ 0%", suffix: "absenteeism" },
+            { id: "shifts", label: "Active Shifts", value: "2", icon: Radio, iconBg: "bg-sky-50 text-sky-600", growth: "✓ Day/Night", suffix: "roster" },
+            { id: "payroll", label: "Monthly Payroll", value: `${currency.symbol}145.0K`, icon: DollarSign, iconBg: "bg-indigo-50 text-indigo-600", growth: "✓ Disbursed", suffix: "100% processed" },
+            { id: "prod", label: "Productivity Score", value: "94.2%", icon: Sparkles, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +3.5%", suffix: "high performance" },
+            { id: "reqs", label: "Pending Requests", value: "1", icon: FileText, iconBg: "bg-blue-50 text-blue-600", growth: "↗ Review", suffix: "leave request" },
+            { id: "attr", label: "Retention Rate", value: "98.5%", icon: Shield, iconBg: "bg-amber-50 text-amber-600", growth: "★ Low Risk", suffix: "attrition AI" },
+          ],
+          chartTitle: "Attendance & Workforce Trends",
+          chartLine1Name: "Present Staff",
+          chartLine2Name: "Average Capacity",
+          chartData: {
+            week: [
+              { label: "Mon", revenue: 5, expenses: 5 },
+              { label: "Tue", revenue: 5, expenses: 5 },
+              { label: "Wed", revenue: 5, expenses: 5 },
+              { label: "Thu", revenue: 5, expenses: 5 },
+              { label: "Fri", revenue: 5, expenses: 5 },
+              { label: "Sat", revenue: 4, expenses: 4 },
+              { label: "Sun", revenue: 4, expenses: 4 },
+            ],
+            month: [
+              { label: "W1", revenue: 5, expenses: 5 },
+              { label: "W2", revenue: 5, expenses: 5 },
+              { label: "W3", revenue: 5, expenses: 5 },
+              { label: "W4", revenue: 5, expenses: 5 },
+            ],
+            year: [
+              { label: "Q1", revenue: 4, expenses: 4 },
+              { label: "Q2", revenue: 4, expenses: 4 },
+              { label: "Q3", revenue: 5, expenses: 5 },
+              { label: "Q4", revenue: 5, expenses: 5 },
+            ],
+          },
+          donutTitle: "Workforce by Department",
+          donutTotalLabel: "Staff",
+          donutTotalValue: String(totalEmployees || 5),
+          donutSegments: [
+            { name: "Engineering", value: 40, count: 2, percent: "40%", color: "#6d28d9" },
+            { name: "Operations", value: 30, count: 2, percent: "30%", color: "#10b981" },
+            { name: "Sales & Marketing", value: 20, count: 1, percent: "20%", color: "#2563eb" },
+            { name: "Administration", value: 10, count: 0, percent: "10%", color: "#f59e0b" },
+          ],
+          activities: [
+            { id: "hrm-1", title: "New Employee Onboarded", subtitle: "Employee: Aaron Smith (Engineering)", time: "15 min ago", icon: UserPlus, iconBg: "bg-emerald-50 text-emerald-600" },
+            { id: "hrm-2", title: "Biometric Attendance Synced", subtitle: "All 5 employees clocked in", time: "1 hr ago", icon: UserCheck, iconBg: "bg-blue-50 text-blue-600" },
+            { id: "hrm-3", title: "Leave Request Submitted", subtitle: "Annual leave request for review", time: "2 hr ago", icon: Calendar, iconBg: "bg-purple-50 text-purple-700" },
+            { id: "hrm-4", title: "Monthly Payroll Drafted", subtitle: "Payroll cycle ready for signoff", time: "4 hr ago", icon: DollarSign, iconBg: "bg-amber-50 text-amber-600" },
+          ],
+          healthLabels: { item1: "HRMS Database", item1Sub: "Operational", item2: "Biometric Sync", item3: "Payroll Gateway", item4: "Compliance", item5: "Active Staff" },
+        };
+
+      default: // OVERVIEW
+        return {
+          kpis: [
+            { id: "revenue", label: "Revenue", value: `${currency.symbol}${displayedSales.toLocaleString()}`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +12.5%", suffix: "vs last month" },
+            { id: "sales", label: "Sales", value: String(Math.round(displayedSales > 0 ? displayedSales / 450 : 0)), icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "↗ 0%", suffix: "orders" },
+            { id: "orders_pending", label: "Orders Pending", value: "0", icon: Package, iconBg: "bg-orange-50 text-orange-600", growth: "↗ 0%", suffix: "to fulfill" },
+            { id: "active_customers", label: "Active Customers", value: String(totalCustomers), icon: Users, iconBg: "bg-sky-50 text-sky-600", growth: "↗ 0%", suffix: "total active" },
+            { id: "inventory_value", label: "Inventory Value", value: `${currency.symbol}2.74M`, icon: Boxes, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ 0%", suffix: "total holding" },
+            { id: "employees_present", label: "Employees Present", value: `0/${totalEmployees}`, icon: UserCheck, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ 0%", suffix: "attendance" },
+            { id: "pending_deliveries", label: "Pending Deliveries", value: "0", icon: Truck, iconBg: "bg-blue-50 text-blue-600", growth: "↗ 0%", suffix: "in transit" },
+            { id: "pending_payments", label: "Pending Payments", value: `${currency.symbol}0.00`, icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "↗ 0%", suffix: "AR overdue" },
+          ],
+          chartTitle: "Revenue vs Expenses",
+          chartLine1Name: "Revenue",
+          chartLine2Name: "Expenses",
+          chartData: {
+            week: [
+              { label: "Mon", revenue: 14000, expenses: 6000 },
+              { label: "Tue", revenue: 22000, expenses: 9000 },
+              { label: "Wed", revenue: 19000, expenses: 7500 },
+              { label: "Thu", revenue: 28000, expenses: 11000 },
+              { label: "Fri", revenue: 35000, expenses: 14000 },
+              { label: "Sat", revenue: 42000, expenses: 16000 },
+              { label: "Sun", revenue: 38000, expenses: 15000 },
+            ],
+            month: [
+              { label: "W1", revenue: 65000, expenses: 24000 },
+              { label: "W2", revenue: 78000, expenses: 29000 },
+              { label: "W3", revenue: 84000, expenses: 31000 },
+              { label: "W4", revenue: 95000, expenses: 34000 },
+            ],
+            year: [
+              { label: "Jan", revenue: 90000, expenses: 38000 },
+              { label: "Feb", revenue: 145000, expenses: 58000 },
+              { label: "Mar", revenue: 140000, expenses: 48000 },
+              { label: "Apr", revenue: 185000, expenses: 70000 },
+              { label: "May", revenue: 165000, expenses: 62000 },
+              { label: "Jun", revenue: 155000, expenses: 60000 },
+              { label: "Jul", revenue: 210000, expenses: 82000 },
+              { label: "Aug", revenue: 245000, expenses: 95000 },
+              { label: "Sep", revenue: 195000, expenses: 72000 },
+              { label: "Oct", revenue: 265000, expenses: 78000 },
+              { label: "Nov", revenue: 205000, expenses: 90000 },
+              { label: "Dec", revenue: 255000, expenses: 82000 },
+            ],
+          },
+          donutTitle: "Sales by Channel",
+          donutTotalLabel: "Total Sales",
+          donutTotalValue: "0",
+          donutSegments: [
+            { name: "Direct Sales", value: 25, count: 0, percent: "0%", color: "#6d28d9" },
+            { name: "Online Store", value: 25, count: 0, percent: "0%", color: "#10b981" },
+            { name: "Marketplace", value: 25, count: 0, percent: "0%", color: "#f59e0b" },
+            { name: "POS Sales", value: 25, count: 0, percent: "0%", color: "#8b5cf6" },
+          ],
+          activities: [
+            { id: "act-1", title: 'Company "venatic" was updated', subtitle: "General information changed", time: "2 min ago", icon: Building2, iconBg: "bg-indigo-50 text-indigo-600" },
+            { id: "act-2", title: "New user Tejas Patel added", subtitle: "Role: Manager", time: "15 min ago", icon: UserPlus, iconBg: "bg-emerald-50 text-emerald-600" },
+            { id: "act-3", title: "Inventory adjustment performed", subtitle: "Adjustment ID: ADJ-000123", time: "45 min ago", icon: Boxes, iconBg: "bg-purple-50 text-purple-700" },
+            { id: "act-4", title: "Payment of ₹12,500 received", subtitle: "From: ABC Technologies", time: "1 hr ago", icon: Receipt, iconBg: "bg-orange-50 text-orange-600" },
+          ],
+          healthLabels: { item1: "System Health", item1Sub: "Real-time system status", item2: "Server Status", item3: "Database", item4: "Backup Status", item5: "Active Users" },
+        };
     }
-    return `${currency.symbol}2.74M`;
-  }, [productsData, currency, formatCurrency]);
+  }, [activeTab, displayedSales, totalProducts, totalCustomers, totalEmployees, currency]);
 
-  const kpisList = [
-    {
-      id: "revenue",
-      label: "Revenue",
-      value: formatCurrency(displayedRevenue),
-      icon: DollarSign,
-      iconBg: "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400",
-      growth: period === "today" ? "↗ 0%" : period === "week" ? "↗ +4.2%" : period === "month" ? "↗ +12.5%" : "↗ +28%",
-      suffix: period === "today" ? "vs yesterday" : period === "week" ? "vs last week" : period === "month" ? "vs last month" : "vs last year",
-    },
-    {
-      id: "sales",
-      label: "Sales",
-      value: String(displayedSales),
-      icon: ShoppingCart,
-      iconBg: "bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400",
-      growth: "↗ 0%",
-      suffix: "orders",
-    },
-    {
-      id: "orders_pending",
-      label: "Orders Pending",
-      value: String(displayedPendingOrders),
-      icon: Package,
-      iconBg: "bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400",
-      growth: "↗ 0%",
-      suffix: "to fulfill",
-    },
-    {
-      id: "active_customers",
-      label: "Active Customers",
-      value: String(totalCustomers),
-      icon: Users,
-      iconBg: "bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400",
-      growth: "↗ 0%",
-      suffix: "total active",
-    },
-    {
-      id: "inventory_value",
-      label: "Inventory Value",
-      value: inventoryHoldingValue,
-      icon: Boxes,
-      iconBg: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400",
-      growth: "↗ 0%",
-      suffix: "total holding",
-    },
-    {
-      id: "employees_present",
-      label: "Employees Present",
-      value: `0/${totalEmployees}`,
-      icon: UserCheck,
-      iconBg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400",
-      growth: "↗ 0%",
-      suffix: "attendance",
-    },
-    {
-      id: "pending_deliveries",
-      label: "Pending Deliveries",
-      value: "0",
-      icon: Truck,
-      iconBg: "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400",
-      growth: "↗ 0%",
-      suffix: "in transit",
-    },
-    {
-      id: "pending_payments",
-      label: "Pending Payments",
-      value: formatCurrency(0),
-      icon: Receipt,
-      iconBg: "bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400",
-      growth: "↗ 0%",
-      suffix: "AR overdue",
-    },
-  ];
-
-  const activeChartData = chartDataByPeriod[chartPeriod] || chartDataByPeriod.month;
-  const channelDonutData = [
-    { name: "Direct Sales", value: 25, count: displayedSales > 0 ? Math.round(displayedSales * 0.4) : 0, percent: displayedSales > 0 ? "40%" : "0%", color: "#3b82f6" },
-    { name: "Online Store", value: 25, count: displayedSales > 0 ? Math.round(displayedSales * 0.3) : 0, percent: displayedSales > 0 ? "30%" : "0%", color: "#10b981" },
-    { name: "Marketplace", value: 25, count: displayedSales > 0 ? Math.round(displayedSales * 0.2) : 0, percent: displayedSales > 0 ? "20%" : "0%", color: "#f59e0b" },
-    { name: "POS Sales", value: 25, count: displayedSales > 0 ? Math.round(displayedSales * 0.1) : 0, percent: displayedSales > 0 ? "10%" : "0%", color: "#8b5cf6" },
-  ];
+  const activeChartData = tabConfig.chartData[chartPeriod] || tabConfig.chartData.month;
 
   return (
-    <div className="p-3 space-y-2.5 font-sans">
-      {/* ── Top Header Row ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+    <div className="p-3 space-y-2.5 font-sans bg-background">
+      {/* ── Top Header Row with Period Selector ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             {greeting}, {firstName} 👋
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {t("banner.subtitle", "Here's what is happening across your business today in the UAE region.")}
-          </p>
-        </div>
-      </div>
-
-      {/* ── Badges & Range Filter Row ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Live Workspace Updates
-          </span>
-          {isPlatformAdmin ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-              <Shield className="size-3" /> Platform Admin Console
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-              <Building2 className="size-3" /> {company?.name ?? "venatic"} Workspace
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-muted/50 text-muted-foreground border border-border/50">
-            <Calendar className="size-3 text-muted-foreground" /> {today}
-          </span>
         </div>
 
         {/* Today / Week / Month / Year Light Blended Pills */}
@@ -358,24 +587,44 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* ── 8 KPI Cards Grid ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2.5">
+      {/* ── Multi-Module Workspace Dashboard Tabs (Light Purple Pill Styling) ── */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-border/40 scrollbar-hide">
+        {WORKSPACE_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                navigate({ to: "/dashboard", search: { tab: tab.id } });
+              }}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full transition-all whitespace-nowrap cursor-pointer",
+                isActive
+                  ? "bg-purple-500/10 text-purple-700 font-bold border border-purple-500/25 shadow-xs"
+                  : "bg-slate-50/80 text-slate-600 hover:bg-purple-50/50 hover:text-purple-700 border border-slate-200/50"
+              )}
+            >
+              <Icon className="size-3.5" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── KPI Cards Grid — auto-wraps for any number of cards ── */}
+      <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
         {isActuallyLoading
           ? Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-26 rounded-2xl" />
             ))
-          : kpisList.map((k, i) => {
+          : tabConfig.kpis.map((k, i) => {
               const Icon = k.icon;
               return (
-                <motion.div
-                  key={k.id}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.02 }}
-                >
-                  <Card className="bg-card border border-border/70 rounded-2xl p-3 shadow-xs hover:shadow-sm hover:border-indigo-200 dark:hover:border-indigo-900 transition-all flex flex-col justify-between h-full">
+                <div key={i} className="h-full">
+                  <Card className="bg-card border border-border/70 rounded-2xl p-3 shadow-xs hover:shadow-sm hover:border-purple-200 transition-colors flex flex-col justify-between h-full">
                     <div className="flex items-center justify-between">
-                      <div className={cn("size-7.5 rounded-xl flex items-center justify-center", k.iconBg)}>
+                      <div className={cn("size-7.5 rounded-xl flex items-center justify-center transition-colors", k.iconBg)}>
                         <Icon className="size-3.5" />
                       </div>
                       <span className="text-[11px] font-medium text-muted-foreground text-right truncate">
@@ -390,7 +639,12 @@ function Dashboard() {
                     </div>
 
                     <div className="flex items-center gap-1 pt-1 border-t border-border/40">
-                      <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-1 py-0.2 rounded">
+                      <span className={cn(
+                        "inline-flex items-center text-[10px] font-bold px-1 py-0.5 rounded",
+                        k.growth.startsWith("⚠") || k.growth.startsWith("↘")
+                          ? "text-rose-600 bg-rose-500/10"
+                          : "text-emerald-600 bg-emerald-500/10"
+                      )}>
                         {k.growth}
                       </span>
                       <span className="text-[10px] text-muted-foreground truncate">
@@ -398,24 +652,24 @@ function Dashboard() {
                       </span>
                     </div>
                   </Card>
-                </motion.div>
+                </div>
               );
             })}
       </div>
 
-      {/* ── Middle 3 Cards Grid ── */}
+      {/* ── Middle Row: 3 Cards (Line Chart, Donut Chart, Activities Feed) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-        {/* Left Card (~42% / 5 cols): Revenue vs Expenses */}
+        {/* Left Card (~42% / 5 cols): Dynamic Line Chart */}
         <Card className="lg:col-span-5 bg-card border border-border/70 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 pb-1">
             <div>
-              <h3 className="text-sm font-bold text-foreground">Revenue vs Expenses</h3>
+              <h3 className="text-sm font-bold text-foreground">{tabConfig.chartTitle}</h3>
               <div className="flex items-center gap-3 text-xs mt-0.5">
-                <span className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
-                  <span className="size-2 rounded-full bg-blue-600" /> Revenue
+                <span className="flex items-center gap-1.5 font-medium text-slate-700">
+                  <span className="size-2 rounded-full bg-blue-600" /> {tabConfig.chartLine1Name}
                 </span>
-                <span className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
-                  <span className="size-2 rounded-full bg-rose-500" /> Expenses
+                <span className="flex items-center gap-1.5 font-medium text-slate-700">
+                  <span className="size-2 rounded-full bg-rose-500" /> {tabConfig.chartLine2Name}
                 </span>
               </div>
             </div>
@@ -442,7 +696,7 @@ function Dashboard() {
 
           <div className="h-[210px] w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={activeChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+              <LineChart data={activeChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={0.5} />
                 <XAxis dataKey="label" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis
@@ -450,9 +704,10 @@ function Dashboard() {
                   fontSize={10}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(v) => `₹${v >= 1000 ? `${v / 1000}K` : v}`}
+                  width={42}
+                  tickFormatter={(v) => v === 0 ? "0" : `${currency.symbol}${v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${v / 1000}K` : v}`}
                 />
-                <Tooltip contentStyle={tooltipStyle} formatter={(val: number) => [formatCurrency(val), ""]} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(val: number) => [typeof val === 'number' ? val.toLocaleString() : val, ""]} />
                 <Line
                   type="monotone"
                   dataKey="revenue"
@@ -474,22 +729,21 @@ function Dashboard() {
           </div>
         </Card>
 
-        {/* Center Card (~33% / 4 cols): Sales by Channel */}
+        {/* Center Card (~33% / 4 cols): Dynamic Donut Chart */}
         <Card className="lg:col-span-4 bg-card border border-border/70 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between pb-1">
             <div>
-              <h3 className="text-sm font-bold text-foreground">Sales by Channel</h3>
+              <h3 className="text-sm font-bold text-foreground">{tabConfig.donutTitle}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">This month summary</p>
             </div>
           </div>
 
           <div className="flex items-center justify-between gap-4 py-2 flex-1">
-            {/* Donut Chart with Center Text */}
             <div className="relative size-36 shrink-0 flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={channelDonutData}
+                    data={tabConfig.donutSegments}
                     dataKey="value"
                     innerRadius={44}
                     outerRadius={66}
@@ -497,28 +751,27 @@ function Dashboard() {
                     startAngle={90}
                     endAngle={-270}
                   >
-                    {channelDonutData.map((entry) => (
+                    {tabConfig.donutSegments.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip contentStyle={tooltipStyle} />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-[10px] text-muted-foreground font-medium">Total Sales</span>
-                <span className="text-lg font-bold text-foreground">{displayedSales}</span>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                <span className="text-[10px] text-muted-foreground font-medium">{tabConfig.donutTotalLabel}</span>
+                <span className="text-base font-bold text-foreground truncate max-w-[70px]">{tabConfig.donutTotalValue}</span>
               </div>
             </div>
 
-            {/* Legend on Right */}
             <div className="space-y-2 flex-1 min-w-0 pr-2">
-              {channelDonutData.map((item) => (
+              {tabConfig.donutSegments.map((item) => (
                 <div key={item.name} className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-2 truncate text-slate-700 dark:text-slate-300 font-medium">
+                  <span className="flex items-center gap-2 truncate text-slate-700 font-medium">
                     <span className="size-2 rounded-full shrink-0" style={{ background: item.color }} />
                     <span className="truncate">{item.name}</span>
                   </span>
-                  <span className="text-slate-900 dark:text-slate-100 font-semibold shrink-0 ml-2">
+                  <span className="text-slate-900 font-semibold shrink-0 ml-2">
                     {item.count} ({item.percent})
                   </span>
                 </div>
@@ -529,22 +782,18 @@ function Dashboard() {
 
         {/* Right Card (~25% / 3 cols): Recent Activities */}
         <Card className="lg:col-span-3 bg-card border border-border/70 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-border/60">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <h3 className="text-sm font-bold text-foreground">Recent Activities</h3>
-            <Link
-              to="/erp"
-              search={{ tab: "activity_logs" }}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline"
-            >
+            <span className="text-xs font-semibold text-purple-700 hover:text-purple-800 cursor-pointer">
               View all
-            </Link>
+            </span>
           </div>
 
           <div className="space-y-3 pt-2">
-            {recentActivitiesList.map((item) => {
+            {tabConfig.activities.map((item, idx) => {
               const Icon = item.icon;
               return (
-                <div key={item.id} className="flex items-start gap-2.5">
+                <div key={idx} className="flex items-start gap-2.5">
                   <div className={cn("size-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5", item.iconBg)}>
                     <Icon className="size-4" />
                   </div>
@@ -564,62 +813,57 @@ function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Left Card (~68% / 8 cols): System Health */}
         <Card className="lg:col-span-8 bg-card border border-border/80 rounded-2xl p-3.5 shadow-xs flex flex-wrap items-center justify-between gap-3">
-          {/* 1. System Health */}
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <div className="size-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
               <Shield className="size-4.5" />
             </div>
             <div>
-              <div className="text-xs font-bold text-foreground">System Health</div>
-              <div className="text-[11px] text-muted-foreground">Real-time system status</div>
+              <div className="text-xs font-bold text-foreground">{tabConfig.healthLabels.item1}</div>
+              <div className="text-[11px] text-muted-foreground">{tabConfig.healthLabels.item1Sub}</div>
               <div className="mt-0.5">
-                <span className="inline-block px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">
+                <span className="inline-block px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600">
                   Healthy
                 </span>
               </div>
             </div>
           </div>
 
-          {/* 2. Server Status */}
           <div className="flex items-center gap-2.5">
-            <div className="size-9 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <div className="size-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
               <Server className="size-4.5" />
             </div>
             <div>
-              <div className="text-[11px] text-muted-foreground font-medium">Server Status</div>
+              <div className="text-[11px] text-muted-foreground font-medium">{tabConfig.healthLabels.item2}</div>
               <div className="text-xs font-bold text-foreground">Healthy</div>
             </div>
           </div>
 
-          {/* 3. Database */}
           <div className="flex items-center gap-2.5">
-            <div className="size-9 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <div className="size-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
               <Database className="size-4.5" />
             </div>
             <div>
-              <div className="text-[11px] text-muted-foreground font-medium">Database</div>
+              <div className="text-[11px] text-muted-foreground font-medium">{tabConfig.healthLabels.item3}</div>
               <div className="text-xs font-bold text-foreground">Healthy</div>
             </div>
           </div>
 
-          {/* 4. Backup Status */}
           <div className="flex items-center gap-2.5">
-            <div className="size-9 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <div className="size-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
               <HardDrive className="size-4.5" />
             </div>
             <div>
-              <div className="text-[11px] text-muted-foreground font-medium">Backup Status</div>
+              <div className="text-[11px] text-muted-foreground font-medium">{tabConfig.healthLabels.item4}</div>
               <div className="text-xs font-bold text-foreground">Up to date</div>
             </div>
           </div>
 
-          {/* 5. Active Users */}
           <div className="flex items-center gap-2.5">
-            <div className="size-9 rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 flex items-center justify-center shrink-0">
+            <div className="size-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
               <Users className="size-4.5" />
             </div>
             <div>
-              <div className="text-[11px] text-muted-foreground font-medium">Active Users</div>
+              <div className="text-[11px] text-muted-foreground font-medium">{tabConfig.healthLabels.item5}</div>
               <div className="text-xs font-bold text-foreground">12</div>
             </div>
           </div>
@@ -629,7 +873,7 @@ function Dashboard() {
         <Card className="lg:col-span-4 bg-card border border-border/80 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-foreground">Overall Performance Score</span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
               ↗ Excellent
             </span>
           </div>
@@ -638,9 +882,9 @@ function Dashboard() {
             <div className="flex justify-end text-xs font-extrabold text-foreground">
               92/100
             </div>
-            <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-muted overflow-hidden mt-1.5">
+            <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden mt-1.5">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-500 transition-all duration-1000"
+                className="h-full rounded-full bg-gradient-to-r from-purple-700 via-purple-600 to-emerald-500 transition-all duration-1000"
                 style={{ width: "92%" }}
               />
             </div>

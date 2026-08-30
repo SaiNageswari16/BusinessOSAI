@@ -124,7 +124,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
     }
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Profit Forecast</h1>
@@ -212,7 +212,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
     };
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Profit &amp; Loss Statement</h1>
@@ -265,7 +265,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
     }
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Trial Balance</h1>
