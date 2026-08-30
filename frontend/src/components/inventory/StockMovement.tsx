@@ -80,7 +80,7 @@ export function StockMovement() {
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Movement Events</div>
             <div className="text-2xl font-black text-slate-900 mt-1">{totalTransfersCount} Events</div>
           </div>
-          <div className="size-12 rounded-xl bg-indigo-50 text-indigo-600 grid place-items-center">
+          <div className="size-12 rounded-xl bg-purple-50 text-purple-700 grid place-items-center">
             <Activity className="size-6" />
           </div>
         </Card>
@@ -98,9 +98,9 @@ export function StockMovement() {
         <Card className="p-5 rounded-2xl border-slate-200 shadow-sm bg-white flex items-center justify-between">
           <div>
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Tracked Warehouses</div>
-            <div className="text-2xl font-black text-slate-900 mt-1">{warehouses.length || 1} Depots</div>
+            <div className="text-2xl font-black text-amber-600 mt-1">{warehouses.length || 1} Depots</div>
           </div>
-          <div className="size-12 rounded-xl bg-blue-50 text-blue-600 grid place-items-center">
+          <div className="size-12 rounded-xl bg-amber-50 text-amber-600 grid place-items-center">
             <Layers className="size-6" />
           </div>
         </Card>

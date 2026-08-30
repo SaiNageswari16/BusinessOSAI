@@ -64,8 +64,8 @@ export function PaymentHistory() {
       <Card className="bg-card border rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
-            <thead>
-              <tr className="bg-muted/50 border-b text-muted-foreground text-xs uppercase font-semibold">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
                 <th className="py-4 px-6">Payment Date</th>
                 <th className="py-4 px-6">Linked Bill No</th>
                 <th className="py-4 px-6">Supplier Vendor</th>

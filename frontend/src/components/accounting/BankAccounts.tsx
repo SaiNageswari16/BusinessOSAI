@@ -199,7 +199,7 @@ function BankAccountsTab() {
   const totalBalance = accounts.reduce((sum, a) => sum + a.current_balance, 0);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Bank Accounts</h1>
@@ -399,7 +399,7 @@ function ReconciliationTab() {
     const matchedItems = (selected.items || []).filter((i: any) => i.is_matched);
     const clearedItems = (selected.items || []).filter((i: any) => i.is_cleared);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex items-center gap-3">
           <button onClick={() => setSelected(null)} className="size-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground">
             ←
@@ -441,7 +441,7 @@ function ReconciliationTab() {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-4 py-3 font-medium">Matched</th>
                   <th className="px-4 py-3 font-medium">Cleared</th>
@@ -477,7 +477,7 @@ function ReconciliationTab() {
 
   // ─── List View ────────────────────────────────────────────────────────
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Bank Reconciliation</h1>

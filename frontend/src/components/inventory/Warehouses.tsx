@@ -95,89 +95,77 @@ export function Warehouses() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {warehouses.map((wh) => (
-            <Card key={wh.id} className="p-6 relative overflow-hidden group">
-              <div className="flex items-start justify-between gap-4 mb-6">
-                <div className="flex items-start gap-4">
-                  <div className="size-12 rounded-lg bg-blue-500/10 text-blue-600 grid place-items-center shrink-0">
-                    <WarehouseIcon className="size-6" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg leading-tight">{wh.name}</h3>
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground mt-1 block">{wh.warehouse_type}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <button
-                    onClick={() => alert(`Warehouse: ${wh.name}\nType: ${wh.warehouse_type}\nCapacity: ${wh.capacity || '-'}\nTemperature: ${wh.temperature_control || '-'}\nManager: ${wh.manager_name || '-'}\nStaff: ${wh.employees ?? 0}\nAddress: ${wh.address || '-'}\nStatus: ${wh.status}`)}
-                    className="h-8 w-8 rounded-lg text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 inline-flex items-center justify-center transition"
-                    title="View details"
-                  >
-                    <Eye className="size-4" />
-                  </button>
-                  <button
-                    onClick={() => alert("Edit warehouse form coming soon — use the existing backend mutation if needed.")}
-                    className="h-8 w-8 rounded-lg text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 inline-flex items-center justify-center transition"
-                    title="Edit"
-                  >
-                    <Pencil className="size-4" />
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const dup = { ...wh };
-                      // @ts-ignore
-                      delete dup.id; delete dup.created_at; delete dup.updated_at; delete dup.locations;
-                      try {
-                        const created = await inventoryApi.createWarehouse(dup);
-                        setWarehouses(prev => [created, ...prev]);
-                      } catch { alert("Duplicate failed."); }
-                    }}
-                    className="h-8 w-8 rounded-lg text-slate-500 hover:bg-amber-50 hover:text-amber-600 inline-flex items-center justify-center transition"
-                    title="Duplicate"
-                  >
-                    <Copy className="size-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(wh.id)}
-                    className="h-8 w-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center transition"
-                    title="Delete"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <div className="text-[10px] text-muted-foreground font-semibold">Capacity</div>
-                  <div className="text-sm font-bold">{wh.capacity || '-'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground font-semibold">Temperature</div>
-                  <div className="text-sm font-bold text-primary">{wh.temperature_control || '-'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground font-semibold">Manager</div>
-                  <div className="text-sm font-bold">{wh.manager_name || '-'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1"><Users className="size-3" /> Staff</div>
-                  <div className="text-sm font-bold">{wh.employees ?? 0}</div>
-                </div>
-              </div>
-              {wh.address && <p className="text-xs text-muted-foreground mb-4 truncate">{wh.address}</p>}
-              
-              <div className="flex justify-between items-center pt-4 border-t">
-                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  wh.status === 'Active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
-                }`}>
-                  {wh.status}
-                </span>
-                <Button variant="outline" size="sm">View Details</Button>
-              </div>
-            </Card>
-          ))}
+        <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Warehouse Name</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Type</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Capacity</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Temperature Control</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Manager</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Staff</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Address</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30 font-medium">
+                {warehouses.map((wh) => (
+                  <tr key={wh.id} className="hover:bg-muted/30 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="size-8 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-100">
+                          <WarehouseIcon className="size-4" />
+                        </div>
+                        <div className="font-bold text-foreground text-sm">{wh.name}</div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                        {wh.warehouse_type}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-bold text-slate-900">{wh.capacity || "—"}</td>
+                    <td className="px-6 py-4">
+                      <span className="text-purple-700 font-semibold">{wh.temperature_control || "—"}</span>
+                    </td>
+                    <td className="px-6 py-4 font-medium text-slate-700">{wh.manager_name || "—"}</td>
+                    <td className="px-6 py-4 font-bold text-slate-900">{wh.employees ?? 0}</td>
+                    <td className="px-6 py-4 text-muted-foreground truncate max-w-xs">{wh.address || "—"}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                        wh.status === "Active"
+                          ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                          : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                      }`}>
+                        {wh.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => alert(`Warehouse: ${wh.name}\nType: ${wh.warehouse_type}\nCapacity: ${wh.capacity || '-'}\nTemperature: ${wh.temperature_control || '-'}\nManager: ${wh.manager_name || '-'}\nStaff: ${wh.employees ?? 0}\nAddress: ${wh.address || '-'}\nStatus: ${wh.status}`)}
+                          className="h-8 w-8 rounded-lg text-slate-500 hover:bg-purple-50 hover:text-purple-700 inline-flex items-center justify-center transition"
+                          title="View details"
+                        >
+                          <Eye className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(wh.id)}
+                          className="h-8 w-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center transition"
+                          title="Delete"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

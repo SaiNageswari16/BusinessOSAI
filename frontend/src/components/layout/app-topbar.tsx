@@ -32,11 +32,11 @@ const moduleDisplayList = [
     icon: LayoutDashboard, 
     defaultTo: "/dashboard", 
     permission: "view:dashboard",
-    activeText: "text-indigo-600",
-    activeBg: "bg-indigo-50/90",
-    hoverText: "group-hover:text-indigo-600",
-    hoverBg: "hover:bg-indigo-50/50",
-    indicator: "bg-indigo-600",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
   { 
     group: "Core ERP", 
@@ -44,11 +44,11 @@ const moduleDisplayList = [
     icon: Component, 
     defaultTo: "/erp?tab=companies", 
     permission: "view:erp",
-    activeText: "text-blue-600",
-    activeBg: "bg-blue-50/90",
-    hoverText: "group-hover:text-blue-600",
-    hoverBg: "hover:bg-blue-50/50",
-    indicator: "bg-blue-600",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
   { 
     group: "Inventory & Warehouse", 
@@ -56,11 +56,11 @@ const moduleDisplayList = [
     icon: Archive, 
     defaultTo: "/inventory?tab=products", 
     permission: "view:inventory",
-    activeText: "text-cyan-600",
-    activeBg: "bg-cyan-50/90",
-    hoverText: "group-hover:text-cyan-600",
-    hoverBg: "hover:bg-cyan-50/50",
-    indicator: "bg-cyan-600",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
   { 
     group: "Operations", 
@@ -68,11 +68,11 @@ const moduleDisplayList = [
     icon: Layers, 
     defaultTo: "/procurement?tab=purchase_requests", 
     permission: "view:procurement",
-    activeText: "text-amber-600",
-    activeBg: "bg-amber-50/90",
-    hoverText: "group-hover:text-amber-600",
-    hoverBg: "hover:bg-amber-50/50",
-    indicator: "bg-amber-600",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
   { 
     group: "POS", 
@@ -80,11 +80,11 @@ const moduleDisplayList = [
     icon: Terminal, 
     defaultTo: "/pos?tab=dashboard", 
     permission: "view:pos",
-    activeText: "text-purple-600",
+    activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
-    hoverText: "group-hover:text-purple-600",
+    hoverText: "group-hover:text-purple-700",
     hoverBg: "hover:bg-purple-50/50",
-    indicator: "bg-purple-600",
+    indicator: "bg-purple-700",
   },
   { 
     group: "Sales & CRM", 
@@ -92,11 +92,11 @@ const moduleDisplayList = [
     icon: ShoppingCart, 
     defaultTo: "/crm?tab=customers", 
     permission: "view:crm",
-    activeText: "text-rose-600",
-    activeBg: "bg-rose-50/90",
-    hoverText: "group-hover:text-rose-600",
-    hoverBg: "hover:bg-rose-50/50",
-    indicator: "bg-rose-600",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
   { 
     group: "Marketplace", 
@@ -104,11 +104,11 @@ const moduleDisplayList = [
     icon: ShoppingBag, 
     defaultTo: "/marketplace?tab=vendors", 
     permission: "view:marketplace",
-    activeText: "text-teal-600",
-    activeBg: "bg-teal-50/90",
-    hoverText: "group-hover:text-teal-600",
-    hoverBg: "hover:bg-teal-50/50",
-    indicator: "bg-teal-600",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
   { 
     group: "Accounting & Finance", 
@@ -116,11 +116,11 @@ const moduleDisplayList = [
     icon: Receipt, 
     defaultTo: "/accounting?tab=chart_of_accounts", 
     permission: "view:accounting",
-    activeText: "text-emerald-600",
-    activeBg: "bg-emerald-50/90",
-    hoverText: "group-hover:text-emerald-600",
-    hoverBg: "hover:bg-emerald-50/50",
-    indicator: "bg-emerald-600",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
   { 
     group: "HRMS", 
@@ -128,11 +128,11 @@ const moduleDisplayList = [
     icon: UsersRound, 
     defaultTo: "/hrms?tab=employees", 
     permission: "view:hrms",
-    activeText: "text-fuchsia-600",
-    activeBg: "bg-fuchsia-50/90",
-    hoverText: "group-hover:text-fuchsia-600",
-    hoverBg: "hover:bg-fuchsia-50/50",
-    indicator: "bg-fuchsia-600",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
   { 
     group: "Analytics & Intelligence", 
@@ -140,11 +140,11 @@ const moduleDisplayList = [
     icon: BarChart3, 
     defaultTo: "/reports?tab=sales_reports", 
     permission: "view:reports",
-    activeText: "text-indigo-600",
-    activeBg: "bg-indigo-50/90",
-    hoverText: "group-hover:text-indigo-600",
-    hoverBg: "hover:bg-indigo-50/50",
-    indicator: "bg-indigo-600",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
   { 
     group: "System Configuration", 
@@ -152,11 +152,11 @@ const moduleDisplayList = [
     icon: Settings, 
     defaultTo: "/settings?tab=company_profile", 
     permission: "manage:system_admin",
-    activeText: "text-slate-800",
-    activeBg: "bg-slate-100/90",
-    hoverText: "group-hover:text-slate-900",
-    hoverBg: "hover:bg-slate-100/60",
-    indicator: "bg-slate-800",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
   },
 ];
 
@@ -297,8 +297,15 @@ export function AppTopbar() {
           <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
         </div>
         <div className="hidden sm:flex flex-col justify-center">
-          <div className="font-black text-[14.5px] text-slate-900 tracking-tight leading-none">LazyMonkeyAI</div>
-          <div className="text-[9.5px] text-[#869ab8] font-medium leading-none mt-0.5">Smart AI for Lazy Geniuses</div>
+          <div className="font-extrabold text-[15px] text-slate-900 tracking-tight leading-none flex items-center">
+            <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>
+          </div>
+          <div className="text-[10px] font-semibold tracking-normal leading-none mt-1 flex items-center gap-1">
+            <span className="text-slate-600 font-medium">Smart</span>
+            <span className="text-emerald-600 font-extrabold">AI</span>
+            <span className="text-slate-600 font-medium">for</span>
+            <span className="text-amber-600 font-bold">Lazy Geniuses</span>
+          </div>
         </div>
       </div>
 
@@ -343,8 +350,8 @@ export function AppTopbar() {
         {/* Highlighted Workspace Switcher */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-lg bg-gradient-to-r from-blue-50/90 to-indigo-50/80 border border-blue-200 hover:border-blue-400 shadow-2xs transition-all cursor-pointer group shrink-0">
-              <div className="size-6.5 rounded-md bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+            <button className="flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-lg bg-gradient-to-r from-purple-50/90 to-emerald-50/80 border border-purple-200 hover:border-purple-400 shadow-2xs transition-all cursor-pointer group shrink-0">
+              <div className="size-6.5 rounded-md gradient-brand text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform">
                 {company?.logo ? (
                   <span className="text-[10px]">{company.logo}</span>
                 ) : (
@@ -353,29 +360,29 @@ export function AppTopbar() {
               </div>
               <div className="flex flex-col text-left">
                 <div className="flex items-center gap-1 leading-none">
-                  <span className="text-[8.5px] font-extrabold text-blue-600 tracking-wider uppercase">Workspace</span>
+                  <span className="text-[8.5px] font-extrabold text-purple-700 tracking-wider uppercase">Workspace</span>
                   <div className="size-1.5 rounded-full bg-emerald-500 animate-pulse" title="Active" />
                 </div>
                 <span className="text-[11.5px] font-extrabold text-slate-900 leading-tight mt-0.5 max-w-[100px] xl:max-w-[130px] truncate">
                   {company?.name || "Main Workspace"}
                 </span>
               </div>
-              <ChevronDown className="size-3 text-blue-600 shrink-0 ml-0.5" />
+              <ChevronDown className="size-3 text-purple-600 shrink-0 ml-0.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64 shadow-xl border-blue-100">
+          <DropdownMenuContent align="end" className="w-64 shadow-xl border-purple-100">
             <DropdownMenuLabel className="flex items-center gap-2 text-xs font-bold text-slate-800">
-              <Building2 className="size-3.5 text-blue-600" /> Companies & Workspaces
+              <Building2 className="size-3.5 text-purple-700" /> Companies & Workspaces
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {companiesList.map((c) => (
               <DropdownMenuItem key={c.id} onClick={() => setCompany(c)} className="gap-2 cursor-pointer py-2">
-                <div className="size-6 rounded-md bg-blue-600 grid place-items-center text-white text-[10px] font-bold shrink-0">{c.logo || "CO"}</div>
+                <div className="size-6 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0">{c.logo || "CO"}</div>
                 <div className="flex-1 font-semibold truncate">
                   <div className="text-xs font-bold text-slate-900 truncate">{c.name}</div>
                   <div className="text-[10px] text-muted-foreground truncate">{c.industry}</div>
                 </div>
-                {company?.id === c.id && <div className="size-2 rounded-full bg-blue-600" />}
+                {company?.id === c.id && <div className="size-2 rounded-full bg-purple-700" />}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -446,7 +453,7 @@ export function AppTopbar() {
         {/* Messages */}
         <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-slate-900 hover:bg-slate-100 relative rounded-lg" title="Messages">
           <MessageSquare className="size-3.5" />
-          <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-blue-600" />
+          <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-purple-700" />
         </Button>
 
         {/* Notifications */}
@@ -455,7 +462,7 @@ export function AppTopbar() {
             <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-slate-900 hover:bg-slate-100 relative rounded-lg" title="Notifications">
               <Bell className="size-3.5" />
               {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 size-3.5 rounded-full bg-rose-500 text-white text-[8.5px] font-bold flex items-center justify-center leading-none">
+                <span className="absolute top-1.5 right-1.5 size-3.5 rounded-full bg-amber-500 text-white text-[8.5px] font-bold flex items-center justify-center leading-none">
                   {unreadCount}
                 </span>
               )}
@@ -466,16 +473,16 @@ export function AppTopbar() {
               <div className="font-semibold text-sm">Notifications</div>
               <button 
                 onClick={handleMarkAllRead}
-                className="text-xs text-blue-600 hover:underline bg-transparent border-none cursor-pointer"
+                className="text-xs text-purple-700 font-semibold hover:underline bg-transparent border-none cursor-pointer"
               >
                 Mark all read
               </button>
             </div>
             <div className="max-h-80 overflow-y-auto">
               {activeNotifs.map((n) => (
-                <div key={n.id} className={cn("px-4 py-3 border-b last:border-0 hover:bg-slate-50 cursor-pointer", n.unread && "bg-blue-50/40")}>
+                <div key={n.id} className={cn("px-4 py-3 border-b last:border-0 hover:bg-slate-50 cursor-pointer", n.unread && "bg-purple-50/40")}>
                   <div className="flex items-start gap-2">
-                    {n.unread && <div className="size-1.5 rounded-full bg-blue-600 mt-1.5 shrink-0" />}
+                    {n.unread && <div className="size-1.5 rounded-full bg-purple-700 mt-1.5 shrink-0" />}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold truncate">{n.title}</div>
                       <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.body}</div>
@@ -491,7 +498,7 @@ export function AppTopbar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-1.5 pl-0.5 pr-1 py-0.5 rounded-lg hover:bg-slate-50 transition cursor-pointer">
-              <div className="size-7.5 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+              <div className="size-7.5 rounded-full gradient-brand text-white font-bold text-xs flex items-center justify-center shadow-xs">
                 {user?.avatar || "VE"}
               </div>
               <div className="hidden 2xl:block text-left">
@@ -508,7 +515,7 @@ export function AppTopbar() {
             <div className="px-3 py-2">
               <div className="text-sm font-bold text-slate-800">{user?.name || "Venkat E."}</div>
               <div className="text-xs text-slate-500">{user?.email || "venkat@venatic.com"}</div>
-              <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+              <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-full">
                 <ShieldCheck className="size-3" /> {activeRole?.name || "Super Admin"}
               </div>
             </div>

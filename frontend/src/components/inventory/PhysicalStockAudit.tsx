@@ -131,7 +131,7 @@ export function PhysicalStockAudit() {
             </div>
           )}
           <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold sticky top-0">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold sticky top-0">
               <tr>
                 <th className="px-6 py-4">Audit Reference</th>
                 <th className="px-6 py-4">Location</th>

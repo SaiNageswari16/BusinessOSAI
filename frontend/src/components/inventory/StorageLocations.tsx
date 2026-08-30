@@ -142,7 +142,7 @@ export function StorageLocations() {
         )}
         
         <table className="w-full text-sm text-left">
-          <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
+          <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
             <tr>
               <th className="px-6 py-4">Location Barcode</th>
               <th className="px-6 py-4">Warehouse</th>

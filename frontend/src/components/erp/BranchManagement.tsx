@@ -252,73 +252,72 @@ export function BranchManagement() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {branches.map((branch) => (
-            <Card key={branch.id} className="overflow-hidden hover:shadow-elegant transition-shadow flex flex-col">
-              <div className="p-5 flex-1">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="size-10 rounded-lg bg-primary/10 text-primary grid place-items-center font-bold text-sm shadow-sm">
-                    <Building2 className="size-5" />
-                  </div>
-                  <StatusBadge status={branch.status} />
-                </div>
-                <h3 className="font-bold text-base tracking-tight mb-1">{branch.name}</h3>
-                <p className="text-[11px] font-mono text-muted-foreground mb-4">Code: {branch.code} • {companyMap[branch.company_id] ?? "—"}</p>
-                <div className="space-y-2 mb-4">
-                  {branch.address && (
-                    <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                      <MapPin className="size-3.5 shrink-0 mt-0.5" />
-                      <span className="line-clamp-2">{branch.address}{branch.city ? `, ${branch.city}` : ""}</span>
-                    </div>
-                  )}
-                  {branch.phone && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Phone className="size-3.5 shrink-0" /> {branch.phone}
-                    </div>
-                  )}
-                  {branch.email && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Mail className="size-3.5 shrink-0" /> {branch.email}
-                    </div>
-                  )}
-                  {branch.has_warehouse && (
-                    <div className="flex items-center gap-2 text-xs text-emerald-600">
-                      <CheckCircle className="size-3.5" /> Has Warehouse
-                    </div>
-                  )}
-                </div>
-                {branch.working_hours && (
-                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/50">
-                    <div>
-                      <div className="text-[9px] uppercase font-semibold text-muted-foreground mb-0.5">Working Hours</div>
-                      <div className="text-xs font-semibold text-foreground">{branch.working_hours}</div>
-                    </div>
-                    {branch.opening_date && (
-                      <div>
-                        <div className="text-[9px] uppercase font-semibold text-muted-foreground mb-0.5">Opened</div>
-                        <div className="text-xs font-semibold text-foreground">{branch.opening_date}</div>
+        <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Branch Name</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Code</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Company</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Address & City</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Contact</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Warehouse</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Working Hours</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30 font-medium">
+                {branches.map((branch) => (
+                  <tr key={branch.id} className="hover:bg-muted/30 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="size-8 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-100">
+                          <Building2 className="size-4" />
+                        </div>
+                        <div className="font-bold text-foreground text-sm">{branch.name}</div>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="bg-muted/30 px-5 py-2.5 border-t flex justify-between items-center">
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" className="h-7 w-7"
-                    onClick={() => { setEditBranch(branch); setShowForm(true); }}>
-                    <Edit2 className="size-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600"
-                    onClick={() => setDeleteBranch(branch)}>
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-                <Button variant="link" size="sm" className="h-auto p-0 text-[10px] font-semibold text-primary gap-1">
-                  Manage <ExternalLink className="size-3" />
-                </Button>
-              </div>
-            </Card>
-          ))}
+                    </td>
+                    <td className="px-6 py-4 font-mono font-bold text-slate-700">{branch.code}</td>
+                    <td className="px-6 py-4 text-slate-800 font-medium">{companyMap[branch.company_id] ?? "—"}</td>
+                    <td className="px-6 py-4 text-muted-foreground max-w-xs truncate">
+                      {branch.address ? `${branch.address}${branch.city ? `, ${branch.city}` : ""}` : "—"}
+                    </td>
+                    <td className="px-6 py-4 text-muted-foreground">
+                      <div>{branch.phone || "—"}</div>
+                      {branch.email && <div className="text-[11px] text-slate-400">{branch.email}</div>}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {branch.has_warehouse ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                          <CheckCircle className="size-3" /> Yes
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-muted-foreground">{branch.working_hours || "—"}</td>
+                    <td className="px-6 py-4 text-center">
+                      <StatusBadge status={branch.status} />
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-700 hover:bg-purple-50"
+                          onClick={() => { setEditBranch(branch); setShowForm(true); }}>
+                          <Edit2 className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50"
+                          onClick={() => setDeleteBranch(branch)}>
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

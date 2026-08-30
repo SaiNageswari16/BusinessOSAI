@@ -138,7 +138,7 @@ export function Geography() {
             </div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-5 py-4 text-left">Country</th>
                   <th className="px-5 py-4 text-left">ISO Code</th>

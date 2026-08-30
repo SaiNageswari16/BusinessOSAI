@@ -306,12 +306,12 @@ export function Payables({ tab = "bills" }: Props) {
   if (tab === "credit_notes") {
     if (loading) return <div className="p-6 text-center text-muted-foreground">Loading credit notes…</div>;
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div><h1 className="text-2xl font-bold text-foreground">Credit Notes</h1><p className="text-sm text-muted-foreground">Vendor credits and refunds received.</p></div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr><th className="px-6 py-4 font-medium">CN Number</th><th className="px-6 py-4 font-medium">Vendor</th><th className="px-6 py-4 font-medium">Issue Date</th><th className="px-6 py-4 text-right font-medium">Amount</th><th className="px-6 py-4 text-center font-medium">Status</th></tr>
               </thead>
               <tbody>
@@ -337,12 +337,12 @@ export function Payables({ tab = "bills" }: Props) {
   if (tab === "debit_notes") {
     if (loading) return <div className="p-6 text-center text-muted-foreground">Loading debit notes…</div>;
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div><h1 className="text-2xl font-bold text-foreground">Debit Notes</h1><p className="text-sm text-muted-foreground">Debit memos and charges from vendors.</p></div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr><th className="px-6 py-4 font-medium">DN Number</th><th className="px-6 py-4 font-medium">Vendor</th><th className="px-6 py-4 font-medium">Issue Date</th><th className="px-6 py-4 text-right font-medium">Amount</th><th className="px-6 py-4 text-center font-medium">Status</th></tr>
               </thead>
               <tbody>
@@ -368,12 +368,12 @@ export function Payables({ tab = "bills" }: Props) {
   if (tab === "vendor_aging") {
     const aging = useMemo(() => bucketAging(bills), [bills]);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div><h1 className="text-2xl font-bold text-foreground">Vendor Aging</h1><p className="text-sm text-muted-foreground">Outstanding payables aging by vendor.</p></div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr><th className="px-6 py-4 font-medium">Vendor</th><th className="px-6 py-4 text-right font-medium">Current</th><th className="px-6 py-4 text-right font-medium">1-30 Days</th><th className="px-6 py-4 text-right font-medium">31-60 Days</th><th className="px-6 py-4 text-right font-medium">61-90 Days</th><th className="px-6 py-4 text-right font-medium">Total Outstanding</th></tr>
               </thead>
               <tbody>
@@ -402,14 +402,14 @@ export function Payables({ tab = "bills" }: Props) {
       return <div className="p-6 text-center text-muted-foreground">Loading payments…</div>;
     }
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground">Payments Made</h1><p className="text-sm text-muted-foreground">All outgoing vendor payments and disbursements.</p></div>
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">Payment ID</th>
                   <th className="px-6 py-4 font-medium">Bill Ref</th>
@@ -451,7 +451,7 @@ export function Payables({ tab = "bills" }: Props) {
   const paidThisMonth = bills.filter(b => b.status === "Paid").reduce((sum, b) => sum + b.paidAmount, 0);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Vendor Bills</h1>
@@ -480,7 +480,7 @@ export function Payables({ tab = "bills" }: Props) {
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4 font-medium">Bill ID</th>
                 <th className="px-6 py-4 font-medium">Vendor</th>

@@ -124,7 +124,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
     }
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Profit Forecast</h1>
@@ -157,7 +157,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">Period</th>
                   <th className="px-6 py-4 text-right font-medium">Revenue</th>
@@ -212,7 +212,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
     };
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Profit &amp; Loss Statement</h1>
@@ -265,7 +265,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
     }
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Trial Balance</h1>
@@ -285,7 +285,7 @@ export function ProfitAndLoss({ tab = "profit_and_loss" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">Code</th>
                   <th className="px-6 py-4 font-medium">Account Name</th>

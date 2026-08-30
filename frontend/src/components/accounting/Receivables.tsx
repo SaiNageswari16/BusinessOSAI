@@ -125,7 +125,7 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             </div>
             <div className="border border-border/50 rounded-xl overflow-hidden">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground bg-muted/30 border-b border-border/50">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="px-4 py-2 font-medium">Item Description</th>
                     <th className="px-4 py-2 font-medium text-right w-20">Qty</th>
@@ -305,7 +305,7 @@ export function Receivables({ tab = "invoices" }: Props) {
   if (tab === "customers") {
     const totalOutstanding = customers.reduce((s, c) => s + c.outstanding, 0);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">AR Customers</h1>
@@ -332,7 +332,7 @@ export function Receivables({ tab = "invoices" }: Props) {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="px-6 py-4 font-medium">Customer ID</th>
                     <th className="px-6 py-4 font-medium">Name</th>
@@ -367,7 +367,7 @@ export function Receivables({ tab = "invoices" }: Props) {
     const paidInvoices = useMemo(() => invoices.filter(inv => inv.amount_paid > 0), [invoices]);
     const totalReceived = paidInvoices.reduce((s, inv) => s + inv.amount_paid, 0);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Payments Received</h1>
           <p className="text-sm text-muted-foreground">Track all customer payments received against invoices.</p>
@@ -390,7 +390,7 @@ export function Receivables({ tab = "invoices" }: Props) {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr><th className="px-6 py-4 font-medium">Invoice #</th><th className="px-6 py-4 font-medium">Customer</th><th className="px-6 py-4 text-right font-medium">Total</th><th className="px-6 py-4 text-right font-medium">Paid</th><th className="px-6 py-4 text-right font-medium">Outstanding</th><th className="px-6 py-4 text-center font-medium">Status</th></tr>
                 </thead>
                 <tbody>{paidInvoices.map((inv, i) => (
@@ -416,7 +416,7 @@ export function Receivables({ tab = "invoices" }: Props) {
     const outstandingInvoices = useMemo(() => invoices.filter(inv => inv.balance_due > 0), [invoices]);
     const totalOutstanding = outstandingInvoices.reduce((s, inv) => s + inv.balance_due, 0);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Outstanding Invoices</h1>
           <p className="text-sm text-muted-foreground">Invoices with unpaid or partially paid balances.</p>
@@ -439,7 +439,7 @@ export function Receivables({ tab = "invoices" }: Props) {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="px-6 py-4 font-medium">Invoice #</th><th className="px-6 py-4 font-medium">Customer</th><th className="px-6 py-4 font-medium">Due Date</th>
                     <th className="px-6 py-4 text-right font-medium">Total</th><th className="px-6 py-4 text-right font-medium">Balance Due</th><th className="px-6 py-4 text-center font-medium">Status</th><th className="px-6 py-4 text-center font-medium">Action</th>
@@ -488,7 +488,7 @@ export function Receivables({ tab = "invoices" }: Props) {
     }, [invoices]);
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Collections Aging</h1>
           <p className="text-sm text-muted-foreground">Accounts receivable aging analysis by overdue bucket.</p>
@@ -540,7 +540,7 @@ export function Receivables({ tab = "invoices" }: Props) {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Invoices</h1>
@@ -577,7 +577,7 @@ export function Receivables({ tab = "invoices" }: Props) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-5 py-3 font-medium">Invoice #</th><th className="px-5 py-3 font-medium">Customer</th><th className="px-5 py-3 font-medium">Date</th><th className="px-5 py-3 font-medium">Due Date</th>
                   <th className="px-5 py-3 text-right font-medium">Total Amount</th><th className="px-5 py-3 text-right font-medium">Balance Due</th><th className="px-5 py-3 text-center font-medium">Status</th><th className="px-5 py-3 text-center font-medium">Action</th>

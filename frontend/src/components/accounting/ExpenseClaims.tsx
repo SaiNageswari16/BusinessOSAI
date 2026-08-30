@@ -195,7 +195,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
   if (tab === "approvals") {
     const pending = claims.filter(e => e.status.toLowerCase() === "pending");
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground font-bold">Expense Approvals</h1><p className="text-sm text-muted-foreground">Pending employee claims awaiting review.</p></div>
           {pending.length > 0 && (
@@ -242,7 +242,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
   if (tab === "travel") {
     const travelClaims = claims.filter(e => e.category === "Travel");
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground font-bold">Travel Expenses</h1><p className="text-sm text-muted-foreground">All business travel reimbursements.</p></div>
           <button onClick={() => setShowClaimModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Plane className="size-4" /> New Travel Claim</button>
@@ -250,7 +250,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">ID</th>
                   <th className="px-6 py-4 font-medium">Employee</th>
@@ -294,7 +294,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
   if (tab === "office_expenses") {
     const officeClaims = claims.filter(e => ["Office Supplies", "Software", "Meals & Entertainment", "office supplies", "software", "meals & entertainment"].includes(e.category));
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground font-bold">Office Expenses</h1><p className="text-sm text-muted-foreground">Office supplies and software subscriptions.</p></div>
           <button onClick={() => setShowClaimModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Building className="size-4" /> New Claim</button>
@@ -302,7 +302,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">ID</th>
                   <th className="px-6 py-4 font-medium">Employee</th>
@@ -348,7 +348,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
   if (tab === "operational_expenses") {
     const opexClaims = claims.filter(e => ["Rent", "Utilities", "Insurance", "Maintenance", "rent", "utilities", "insurance", "maintenance"].includes(e.category));
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground font-bold">Operational Expenses</h1><p className="text-sm text-muted-foreground">Rent, utilities, insurance, and recurring operational costs.</p></div>
           <button onClick={() => setShowClaimModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Building className="size-4" /> Add OpEx</button>
@@ -356,7 +356,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">ID</th>
                   <th className="px-6 py-4 font-medium">Category</th>
@@ -403,7 +403,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground font-bold">Expense Claims</h1><p className="text-sm text-muted-foreground">Employee business expense reimbursements.</p></div>
         <button onClick={() => setShowClaimModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> New Claim</button>
@@ -411,7 +411,7 @@ export function ExpenseClaims({ tab = "claims" }: Props) {
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4 font-medium">ID</th>
                 <th className="px-6 py-4 font-medium">Employee</th>

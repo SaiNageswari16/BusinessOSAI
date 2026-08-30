@@ -222,7 +222,7 @@ export function Budgets({ tab = "budgets" }: Props) {
     const totalBudgeted = forecastData.reduce((s, q) => s + q.revenue, 0);
     const totalProfit = forecastData.reduce((s, q) => s + q.profit, 0);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground">Financial Forecasts</h1><p className="text-sm text-muted-foreground">Projections derived from current budget data across quarters.</p></div>
           <button onClick={loadBudgets} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><TrendingUp className="size-4" /> Refresh</button>
@@ -246,7 +246,7 @@ export function Budgets({ tab = "budgets" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">Period</th>
                   <th className="px-6 py-4 text-right font-medium">Projected Revenue</th>
@@ -285,7 +285,7 @@ export function Budgets({ tab = "budgets" }: Props) {
   if (tab === "cost_allocation") {
     const totalCost = costAllocData.reduce((s, a) => s + a.totalCost, 0);
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground">Cost Allocation</h1><p className="text-sm text-muted-foreground">Budget spend distribution by cost category.</p></div>
           <button onClick={loadBudgets} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><BarChart3 className="size-4" /> Refresh</button>
@@ -294,7 +294,7 @@ export function Budgets({ tab = "budgets" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">Cost Center</th>
                   <th className="px-6 py-4 font-medium">Code</th>
@@ -338,7 +338,7 @@ export function Budgets({ tab = "budgets" }: Props) {
 
   if (tab === "financial_planning") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground">Financial Planning</h1><p className="text-sm text-muted-foreground">Strategic KPIs derived from your budget performance.</p></div>
           <button onClick={loadBudgets} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-medium shadow-elegant hover:opacity-90 transition-opacity"><BarChart3 className="size-4" /> Refresh</button>
@@ -375,7 +375,7 @@ export function Budgets({ tab = "budgets" }: Props) {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground font-bold">Budgets</h1><p className="text-sm text-muted-foreground">Department-wise budget vs. actual trackers.</p></div>
         <button onClick={() => setShowBudgetModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> Create Budget</button>

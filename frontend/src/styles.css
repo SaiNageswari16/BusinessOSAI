@@ -45,6 +45,8 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-brand-violet: var(--brand-violet);
+  --color-brand-emerald: var(--brand-emerald);
+  --color-brand-amber: var(--brand-amber);
   --color-brand-blue: var(--brand-blue);
   --color-brand-purple: var(--brand-purple);
   --color-brand-cyan: var(--brand-cyan);
@@ -55,54 +57,56 @@
 
 :root {
   --radius: 0.875rem;
-  --background: oklch(0.985 0.005 260); /* Clean subtle cool-white */
+  --background: #ffffff; /* Pure White Background */
   --foreground: oklch(0.145 0.015 285);
-  --card: oklch(1 0 0); /* Pure White Card */
+  --card: #ffffff; /* Pure White Card */
   --card-foreground: oklch(0.145 0.015 285);
-  --popover: oklch(1 0 0);
+  --popover: #ffffff;
   --popover-foreground: oklch(0.145 0.015 285);
-  --primary: oklch(0.58 0.24 285); /* Modern Vibrant Purple #8442ff */
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.96 0.01 260);
+  --primary: oklch(0.53 0.25 285); /* LazyMonkey Electric Violet #6d28d9 */
+  --primary-foreground: #ffffff;
+  --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.25 0.02 285);
-  --muted: oklch(0.955 0.008 260);
+  --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.52 0.02 260);
-  --accent: oklch(0.94 0.02 285);
+  --accent: oklch(0.95 0.015 285);
   --accent-foreground: oklch(0.20 0.03 285);
   --destructive: oklch(0.60 0.18 25);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.92 0.008 260); /* Crisp subtle border #e8eaed */
-  --input: oklch(0.92 0.008 260);
-  --ring: oklch(0.58 0.24 285);
-  --chart-1: oklch(0.58 0.24 285);
-  --chart-2: oklch(0.65 0.20 250);
-  --chart-3: oklch(0.70 0.16 160);
-  --chart-4: oklch(0.75 0.16 55);
-  --chart-5: oklch(0.65 0.18 20);
-  --sidebar: oklch(0.99 0.004 260);
+  --destructive-foreground: #ffffff;
+  --border: oklch(0.93 0.005 260); /* Clean subtle crisp border */
+  --input: oklch(0.93 0.005 260);
+  --ring: oklch(0.53 0.25 285);
+  --chart-1: #6d28d9; /* Violet */
+  --chart-2: #059669; /* Tech Emerald */
+  --chart-3: #d97706; /* Amber Gold */
+  --chart-4: #2563eb; /* Cobalt Blue */
+  --chart-5: #db2777; /* Rose */
+  --sidebar: #ffffff; /* Pure White Sidebar */
   --sidebar-foreground: oklch(0.20 0.02 285);
-  --sidebar-primary: oklch(0.58 0.24 285);
+  --sidebar-primary: oklch(0.53 0.25 285);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.95 0.015 285);
   --sidebar-accent-foreground: oklch(0.20 0.03 285);
   --sidebar-border: oklch(0.92 0.008 260);
-  --sidebar-ring: oklch(0.58 0.24 285);
-  --brand-violet: oklch(0.58 0.24 285);
-  --brand-blue: oklch(0.60 0.20 250);
-  --brand-purple: oklch(0.62 0.24 300);
-  --brand-cyan: oklch(0.70 0.15 200);
-  --brand-green: oklch(0.70 0.16 160);
+  --sidebar-ring: oklch(0.53 0.25 285);
+  --brand-violet: #6d28d9;
+  --brand-emerald: #059669;
+  --brand-amber: #d97706;
+  --brand-blue: #2563eb;
+  --brand-purple: #7c3aed;
+  --brand-cyan: #0891b2;
+  --brand-green: #059669;
   --glass-border: oklch(0.92 0.008 260);
 }
 
 .dark {
-  --background: oklch(0.12 0.015 285); /* Deep Indigo Night */
+  --background: oklch(0.12 0.015 285); /* Deep Obsidian Violet Night */
   --foreground: oklch(0.97 0.005 285);
   --card: oklch(0.155 0.018 285);
   --card-foreground: oklch(0.97 0.005 285);
   --popover: oklch(0.155 0.018 285);
   --popover-foreground: oklch(0.97 0.005 285);
-  --primary: oklch(0.65 0.24 285);
+  --primary: oklch(0.65 0.24 285); /* Vibrant Violet Glow */
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.22 0.02 285);
   --secondary-foreground: oklch(0.97 0.005 285);
@@ -115,11 +119,11 @@
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.65 0.24 285);
-  --chart-1: oklch(0.65 0.24 285);
-  --chart-2: oklch(0.65 0.20 250);
-  --chart-3: oklch(0.75 0.16 160);
-  --chart-4: oklch(0.75 0.16 55);
-  --chart-5: oklch(0.70 0.18 25);
+  --chart-1: #8b5cf6;
+  --chart-2: #10b981;
+  --chart-3: #f59e0b;
+  --chart-4: #38bdf8;
+  --chart-5: #f43f5e;
   --sidebar: oklch(0.14 0.018 285);
   --sidebar-foreground: oklch(0.95 0.01 285);
   --sidebar-primary: oklch(0.65 0.24 285);
@@ -128,11 +132,13 @@
   --sidebar-accent-foreground: oklch(0.97 0.005 285);
   --sidebar-border: oklch(1 0 0 / 9%);
   --sidebar-ring: oklch(0.65 0.24 285);
-  --brand-violet: oklch(0.65 0.24 285);
-  --brand-blue: oklch(0.65 0.20 250);
-  --brand-purple: oklch(0.70 0.22 300);
-  --brand-cyan: oklch(0.75 0.15 160);
-  --brand-green: oklch(0.75 0.16 160);
+  --brand-violet: #8b5cf6;
+  --brand-emerald: #10b981;
+  --brand-amber: #f59e0b;
+  --brand-blue: #38bdf8;
+  --brand-purple: #a855f7;
+  --brand-cyan: #22d3ee;
+  --brand-green: #10b981;
   --glass-border: oklch(1 0 0 / 9%);
 }
 
@@ -191,6 +197,26 @@
   h1 {
     letter-spacing: -0.035em;
   }
+
+  /* ─── Global Standardized Table Headings (SS2 Benchmark) ─── */
+  thead {
+    background-color: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    color: #475569;
+    font-size: 0.75rem; /* text-xs (12px) */
+    line-height: 1rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em; /* tracking-wider */
+  }
+
+  th {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #475569;
+  }
 }
 
 /* ─── Modern Card Surfaces ─────────────────────────────────────────── */
@@ -208,14 +234,26 @@
 }
 
 @utility gradient-brand {
-  background-image: linear-gradient(135deg, #8442ff, #6366f1);
+  background-image: linear-gradient(135deg, #6d28d9 0%, #7c3aed 50%, #059669 100%);
 }
 
 @utility text-gradient-brand {
-  background-image: linear-gradient(135deg, #8442ff, #6366f1);
+  background-image: linear-gradient(135deg, #6d28d9 0%, #7c3aed 50%, #059669 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+@utility gradient-lazymonkey {
+  background-image: linear-gradient(135deg, #6d28d9 0%, #059669 100%);
+}
+
+@utility gradient-ai {
+  background-image: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%);
+}
+
+@utility gradient-amber {
+  background-image: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
 }
 
 @utility shadow-elegant {
@@ -224,6 +262,10 @@
 
 @utility shadow-glow {
   box-shadow: 0 0 0 1px var(--glass-border), 0 8px 40px -12px color-mix(in oklab, var(--brand-violet) 30%, transparent);
+}
+
+@utility shadow-emerald-glow {
+  box-shadow: 0 0 0 1px var(--glass-border), 0 8px 40px -12px color-mix(in oklab, var(--brand-emerald) 30%, transparent);
 }
 
 /* ─── Modern Translucent Badge Pill Styles (Template Match) ────────── */

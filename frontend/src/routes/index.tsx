@@ -336,18 +336,21 @@ function MarketingLandingPage() {
           
           {/* Brand Logo & Name */}
           <div className="flex items-center gap-3.5 cursor-pointer" onClick={() => setCurrentPage("home")}>
-            <div className="size-12 shrink-0 flex items-center justify-center rounded-2xl bg-indigo-50 p-1.5 border border-indigo-200/80 shadow-xs">
+            <div className="size-12 shrink-0 flex items-center justify-center rounded-2xl bg-purple-50 p-1.5 border border-purple-200/80 shadow-xs">
               <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
             </div>
             <div>
               <div className="font-extrabold text-xl tracking-tight text-slate-900 flex items-center gap-1.5">
-                LazyMonkeyAI
+                <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
                   Active OS
                 </span>
               </div>
-              <div className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest">
-                Smart AI for Lazy Geniuses
+              <div className="text-[11px] font-semibold mt-0.5 flex items-center gap-1">
+                <span className="text-slate-600 font-medium">Smart</span>
+                <span className="text-emerald-600 font-extrabold">AI</span>
+                <span className="text-slate-600 font-medium">for</span>
+                <span className="text-amber-600 font-bold">Lazy Geniuses</span>
               </div>
             </div>
           </div>
@@ -356,19 +359,19 @@ function MarketingLandingPage() {
           <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
             <button
               onClick={() => setCurrentPage("home")}
-              className={`transition-colors hover:text-indigo-600 ${currentPage === "home" ? "text-indigo-600 font-bold border-b-2 border-indigo-600 py-1" : ""}`}
+              className={`transition-colors hover:text-purple-700 ${currentPage === "home" ? "text-purple-700 font-bold border-b-2 border-purple-700 py-1" : ""}`}
             >
               Home
             </button>
             <button
               onClick={() => setCurrentPage("modules")}
-              className={`transition-colors hover:text-indigo-600 ${currentPage === "modules" ? "text-indigo-600 font-bold border-b-2 border-indigo-600 py-1" : ""}`}
+              className={`transition-colors hover:text-purple-700 ${currentPage === "modules" ? "text-purple-700 font-bold border-b-2 border-purple-700 py-1" : ""}`}
             >
               Modules (9)
             </button>
             <button
               onClick={() => setCurrentPage("services")}
-              className={`flex items-center gap-1.5 transition-colors hover:text-indigo-600 ${currentPage === "services" ? "text-indigo-600 font-bold border-b-2 border-indigo-600 py-1" : ""}`}
+              className={`flex items-center gap-1.5 transition-colors hover:text-purple-700 ${currentPage === "services" ? "text-purple-700 font-bold border-b-2 border-purple-700 py-1" : ""}`}
             >
               Services
               <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded-md border border-emerald-200">
@@ -377,19 +380,19 @@ function MarketingLandingPage() {
             </button>
             <button
               onClick={() => setCurrentPage("solutions")}
-              className={`transition-colors hover:text-indigo-600 ${currentPage === "solutions" ? "text-indigo-600 font-bold border-b-2 border-indigo-600 py-1" : ""}`}
+              className={`transition-colors hover:text-purple-700 ${currentPage === "solutions" ? "text-purple-700 font-bold border-b-2 border-purple-700 py-1" : ""}`}
             >
               Solutions
             </button>
             <button
               onClick={() => setCurrentPage("pricing")}
-              className={`transition-colors hover:text-indigo-600 ${currentPage === "pricing" ? "text-indigo-600 font-bold border-b-2 border-indigo-600 py-1" : ""}`}
+              className={`transition-colors hover:text-purple-700 ${currentPage === "pricing" ? "text-purple-700 font-bold border-b-2 border-purple-700 py-1" : ""}`}
             >
               Pricing
             </button>
             <button
               onClick={() => setCurrentPage("about")}
-              className={`transition-colors hover:text-indigo-600 ${currentPage === "about" ? "text-indigo-600 font-bold border-b-2 border-indigo-600 py-1" : ""}`}
+              className={`transition-colors hover:text-purple-700 ${currentPage === "about" ? "text-purple-700 font-bold border-b-2 border-purple-700 py-1" : ""}`}
             >
               About Us
             </button>
@@ -400,9 +403,9 @@ function MarketingLandingPage() {
             {isAuthed && user ? (
               <Button
                 onClick={() => navigate({ to: resolvePostAuthRoute(user) })}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 h-11 rounded-xl shadow-md transition-all"
+                className="gradient-brand text-white font-bold px-5 h-11 rounded-xl shadow-md transition-all border-0"
               >
-                Go to Workspace ΓåÆ
+                Go to Workspace →
               </Button>
             ) : (
               <>
@@ -441,7 +444,7 @@ function MarketingLandingPage() {
             <button onClick={() => { setCurrentPage("pricing"); setMobileMenuOpen(false); }} className="block w-full text-left py-2 font-semibold text-slate-800">Pricing</button>
             <button onClick={() => { setCurrentPage("about"); setMobileMenuOpen(false); }} className="block w-full text-left py-2 font-semibold text-slate-800">About Us</button>
             <div className="pt-4 flex flex-col gap-2">
-              <Button onClick={() => { setMobileMenuOpen(false); navigate({ to: "/login" }); }} className="gradient-brand text-white font-bold h-11">
+              <Button onClick={() => { setMobileMenuOpen(false); navigate({ to: "/login" }); }} className="gradient-brand text-white font-bold h-11 border-0">
                 Sign In / Login
               </Button>
             </div>
@@ -449,27 +452,27 @@ function MarketingLandingPage() {
         )}
       </header>
 
-      {/* ΓöÇΓöÇ PAGE CONTENT RENDERER ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* ── PAGE CONTENT RENDERER ────────────────────────────────────────────── */}
       <main>
         
-        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+        {/* ══════════════════════════════════════════════════════════════════════
              PAGE 1: HOME PAGE
-           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
+           ══════════════════════════════════════════════════════════════════════ */}
         {currentPage === "home" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             
             {/* Hero Section */}
-            <section className="relative pt-16 pb-20 lg:pt-24 lg:pb-28 bg-gradient-to-b from-indigo-50/60 via-white to-slate-50 border-b border-slate-200/80">
+            <section className="relative pt-16 pb-20 lg:pt-24 lg:pb-28 bg-gradient-to-b from-purple-50/60 via-white to-slate-50 border-b border-slate-200/80">
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
                 
-                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-100/80 border border-indigo-200 text-indigo-800 text-xs font-bold uppercase tracking-wider mb-8">
-                  <Sparkles className="size-4 text-indigo-600" />
+                <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-100/80 border border-purple-200 text-purple-900 text-xs font-bold uppercase tracking-wider mb-8">
+                  <Sparkles className="size-4 text-purple-700" />
                   AI-Driven Enterprise Business OS & Multi-Currency POS
                 </motion.div>
 
                 <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.12]">
                   One Platform.<br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700">
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-700 via-purple-600 to-emerald-600">
                     Every Operation of Your Business.
                   </span>
                 </h1>
@@ -490,7 +493,7 @@ function MarketingLandingPage() {
                     onClick={() => setServiceModal({ title: "Schedule Custom Demo", type: "demo" })}
                     className="w-full sm:w-auto h-14 px-8 text-base border-slate-300 bg-white hover:bg-slate-100 text-slate-800 font-bold rounded-2xl shadow-xs"
                   >
-                    <Clock className="size-5 mr-2 text-indigo-600" /> Book Enterprise Demo
+                    <Clock className="size-5 mr-2 text-purple-700" /> Book Enterprise Demo
                   </Button>
                 </div>
 
@@ -498,8 +501,8 @@ function MarketingLandingPage() {
                 <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto text-left">
                   {[
                     { label: "0ms UI Fetch Delay", desc: "Local DB priority with silent background AI", icon: Zap, color: "text-amber-500" },
-                    { label: "Multi-Currency POS", desc: "≡ƒ¬Ö Γé╣ INR, $ USD, Γé¼ EUR live topbar", icon: CreditCard, color: "text-emerald-600" },
-                    { label: "Dual AI Workers", desc: "Parallel inventory & master catalog RAG", icon: Bot, color: "text-indigo-600" },
+                    { label: "Multi-Currency POS", desc: "Live currency switcher", icon: CreditCard, color: "text-emerald-600" },
+                    { label: "Dual AI Workers", desc: "Parallel inventory & master catalog RAG", icon: Bot, color: "text-purple-600" },
                     { label: "Dual Pricing Tiers", desc: "Retail Selling Price vs Wholesale Rate", icon: Receipt, color: "text-purple-600" },
                   ].map((item, i) => (
                     <div key={i} className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
@@ -518,7 +521,7 @@ function MarketingLandingPage() {
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 
                 <div className="text-center mb-12">
-                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Enterprise Platform Matrix</span>
+                  <span className="text-xs font-bold text-purple-700 uppercase tracking-widest">Enterprise Platform Matrix</span>
                   <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight mt-2">
                     Explore Our 9 Integrated Modules
                   </h2>

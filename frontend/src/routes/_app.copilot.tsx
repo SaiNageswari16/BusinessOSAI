@@ -220,11 +220,11 @@ function LazyMonkeyAiPage() {
         {/* Topbar */}
         <div className="px-6 py-4 border-b border-border/50 bg-background/80 backdrop-blur-md flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-xl gradient-brand grid place-items-center text-white shadow-elegant">
-              <Sparkles className="size-5" />
+            <div className="size-9 rounded-xl flex items-center justify-center overflow-hidden shrink-0 border border-purple-200/50 bg-purple-50">
+              <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
             </div>
             <div>
-              <div className="text-sm font-bold tracking-tight">LazyMonkeyAI</div>
+              <div className="text-sm font-extrabold tracking-tight"><span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span></div>
               <div className="text-[10px] font-medium text-muted-foreground flex items-center gap-1.5">
                 <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" /> Enterprise AI Copilot & Assistant
               </div>
@@ -245,13 +245,19 @@ function LazyMonkeyAiPage() {
           <div className="max-w-4xl mx-auto h-full flex flex-col">
             {messages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 pb-16">
-                <div className="size-16 rounded-2xl gradient-brand grid place-items-center text-white shadow-2xl mb-6 relative">
-                  <div className="absolute inset-0 bg-white/20 blur-xl rounded-full" />
-                  <Sparkles className="size-8 relative z-10" />
+                <div className="size-20 rounded-3xl p-2 bg-purple-50/80 border border-purple-200 shadow-xl mb-6 relative flex items-center justify-center">
+                  <div className="absolute inset-0 bg-purple-500/10 blur-xl rounded-full" />
+                  <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain relative z-10" />
                 </div>
-                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3 text-center text-foreground">
-                  Hello, I'm LazyMonkeyAI.
+                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-2 text-center text-foreground">
+                  Hello, I'm <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>.
                 </h1>
+                <div className="text-xs font-semibold mb-3 flex items-center gap-1">
+                  <span className="text-slate-600 font-medium">Smart</span>
+                  <span className="text-emerald-600 font-extrabold">AI</span>
+                  <span className="text-slate-600 font-medium">for</span>
+                  <span className="text-amber-600 font-bold">Lazy Geniuses</span>
+                </div>
                 <p className="text-muted-foreground text-center max-w-lg mb-8 text-xs sm:text-sm leading-relaxed">
                   Your intelligent enterprise co-pilot. Ask me anything about your platform features, live inventory, sales, or workflow guides.
                 </p>
@@ -289,10 +295,14 @@ function LazyMonkeyAiPage() {
                         <AvatarFallback
                           className={cn(
                             "text-xs font-semibold",
-                            m.role === "ai" ? "gradient-brand text-white" : "bg-muted text-foreground"
+                            m.role === "ai" ? "bg-purple-50 p-1" : "bg-muted text-foreground"
                           )}
                         >
-                          {m.role === "ai" ? <Sparkles className="size-4" /> : user?.avatar ?? "U"}
+                          {m.role === "ai" ? (
+                            <img src="/Logo.png" alt="AI" className="size-full object-contain" />
+                          ) : (
+                            user?.avatar ?? "U"
+                          )}
                         </AvatarFallback>
                       </Avatar>
 
@@ -590,7 +600,7 @@ function Markdown({ text }: { text: string }) {
       out.push(
         <div key={`t-${out.length}`} className="my-3 overflow-x-auto rounded-xl border border-border/70 shadow-xs">
           <table className="w-full text-xs">
-            <thead className="bg-muted/50 border-b border-border/60">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 {header.map((h, i) => (
                   <th key={i} className="px-3.5 py-2 text-left font-bold text-muted-foreground">

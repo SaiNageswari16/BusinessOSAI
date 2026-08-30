@@ -149,52 +149,63 @@ export function ProductVariants() {
           <p className="text-[11px] text-muted-foreground mt-0.5">Variants are SKUs derived from products + attributes (Color, Size, etc).</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((variant) => (
-            <Card key={variant.id} className="p-4 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="size-8 rounded-lg bg-indigo-500/10 text-indigo-600 grid place-items-center shrink-0">
-                    <Layers className="size-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-bold text-sm leading-tight truncate">{variant.variant_name}</h3>
-                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{variant.sku}</div>
-                  </div>
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => openEdit(variant)}>
-                    <Edit2 className="size-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(variant.id)}>
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5 text-xs border-t pt-2.5">
-                {variant.barcode && (
-                  <div className="flex justify-between text-muted-foreground text-[11px]">
-                    <span>Barcode:</span>
-                    <span className="font-mono">{variant.barcode}</span>
-                  </div>
-                )}
-                {variant.attributes && Object.keys(variant.attributes).length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {Object.entries(variant.attributes).map(([k, v]) => (
-                      <span key={k} className="px-2 py-0.5 rounded bg-muted text-[10px] font-medium text-foreground">
-                        {k}: {String(v)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="flex justify-between font-semibold pt-1 border-t mt-2 text-xs">
-                  <span>Additional Price:</span>
-                  <span className="text-emerald-600 font-bold">{currency.symbol}{Number(variant.additional_price || 0).toFixed(2)}</span>
-                </div>
-              </div>
-            </Card>
-          ))}
+        <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Variant Name</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">SKU</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Barcode</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Attributes</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Extra Price</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Stock Override</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30 font-medium">
+                {filtered.map((variant) => (
+                  <tr key={variant.id} className="hover:bg-muted/30 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="size-8 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-100">
+                          <Layers className="size-4" />
+                        </div>
+                        <div className="font-bold text-foreground text-sm">{variant.variant_name}</div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 font-mono font-bold text-slate-700">{variant.sku || "—"}</td>
+                    <td className="px-6 py-4 font-mono text-muted-foreground">{variant.barcode || "—"}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(variant.attributes || {}).map(([k, v]) => (
+                          <span key={k} className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700">
+                            {k}: {String(v)}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right font-bold text-slate-900">
+                      {variant.additional_price ? `+${currency.symbol}${variant.additional_price.toFixed(2)}` : "—"}
+                    </td>
+                    <td className="px-6 py-4 text-right font-bold text-slate-900">
+                      {variant.stock_override !== undefined && variant.stock_override !== null ? variant.stock_override : "Auto"}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-700 hover:bg-purple-50" onClick={() => openEdit(variant)}>
+                          <Edit2 className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(variant.id)}>
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

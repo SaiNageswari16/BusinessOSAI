@@ -123,17 +123,17 @@ function LoginPage() {
       {/* Top Left Navigation Back to Public Site */}
       <button 
         onClick={() => navigate({ to: "/" })}
-        className="absolute top-6 left-6 z-50 flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 bg-white/90 backdrop-blur-md rounded-xl border border-slate-200 shadow-sm hover:bg-slate-50 transition"
+        className="absolute top-6 left-6 z-50 flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 bg-white/90 backdrop-blur-md rounded-xl border border-slate-200 shadow-xs hover:bg-slate-50 transition"
       >
-        <ArrowLeft className="size-4 text-indigo-600" />
+        <ArrowLeft className="size-4 text-purple-700" />
         Back to Website
       </button>
 
       {/* Left — brand panel */}
       <div className="relative hidden lg:flex flex-col p-12 lg:px-16 xl:px-24 overflow-hidden bg-slate-50 text-slate-900 border-r border-slate-200/60">
-        <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-indigo-300/40 blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[0%] right-[0%] w-[70%] h-[70%] rounded-full bg-emerald-300/30 blur-[120px] pointer-events-none" />
-        <div className="absolute top-[40%] right-[10%] w-[40%] h-[40%] rounded-full bg-violet-300/40 blur-[100px] pointer-events-none" />
+        <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-purple-400/25 blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[0%] right-[0%] w-[70%] h-[70%] rounded-full bg-emerald-400/25 blur-[120px] pointer-events-none" />
+        <div className="absolute top-[40%] right-[10%] w-[40%] h-[40%] rounded-full bg-amber-400/20 blur-[100px] pointer-events-none" />
 
         <div className="relative z-10 flex flex-col flex-1 justify-center">
           <div className="flex items-center gap-5 mb-12 cursor-pointer" onClick={() => navigate({ to: "/" })}>
@@ -141,15 +141,20 @@ function LoginPage() {
               <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain drop-shadow-sm" />
             </div>
             <div>
-              <div className="font-bold text-3xl tracking-tight text-slate-900">LazyMonkeyAI</div>
-              <div className="text-sm text-indigo-600 uppercase tracking-wider font-bold mt-1">Smart AI for Lazy Geniuses</div>
+              <div className="font-extrabold text-3xl tracking-tight text-slate-900"><span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span></div>
+              <div className="text-xs font-semibold mt-1 flex items-center gap-1">
+                <span className="text-slate-600 font-medium">Smart</span>
+                <span className="text-emerald-600 font-extrabold">AI</span>
+                <span className="text-slate-600 font-medium">for</span>
+                <span className="text-amber-600 font-bold">Lazy Geniuses</span>
+              </div>
             </div>
           </div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
             <h1 className="text-4xl xl:text-5xl font-bold leading-[1.15] tracking-tight">
               One platform.<br/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">Every part of your business.</span>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-700 via-purple-600 to-emerald-600">Every part of your business.</span>
             </h1>
             <p className="mt-6 text-slate-600 text-base xl:text-lg leading-relaxed max-w-md">
               ERP, POS, Inventory, CRM, HRMS, IoT and Accounting — unified by an AI copilot that thinks across your entire operation.
@@ -162,8 +167,8 @@ function LoginPage() {
                 { icon: ShieldCheck, t: "SOC 2 Type II • ISO 27001 • GDPR" },
               ].map((f, i) => (
                 <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.1 }}
-                  className="flex items-center gap-4 rounded-xl bg-white/80 backdrop-blur-md px-5 py-4 ring-1 ring-slate-200/50 shadow-sm hover:bg-white transition-colors">
-                  <f.icon className="size-5 shrink-0 text-indigo-600" />
+                  className="flex items-center gap-4 rounded-xl bg-white/80 backdrop-blur-md px-5 py-4 ring-1 ring-slate-200/50 shadow-xs hover:bg-white transition-colors">
+                  <f.icon className="size-5 shrink-0 text-purple-700" />
                   <span className="text-sm font-medium text-slate-700">{f.t}</span>
                 </motion.div>
               ))}
@@ -184,7 +189,7 @@ function LoginPage() {
             <div className="size-24 shrink-0 flex items-center justify-center">
               <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain drop-shadow-sm" />
             </div>
-            <span className="font-bold text-3xl tracking-tight text-slate-900">LazyMonkeyAI</span>
+            <span className="font-bold text-3xl tracking-tight text-slate-900">LazyMonkey<span className="text-emerald-600">AI</span></span>
           </div>
 
           <div className="text-center lg:text-left mb-8">
@@ -201,63 +206,52 @@ function LoginPage() {
               <>
                 <div className="space-y-2">
                   <Label htmlFor="tenant_name" className="text-sm font-medium text-slate-700">Workspace name</Label>
-                  <Input id="tenant_name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="e.g. Acme Enterprise" required />
+                  <Input id="tenant_name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="e.g. Acme Enterprise" required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="tenant_slug" className="text-sm font-medium text-slate-700">Workspace slug <span className="text-slate-400 font-normal">(optional)</span></Label>
-                  <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="e.g. acme-corp" />
+                  <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="e.g. acme-corp" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="company_name" className="text-sm font-medium text-slate-700">Company name</Label>
-                  <Input id="company_name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="Acme Corporation Ltd." required />
+                  <Input id="company_name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="Acme Corporation Ltd." required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="admin_name" className="text-sm font-medium text-slate-700">Admin full name</Label>
-                  <Input id="admin_name" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="John Doe" required />
+                  <Input id="admin_name" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="John Doe" required />
                 </div>
 
                 {/* Module Entitlement Selector */}
                 <div className="space-y-2 pt-2 border-t">
-                  <Label className="text-sm font-semibold text-slate-900 block">Select Required Modules *</Label>
-                  <p className="text-xs text-slate-500 mb-2">Choose which business modules your workspace requires. System Admin will review & approve your selected modules.</p>
-                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 border rounded-lg bg-slate-50/50">
+                  <Label className="text-xs font-semibold uppercase text-slate-500 tracking-wider">Select modules for workspace</Label>
+                  <div className="grid grid-cols-2 gap-2 mt-1">
                     {[
-                      { id: "inventory", name: "Inventory & Catalog", icon: "📦", desc: "Stock, Barcodes & Catalog" },
-                      { id: "pos", name: "Point of Sale (POS)", icon: "🛒", desc: "Retail & Counter Checkout" },
-                      { id: "accounting", name: "Finance & Accounting", icon: "📊", desc: "Ledgers, Tax & Invoicing" },
-                      { id: "crm", name: "Sales & CRM", icon: "🤝", desc: "Leads, Deals & Pipeline" },
-                      { id: "procurement", name: "Procurement", icon: "💼", desc: "POs & Supplier Bills" },
-                      { id: "hrms", name: "HRMS & Payroll", icon: "🏢", desc: "Attendance & Employee Hub" },
-                      { id: "iot", name: "IoT Telemetry", icon: "🔌", desc: "Devices & Real-time Sensors" },
-                      { id: "copilot", name: "AI Copilot", icon: "🤖", desc: "AI Assistant & RAG Sourcing" },
+                      { id: "inventory", label: "Inventory & RAG" },
+                      { id: "pos", label: "POS & Checkout" },
+                      { id: "erp", label: "Core ERP" },
+                      { id: "accounting", label: "Accounting" },
+                      { id: "crm", label: "CRM & Support" },
+                      { id: "hrms", label: "HRMS & Payroll" },
+                      { id: "procurement", label: "Procurement" },
+                      { id: "iot", label: "IoT & Hardware" },
                     ].map((mod) => {
-                      const isSelected = selectedModules.includes(mod.id);
+                      const isChecked = selectedModules.includes(mod.id);
                       return (
                         <div
                           key={mod.id}
                           onClick={() => {
                             setSelectedModules((prev) =>
-                              prev.includes(mod.id)
-                                ? prev.filter((m) => m !== mod.id)
-                                : [...prev, mod.id]
+                              isChecked ? prev.filter((m) => m !== mod.id) : [...prev, mod.id]
                             );
                           }}
-                          className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all select-none ${
-                            isSelected
-                              ? "border-indigo-600 bg-indigo-50/80 ring-1 ring-indigo-600"
-                              : "border-slate-200 bg-white hover:border-slate-300"
+                          className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-medium cursor-pointer transition-all ${
+                            isChecked
+                              ? "bg-purple-50 border-purple-300 text-purple-900 shadow-2xs"
+                              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                           }`}
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-slate-900">{mod.icon} {mod.name}</span>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              readOnly
-                              className="size-3.5 accent-indigo-600 rounded"
-                            />
-                          </div>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{mod.desc}</p>
+                          <Checkbox checked={isChecked} className="data-[state=checked]:bg-purple-700 data-[state=checked]:border-purple-700" />
+                          <span>{mod.label}</span>
                         </div>
                       );
                     })}
@@ -266,26 +260,26 @@ function LoginPage() {
               </>
             ) : (
               <div className="space-y-2">
-                <Label htmlFor="tenant_slug" className="text-sm font-medium text-slate-700">Workspace slug <span className="text-slate-400 font-normal">(optional)</span></Label>
-                <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="e.g. acme-corp" />
+                <Label htmlFor="tenant_slug" className="text-sm font-medium text-slate-700">Workspace / Tenant ID <span className="text-slate-400 font-normal">(optional)</span></Label>
+                <Input id="tenant_slug" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="e.g. acme-corp" />
               </div>
             )}
 
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium text-slate-700">Work email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="you@company.com" required />
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="you@company.com" required />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password" className="text-sm font-medium text-slate-700">Password</Label>
                 {mode === "login" ? (
-                  <button type="button" className="text-sm font-medium text-indigo-600 hover:text-indigo-700" onClick={() => toast.info("Password reset link sent.")}>
+                  <button type="button" className="text-sm font-medium text-purple-700 hover:text-purple-800" onClick={() => toast.info("Password reset link sent.")}>
                     Forgot password?
                   </button>
                 ) : null}
               </div>
               <div className="relative">
-                <Input id="password" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus-visible:ring-indigo-600" placeholder="••••••••" required />
+                <Input id="password" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="••••••••" required />
                 <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                   {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -294,19 +288,19 @@ function LoginPage() {
             
             {mode === "login" ? (
               <div className="flex items-center gap-2 pt-1">
-                <Checkbox id="remember" defaultChecked className="border-slate-300 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600" />
+                <Checkbox id="remember" defaultChecked className="border-slate-300 data-[state=checked]:bg-purple-700 data-[state=checked]:border-purple-700" />
                 <Label htmlFor="remember" className="text-sm font-normal cursor-pointer text-slate-600">Remember me for 30 days</Label>
               </div>
             ) : (
               <div className="flex items-start space-x-2 pt-2">
-                <Checkbox id="terms" required className="mt-0.5 border-slate-300 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600" />
+                <Checkbox id="terms" required className="mt-0.5 border-slate-300 data-[state=checked]:bg-purple-700 data-[state=checked]:border-purple-700" />
                 <Label htmlFor="terms" className="text-sm font-normal text-slate-600 leading-snug">
-                  I agree to the <a href="#" className="font-medium text-indigo-600 hover:text-indigo-700">Terms of Service</a> and <a href="#" className="font-medium text-indigo-600 hover:text-indigo-700">Privacy Policy</a>.
+                  I agree to the <a href="#" className="font-medium text-purple-700 hover:text-purple-800">Terms of Service</a> and <a href="#" className="font-medium text-purple-700 hover:text-purple-800">Privacy Policy</a>.
                 </Label>
               </div>
             )}
 
-            <Button type="submit" disabled={loading || (mode === "register" && selectedModules.length === 0)} className="w-full h-11 text-base bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all font-medium mt-2">
+            <Button type="submit" disabled={loading || (mode === "register" && selectedModules.length === 0)} className="w-full h-11 text-base gradient-brand hover:opacity-95 text-white shadow-xs transition-all font-semibold mt-2 border-0">
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -346,7 +340,7 @@ function LoginPage() {
 
           <p className="mt-8 text-center text-sm text-slate-600">
             {mode === "login" ? "Don't have a workspace? " : "Already have a workspace? "}
-            <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")} className="font-semibold text-indigo-600 hover:text-indigo-700 hover:underline transition-colors">
+            <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")} className="font-semibold text-purple-700 hover:text-purple-800 hover:underline transition-colors">
               {mode === "login" ? "Create one" : "Sign in"}
             </button>
           </p>

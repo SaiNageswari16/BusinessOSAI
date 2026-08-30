@@ -205,9 +205,9 @@ function PaidAdsSection({ tokenInfo }: { tokenInfo: TokenInfo | null }) {
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/20">
-                  <th className="text-left p-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Campaign</th>
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
+                <th className="text-left p-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Campaign</th>
                   <th className="text-left p-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Objective</th>
                   <th className="text-left p-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Status</th>
                   <th className="text-right p-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Spend</th>

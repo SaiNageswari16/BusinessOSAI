@@ -96,8 +96,10 @@ api_router.include_router(segments_router)
 api_router.include_router(wallet_router)
 api_router.include_router(whatsapp_automation_router)
 
-# Storefront
+# Storefront & Marketplace
 api_router.include_router(storefront_router)
+from src.api.v1.marketplace.marketplace_router import router as marketplace_router
+api_router.include_router(marketplace_router, prefix="/marketplace", tags=["Marketplace"])
 
 # Workspace
 api_router.include_router(workspace_router)

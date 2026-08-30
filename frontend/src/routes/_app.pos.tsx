@@ -5,7 +5,7 @@ import { posApi } from "../lib/api-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRbac } from "@/contexts/rbac-context";
 import { Unauthorized } from "@/components/unauthorized";
-import { PosDashboard } from "../components/pos/PosDashboard";
+
 import { PosTerminal } from "../components/pos/POSTerminal";
 import { PosSalesInvoice } from "../components/pos/PosSalesInvoice";
 import { PosPaymentIn } from "../components/pos/PosPaymentIn";
@@ -56,7 +56,7 @@ function PosSales() {
       ) : (
         <div className="bg-card rounded-2xl shadow-xs border border-border/70 overflow-hidden">
           <table className="w-full text-xs text-left">
-            <thead className="bg-muted/40 text-muted-foreground font-bold uppercase tracking-wider text-[11px] border-b border-border/60">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-4 py-3 text-left">Receipt No</th>
                 <th className="px-4 py-3 text-left">Date & Time</th>
@@ -119,7 +119,7 @@ function PosCustomersPlaceholder() {
       </div>
       <div className="bg-card rounded-2xl shadow-xs border border-border/70 overflow-hidden">
         <table className="w-full text-xs text-left">
-          <thead className="bg-muted/40 text-muted-foreground font-bold uppercase tracking-wider text-[11px] border-b border-border/60">
+          <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
             <tr><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-left">Phone</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Tier</th><th className="px-4 py-3 text-left">Points</th><th className="px-4 py-3 text-center">Action</th></tr>
           </thead>
           <tbody className="divide-y divide-border/30 font-medium">
@@ -1156,7 +1156,6 @@ function PosAiAssistant() {
 /* ─────────────────── ROUTER ─────────────────── */
 
 const componentMap: Record<string, React.ElementType> = {
-  dashboard: PosDashboard,
   terminal: PosTerminal,
   sales: PosSalesInvoice,
   sales_history: PosInvoicesHistory,
@@ -1181,8 +1180,8 @@ function PosModule() {
   if (!hasPermission("view:pos")) return <Unauthorized />;
 
   const params = new URLSearchParams(searchStr);
-  const activeTab = params.get("tab") || "dashboard";
-  const ActiveComponent = componentMap[activeTab] || PosDashboard;
+  const activeTab = params.get("tab") || "sales";
+  const ActiveComponent = componentMap[activeTab] || PosSalesInvoice;
   const isFullBleed = activeTab === "terminal" || activeTab === "sales";
 
   return (

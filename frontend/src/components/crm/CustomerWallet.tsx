@@ -251,7 +251,7 @@ export function CustomerWallet() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium">Date</th>
                   <th className="text-left px-4 py-3 font-medium">Type</th>

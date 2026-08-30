@@ -561,8 +561,8 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
 
       <div className="rounded-xl border overflow-hidden bg-card">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/30">
+          <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">User</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Roles</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>

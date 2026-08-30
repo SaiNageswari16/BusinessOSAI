@@ -141,19 +141,19 @@ export function RibbonNavigation() {
                 className={cn(
                   "relative flex items-center gap-2 h-full px-1 text-[13px] transition-colors whitespace-nowrap cursor-pointer",
                   isActive
-                    ? "text-blue-600 font-semibold"
-                    : "text-slate-600 hover:text-slate-900 font-medium"
+                    ? "text-purple-700 font-bold"
+                    : "text-slate-600 hover:text-purple-700 font-medium"
                 )}
               >
                 <Icon
                   className={cn(
                     "size-[16px] transition-colors",
-                    isActive ? "text-blue-600 stroke-[2]" : "text-slate-400 stroke-[1.75]"
+                    isActive ? "text-purple-700 stroke-[2.2]" : "text-slate-400 stroke-[1.75]"
                   )}
                 />
                 <span>{item.label}</span>
                 {isActive && (
-                  <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-blue-600 rounded-t-full" />
+                  <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-purple-700 rounded-t-full" />
                 )}
               </button>
             );
@@ -163,7 +163,7 @@ export function RibbonNavigation() {
 
       {/* ── Row 2: Feature Ribbon / Pills Bar (Level 3) ── */}
       {activeItem.subItems && activeItem.subItems.length > 0 && (
-        <div className="flex items-center px-6 py-2.5 overflow-x-auto bg-[#f8fafc] border-b border-slate-200/80 gap-2.5 scrollbar-hide">
+        <div className="flex items-center px-6 py-2.5 overflow-x-auto bg-white border-b border-slate-200/80 gap-2.5 scrollbar-hide">
           {isTerminal && (
             <div className="flex items-center">
               <button
@@ -186,8 +186,8 @@ export function RibbonNavigation() {
                 className={cn(
                   "relative flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] transition-all whitespace-nowrap rounded-full shadow-2xs cursor-pointer",
                   isActive
-                    ? "bg-blue-600 text-white font-bold shadow-xs"
-                    : "bg-white text-slate-700 border border-slate-200/90 hover:bg-slate-50 hover:text-slate-950 hover:border-slate-300 font-semibold"
+                    ? "bg-purple-700 text-white font-bold shadow-xs ring-1 ring-purple-800"
+                    : "bg-white text-slate-700 border border-slate-200/90 hover:bg-purple-50/50 hover:text-purple-900 hover:border-purple-200 font-semibold"
                 )}
               >
                 <SubIcon

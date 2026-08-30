@@ -250,7 +250,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
   // ─── Asset Categories ───────────────────────────────────────────────────
   if (tab === "asset_categories") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Asset Categories</h1>
@@ -306,7 +306,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
     };
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Depreciation Schedule</h1>
@@ -316,7 +316,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
         </div>
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4 font-medium">Asset Name</th>
                 <th className="px-6 py-4 font-medium">Method</th>
@@ -351,7 +351,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
     const total = useMemo(() => assets.reduce((s, a) => ({ cost: s.cost + a.purchaseCost, bv: s.bv + a.bookValue }), { cost: 0, bv: 0 }), [assets]);
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Asset Register</h1>
           <p className="text-sm text-muted-foreground">Complete register of all capital assets with current book values.</p>
@@ -371,7 +371,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4 font-medium">Asset #</th>
                   <th className="px-6 py-4 font-medium">Name</th>
@@ -415,7 +415,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
   const totalBookValue = assets.reduce((s, a) => s + a.bookValue, 0);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Fixed Assets</h1>
@@ -445,7 +445,7 @@ export function FixedAssets({ tab = "fixed_assets" }: Props) {
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4 font-medium">ID</th>
                 <th className="px-6 py-4 font-medium">Asset Name</th>

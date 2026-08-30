@@ -2,7 +2,7 @@ import {
   Activity, AlertTriangle, Archive, AreaChart, ArrowDownToLine, ArrowRightLeft, Award, Banknote, BarChart3, Barcode, Blocks,
   BookOpen, Boxes, BrainCircuit, Briefcase, BriefcaseBusiness, Building, Building2, Calculator, Calendar, CalendarClock,
   CalendarRange, CalendarX, ChartPie, ChartSpline, CircleDollarSign, ClipboardCheck, ClipboardList, Clock, Cog, Columns,
-  Combine, Compass, Component, Contact, CreditCard, Crosshair, Database, DoorOpen, Factory, FileCheck,
+  Combine, Compass, Component, Contact, CreditCard, Crosshair, Database, DollarSign, DoorOpen, Factory, FileCheck,
   FileText, Fingerprint, FlaskConical, FolderTree, Gift, GitBranch, Goal, GraduationCap, Grid, Hash, Headset,
   Heart, HeartHandshake, History, Image, Inbox, Laptop, Layers, LayoutDashboard, LibraryBig, LineChart,
   ListChecks, Lock, Map, MapPin, Megaphone, MessageSquare, MessagesSquare, Microscope, Monitor, Navigation,
@@ -277,7 +277,6 @@ export const nav: NavGroup[] = [
   },
   {
     group: "POS", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
-      { to: "/pos?tab=dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/pos?tab=sales", label: "Sales Invoice", icon: Receipt },
       { to: "/pos?tab=sales_history", label: "Invoices History", icon: History },
       { to: "/pos?tab=payment_in", label: "Payment In", icon: Wallet },

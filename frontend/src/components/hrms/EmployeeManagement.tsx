@@ -26,6 +26,7 @@ const formatDate = (dateStr: string | null | undefined) => {
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
 interface Props { tab?: string; }
@@ -453,7 +454,6 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     link.download = `${(vCardData.full_name || selectedEmpForVCard?.full_name || "Employee").replace(/\s+/g, "_")}_vCard_QR.png`;
     document.body.appendChild(link);
     link.click();
-    window.URL.revokeObjectURL(url);
     document.body.removeChild(link);
   };
 
@@ -915,7 +915,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
           <div className="glass-panel rounded-xl border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="px-6 py-4">Designation Name</th>
                     <th className="px-6 py-4">Level Mapping</th>
@@ -1196,57 +1196,87 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-600 text-sm border border-red-500/20">{error}</div>}
 
       {!loading && !error && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {employees.length === 0 ? (
-            <div className="col-span-3 text-center py-16 text-muted-foreground">
-              <Users className="size-12 mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium">No employees registered</p>
-              <p className="text-sm">Click "Create Employee User" to register employee profiles.</p>
-            </div>
-          ) : employees.map((emp, i) => {
-            const manager = employees.find(m => m.id === emp.manager_id);
-            return (
-              <motion.div key={emp.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                className="glass-panel p-5 rounded-xl border hover:shadow-md transition-shadow bg-card group relative">
-                <div className="flex items-start gap-4">
-                  <div className="size-12 rounded-xl bg-gradient-to-br from-primary/80 to-purple-500/80 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm">
-                    {emp.full_name.split(" ").map(n => n[0]).join("")}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-semibold text-foreground truncate leading-tight">{emp.full_name}</h3>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ml-2 ${empStatusStyle(emp.status)}`}>{emp.status}</span>
-                    </div>
-                    <p className="text-xs text-primary font-medium truncate mt-0.5">{designations.find(d => d.id === emp.designation_id)?.name || "Designation Not Set"}</p>
-                    <p className="text-[10px] text-muted-foreground">{departments.find(d => d.id === emp.department_id)?.name || "Dept Not Assigned"} · {emp.employee_code}</p>
-                  </div>
-                </div>
-                
-                <div className="mt-4 pt-4 border-t space-y-1.5 text-xs text-muted-foreground">
-                  <p className="flex items-center gap-1.5 truncate"><Mail className="size-3.5 shrink-0" /> {emp.email}</p>
-                  <p className="flex items-center gap-1.5"><User className="size-3.5 shrink-0" /> Reporting Manager: <span className="font-semibold text-foreground truncate">{manager ? manager.full_name : "Org Admin"}</span></p>
-                  <p className="flex justify-between items-center text-[10px] text-muted-foreground pt-1">
-                    <span>Joined: {formatDate(emp.date_of_joining)}</span>
-                    <span className="font-bold text-foreground bg-secondary px-1.5 py-0.5 rounded">{emp.employment_type}</span>
-                  </p>
-                </div>
-                
-                <div className="flex justify-between items-center mt-4 pt-3 border-t">
-                  <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium" onClick={() => handleOpenVCard(emp)}>
-                    <QrCode className="size-3.5 mr-1.5 text-indigo-500" /> vCard & QR
-                  </Button>
-                  <div className="flex gap-1.5">
-                    <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs" onClick={() => openEditModal(emp)}>
-                      <Edit2 className="size-3 mr-1" /> Edit
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-8 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => handleDeleteEmployee(emp.id)}>
-                      <Trash2 className="size-3" />
-                    </Button>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
+        <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Employee</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Code</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Designation</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Department</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Email</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Reporting Manager</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Joined Date</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Type</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30 font-medium">
+                {employees.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="px-6 py-16 text-center text-muted-foreground">
+                      <Users className="size-10 mx-auto mb-2 opacity-40" />
+                      <p className="font-semibold text-sm">No employees registered</p>
+                      <p className="text-xs mt-0.5">Click "Create Employee User" to register employee profiles.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  employees.map((emp) => {
+                    const manager = employees.find(m => m.id === emp.manager_id);
+                    return (
+                      <tr key={emp.id} className="hover:bg-muted/30 transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="size-8 rounded-xl bg-purple-50 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-100">
+                              {emp.full_name.split(" ").map(n => n[0]).join("")}
+                            </div>
+                            <div className="font-bold text-foreground text-sm">{emp.full_name}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-700">{emp.employee_code}</td>
+                        <td className="px-6 py-4 font-semibold text-purple-700">
+                          {designations.find(d => d.id === emp.designation_id)?.name || "—"}
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {departments.find(d => d.id === emp.department_id)?.name || "—"}
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground">{emp.email}</td>
+                        <td className="px-6 py-4 text-slate-800 font-medium">
+                          {manager ? manager.full_name : "Org Admin"}
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground">{formatDate(emp.date_of_joining)}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                            {emp.employment_type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${empStatusStyle(emp.status)}`}>
+                            {emp.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-700 hover:bg-purple-50" onClick={() => handleOpenVCard(emp)} title="vCard & QR">
+                              <QrCode className="size-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:bg-slate-100" onClick={() => openEditModal(emp)} title="Edit">
+                              <Edit2 className="size-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50" onClick={() => handleDeleteEmployee(emp.id)} title="Delete">
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

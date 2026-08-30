@@ -204,5 +204,22 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to '{table_name}': {e}")
 
+    # Add punch_method, biometric_pin, nfc_card_number to employees
+    employee_cols = [
+        ("punch_method", "VARCHAR(50) DEFAULT 'GPS'"),
+        ("biometric_pin", "VARCHAR(50)"),
+        ("nfc_card_number", "VARCHAR(50)"),
+    ]
+    for name, col_type in employee_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE employees ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'employees' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in 'employees'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to 'employees': {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())

@@ -211,7 +211,7 @@ function JournalEntryFormModal({ onClose, onSaved, accounts }: { onClose: () => 
 
             <div className="border border-border/50 rounded-xl overflow-hidden">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground bg-muted/30 border-b border-border/50">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     <th className="px-4 py-2 font-medium">Account</th>
                     <th className="px-4 py-2 font-medium text-right w-28">Debit (INR)</th>
@@ -309,7 +309,7 @@ function ChartOfAccountsTab() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-4">
       <div className="flex justify-between items-start gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Chart of Accounts</h1>
@@ -362,7 +362,7 @@ function ChartOfAccountsTab() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
-              <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] font-bold tracking-wider">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-4 py-3 text-left">Code</th>
                   <th className="px-4 py-3 text-left">Account Name</th>
@@ -535,7 +535,7 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
   };
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-4">
       <div className="flex justify-between items-start gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{filterClosing ? "Closing Entries" : "Journal Entries"}</h1>
@@ -569,7 +569,7 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
-              <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] font-bold tracking-wider">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-4 py-3 text-left">Entry #</th>
                   <th className="px-4 py-3 text-left">Date</th>
@@ -640,7 +640,7 @@ function JournalEntriesTab({ filterClosing = false }: { filterClosing?: boolean 
                     <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
                       <div className="px-4 py-3 bg-muted/20 border-b border-border/50"><h3 className="font-semibold text-sm">Entry Lines</h3></div>
                       <table className="w-full text-sm">
-                        <thead className="text-xs text-muted-foreground bg-muted/10 border-b border-border/50">
+                        <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                           <tr>
                             <th className="px-4 py-2 text-left font-medium">#</th>
                             <th className="px-4 py-2 text-left font-medium">Account</th>
@@ -714,7 +714,7 @@ function GeneralLedgerTab() {
   const accountOptions = glData.map(a => ({ id: a.account_id, code: a.account_code, name: a.account_name }));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground">General Ledger</h1><p className="text-sm text-muted-foreground">Detailed transaction-level view of all account postings.</p></div>
       </div>
@@ -756,7 +756,7 @@ function GeneralLedgerTab() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-muted/40 text-muted-foreground uppercase text-[11px] font-bold tracking-wider border-b border-border/60">
+                  <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                     <tr>
                       <th className="px-4 py-3 text-left">Date</th>
                       <th className="px-4 py-3 text-left">Entry #</th>
@@ -828,7 +828,7 @@ function OpeningBalancesTab() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground">Opening Balances</h1><p className="text-sm text-muted-foreground">Set account opening balances at the start of a new fiscal year.</p></div>
         <div className="relative">
@@ -842,7 +842,7 @@ function OpeningBalancesTab() {
         <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
-              <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] font-bold tracking-wider">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-4 py-3 text-left">Code</th>
                   <th className="px-4 py-3 text-left">Account Name</th>

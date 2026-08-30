@@ -4913,7 +4913,7 @@ export function Products() {
         <div className="bg-card border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto w-full min-w-full">
             <table className="w-full text-sm text-left whitespace-nowrap min-w-[1000px]">
-              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   {LOCAL_COLUMNS.filter(c => localVisibleColumns.includes(c.id)).map((col) => (
                     <th key={col.id} className="px-6 py-4 whitespace-nowrap">{col.label}</th>
@@ -5033,7 +5033,7 @@ export function Products() {
           <div className="bg-card border rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
                     {MASTER_COLUMNS.filter(c => masterVisibleColumns.includes(c.id)).map((col) => (
                       <th key={col.id} className="px-6 py-4">{col.label}</th>

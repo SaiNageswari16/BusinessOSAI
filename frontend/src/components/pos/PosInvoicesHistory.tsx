@@ -671,7 +671,7 @@ export function PosInvoicesHistory() {
       <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
-            <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] tracking-wider font-bold">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-4 py-3 text-left">Invoice #</th>
                 <th className="px-4 py-3 text-left">Date & Time</th>

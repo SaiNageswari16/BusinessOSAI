@@ -101,7 +101,7 @@ export function ExecutiveSummaryLayout({ reportData, filteredTableData, getKpiIc
       <div className="bg-card border border-border/60 rounded-3xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-muted/30 text-muted-foreground">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 {tableColumns.map((col, i) => (
                   <th key={i} className="px-6 py-4 font-bold text-xs uppercase tracking-widest">

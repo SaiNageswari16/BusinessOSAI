@@ -14,7 +14,7 @@ export function DeliveryTracking() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-foreground">Live Delivery Tracking</h2>
         <p className="text-xs text-muted-foreground">Real-time visibility into all marketplace fleet operations and third-party logistics.</p>

@@ -464,7 +464,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
 
         <div className="overflow-x-auto overflow-y-visible">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider font-bold">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-3 py-3 w-10 text-center">#</th>
                 <th className="px-3 py-3 min-w-[280px]">Catalog Item Autocomplete Search</th>
@@ -621,7 +621,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
 
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider font-bold">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-3 py-3 w-10 text-center">Select</th>
                 <th className="px-3 py-3 min-w-[180px]">Vendor / Supplier Name</th>

@@ -224,8 +224,8 @@ export function SubscriptionManagement() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b text-muted-foreground font-medium bg-muted/20">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
                     <th className="py-3 px-4">Workspace Environment</th>
                     <th className="py-3 px-4">Workspace Slug</th>
                     <th className="py-3 px-4">Plan Level</th>

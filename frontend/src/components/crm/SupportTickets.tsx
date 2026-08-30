@@ -737,9 +737,9 @@ export function SupportTickets({ tab = "active_tickets" }: Props) {
             </div>
           ) : (
             <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-border/60 text-[11px] font-bold text-muted-foreground uppercase bg-muted/30">
-                  <th className="px-5 py-3.5">Ticket & Case</th>
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <tr>
+                <th className="px-5 py-3.5">Ticket & Case</th>
                   <th className="px-4 py-3.5">Customer</th>
                   <th className="px-4 py-3.5">Category</th>
                   <th className="px-4 py-3.5">Priority</th>

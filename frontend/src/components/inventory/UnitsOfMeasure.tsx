@@ -184,8 +184,8 @@ export function UnitsOfMeasure() {
           >
             <Archive className="size-4 mr-2" /> Delete Selected
           </Button>
-          <Button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700 text-white border-0">
-            <Plus className="size-4 mr-2" /> Add Unit
+          <Button onClick={openCreateModal} className="bg-purple-700 hover:bg-purple-800 text-white border-0 font-semibold shadow-xs">
+            <Plus className="w-4 h-4 mr-2" /> Add New UOM
           </Button>
         </div>
       </div>
@@ -295,7 +295,7 @@ export function UnitsOfMeasure() {
         {/* The Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-500 bg-slate-50/50 border-b">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="p-4 w-12 text-center">
                   <input type="checkbox" checked={selectedIds.length === paginated.length && paginated.length > 0} onChange={toggleSelectAll} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
@@ -534,8 +534,8 @@ export function UnitsOfMeasure() {
 
               <div className="p-6 border-t border-slate-200 bg-white flex justify-end gap-3 shrink-0">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors shadow-sm">Cancel</button>
-                <button type="submit" form="uom-form" disabled={isSubmitting} className="px-8 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 disabled:opacity-50 rounded-lg transition-all">
-                  {isSubmitting ? 'Saving...' : 'Save Unit'}
+                <button type="submit" form="uom-form" disabled={isSubmitting} className="px-8 py-2.5 text-sm font-bold text-white bg-purple-700 hover:bg-purple-800 shadow-md shadow-purple-500/20 disabled:opacity-50 rounded-lg transition-all">
+                  {isSubmitting ? "Saving..." : "Save Unit"}
                 </button>
               </div>
             </motion.div>

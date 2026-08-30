@@ -193,7 +193,7 @@ export function DepartmentManagement() {
       ) : (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 border-b">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-3 text-left font-semibold text-muted-foreground text-xs">Department</th>
                 <th className="px-6 py-3 text-left font-semibold text-muted-foreground text-xs">Company</th>

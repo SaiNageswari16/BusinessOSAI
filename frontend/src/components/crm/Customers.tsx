@@ -510,16 +510,16 @@ export function Customers() {
         <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
-              <thead className="bg-muted/40 border-b border-border/60 text-muted-foreground uppercase text-[11px] font-bold tracking-wider">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
                 <tr>
-                  <th className="px-4 py-3 text-left">Customer</th>
-                  <th className="px-4 py-3 text-left">Contact</th>
-                  <th className="px-4 py-3 text-left">Type</th>
-                  <th className="px-4 py-3 text-left">City</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                  <th className="px-4 py-3 text-right font-bold">Lifetime Value</th>
-                  <th className="px-4 py-3 text-right font-bold">Orders</th>
-                  <th className="px-4 py-3 text-center">Actions</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Customer</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Contact</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">Type</th>
+                  <th className="px-6 py-4 text-left whitespace-nowrap">City</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Lifetime Value</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Orders</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/30 font-medium">

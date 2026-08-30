@@ -1662,7 +1662,7 @@ ${customClausesText || offerForm.customTemplate}`;
               {/* Table */}
               <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
                 <table className="w-full text-sm text-left font-sans">
-                  <thead className="text-xs text-muted-foreground uppercase bg-muted/40 border-b border-border/40">
+                  <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                     <tr>
                       <th className="px-6 py-4">Applicant</th>
                       <th className="px-6 py-4">Applied For</th>

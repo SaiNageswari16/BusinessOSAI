@@ -158,7 +158,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
 
   if (tab === "tax_rules") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground">Tax Rules</h1><p className="text-sm text-muted-foreground">Configure tax rates and rules applied to transactions.</p></div>
           <button onClick={() => setShowRuleModal(true)} className="flex items-center gap-2 px-4 py-2 gradient-brand text-white rounded-lg text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity"><Plus className="size-4" /> Add Rule</button>
@@ -166,7 +166,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
         <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr><th className="px-6 py-4 font-medium">ID</th><th className="px-6 py-4 font-medium">Name</th><th className="px-6 py-4 font-medium">Type</th><th className="px-6 py-4 text-right font-medium">Rate</th><th className="px-6 py-4 font-medium">Status</th></tr>
               </thead>
               <tbody>
@@ -197,7 +197,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
 
   if (tab === "tax_filing") {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
           <div><h1 className="text-2xl font-bold text-foreground">Tax Filing Calendar</h1><p className="text-sm text-muted-foreground">Due dates, filings, and compliance status.</p></div>
         </div>
@@ -236,7 +236,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
   }, {} as Record<string, number>);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{title}</h1>
@@ -264,7 +264,7 @@ export function TaxManagement({ tab = "gst" }: Props) {
       <div className="glass-panel rounded-xl border border-border/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4 font-medium">ID</th>
                 <th className="px-6 py-4 font-medium">Period</th>

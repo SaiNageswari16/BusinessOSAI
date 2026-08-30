@@ -219,7 +219,7 @@ export function MockScreen({ title, description, type = "crm" }: MockScreenProps
 
           <div className="overflow-x-auto border border-border/60 rounded-xl">
             <table className="w-full text-left text-xs">
-              <thead className="bg-muted/40 text-muted-foreground font-semibold border-b border-border/60">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                 <tr>
                   <th className="p-3">Record ID</th>
                   <th className="p-3">Item Name</th>
