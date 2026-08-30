@@ -198,6 +198,7 @@ export function PosSalesInvoice() {
   const [newProdMrp, setNewProdMrp] = useState<number | "">("");
   const [newProdTax, setNewProdTax] = useState<number>(18);
   const [newProdStock, setNewProdStock] = useState<number>(100);
+  const [newProdImage, setNewProdImage] = useState<string>("");
 
   // Add Party Modal State
   const [isAddPartyOpen, setIsAddPartyOpen] = useState(false);
@@ -2834,6 +2835,45 @@ export function PosSalesInvoice() {
             </div>
 
             <form onSubmit={handleCreateNewProduct} className="space-y-3">
+              {/* Product Photo Upload */}
+              <div className="flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="size-12 rounded-lg border border-slate-300 bg-white flex items-center justify-center overflow-hidden shrink-0">
+                  {newProdImage ? (
+                    <img src={newProdImage} alt="Product" className="size-full object-cover" />
+                  ) : (
+                    <Package className="size-6 text-slate-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg inline-flex items-center gap-1">
+                      <Upload className="size-3" /> Upload Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (evt) => setNewProdImage(evt.target?.result as string);
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                    {newProdImage && (
+                      <button
+                        type="button"
+                        onClick={() => setNewProdImage("")}
+                        className="text-[10px] text-rose-500 hover:underline font-semibold"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Product Name *</label>
                 <input

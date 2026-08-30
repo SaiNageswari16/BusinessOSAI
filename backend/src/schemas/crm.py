@@ -108,6 +108,11 @@ class LeadResponse(ORMModel):
     status: str
     source: str | None
     owner_user_id: uuid.UUID | None
+    owner_name: str | None = None
+    owner_email: str | None = None
+    calls_count: int | None = 0
+    last_call_status: str | None = None
+    last_call_sentiment: str | None = None
     estimated_value: float
     last_contact_at: datetime | None
     next_follow_up_at: datetime | None
@@ -118,6 +123,78 @@ class LeadResponse(ORMModel):
     customer_response: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class SalesExecutiveResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str
+    role_name: str | None = "Sales Executive"
+    active_leads_count: int = 0
+    total_calls_count: int = 0
+
+
+class BulkAssignLeadsRequest(BaseModel):
+    lead_ids: list[uuid.UUID]
+    owner_user_id: uuid.UUID | None = None
+    mode: str = "single"  # single | round_robin
+    user_ids: list[uuid.UUID] | None = None
+
+
+class BulkImportLeadItem(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    company_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    status: str | None = "New"
+    source: str | None = "Bulk Import"
+    estimated_value: float | None = 0.0
+    notes: str | None = None
+    assigned_email: str | None = None
+    assigned_user_id: uuid.UUID | None = None
+
+
+class BulkImportLeadsRequest(BaseModel):
+    leads: list[BulkImportLeadItem]
+    default_owner_user_id: uuid.UUID | None = None
+
+
+class BulkImportCustomerItem(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    company_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    customer_type: str | None = "Retail"
+    status: str | None = "Active"
+    address: str | None = None
+    gst_number: str | None = None
+    assigned_email: str | None = None
+
+
+class BulkImportCustomersRequest(BaseModel):
+    customers: list[BulkImportCustomerItem]
+    default_owner_user_id: uuid.UUID | None = None
+
+
+class ConvertLeadPipelineRequest(BaseModel):
+    deal_name: str | None = None
+    deal_amount: float | None = None
+    deal_stage: str = "Prospecting"
+    customer_type: str = "Retail"
+    expected_close_date: date | None = None
+    notes: str | None = None
+
+
+class ConvertLeadPipelineResponse(BaseModel):
+    lead_id: uuid.UUID
+    customer_id: uuid.UUID
+    customer_name: str
+    opportunity_id: uuid.UUID
+    deal_name: str
+    deal_stage: str
+    deal_amount: float
+    owner_user_id: uuid.UUID | None = None
+    message: str
 
 
 class LeadActivityCreate(BaseModel):
@@ -200,6 +277,12 @@ class OpportunityResponse(ORMModel):
     probability: int
     expected_close_date: date | None
     owner_user_id: uuid.UUID | None
+    owner_name: str | None = None
+    owner_email: str | None = None
+    customer_name: str | None = None
+    calls_count: int | None = 0
+    last_call_status: str | None = None
+    last_call_sentiment: str | None = None
     next_step: str | None
     next_step_at: datetime | None
     forecast_category: str

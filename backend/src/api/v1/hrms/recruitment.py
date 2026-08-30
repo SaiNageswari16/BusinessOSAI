@@ -11,7 +11,7 @@ from typing import Annotated
 
 import pypdf
 from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, status
-from fastapi.responses import Response
+from fastapi.responses import Response, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,7 +59,7 @@ settings = _SettingsProxy()
 
 # ─── SMTP Live Email Dispatch Utility ───────────────────────────────────────────
 
-async def send_recruitment_email(to_email: str, subject: str, body_text: str) -> bool:
+async def send_recruitment_email(to_email: str, subject: str, body_text: str, html_body: str | None = None) -> bool:
     if not settings.mail_server:
         # Log to server console if SMTP credentials are not yet configured in .env
         print(f"\n=================== REALTIME SMTP DISPATCH LOG ===================")
@@ -70,11 +70,13 @@ async def send_recruitment_email(to_email: str, subject: str, body_text: str) ->
         return False
 
     try:
-        msg = MIMEMultipart()
+        msg = MIMEMultipart("alternative")
         msg["From"] = settings.mail_from or "recruitment@businessos.ai"
         msg["To"] = to_email
         msg["Subject"] = subject
         msg.attach(MIMEText(body_text, "plain"))
+        if html_body:
+            msg.attach(MIMEText(html_body, "html"))
 
         # Connect and authenticate
         server = smtplib.SMTP(settings.mail_server, settings.mail_port or 587)
@@ -1320,22 +1322,127 @@ async def send_offer_email(
          raise HTTPException(status_code=404, detail="Candidate applicant not found")
 
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
-    company_name = tenant.name if tenant else "BusinessOS"
+    company_name = tenant.name if tenant else "LazyMonkeyAI"
 
-    # Dispatch email
-    email_body = (
+    server_base = getattr(settings, "app_public_url", None) or "https://lazymonkeyai.com"
+    if server_base.endswith("/"):
+        server_base = server_base[:-1]
+
+    accept_url = f"{server_base}/api/v1/hrms/public/offers/respond?id={offer.id}&action=accept&email={applicant.email}"
+    decline_url = f"{server_base}/api/v1/hrms/public/offers/respond?id={offer.id}&action=decline&email={applicant.email}"
+
+    # Plain text fallback
+    plain_body = (
         f"Dear {offer.candidate},\n\n"
         f"We are pleased to extend this formal offer of employment to join {company_name} as a {offer.role}.\n\n"
         f"Offer Terms:\n"
-        f"- Compensation: {offer.ctc:,.2f} per annum (Gross CTC)\n"
+        f"- Compensation: ₹{offer.ctc:,.2f} per annum (Gross CTC)\n"
         f"- Target Start Date: {offer.joining_date}\n"
         f"- Offer Expiration: {offer.expiry_date}\n\n"
+        f"To accept this offer online, click here: {accept_url}\n"
+        f"To decline this offer, click here: {decline_url}\n\n"
+        f"Sincerely,\n{offer.signer_name}\nHuman Resources Department\n{company_name}"
     )
-    if offer.custom_template:
-        email_body += f"{offer.custom_template}\n\n"
-    email_body += f"Sincerely,\n{offer.signer_name}\nHuman Resources Department\n{company_name}"
 
-    await send_recruitment_email(applicant.email, f"Employment Offer: {offer.role} - {company_name}", email_body)
+    # Rich responsive HTML template
+    html_body = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Employment Offer: {offer.role} - {company_name}</title>
+      <style>
+        body {{ margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; }}
+        .email-container {{ max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.06); }}
+        .brand-header {{ background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 36px 32px; color: #ffffff; }}
+        .brand-logo {{ font-size: 22px; font-weight: 900; letter-spacing: -0.5px; margin: 0; }}
+        .brand-subtitle {{ margin: 4px 0 0 0; font-size: 13px; opacity: 0.9; }}
+        .email-body {{ padding: 36px 32px; }}
+        .salutation {{ font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 12px; }}
+        .intro-text {{ font-size: 14px; line-height: 1.65; color: #334155; margin-bottom: 24px; }}
+        .offer-card {{ background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 28px; }}
+        .offer-card-title {{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }}
+        .detail-row {{ display: table; width: 100%; margin-bottom: 10px; font-size: 14px; }}
+        .detail-label {{ display: table-cell; width: 45%; color: #64748b; font-weight: 600; vertical-align: top; }}
+        .detail-val {{ display: table-cell; width: 55%; color: #0f172a; font-weight: 700; text-align: right; vertical-align: top; }}
+        .highlight-ctc {{ color: #059669 !important; font-size: 16px !important; }}
+        .button-container {{ text-align: center; margin: 32px 0 20px 0; }}
+        .btn-accept {{ display: inline-block; padding: 14px 36px; background-color: #10b981; color: #ffffff !important; text-decoration: none; font-size: 15px; font-weight: 800; border-radius: 12px; box-shadow: 0 4px 14px rgba(16,185,129,0.35); margin: 0 8px 10px 0; }}
+        .btn-decline {{ display: inline-block; padding: 14px 24px; background-color: #ffffff; color: #ef4444 !important; text-decoration: none; font-size: 14px; font-weight: 700; border: 1.5px solid #fca5a5; border-radius: 12px; margin: 0 0 10px 0; }}
+        .signature-block {{ margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; line-height: 1.5; }}
+        .signature-name {{ font-weight: 700; color: #0f172a; font-size: 14px; }}
+        .email-footer {{ background: #f8fafc; padding: 24px 32px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; line-height: 1.5; }}
+      </style>
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="brand-header">
+          <div class="brand-logo">🐒 {company_name}</div>
+          <div class="brand-subtitle">Official Employment Offer & Appointment Confirmation</div>
+        </div>
+        <div class="email-body">
+          <div class="salutation">Dear {offer.candidate},</div>
+          <div class="intro-text">
+            We are thrilled to extend an offer of employment to join <strong>{company_name}</strong> as <strong>{offer.role}</strong>.
+            Our leadership and team members were deeply impressed by your experience and credentials.
+          </div>
+
+          <div class="offer-card">
+            <div class="offer-card-title">Key Offer Summary</div>
+            <div class="detail-row">
+              <div class="detail-label">Position / Role:</div>
+              <div class="detail-val">{offer.role}</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">Annual Gross CTC:</div>
+              <div class="detail-val highlight-ctc">₹{offer.ctc:,.2f} / annum</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">Target Joining Date:</div>
+              <div class="detail-val">{offer.joining_date}</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">Offer Expiration:</div>
+              <div class="detail-val">{offer.expiry_date}</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">Authorizing Signer:</div>
+              <div class="detail-val">{offer.signer_name}</div>
+            </div>
+          </div>
+
+          <p style="font-size: 13px; color: #475569; text-align: center; margin: 0 0 16px 0;">
+            Please respond directly using the options below before <strong>{offer.expiry_date}</strong>:
+          </p>
+
+          <div class="button-container">
+            <a href="{accept_url}" class="btn-accept">✅ Accept Offer Online</a>
+            <a href="{decline_url}" class="btn-decline">❌ Decline Offer</a>
+          </div>
+
+          <div class="signature-block">
+            Warm regards,<br>
+            <span class="signature-name">{offer.signer_name}</span><br>
+            Human Resources & Talent Operations<br>
+            <strong>{company_name}</strong>
+          </div>
+        </div>
+        <div class="email-footer">
+          &copy; {datetime.now().year} {company_name}. Powered by LazyMonkeyAI BusinessOS.<br>
+          This is an official automated communication intended solely for {applicant.email}.
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    await send_recruitment_email(
+        to_email=applicant.email,
+        subject=f"Employment Offer: {offer.role} - {company_name}",
+        body_text=plain_body,
+        html_body=html_body,
+    )
 
     offer.email_sent = True
     await db.commit()
@@ -1351,7 +1458,93 @@ async def send_offer_email(
         new_values={"recipient_candidate": offer.candidate, "signer": offer.signer_name},
     )
     await db.commit()
-    return {"status": "ok", "message": f"Email successfully dispatched to candidate '{offer.candidate}'."}
+    return {"status": "ok", "message": f"Official offer email successfully sent to '{offer.candidate}'."}
+
+
+@router.get("/public/offers/respond", response_class=HTMLResponse)
+async def public_offer_response(
+    id: uuid.UUID,
+    action: str,
+    email: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    offer = await db.get(OfferLetter, id)
+    if not offer:
+        return HTMLResponse(content="<h2>Offer letter not found or expired.</h2>", status_code=404)
+
+    applicant = await db.get(Applicant, offer.applicant_id)
+    if not applicant or applicant.email.strip().lower() != email.strip().lower():
+        return HTMLResponse(content="<h2>Invalid candidate authorization credentials.</h2>", status_code=403)
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == offer.tenant_id))
+    company_name = tenant.name if tenant else "LazyMonkeyAI"
+
+    if action.lower() == "accept":
+        offer.status = "Accepted"
+        applicant.stage = "Hired"
+        await db.commit()
+
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <title>Offer Accepted — {company_name}</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0fdf4; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }}
+            .card {{ max-width: 520px; width: 100%; background: #ffffff; border-radius: 24px; padding: 44px 36px; text-align: center; box-shadow: 0 20px 40px rgba(16,185,129,0.12); border: 1.5px solid #86efac; }}
+            .icon-badge {{ width: 72px; height: 72px; background: #dcfce7; color: #16a34a; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 auto 24px auto; box-shadow: 0 4px 12px rgba(22,163,74,0.2); }}
+            h1 {{ font-size: 24px; font-weight: 900; color: #0f172a; margin: 0 0 10px 0; }}
+            p {{ font-size: 15px; color: #334155; line-height: 1.6; margin: 0 0 24px 0; }}
+            .meta-box {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 18px 20px; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 24px; text-align: left; }}
+            .meta-row {{ display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #e2e8f0; }}
+            .meta-row:last-child {{ border-bottom: none; }}
+            .footer-note {{ font-size: 12px; color: #64748b; line-height: 1.5; }}
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon-badge">🎉</div>
+            <h1>Congratulations, {offer.candidate}!</h1>
+            <p>You have successfully <strong>ACCEPTED</strong> the offer of employment for <strong>{offer.role}</strong> at <strong>{company_name}</strong>.</p>
+            <div class="meta-box">
+              <div class="meta-row"><span>Position:</span> <span>{offer.role}</span></div>
+              <div class="meta-row"><span>Annual CTC:</span> <span style="color: #059669; font-weight: 700;">₹{offer.ctc:,.2f}</span></div>
+              <div class="meta-row"><span>Target Joining Date:</span> <span>{offer.joining_date}</span></div>
+              <div class="meta-row"><span>Response Status:</span> <span style="color: #16a34a; font-weight: 700;">Verified & Confirmed</span></div>
+            </div>
+            <p class="footer-note">Our People Operations & Onboarding team has received your confirmation in real-time and will be in touch shortly with your welcome package.</p>
+          </div>
+        </body>
+        </html>
+        """)
+    else:
+        offer.status = "Declined"
+        await db.commit()
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <title>Offer Response Recorded — {company_name}</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }}
+            .card {{ max-width: 480px; width: 100%; background: #ffffff; border-radius: 20px; padding: 40px 32px; text-align: center; box-shadow: 0 15px 30px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }}
+            h1 {{ font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 12px; }}
+            p {{ font-size: 14px; color: #64748b; line-height: 1.6; margin-bottom: 16px; }}
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Offer Response Recorded</h1>
+            <p>Thank you for letting us know, {offer.candidate}. Your decision to decline the offer has been safely updated in our HRMS records.</p>
+            <p style="font-size: 13px; color: #94a3b8;">We sincerely appreciate your time and interest in {company_name}, and wish you continued success.</p>
+          </div>
+        </body>
+        </html>
+        """)
 
 
 @router.patch("/offers/{id}", response_model=OfferLetterResponse)

@@ -70,7 +70,7 @@ class ProductBase(BaseModel):
     short_description: Optional[str] = None
     long_description: Optional[str] = None
     specifications: Optional[Any] = None
-    image_url: Optional[str] = Field(None, max_length=1024)
+    image_url: Optional[str] = None
     
     purchase_price: Optional[float] = 0.0
     mrp: Optional[float] = 0.0

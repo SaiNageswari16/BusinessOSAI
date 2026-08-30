@@ -560,7 +560,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               className="h-8 text-xs font-semibold gradient-brand text-white border-0"
               onClick={() => setBioSimDialogOpen(true)}
             >
-              <Fingerprint className="size-3.5 mr-1.5" /> Simulate Fingerprint / RFID Punch
+              <Fingerprint className="size-3.5 mr-1.5" /> Biometric Terminal Check-In
             </Button>
             <Button
               variant="outline"
@@ -782,7 +782,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <Button onClick={() => setFaceSimDialogOpen(true)} className="gradient-brand text-white border-0 h-8 text-xs font-semibold">
-              <Camera className="size-3.5 mr-1.5" /> Simulate Face Match
+              <Camera className="size-3.5 mr-1.5" /> Face Scanner Verification
             </Button>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 rounded-full text-xs font-bold animate-pulse">
               <span className="size-2 rounded-full bg-emerald-500" /> Active Feed
@@ -828,12 +828,12 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
           </div>
         </div>
 
-        {/* Admin Face scanner match simulator dialog (moved inside the parent div wrapper) */}
+        {/* Admin Face scanner match dialog */}
         {faceSimDialogOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="w-full max-w-sm rounded-2xl bg-card border p-6 space-y-4 shadow-2xl">
               <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
-                <Camera className="size-5 text-primary" /> Simulate Entrance Face Match
+                <Camera className="size-5 text-primary" /> Entrance Face Verification
               </h3>
               <form onSubmit={handleSimulateFaceMatch} className="space-y-4">
                 <div className="space-y-1">
@@ -864,7 +864,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   <button type="button" onClick={() => setFaceSimDialogOpen(false)} className="px-4 py-2 border rounded-md text-sm">Cancel</button>
                   <button type="submit" className="px-4 py-2 bg-primary text-white rounded-md text-sm flex items-center gap-1.5" disabled={simulatingMatch}>
                     {simulatingMatch ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-                    Simulate Match
+                    Verify Check-In
                   </button>
                 </div>
               </form>
@@ -890,7 +890,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             className="h-8 text-xs font-semibold gradient-brand text-white border-0"
             onClick={() => setGpsPunchDialogOpen(true)}
           >
-            <MapPin className="size-3.5 mr-1.5" /> Simulate GPS Geofence Punch
+            <MapPin className="size-3.5 mr-1.5" /> Record GPS Geofence Punch
           </Button>
         </div>
 

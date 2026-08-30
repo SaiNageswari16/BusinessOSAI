@@ -1,29 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  PhoneCall,
-  Phone,
-  Search,
-  Filter,
-  Sparkles,
-  Calendar,
-  Clock,
-  User,
-  Building,
-  TrendingUp,
-  Award,
-  CheckCircle2,
-  AlertCircle,
-  FileText,
-  Play,
-  RotateCcw,
-  Bot,
-  RefreshCw,
-  Plus,
-  BarChart3,
-  Flame,
-  ArrowUpRight,
-  Headphones,
-  Check,
+  PhoneCall, Phone, Search, Filter, Sparkles, Calendar, Clock, User,
+  Building, TrendingUp, Award, CheckCircle2, AlertCircle, FileText,
+  Play, RotateCcw, Bot, RefreshCw, Plus, BarChart3, Flame,
+  ArrowUpRight, Headphones, Check, Download, Layers, ShieldCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CRMCallLog, CRMCallStats, crmCallsApi } from "@/lib/api-client";
@@ -35,9 +15,15 @@ export const AiCallLogs: React.FC = () => {
   const [logs, setLogs] = useState<CRMCallLog[]>([]);
   const [stats, setStats] = useState<CRMCallStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Filters
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedTargetType, setSelectedTargetType] = useState<string>("all");
   const [selectedSentiment, setSelectedSentiment] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("all");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
 
   // Modals state
   const [selectedLogForTranscript, setSelectedLogForTranscript] = useState<CRMCallLog | null>(null);
@@ -52,23 +38,63 @@ export const AiCallLogs: React.FC = () => {
     contextNotes?: string;
   } | null>(null);
 
+  // Compute ISO date range for query
+  const { startDateISO, endDateISO } = useMemo(() => {
+    const now = new Date();
+    if (dateFilter === "today") {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      return { startDateISO: start.toISOString(), endDateISO: undefined };
+    }
+    if (dateFilter === "yesterday") {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+      return { startDateISO: start.toISOString(), endDateISO: end.toISOString() };
+    }
+    if (dateFilter === "7days") {
+      const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return { startDateISO: start.toISOString(), endDateISO: undefined };
+    }
+    if (dateFilter === "month") {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      return { startDateISO: start.toISOString(), endDateISO: undefined };
+    }
+    if (dateFilter === "custom" && (customStartDate || customEndDate)) {
+      return {
+        startDateISO: customStartDate ? `${customStartDate}T00:00:00Z` : undefined,
+        endDateISO: customEndDate ? `${customEndDate}T23:59:59Z` : undefined,
+      };
+    }
+    return { startDateISO: undefined, endDateISO: undefined };
+  }, [dateFilter, customStartDate, customEndDate]);
+
   const fetchLogsAndStats = async () => {
     try {
       setLoading(true);
       const [logsRes, statsRes] = await Promise.all([
-        crmCallsApi.listLogs(),
-        crmCallsApi.getStats(),
+        crmCallsApi.listLogs(
+          1,
+          200,
+          selectedTargetType !== "all" ? selectedTargetType : undefined,
+          undefined,
+          searchQuery.trim() || undefined,
+          selectedSentiment !== "all" ? selectedSentiment : undefined,
+          selectedStatus !== "all" ? selectedStatus : undefined,
+          undefined,
+          startDateISO,
+          endDateISO
+        ),
+        crmCallsApi.getStats().catch(() => null),
       ]);
 
-      if (logsRes && logsRes.data) {
-        setLogs(logsRes.data);
-      }
-      if (statsRes && statsRes.data) {
-        setStats(statsRes.data);
+      const items = (logsRes && (logsRes.items || (logsRes as any).data)) || [];
+      setLogs(items);
+
+      if (statsRes) {
+        setStats(statsRes);
       }
     } catch (err: any) {
       console.error("Failed to load AI call logs:", err);
-      toast.error("Failed to load call logs. Using local records.");
+      toast.error("Failed to load call logs from database.");
     } finally {
       setLoading(false);
     }
@@ -76,42 +102,15 @@ export const AiCallLogs: React.FC = () => {
 
   useEffect(() => {
     fetchLogsAndStats();
-  }, []);
+  }, [selectedTargetType, selectedSentiment, selectedStatus, dateFilter, customStartDate, customEndDate]);
 
-  const filteredLogs = useMemo(() => {
-    return logs.filter((log) => {
-      // Search
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        !q ||
-        log.contact_name?.toLowerCase().includes(q) ||
-        log.company_name?.toLowerCase().includes(q) ||
-        log.contact_phone?.toLowerCase().includes(q) ||
-        log.agent_persona?.toLowerCase().includes(q) ||
-        log.ai_summary?.toLowerCase().includes(q);
-
-      // Target Type
-      const matchesType =
-        selectedTargetType === "all" || log.target_type === selectedTargetType;
-
-      // Sentiment
-      const matchesSentiment =
-        selectedSentiment === "all" ||
-        (selectedSentiment === "positive" &&
-          (log.sentiment?.toLowerCase().includes("positive") ||
-            log.sentiment?.toLowerCase().includes("interested"))) ||
-        (selectedSentiment === "neutral" &&
-          log.sentiment?.toLowerCase().includes("neutral")) ||
-        (selectedSentiment === "hesitant" &&
-          (log.sentiment?.toLowerCase().includes("objection") ||
-            log.sentiment?.toLowerCase().includes("hesitant"))) ||
-        (selectedSentiment === "negative" &&
-          (log.sentiment?.toLowerCase().includes("negative") ||
-            log.sentiment?.toLowerCase().includes("rejected")));
-
-      return matchesSearch && matchesType && matchesSentiment;
-    });
-  }, [logs, searchQuery, selectedTargetType, selectedSentiment]);
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchLogsAndStats();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleOpenTranscript = (log: CRMCallLog) => {
     setSelectedLogForTranscript(log);
@@ -121,10 +120,10 @@ export const AiCallLogs: React.FC = () => {
   const handleCallAgain = (log: CRMCallLog) => {
     setActiveCallTarget({
       targetType: (log.target_type as any) || "lead",
-      targetId: log.target_id,
+      targetId: log.target_id || `call_${Date.now()}`,
       contactName: log.contact_name,
-      contactPhone: log.contact_phone,
-      companyName: log.company_name,
+      contactPhone: log.contact_phone || undefined,
+      companyName: log.company_name || undefined,
       contextNotes: `Follow-up call. Previous summary: ${log.ai_summary || "None"}`,
     });
     setCallingModalOpen(true);
@@ -134,6 +133,19 @@ export const AiCallLogs: React.FC = () => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}m ${secs.toString().padStart(2, "0")}s`;
+  };
+
+  const handleExportCsv = () => {
+    const exportUrl = crmCallsApi.exportCsvUrl({
+      target_type: selectedTargetType !== "all" ? selectedTargetType : undefined,
+      sentiment: selectedSentiment !== "all" ? selectedSentiment : undefined,
+      status: selectedStatus !== "all" ? selectedStatus : undefined,
+      start_date: startDateISO,
+      end_date: endDateISO,
+      search: searchQuery.trim() || undefined,
+    });
+    window.open(exportUrl, "_blank");
+    toast.success("Exporting calls to CSV...");
   };
 
   const getSentimentPill = (sentiment?: string) => {
@@ -170,30 +182,46 @@ export const AiCallLogs: React.FC = () => {
     );
   };
 
+  // Derived metrics from logs if stats not provided
+  const totalCalls = stats?.total_calls ?? logs.length;
+  const avgDur = stats?.avg_duration_seconds ?? (logs.length > 0 ? Math.round(logs.reduce((acc, l) => acc + (l.duration_seconds || 0), 0) / logs.length) : 0);
+  const positiveRate = stats?.positive_sentiment_rate ?? (logs.length > 0 ? Math.round((logs.filter((l) => l.sentiment?.toLowerCase().includes("positive")).length / logs.length) * 100) : 0);
+  const avgScore = stats?.avg_qualification_score ?? (logs.length > 0 ? Math.round(logs.reduce((acc, l) => acc + (l.qualification_score || 70), 0) / logs.length) : 0);
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header with Title and Action */}
+    <div className="space-y-6 animate-fade-in p-2">
+      {/* Header with Title and Actions */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="size-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
+            <div className="size-10 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
               <Headphones className="size-5" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                AI Voice Agent Logs & Analytics
-                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
-                  Live
+              <h2 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
+                Communication & AI Voice Logs
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+                  {logs.length} Total Calls
                 </span>
               </h2>
               <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                Complete history of all automated AI voice interactions, transcripts, qualification scores & key takeaways.
+                Full communication analytics, voice transcripts, qualification scores & CSV export.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* CSV Export */}
+          <button
+            onClick={handleExportCsv}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-bold text-foreground transition-colors shadow-xs"
+            title="Export filtered call logs to CSV spreadsheet"
+          >
+            <Download className="size-3.5 text-primary" />
+            Export CSV
+          </button>
+
           <button
             onClick={fetchLogsAndStats}
             disabled={loading}
@@ -213,10 +241,10 @@ export const AiCallLogs: React.FC = () => {
               });
               setCallingModalOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-all duration-200"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-md transition-all duration-200"
           >
             <PhoneCall className="size-4" />
-            Start New AI Call
+            Start AI Call
           </button>
         </div>
       </div>
@@ -226,11 +254,11 @@ export const AiCallLogs: React.FC = () => {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-4 rounded-2xl bg-card border border-border/80 shadow-sm relative overflow-hidden group hover:border-indigo-500/40 transition-all"
+          className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs relative overflow-hidden group hover:border-indigo-500/40 transition-all"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Total AI Calls
+              Total Calls Logged
             </span>
             <div className="size-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
               <Phone className="size-4" />
@@ -238,10 +266,10 @@ export const AiCallLogs: React.FC = () => {
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black text-foreground">
-              {stats?.total_calls ?? logs.length}
+              {totalCalls}
             </span>
             <span className="text-[11px] font-semibold text-emerald-600 flex items-center">
-              <ArrowUpRight className="size-3" /> +100% automated
+              <ArrowUpRight className="size-3" /> Live DB Data
             </span>
           </div>
         </motion.div>
@@ -250,11 +278,11 @@ export const AiCallLogs: React.FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="p-4 rounded-2xl bg-card border border-border/80 shadow-sm relative overflow-hidden group hover:border-emerald-500/40 transition-all"
+          className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs relative overflow-hidden group hover:border-emerald-500/40 transition-all"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Total Talk Time
+              Avg Duration
             </span>
             <div className="size-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
               <Clock className="size-4" />
@@ -262,10 +290,10 @@ export const AiCallLogs: React.FC = () => {
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black text-foreground">
-              {Math.round(((stats?.total_duration_seconds ?? 0) / 60) * 10) / 10}m
+              {formatDuration(avgDur)}
             </span>
             <span className="text-[11px] font-semibold text-muted-foreground">
-              Saved SDR hours
+              Per Consultation
             </span>
           </div>
         </motion.div>
@@ -274,7 +302,7 @@ export const AiCallLogs: React.FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="p-4 rounded-2xl bg-card border border-border/80 shadow-sm relative overflow-hidden group hover:border-purple-500/40 transition-all"
+          className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs relative overflow-hidden group hover:border-purple-500/40 transition-all"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -286,10 +314,10 @@ export const AiCallLogs: React.FC = () => {
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black text-foreground">
-              {stats && stats.total_calls > 0 ? `${stats.positive_sentiment_rate}%` : "0%"}
+              {positiveRate}%
             </span>
             <span className="text-[11px] font-semibold text-purple-600">
-              {stats && stats.total_calls > 0 ? `${stats.positive_sentiment_rate}% Positive` : "No calls yet"}
+              Interest Rate
             </span>
           </div>
         </motion.div>
@@ -298,11 +326,11 @@ export const AiCallLogs: React.FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="p-4 rounded-2xl bg-card border border-border/80 shadow-sm relative overflow-hidden group hover:border-amber-500/40 transition-all"
+          className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs relative overflow-hidden group hover:border-amber-500/40 transition-all"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Avg Lead Score
+              Avg AI Score
             </span>
             <div className="size-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
               <Award className="size-4" />
@@ -310,124 +338,150 @@ export const AiCallLogs: React.FC = () => {
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black text-foreground">
-              {stats && stats.total_calls > 0 && stats.avg_qualification_score ? `${stats.avg_qualification_score}/100` : "0/100"}
+              {avgScore}/100
             </span>
             <span className="text-[11px] font-semibold text-emerald-600">
-              {stats && stats.total_calls > 0 ? "Actual Avg Score" : "No score yet"}
+              Qualification Score
             </span>
           </div>
         </motion.div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+      {/* Comprehensive Filter Bar */}
+      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-2.5 p-3 rounded-2xl bg-card border border-border shadow-xs">
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search by contact, company, agent persona, summary..."
+            placeholder="Search contact, company, summary..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-xl bg-muted/40 border border-border focus:border-indigo-500 focus:outline-none text-xs sm:text-sm text-foreground transition-all"
+            className="w-full pl-8 pr-3 h-8 rounded-xl bg-background border border-border text-xs focus:outline-none"
           />
         </div>
 
-        {/* Target Type Filter Tabs */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted/50 border border-border">
-          {[
-            { id: "all", label: "All Contacts" },
-            { id: "lead", label: "Leads" },
-            { id: "customer", label: "Customers" },
-            { id: "ticket", label: "Support" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setSelectedTargetType(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                selectedTargetType === tab.id
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        {/* Target Type Filter */}
+        <div>
+          <select
+            value={selectedTargetType}
+            onChange={(e) => setSelectedTargetType(e.target.value)}
+            className="w-full h-8 px-2.5 rounded-xl bg-background border border-border text-xs font-medium focus:outline-none"
+          >
+            <option value="all">🎯 All Contact Types</option>
+            <option value="lead">Leads</option>
+            <option value="customer">Customers</option>
+            <option value="opportunity">Opportunities</option>
+            <option value="ticket">Support Tickets</option>
+          </select>
         </div>
 
-        {/* Sentiment Filter Dropdown */}
-        <div className="flex items-center gap-2">
+        {/* Call Status Filter */}
+        <div>
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="w-full h-8 px-2.5 rounded-xl bg-background border border-border text-xs font-medium focus:outline-none"
+          >
+            <option value="all">📞 All Statuses</option>
+            <option value="Completed">Completed</option>
+            <option value="In Progress">In Progress</option>
+            <option value="No Answer">No Answer</option>
+            <option value="Busy">Busy</option>
+            <option value="Failed">Failed</option>
+          </select>
+        </div>
+
+        {/* Date Filter */}
+        <div>
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="w-full h-8 px-2.5 rounded-xl bg-background border border-border text-xs font-medium focus:outline-none"
+          >
+            <option value="all">📅 All Time</option>
+            <option value="today">Today's Calls</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="7days">Last 7 Days</option>
+            <option value="month">This Month</option>
+            <option value="custom">Custom Date Range...</option>
+          </select>
+        </div>
+
+        {/* Sentiment Filter */}
+        <div>
           <select
             value={selectedSentiment}
             onChange={(e) => setSelectedSentiment(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs font-semibold text-foreground focus:outline-none focus:border-indigo-500"
+            className="w-full h-8 px-2.5 rounded-xl bg-background border border-border text-xs font-medium focus:outline-none"
           >
-            <option value="all">All Sentiments</option>
-            <option value="positive">Positive & Interested</option>
-            <option value="neutral">Neutral / Inquiry</option>
-            <option value="hesitant">Hesitant / Objections</option>
-            <option value="negative">Negative</option>
+            <option value="all">✨ All Sentiments</option>
+            <option value="Positive">Positive & Interested</option>
+            <option value="Neutral">Neutral / Inquiry</option>
+            <option value="Objection">Objections / Hesitant</option>
+            <option value="Negative">Negative / Not Interested</option>
           </select>
         </div>
+
+        {/* Custom date range inputs */}
+        {dateFilter === "custom" && (
+          <div className="flex items-center gap-1 md:col-span-4 lg:col-span-5">
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e) => setCustomStartDate(e.target.value)}
+              className="h-8 px-2.5 bg-background border border-border rounded-xl text-xs focus:outline-none"
+            />
+            <span className="text-xs text-muted-foreground">-</span>
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(e) => setCustomEndDate(e.target.value)}
+              className="h-8 px-2.5 bg-background border border-border rounded-xl text-xs focus:outline-none"
+            />
+          </div>
+        )}
       </div>
 
-      {/* Call Logs Table / List */}
-      <div className="rounded-2xl bg-card border border-border shadow-sm overflow-hidden">
+      {/* Call Logs Table */}
+      <div className="rounded-2xl bg-card border border-border shadow-xs overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-muted-foreground flex flex-col items-center justify-center space-y-3">
-            <RefreshCw className="size-8 animate-spin text-indigo-500" />
-            <p className="text-sm font-semibold">Loading AI voice logs & intelligence records...</p>
+          <div className="p-16 text-center text-muted-foreground flex flex-col items-center justify-center space-y-3">
+            <RefreshCw className="size-8 animate-spin text-primary" />
+            <p className="text-xs font-semibold">Loading call records from database...</p>
           </div>
-        ) : filteredLogs.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground space-y-3">
-            <PhoneCall className="size-12 mx-auto text-muted-foreground/40" />
+        ) : logs.length === 0 ? (
+          <div className="p-16 text-center text-muted-foreground space-y-3">
+            <PhoneCall className="size-12 mx-auto text-muted-foreground/30" />
             <p className="text-base font-bold text-foreground">No call logs found</p>
             <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-              No AI call logs match your current search filters. Initiate a call with leads or customers to see real-time transcripts and metrics.
+              No calls match the selected filters. Use the AI Dialer on any Lead or Customer to execute calls and log real-time data.
             </p>
-            <div className="pt-2">
-              <button
-                onClick={() => {
-                  setActiveCallTarget({
-                    targetType: "lead",
-                    targetId: `manual_${Date.now()}`,
-                    contactName: "Direct Dial / Prospect",
-                    companyName: "Enterprise Client",
-                  });
-                  setCallingModalOpen(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
-              >
-                <PhoneCall className="size-4" />
-                Start First AI Call
-              </button>
-            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-muted/40 border-b border-border text-muted-foreground uppercase font-bold text-[10px] tracking-wider">
                 <tr>
                   <th className="px-4 py-3.5">Contact / Target</th>
-                  <th className="px-4 py-3.5">Agent Persona & Mode</th>
-                  <th className="px-4 py-3.5">Duration & Time</th>
+                  <th className="px-4 py-3.5">Status & Time</th>
+                  <th className="px-4 py-3.5">Duration</th>
                   <th className="px-4 py-3.5">Sentiment & Score</th>
                   <th className="px-4 py-3.5 min-w-[240px]">AI Summary & Key Takeaways</th>
                   <th className="px-4 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredLogs.map((log) => (
-                  <motion.tr
-                    key={log.call_id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="hover:bg-muted/30 transition-colors group cursor-pointer"
+                {logs.map((log) => (
+                  <tr
+                    key={log.id || (log as any).call_id}
+                    className="hover:bg-muted/30 transition-colors cursor-pointer"
                     onClick={() => handleOpenTranscript(log)}
                   >
                     {/* Contact details */}
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2.5">
-                        <div className="size-9 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold shrink-0">
+                        <div className="size-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0">
                           {log.contact_name ? log.contact_name.charAt(0).toUpperCase() : "C"}
                         </div>
                         <div className="min-w-0">
@@ -435,7 +489,7 @@ export const AiCallLogs: React.FC = () => {
                             <span className="font-bold text-foreground hover:underline">
                               {log.contact_name}
                             </span>
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-500/20">
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-primary/10 text-primary">
                               {log.target_type}
                             </span>
                           </div>
@@ -446,7 +500,7 @@ export const AiCallLogs: React.FC = () => {
                               </span>
                             )}
                             {log.contact_phone && (
-                              <span className="flex items-center gap-1">
+                              <span className="flex items-center gap-1 font-mono">
                                 <Phone className="size-3" /> {log.contact_phone}
                               </span>
                             )}
@@ -455,87 +509,79 @@ export const AiCallLogs: React.FC = () => {
                       </div>
                     </td>
 
-                    {/* Agent & Mode */}
+                    {/* Status & Date */}
                     <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                        <Bot className="size-3.5 text-indigo-500" />
-                        <span>{log.agent_persona}</span>
+                      <div className="space-y-1">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            log.status === "Completed"
+                              ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                              : log.status === "In Progress"
+                              ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                              : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                          }`}
+                        >
+                          {log.status === "Completed" ? (
+                            <CheckCircle2 className="size-3" />
+                          ) : (
+                            <Clock className="size-3" />
+                          )}
+                          {log.status}
+                        </span>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(log.created_at).toLocaleString()}
+                        </p>
                       </div>
-                      <span className="text-[10px] text-muted-foreground">
-                        {log.call_mode === "livekit_sip" ? "Live SIP VoIP" : "AI Web Voice"}
-                      </span>
                     </td>
 
-                    {/* Duration & Time */}
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-1 font-semibold text-foreground">
-                        <Clock className="size-3.5 text-muted-foreground" />
-                        <span>{formatDuration(log.duration_seconds)}</span>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground">
-                        {new Date(log.created_at).toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
+                    {/* Duration */}
+                    <td className="px-4 py-3.5 font-mono text-xs font-semibold">
+                      {formatDuration(log.duration_seconds || 0)}
                     </td>
 
                     {/* Sentiment & Score */}
                     <td className="px-4 py-3.5">
-                      <div className="space-y-1">
-                        {getSentimentPill(log.sentiment)}
-                        {log.qualification_score && (
-                          <div className="text-[10px] font-bold text-muted-foreground">
-                            Score: <span className="text-foreground">{log.qualification_score}/100</span>
-                          </div>
+                      <div className="flex items-center gap-2">
+                        {getSentimentPill(log.sentiment || undefined)}
+                        {log.qualification_score != null && (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-muted border">
+                            {log.qualification_score}/100
+                          </span>
                         )}
                       </div>
                     </td>
 
-                    {/* Summary */}
+                    {/* AI Summary */}
                     <td className="px-4 py-3.5">
-                      <p className="text-xs text-foreground/80 line-clamp-2 max-w-md">
-                        {log.ai_summary || "Call completed with contact. Transcript recorded."}
+                      <p className="text-xs text-foreground line-clamp-2 leading-relaxed">
+                        {log.ai_summary || "Call completed. Click to view live transcript."}
                       </p>
                       {log.action_items && log.action_items.length > 0 && (
-                        <div className="flex items-center gap-1 mt-1 text-[10px] text-emerald-600 font-semibold">
-                          <CheckCircle2 className="size-3" />
+                        <div className="mt-1 flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                          <Check className="size-3" />
                           <span>{log.action_items[0]}</span>
-                          {log.action_items.length > 1 && (
-                            <span className="text-muted-foreground">+{log.action_items.length - 1} more</span>
-                          )}
                         </div>
                       )}
                     </td>
 
                     {/* Actions */}
-                    <td className="px-4 py-3.5 text-right">
-                      <div
-                        className="flex items-center justify-end gap-1.5"
-                        onClick={(e) => e.stopPropagation()}
+                    <td className="px-4 py-3.5 text-right space-x-1" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => handleOpenTranscript(log)}
+                        className="px-2.5 py-1 rounded-lg bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs transition-colors"
                       >
-                        <button
-                          onClick={() => handleOpenTranscript(log)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted/70 text-xs font-semibold text-foreground transition-colors"
-                          title="View transcript & audio playback"
-                        >
-                          <FileText className="size-3.5 text-indigo-500" />
-                          <span>Transcript</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleCallAgain(log)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors"
-                          title="Initiate follow-up call"
-                        >
-                          <PhoneCall className="size-3.5" />
-                          <span className="hidden sm:inline">Call</span>
-                        </button>
-                      </div>
+                        Transcript
+                      </button>
+                      <button
+                        onClick={() => handleCallAgain(log)}
+                        disabled={!log.contact_phone}
+                        className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 transition-colors disabled:opacity-40"
+                        title="Re-dial"
+                      >
+                        <RotateCcw className="size-3.5" />
+                      </button>
                     </td>
-                  </motion.tr>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -543,28 +589,29 @@ export const AiCallLogs: React.FC = () => {
         )}
       </div>
 
-      {/* Transcript & Audio Modal */}
-      <CallTranscriptModal
-        open={transcriptModalOpen}
-        onClose={() => setTranscriptModalOpen(false)}
-        callLog={selectedLogForTranscript}
-        onCallAgain={handleCallAgain}
-      />
+      {/* Transcript Modal */}
+      {selectedLogForTranscript && (
+        <CallTranscriptModal
+          isOpen={transcriptModalOpen}
+          onClose={() => setTranscriptModalOpen(false)}
+          callLog={selectedLogForTranscript}
+        />
+      )}
 
-      {/* Trigger AI Calling Modal */}
+      {/* AI Voice Dialing Modal */}
       {activeCallTarget && (
         <AiCallingModal
           open={callingModalOpen}
-          onClose={() => {
-            setCallingModalOpen(false);
-            fetchLogsAndStats(); // Refresh logs after call ends
-          }}
+          onClose={() => setCallingModalOpen(false)}
           targetType={activeCallTarget.targetType}
           targetId={activeCallTarget.targetId}
           contactName={activeCallTarget.contactName}
           contactPhone={activeCallTarget.contactPhone}
           companyName={activeCallTarget.companyName}
-          contextNotes={activeCallTarget.contextNotes}
+          defaultNotes={activeCallTarget.contextNotes}
+          onCallCompleted={async () => {
+            await fetchLogsAndStats();
+          }}
         />
       )}
     </div>

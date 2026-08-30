@@ -1,33 +1,64 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle, Calendar, Mail, Phone, Plus, Search,
   Facebook, RefreshCw, Sparkles, X, Trash2, Key,
   PhoneCall, CheckCircle2, Clock, Loader2, Target, Megaphone, Layers, Briefcase,
-  ClipboardList, FileText, PhoneOff, PhoneForwarded
+  ClipboardList, FileText, PhoneOff, PhoneForwarded, Download, Upload,
+  UserCheck, Users, LayoutGrid, Table as TableIcon, CheckSquare, Square,
+  Filter, ArrowUpDown, ChevronRight, UserPlus
 } from "lucide-react";
 import { toast } from "sonner";
-import { crmLeadsApi, crmCallsApi, type CrmLead, type LeadAttribution, type CRMCallLog } from "@/lib/api-client";
+import {
+  crmLeadsApi,
+  crmCallsApi,
+  type CrmLead,
+  type LeadAttribution,
+  type CRMCallLog,
+  type SalesExecutive
+} from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
+import { downloadLeadsTemplateExcel } from "@/lib/crm-excel-utils";
 import { AiCallingModal } from "./AiCallingModal";
 import { NotesAndDispositionModal } from "./NotesAndDispositionModal";
+import { BulkAssignModal } from "./BulkAssignModal";
+import { BulkImportLeadsModal } from "./BulkImportLeadsModal";
+import { ConvertPipelineModal } from "./ConvertPipelineModal";
 
 const stages: CrmLead["status"][] = ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"];
 const blankLead = { name: "", company_name: "", email: "", phone: "", source: "Website", estimated_value: "0" };
 
 export function Leads() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
+
+  // Data states
   const [leads, setLeads] = useState<CrmLead[]>([]);
-  const [search, setSearch] = useState("");
+  const [executives, setExecutives] = useState<SalesExecutive[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
+
+  // Filtering states
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [assignedFilter, setAssignedFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("all");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
+
+  // Selection states for bulk actions
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+
+  // Modals
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(blankLead);
-
-  // Manual Call Disposition & Notes Modal State
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [convertTargetLead, setConvertTargetLead] = useState<CrmLead | null>(null);
   const [notesTargetLead, setNotesTargetLead] = useState<CrmLead | null>(null);
+  const [callTarget, setCallTarget] = useState<CrmLead | null>(null);
 
   // Facebook Lead Ads States
   const [showFbSettings, setShowFbSettings] = useState(false);
@@ -35,23 +66,57 @@ export function Leads() {
   const [fbConfigured, setFbConfigured] = useState(false);
   const [importingFb, setImportingFb] = useState(false);
 
-  // AI Call States
-  const [callTarget, setCallTarget] = useState<CrmLead | null>(null);
-  // Map of leadId -> latest call log (for differentiation: called vs needs-to-be-called)
-  const [callStatusMap, setCallStatusMap] = useState<Record<string, CRMCallLog>>({}); 
-
   // Ad Attribution Drawer
   const [attrLead, setAttrLead] = useState<CrmLead | null>(null);
   const [attribution, setAttribution] = useState<LeadAttribution | null>(null);
   const [loadingAttr, setLoadingAttr] = useState(false);
 
+  // Compute ISO date range based on dateFilter selection
+  const { createdAfter, createdBefore } = useMemo(() => {
+    const now = new Date();
+    if (dateFilter === "today") {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      return { createdAfter: start.toISOString(), createdBefore: undefined };
+    }
+    if (dateFilter === "yesterday") {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+      return { createdAfter: start.toISOString(), createdBefore: end.toISOString() };
+    }
+    if (dateFilter === "7days") {
+      const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return { createdAfter: start.toISOString(), createdBefore: undefined };
+    }
+    if (dateFilter === "month") {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      return { createdAfter: start.toISOString(), createdBefore: undefined };
+    }
+    if (dateFilter === "custom" && (customStartDate || customEndDate)) {
+      return {
+        createdAfter: customStartDate ? `${customStartDate}T00:00:00Z` : undefined,
+        createdBefore: customEndDate ? `${customEndDate}T23:59:59Z` : undefined,
+      };
+    }
+    return { createdAfter: undefined, createdBefore: undefined };
+  }, [dateFilter, customStartDate, customEndDate]);
+
   const load = async () => {
     setLoading(true);
     try {
-      const leadsData = (await crmLeadsApi.list(1, 100, search || undefined)).items;
-      setLeads(leadsData);
-      // Asynchronously load call statuses without blocking UI
-      void loadCallStatuses(leadsData.map(l => l.id));
+      const [leadsRes, execsRes] = await Promise.all([
+        crmLeadsApi.list(
+          1,
+          200,
+          search.trim() || undefined,
+          statusFilter !== "all" ? statusFilter : undefined,
+          assignedFilter !== "all" ? assignedFilter : undefined,
+          createdAfter,
+          createdBefore
+        ),
+        crmLeadsApi.listSalesExecutives().catch(() => [] as SalesExecutive[]),
+      ]);
+      setLeads(leadsRes.items || []);
+      setExecutives(execsRes || []);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load leads");
     } finally {
@@ -59,28 +124,19 @@ export function Leads() {
     }
   };
 
-  /** Fetch the latest call log for all lead IDs to build a "called/not-called" status map */
-  const loadCallStatuses = async (leadIds: string[]) => {
-    try {
-      const res = await crmCallsApi.listLogs(1, 200, "lead");
-      const map: Record<string, CRMCallLog> = {};
-      // Build a map: leadId -> most recent call log
-      for (const log of (res.items || [])) {
-        if (log.target_id && leadIds.includes(log.target_id)) {
-          // listLogs returns sorted desc by created_at, so first entry per target_id is the latest
-          if (!map[log.target_id]) {
-            map[log.target_id] = log;
-          }
-        }
-      }
-      setCallStatusMap(map);
-    } catch {
-      // Silent — call status is optional enrichment
-    }
-  };
-
   useEffect(() => {
     void load();
+  }, [tenant?.id, statusFilter, assignedFilter, dateFilter, customStartDate, customEndDate]);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void load();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     const fetchCreds = async () => {
       try {
         const res = await crmLeadsApi.getFacebookCredentials();
@@ -88,16 +144,27 @@ export function Leads() {
           setFbConfigured(true);
           setFbForm({ access_token: "", page_or_form_id: res.fb_page_or_form_id || "", api_version: res.fb_api_version || "v25.0" });
         }
-      } catch (e) { /* silent */ }
+      } catch {
+        /* silent */
+      }
     };
     void fetchCreds();
   }, [tenant?.id]);
 
+  // Row selection helpers
+  const handleToggleSelectLead = (id: string) => {
+    setSelectedLeadIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
 
-  const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return leads.filter((lead) => !term || lead.name.toLowerCase().includes(term) || lead.company_name?.toLowerCase().includes(term));
-  }, [leads, search]);
+  const handleSelectAll = () => {
+    if (selectedLeadIds.length === leads.length) {
+      setSelectedLeadIds([]);
+    } else {
+      setSelectedLeadIds(leads.map((l) => l.id));
+    }
+  };
 
   const createLead = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -107,7 +174,7 @@ export function Leads() {
       setLeads((current) => [lead, ...current]);
       setForm(blankLead);
       setShowForm(false);
-      toast.success("Lead created");
+      toast.success("Lead created successfully");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create lead");
     } finally {
@@ -119,10 +186,27 @@ export function Leads() {
     if (status === lead.status) return;
     try {
       const updated = await crmLeadsApi.update(lead.id, { status });
-      setLeads((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setLeads((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
       toast.success(`Lead moved to ${status}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update lead");
+    }
+  };
+
+  const handleInlineAssign = async (leadId: string, ownerUserId: string) => {
+    try {
+      await crmLeadsApi.update(leadId, { owner_user_id: ownerUserId || null });
+      const exec = executives.find((e) => e.id === ownerUserId);
+      setLeads((current) =>
+        current.map((item) =>
+          item.id === leadId
+            ? { ...item, owner_user_id: ownerUserId || null, owner_name: exec?.name || null }
+            : item
+        )
+      );
+      toast.success("Lead assigned successfully");
+    } catch {
+      toast.error("Failed to reassign lead");
     }
   };
 
@@ -157,7 +241,9 @@ export function Leads() {
       setFbConfigured(false);
       setFbForm({ access_token: "", page_or_form_id: "", api_version: "v25.0" });
       toast.success("Facebook credentials removed");
-    } catch { toast.error("Failed to delete credentials"); }
+    } catch {
+      toast.error("Failed to delete credentials");
+    }
   };
 
   const handleFbImport = async () => {
@@ -185,11 +271,10 @@ export function Leads() {
         );
         return `Score: ${res.ai_score}% · Sentiment: ${res.ai_sentiment}`;
       },
-      error: "AI lead qualification failed"
+      error: "AI lead qualification failed",
     });
   };
 
-  // ── AI Call ──────────────────────────────────────────────────────────────────
   const openCallModal = (lead: CrmLead) => {
     setCallTarget(lead);
   };
@@ -213,287 +298,618 @@ export function Leads() {
   };
 
   return (
-    <div className="p-4 min-h-[calc(100vh-6rem)] flex flex-col space-y-3">
-
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div className="p-4 min-h-[calc(100vh-6rem)] flex flex-col space-y-4">
+      {/* Top Header & Actions */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Leads Management</h2>
-          <p className="text-xs text-muted-foreground">Track, qualify, convert — and call with AI.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search leads..."
-              className="w-56 pl-8 pr-3 h-8 bg-background border border-border rounded-lg text-xs focus:outline-none"
-            />
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-2xl font-black tracking-tight text-foreground">Leads & Sales Management</h2>
+            <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold border border-primary/20">
+              {leads.length} Leads
+            </span>
           </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Role-based visibility, lead assignment, bulk Excel import, and calling tracker.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* View Toggle */}
+          <div className="flex items-center p-1 bg-muted/40 rounded-xl border border-border">
+            <button
+              onClick={() => setViewMode("table")}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                viewMode === "table" ? "bg-background text-foreground shadow-xs border border-border" : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Table View (Batch Assignment)"
+            >
+              <TableIcon className="size-3.5" />
+              Table
+            </button>
+            <button
+              onClick={() => setViewMode("kanban")}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                viewMode === "kanban" ? "bg-background text-foreground shadow-xs border border-border" : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Kanban Board"
+            >
+              <LayoutGrid className="size-3.5" />
+              Kanban
+            </button>
+          </div>
+
+          {/* Sample Excel Download */}
+          <button
+            onClick={downloadLeadsTemplateExcel}
+            className="flex items-center gap-1.5 px-3 h-8 bg-muted/60 hover:bg-muted border border-border rounded-xl text-xs font-semibold text-foreground transition-colors"
+            title="Download sample formatted Excel template for import"
+          >
+            <Download className="size-3.5 text-primary" />
+            Sample Excel
+          </button>
+
+          {/* Bulk Import */}
+          <button
+            onClick={() => setShowBulkImport(true)}
+            className="flex items-center gap-1.5 px-3 h-8 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 transition-colors"
+          >
+            <Upload className="size-3.5 text-emerald-600" />
+            Import Leads
+          </button>
+
+          {/* Export Leads CSV */}
+          <button
+            onClick={() => {
+              const url = crmLeadsApi.exportCsvUrl({
+                search,
+                status: statusFilter,
+                assigned_to: assignedFilter,
+                created_after: dateRange.after,
+                created_before: dateRange.before,
+              });
+              window.open(url, "_blank");
+            }}
+            className="flex items-center gap-1.5 px-3 h-8 bg-muted/60 hover:bg-muted border border-border rounded-xl text-xs font-semibold text-foreground transition-colors"
+            title="Export filtered leads to CSV"
+          >
+            <Download className="size-3.5 text-emerald-600" />
+            Export CSV
+          </button>
+
+          {/* Facebook Ads Integration */}
           <button
             onClick={() => setShowFbSettings(true)}
-            className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-xs font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-xl text-xs font-medium transition-colors ${
               fbConfigured
                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 hover:bg-emerald-500/15"
-                : "bg-muted border-border hover:bg-muted/80 text-muted-foreground"
+                : "bg-muted/60 border-border hover:bg-muted text-muted-foreground"
             }`}
           >
             <Facebook className="size-3.5 text-blue-600" />
             {fbConfigured ? "FB Connected" : "Connect FB Ads"}
           </button>
+
           <button
             onClick={handleFbImport}
             disabled={importingFb || !fbConfigured}
-            className="flex items-center gap-1.5 px-2.5 h-8 bg-indigo-50 border hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 dark:text-indigo-400 rounded-lg text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-2.5 h-8 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 dark:text-indigo-400 rounded-xl text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw className={`size-3.5 ${importingFb ? "animate-spin" : ""}`} />
-            {importingFb ? "Syncing..." : "Sync FB Ads"}
+            {importingFb ? "Syncing..." : "Sync FB"}
           </button>
+
+          {/* Create Lead */}
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold"
+            className="flex items-center gap-1.5 px-3.5 h-8 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors shadow-sm"
           >
             <Plus className="size-3.5" /> Add Lead
           </button>
         </div>
       </div>
 
+      {/* Advanced Filters & Date Selector Bar */}
+      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-2.5 p-3 rounded-2xl bg-card border border-border shadow-xs">
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, company, phone, email..."
+            className="w-full pl-8 pr-3 h-8 bg-background border border-border rounded-xl text-xs focus:outline-none"
+          />
+        </div>
+
+        {/* Assigned Executive Filter */}
+        <div>
+          <select
+            value={assignedFilter}
+            onChange={(e) => setAssignedFilter(e.target.value)}
+            className="w-full h-8 px-2.5 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none"
+          >
+            <option value="all">👤 All Assigned Reps</option>
+            <option value="me">⭐ My Assigned Leads</option>
+            <option value="unassigned">⚠️ Unassigned Leads</option>
+            {executives.map((exec) => (
+              <option key={exec.id} value={exec.id}>
+                👤 {exec.name} ({exec.active_leads_count} leads)
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Lead Status Filter */}
+        <div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full h-8 px-2.5 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none"
+          >
+            <option value="all">🎯 All Stages / Statuses</option>
+            {stages.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date Filter */}
+        <div>
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="w-full h-8 px-2.5 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none"
+          >
+            <option value="all">📅 All Time</option>
+            <option value="today">Today's Leads</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="7days">Last 7 Days</option>
+            <option value="month">This Month</option>
+            <option value="custom">Custom Date Range...</option>
+          </select>
+        </div>
+
+        {/* Custom Date Pickers */}
+        {dateFilter === "custom" && (
+          <div className="flex items-center gap-1 md:col-span-4 lg:col-span-1">
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e) => setCustomStartDate(e.target.value)}
+              className="w-1/2 h-8 px-2 bg-background border border-border rounded-xl text-[11px] focus:outline-none"
+            />
+            <span className="text-xs text-muted-foreground">-</span>
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(e) => setCustomEndDate(e.target.value)}
+              className="w-1/2 h-8 px-2 bg-background border border-border rounded-xl text-[11px] focus:outline-none"
+            />
+          </div>
+        )}
+      </div>
+
       {/* Creation Form */}
       {showForm && (
-        <form onSubmit={createLead} className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-xl border border-border bg-card p-4">
+        <form onSubmit={createLead} className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
           {([
-            ['name', 'Contact name', true],
-            ['company_name', 'Company', false],
-            ['email', 'Email', false],
-            ['phone', 'Phone (+91...)', false],
-            ['source', 'Source', false],
-            ['estimated_value', 'Estimated value', false]
+            ["name", "Contact name *", true],
+            ["company_name", "Company name", false],
+            ["email", "Email address", false],
+            ["phone", "Phone (+91...)", false],
+            ["source", "Source (e.g. Website, Referral)", false],
+            ["estimated_value", "Estimated deal value", false],
           ] as const).map(([field, label, required]) => (
             <input
               key={field}
               required={required}
-              type={field === 'estimated_value' ? 'number' : field === 'email' ? 'email' : 'text'}
+              type={field === "estimated_value" ? "number" : field === "email" ? "email" : "text"}
               value={form[field]}
               onChange={(e) => setForm({ ...form, [field]: e.target.value })}
               placeholder={label}
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none"
+              className="rounded-xl border border-border bg-background px-3 py-2 text-xs focus:outline-none"
             />
           ))}
           <div className="md:col-span-3 flex justify-end gap-2">
-            <button type="button" onClick={() => setShowForm(false)} className="px-3 py-2 text-sm hover:underline">Cancel</button>
-            <button disabled={saving} className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground font-medium">
-              {saving ? 'Saving…' : 'Create lead'}
+            <button type="button" onClick={() => setShowForm(false)} className="px-3 py-1.5 text-xs hover:underline">
+              Cancel
+            </button>
+            <button
+              disabled={saving}
+              className="rounded-xl bg-primary px-4 py-2 text-xs text-primary-foreground font-bold shadow-xs"
+            >
+              {saving ? "Saving..." : "Create Lead"}
             </button>
           </div>
         </form>
       )}
 
-      {/* Leads Kanban */}
+      {/* Floating Bulk Action Bar */}
+      <AnimatePresence>
+        {selectedLeadIds.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-3 rounded-2xl bg-foreground text-background shadow-2xl border border-border"
+          >
+            <div className="flex items-center gap-2 pr-3 border-r border-background/20 text-xs font-bold">
+              <CheckSquare className="size-4 text-primary" />
+              <span>{selectedLeadIds.length} lead{selectedLeadIds.length > 1 ? "s" : ""} selected</span>
+            </div>
+
+            <button
+              onClick={() => setShowBulkAssign(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors shadow-sm"
+            >
+              <UserCheck className="size-3.5" />
+              Bulk Assign to Sales Reps
+            </button>
+
+            <button
+              onClick={() => setSelectedLeadIds([])}
+              className="px-2.5 py-1.5 rounded-xl text-xs text-background/70 hover:text-background hover:bg-background/10 transition-colors"
+            >
+              Deselect All
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main Content Area: Table vs Kanban */}
       {loading ? (
-        <div className="py-16 text-center text-muted-foreground">Loading leads…</div>
+        <div className="py-24 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+          <Loader2 className="size-6 animate-spin text-primary" />
+          <span>Loading leads & executive metrics...</span>
+        </div>
+      ) : viewMode === "table" ? (
+        /* ── TABLE VIEW (Rich List & Batch Assignment Mode) ── */
+        <div className="rounded-2xl border border-border bg-card shadow-xs overflow-hidden flex-1 flex flex-col">
+          <div className="overflow-x-auto flex-1">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-muted/40 border-b border-border text-[11px] text-muted-foreground uppercase font-bold tracking-wider">
+                  <th className="p-3 w-10 text-center">
+                    <button
+                      type="button"
+                      onClick={handleSelectAll}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      {selectedLeadIds.length === leads.length && leads.length > 0 ? (
+                        <CheckSquare className="size-4 text-primary" />
+                      ) : (
+                        <Square className="size-4" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="p-3">Lead & Company</th>
+                  <th className="p-3">Contact Details</th>
+                  <th className="p-3">Assigned Sales Executive</th>
+                  <th className="p-3">Calls Done & Status</th>
+                  <th className="p-3">Estimated Value</th>
+                  <th className="p-3">Stage</th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {leads.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-12 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <AlertCircle className="size-8 opacity-30" />
+                        <p className="text-sm font-semibold">No leads found matching current filters</p>
+                        <p className="text-xs opacity-70">Try adjusting your search or date criteria.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  leads.map((lead) => {
+                    const isSelected = selectedLeadIds.includes(lead.id);
+                    return (
+                      <tr
+                        key={lead.id}
+                        className={`hover:bg-muted/30 transition-colors ${
+                          isSelected ? "bg-primary/5" : ""
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <td className="p-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSelectLead(lead.id)}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="size-4 text-primary" />
+                            ) : (
+                              <Square className="size-4" />
+                            )}
+                          </button>
+                        </td>
+
+                        {/* Name & Company */}
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-foreground hover:underline cursor-pointer">
+                                  {lead.name}
+                                </p>
+                                {lead.ai_score != null && (
+                                  <span
+                                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                                      lead.ai_sentiment === "Positive"
+                                        ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                                        : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                                    }`}
+                                  >
+                                    {lead.ai_score}% AI
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">{lead.company_name || "Individual"}</p>
+                              {lead.source && (
+                                <span className="text-[10px] text-muted-foreground/80 font-mono">
+                                  Source: {lead.source}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Contact details */}
+                        <td className="p-3 space-y-0.5 text-[11px]">
+                          {lead.phone ? (
+                            <p className="flex items-center gap-1.5 text-foreground font-mono">
+                              <Phone className="size-3 text-muted-foreground" />
+                              {lead.phone}
+                            </p>
+                          ) : (
+                            <p className="text-muted-foreground/60 italic">No phone</p>
+                          )}
+                          {lead.email && (
+                            <p className="flex items-center gap-1.5 text-muted-foreground">
+                              <Mail className="size-3" />
+                              {lead.email}
+                            </p>
+                          )}
+                        </td>
+
+                        {/* Assigned Sales Executive */}
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={lead.owner_user_id || ""}
+                              onChange={(e) => handleInlineAssign(lead.id, e.target.value)}
+                              className="bg-background border border-border rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none cursor-pointer max-w-[160px] truncate"
+                            >
+                              <option value="">⚠️ Unassigned</option>
+                              {executives.map((exec) => (
+                                <option key={exec.id} value={exec.id}>
+                                  👤 {exec.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </td>
+
+                        {/* Calls Done & Status */}
+                        <td className="p-3 space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-bold text-[10px] border border-indigo-200 dark:border-indigo-800">
+                              <PhoneCall className="size-3" />
+                              {lead.calls_count || 0} call{lead.calls_count !== 1 ? "s" : ""}
+                            </span>
+
+                            {lead.last_call_status && (
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                  lead.last_call_status === "Completed"
+                                    ? "bg-emerald-500/10 text-emerald-600"
+                                    : "bg-amber-500/10 text-amber-600"
+                                }`}
+                              >
+                                {lead.last_call_status}
+                              </span>
+                            )}
+                          </div>
+                          {lead.last_contact_at && (
+                            <p className="text-[10px] text-muted-foreground">
+                              Last contact: {new Date(lead.last_contact_at).toLocaleDateString()}
+                            </p>
+                          )}
+                        </td>
+
+                        {/* Estimated Value */}
+                        <td className="p-3 font-bold text-emerald-600 text-xs">
+                          {formatCurrency(lead.estimated_value || 0)}
+                        </td>
+
+                        {/* Stage Selector */}
+                        <td className="p-3">
+                          <select
+                            value={lead.status}
+                            onChange={(e) => void moveLead(lead, e.target.value as CrmLead["status"])}
+                            className="bg-background border border-border rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none"
+                          >
+                            {stages.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="p-3 text-right space-x-1">
+                          {/* Quick Call */}
+                          <button
+                            onClick={() => openCallModal(lead)}
+                            disabled={!lead.phone}
+                            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 transition-colors disabled:opacity-30"
+                            title="Call with AI Voice Agent"
+                          >
+                            <PhoneCall className="size-3.5" />
+                          </button>
+
+                          {/* Notes */}
+                          <button
+                            onClick={() => setNotesTargetLead(lead)}
+                            className="p-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground transition-colors"
+                            title="Log Notes & Call Disposition"
+                          >
+                            <ClipboardList className="size-3.5" />
+                          </button>
+
+                          {/* Convert to Deal */}
+                          <button
+                            onClick={() => setConvertTargetLead(lead)}
+                            className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 transition-colors"
+                            title="Convert to Customer & Deal Pipeline"
+                          >
+                            <Sparkles className="size-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
-        <div className="flex-1 flex gap-6 overflow-x-auto pb-4 items-start">
+        /* ── KANBAN VIEW ── */
+        <div className="flex-1 flex gap-5 overflow-x-auto pb-4 items-start">
           {stages.map((stage) => {
-            const stageLeads = filtered.filter((lead) => lead.status === stage);
+            const stageLeads = leads.filter((lead) => lead.status === stage);
             return (
-              <section key={stage} className="flex-shrink-0 w-80 flex flex-col rounded-xl border border-border/50 bg-muted/20 max-h-[78vh] overflow-hidden">
-                <header className="p-4 border-b border-border/50 flex justify-between bg-background/50">
-                  <h2 className="font-semibold text-sm">{stage}</h2>
-                  <span className="text-xs px-2 py-0.5 rounded bg-background border">{stageLeads.length}</span>
+              <section
+                key={stage}
+                className="flex-shrink-0 w-80 flex flex-col rounded-2xl border border-border/60 bg-muted/20 max-h-[78vh] overflow-hidden shadow-xs"
+              >
+                <header className="p-3.5 border-b border-border/50 flex justify-between items-center bg-card/60">
+                  <h2 className="font-bold text-xs uppercase tracking-wide text-foreground">{stage}</h2>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-background border font-bold">
+                    {stageLeads.length}
+                  </span>
                 </header>
+
                 <div className="flex-1 p-3 space-y-3 overflow-y-auto">
                   {stageLeads.map((lead) => (
                     <motion.article
-                      layout key={lead.id}
-                      className="bg-background p-4 rounded-lg border border-border shadow-sm relative overflow-hidden group"
+                      layout
+                      key={lead.id}
+                      className="bg-card p-4 rounded-xl border border-border shadow-xs relative overflow-hidden group space-y-2"
                     >
-                      {/* AI Badge */}
-                      {lead.ai_score != null ? (
-                        <div className="absolute right-2 top-2">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${
-                            lead.ai_sentiment === "Urgent" ? "bg-red-500/10 text-red-500 border border-red-500/20 animate-pulse" :
-                            lead.ai_sentiment === "Positive" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
-                            lead.ai_sentiment === "Frustrated" ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
-                            "bg-blue-500/10 text-blue-500 border border-blue-500/20"
-                          }`}>
-                            {lead.ai_sentiment} · {lead.ai_score}%
-                          </span>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-bold text-xs text-foreground">{lead.name}</h3>
+                          <p className="text-[11px] text-muted-foreground">{lead.company_name || "Individual"}</p>
                         </div>
-                      ) : (
-                        <button
-                          onClick={() => void runAiAnalysis(lead.id)}
-                          className="absolute right-2 top-2 p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Score with AI"
-                        >
-                          <Sparkles className="size-3 text-indigo-500" />
-                        </button>
-                      )}
-
-                      {lead.meta?.ad_id && (
-                        <button
-                          onClick={() => openAttribution(lead)}
-                          className="absolute right-2 top-9 p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="View ad attribution"
-                        >
-                          <Target className="size-3 text-blue-500" />
-                        </button>
-                      )}
-
-                      <h3 className="font-semibold text-sm pr-20 truncate">{lead.name}</h3>
-                      <p className="text-xs text-primary mb-2 truncate">{lead.company_name || "Individual"}</p>
-                      {lead.email && <p className="flex gap-1.5 text-xs text-muted-foreground truncate"><Mail className="size-3 shrink-0 mt-0.5" />{lead.email}</p>}
-                      {lead.phone && <p className="flex gap-1.5 mt-1 text-xs text-muted-foreground"><Phone className="size-3 shrink-0 mt-0.5" />{lead.phone}</p>}
-
-                      <div className="mt-3 pt-3 border-t flex justify-between items-center gap-2">
-                        <span className="text-xs font-bold text-emerald-600 shrink-0">{currency.symbol}{Number(lead.estimated_value).toLocaleString()}</span>
-                        <select
-                          value={lead.status}
-                          onChange={(e) => void moveLead(lead, e.target.value as CrmLead["status"])}
-                          className="min-w-0 flex-1 bg-transparent text-xs border-none focus:outline-none"
-                        >
-                          {stages.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
+                        <span className="text-xs font-black text-emerald-600">
+                          {formatCurrency(lead.estimated_value || 0)}
+                        </span>
                       </div>
 
-                      {/* ── Call Disposition & Notes Badge Block ── */}
-                      {lead.call_disposition && (
-                        <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-[10px] text-indigo-700 dark:text-indigo-300">
-                          <PhoneForwarded className="size-3 shrink-0 text-indigo-600" />
-                          <span className="font-bold truncate">{lead.call_disposition}</span>
-                          {lead.call_duration_minutes ? (
-                            <span className="text-muted-foreground ml-auto shrink-0 font-mono">
-                              {lead.call_duration_minutes}m
-                            </span>
-                          ) : null}
-                        </div>
-                      )}
+                      {/* Contact items */}
+                      <div className="space-y-1 text-[11px] text-muted-foreground">
+                        {lead.phone && (
+                          <p className="flex items-center gap-1 font-mono">
+                            <Phone className="size-3 text-muted-foreground" />
+                            {lead.phone}
+                          </p>
+                        )}
+                        {lead.email && (
+                          <p className="flex items-center gap-1 truncate">
+                            <Mail className="size-3 text-muted-foreground" />
+                            {lead.email}
+                          </p>
+                        )}
+                      </div>
 
-                      {lead.customer_response && (
-                        <div className="mt-1.5 px-2.5 py-1 rounded-md bg-muted/40 border border-border/50 text-[10px] text-foreground italic line-clamp-2">
-                          "{lead.customer_response}"
-                        </div>
-                      )}
+                      {/* Owner Rep */}
+                      <div className="pt-2 border-t flex items-center justify-between text-[11px]">
+                        <span className="text-muted-foreground font-medium">
+                          👤 {lead.owner_name || "Unassigned"}
+                        </span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+                          {lead.calls_count || 0} calls
+                        </span>
+                      </div>
 
-                      {lead.notes && !lead.customer_response && (
-                        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground line-clamp-1">
-                          <FileText className="size-3 shrink-0 text-indigo-500" />
-                          <span className="truncate">{lead.notes}</span>
-                        </div>
-                      )}
-
-                      {/* ── Call Status Differentiation Block ── */}
-                      {(() => {
-                        const callLog = callStatusMap[lead.id];
-                        const hasPhone = !!lead.phone;
-                        const wasCalled = !!callLog;
-                        const callDate = wasCalled ? new Date(callLog.created_at) : null;
-                        const daysSinceCall = callDate
-                          ? Math.floor((Date.now() - callDate.getTime()) / (1000 * 60 * 60 * 24))
-                          : null;
-                        const needsFollowUp = wasCalled && daysSinceCall !== null && daysSinceCall >= 2;
-
-                        if (!hasPhone) {
-                          return (
-                            <div className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/40 bg-muted/30 text-[10px] text-muted-foreground">
-                              <PhoneOff className="size-3 shrink-0" />
-                              <span>No phone — cannot call</span>
-                            </div>
-                          );
-                        }
-
-                        if (wasCalled && !needsFollowUp) {
-                          // Recently called — green badge + re-call option
-                          return (
-                            <div className="mt-2 space-y-1">
-                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-700 dark:text-emerald-400">
-                                <CheckCircle2 className="size-3 shrink-0" />
-                                <span className="font-semibold">Called</span>
-                                <span className="opacity-70">·</span>
-                                <span className="opacity-70">
-                                  {daysSinceCall === 0 ? "Today" : `${daysSinceCall}d ago`}
-                                  {callLog.sentiment && ` · ${callLog.sentiment}`}
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => openCallModal(lead)}
-                                className="w-full flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-semibold border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors"
-                              >
-                                <PhoneCall className="size-3" />
-                                Call Again
-                              </button>
-                            </div>
-                          );
-                        }
-
-                        if (wasCalled && needsFollowUp) {
-                          // Follow-up overdue — amber pulsing badge
-                          return (
-                            <div className="mt-2 space-y-1">
-                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-700 dark:text-amber-400 animate-pulse">
-                                <Clock className="size-3 shrink-0" />
-                                <span className="font-bold">Follow-up Needed</span>
-                                <span className="opacity-70">· {daysSinceCall}d ago</span>
-                              </div>
-                              <button
-                                onClick={() => openCallModal(lead)}
-                                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-400 text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
-                              >
-                                <PhoneCall className="size-3" />
-                                Call Now
-                              </button>
-                            </div>
-                          );
-                        }
-
-                        // Never called — primary indigo CTA
-                        return (
-                          <button
-                            onClick={() => openCallModal(lead)}
-                            className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
-                          >
-                            <PhoneCall className="size-3" />
-                            Start AI Call
-                          </button>
-                        );
-                      })()}
-
-                      {/* Log Call & Notes Button */}
-                      <button
-                        onClick={() => setNotesTargetLead(lead)}
-                        className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border border-border/80 bg-background hover:bg-muted text-foreground transition-colors"
-                      >
-                        <ClipboardList className="size-3.5 text-indigo-600" />
-                        Log Call & Notes
-                      </button>
-
-                      {lead.next_follow_up_at && (
-                        <p className="mt-1.5 flex gap-1 text-[10px] text-muted-foreground">
-                          <Calendar className="size-3" /> Follow up {new Date(lead.next_follow_up_at).toLocaleDateString()}
-                        </p>
-                      )}
+                      {/* Quick Call & Convert actions */}
+                      <div className="grid grid-cols-2 gap-1.5 pt-1">
+                        <button
+                          onClick={() => openCallModal(lead)}
+                          disabled={!lead.phone}
+                          className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold transition-colors disabled:opacity-40"
+                        >
+                          <PhoneCall className="size-3" /> Call
+                        </button>
+                        <button
+                          onClick={() => setConvertTargetLead(lead)}
+                          className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold transition-colors"
+                        >
+                          <Sparkles className="size-3" /> Convert
+                        </button>
+                      </div>
                     </motion.article>
                   ))}
 
                   {stageLeads.length === 0 && (
-                    <div className="h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-muted-foreground bg-background/50">
-                      <AlertCircle className="size-5 opacity-30" />
-                      <p className="text-xs">No leads</p>
+                    <div className="h-20 border border-dashed rounded-xl flex items-center justify-center text-muted-foreground text-xs bg-background/30">
+                      No leads
                     </div>
                   )}
                 </div>
-                {stage !== "Lost" && (
-                  <button onClick={() => setShowForm(true)} className="border-t p-3 text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 bg-background/30 hover:bg-background/50 transition-colors">
-                    <Plus className="size-3" /> Add lead
-                  </button>
-                )}
               </section>
             );
           })}
         </div>
       )}
 
-      {/* ── Universal AI Voice Studio & Dialer Modal ────────────────────────────────────── */}
+      {/* ── Bulk Assignment Modal ── */}
+      {showBulkAssign && (
+        <BulkAssignModal
+          isOpen={showBulkAssign}
+          onClose={() => setShowBulkAssign(false)}
+          selectedLeadIds={selectedLeadIds}
+          executives={executives}
+          onSuccess={() => {
+            setSelectedLeadIds([]);
+            void load();
+          }}
+        />
+      )}
+
+      {/* ── Bulk Import Excel/CSV Modal ── */}
+      {showBulkImport && (
+        <BulkImportLeadsModal
+          isOpen={showBulkImport}
+          onClose={() => setShowBulkImport(false)}
+          executives={executives}
+          onSuccess={() => {
+            void load();
+          }}
+        />
+      )}
+
+      {/* ── Convert to Pipeline Modal ── */}
+      {convertTargetLead && (
+        <ConvertPipelineModal
+          isOpen={!!convertTargetLead}
+          lead={convertTargetLead}
+          onClose={() => setConvertTargetLead(null)}
+          onSuccess={() => {
+            void load();
+          }}
+        />
+      )}
+
+      {/* ── AI Dial Studio Modal ── */}
       {callTarget && (
         <AiCallingModal
           open={!!callTarget}
@@ -512,200 +928,7 @@ export function Leads() {
         />
       )}
 
-      {/* Facebook Settings Modal */}
-      <AnimatePresence>
-        {showFbSettings && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card border rounded-xl shadow-2xl max-w-md w-full overflow-hidden"
-            >
-              <div className="p-5 border-b flex justify-between items-center bg-muted/10">
-                <div className="flex items-center gap-2">
-                  <Facebook className="size-5 text-blue-600" />
-                  <h3 className="font-bold">Facebook Lead Ads Settings</h3>
-                </div>
-                <button onClick={() => setShowFbSettings(false)}><X className="size-4" /></button>
-              </div>
-              <form onSubmit={saveFbCredentials} className="p-5 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5 flex items-center justify-between">
-                    <span>Facebook Page ID <span className="text-[10px] text-muted-foreground font-normal">(Optional)</span></span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Enter Page ID (Auto-resolved if left empty)"
-                    value={fbForm.page_or_form_id}
-                    onChange={(e) => setFbForm({ ...fbForm, page_or_form_id: e.target.value })}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">If left blank, the system automatically fetches your Page ID and Name from the token.</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Page Access Token</label>
-                  <div className="relative">
-                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                    <input
-                      required type="password" placeholder="EAA..."
-                      value={fbForm.access_token}
-                      onChange={(e) => setFbForm({ ...fbForm, access_token: e.target.value })}
-                      className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none font-mono"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">API Version</label>
-                  <select value={fbForm.api_version} onChange={(e) => setFbForm({ ...fbForm, api_version: e.target.value })}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none">
-                    <option value="v25.0">v25.0 (Latest)</option>
-                    <option value="v24.0">v24.0</option>
-                  </select>
-                </div>
-                <div className="pt-3 border-t flex justify-between">
-                  {fbConfigured && (
-                    <button type="button" onClick={deleteFbCredentials} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600 font-semibold">
-                      <Trash2 className="size-3.5" /> Disconnect
-                    </button>
-                  )}
-                  <div className="flex gap-2 ml-auto">
-                    <button type="button" onClick={() => setShowFbSettings(false)} className="px-3 py-2 text-sm hover:underline">Cancel</button>
-                    <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground font-semibold">Save</button>
-                  </div>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Ad Attribution Drawer ───────────────────────────────────── */}
-      <AnimatePresence>
-        {attrLead && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, x: 20 }}
-              animate={{ opacity: 1, scale: 1, x: 0 }}
-              exit={{ opacity: 0, scale: 0.95, x: 20 }}
-              className="bg-card border rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden"
-            >
-              <div className="p-5 border-b flex justify-between items-center bg-gradient-to-r from-blue-500/10 to-violet-500/10">
-                <div className="flex items-center gap-2">
-                  <div className="size-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
-                    <Target className="size-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm">Ad Attribution</h3>
-                    <p className="text-xs text-muted-foreground">{attrLead.name}</p>
-                  </div>
-                </div>
-                <button onClick={() => { setAttrLead(null); setAttribution(null); }}><X className="size-4" /></button>
-              </div>
-
-              <div className="p-5 space-y-3">
-                {loadingAttr ? (
-                  <div className="py-8 text-center text-muted-foreground flex items-center justify-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> Resolving ad data...
-                  </div>
-                ) : attribution ? (
-                  <>
-                    {/* Ad Account */}
-                    {attribution.ad_account_id && (
-                      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3 flex gap-3">
-                        <Briefcase className="size-4 text-blue-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Ad Account</p>
-                          <p className="text-sm font-semibold">{attribution.ad_account_name || attribution.ad_account_id}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{attribution.ad_account_id}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Campaign */}
-                    {attribution.campaign ? (
-                      <div className="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/20 p-3 flex gap-3">
-                        <Megaphone className="size-4 text-violet-500 shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider">Campaign</p>
-                          <p className="text-sm font-semibold truncate">{attribution.campaign.name}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{attribution.campaign_id}</p>
-                          <span className="text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 border border-violet-500/20">{attribution.campaign.status}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-border bg-muted/20 p-3 flex gap-3">
-                        <Megaphone className="size-4 text-muted-foreground shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Campaign</p>
-                          <p className="text-xs text-muted-foreground">No local mirror — {attribution.campaign_id ? "ad was created outside this app" : "not available"}</p>
-                          {attribution.campaign_id && <p className="text-xs text-muted-foreground font-mono">{attribution.campaign_id}</p>}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Ad Set */}
-                    {attribution.adset ? (
-                      <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20 p-3 flex gap-3">
-                        <Layers className="size-4 text-indigo-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Ad Set</p>
-                          <p className="text-sm font-semibold">{attribution.adset.name}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{attribution.adset_id}</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-border bg-muted/20 p-3 flex gap-3">
-                        <Layers className="size-4 text-muted-foreground shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ad Set</p>
-                          <p className="text-xs text-muted-foreground">{attribution.adset_id ? "Created outside this app" : "Not available"}</p>
-                          {attribution.adset_id && <p className="text-xs text-muted-foreground font-mono">{attribution.adset_id}</p>}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Ad */}
-                    {attribution.ad ? (
-                      <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 flex gap-3">
-                        <Target className="size-4 text-emerald-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Ad</p>
-                          <p className="text-sm font-semibold">{attribution.ad.headline || attribution.ad.name}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{attribution.ad_id}</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-border bg-muted/20 p-3 flex gap-3">
-                        <Target className="size-4 text-muted-foreground shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ad</p>
-                          <p className="text-xs text-muted-foreground">{attribution.ad_id ? "Created outside this app" : "Not available"}</p>
-                          {attribution.ad_id && <p className="text-xs text-muted-foreground font-mono">{attribution.ad_id}</p>}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Form */}
-                    {attribution.form_id && (
-                      <div className="rounded-lg border border-border bg-muted/20 p-3 flex gap-3">
-                        <Mail className="size-4 text-muted-foreground shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Lead Form</p>
-                          <p className="text-sm font-semibold">{attribution.form_name || attribution.form_id}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{attribution.form_id}</p>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : null}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Notes & Call Disposition Modal */}
+      {/* ── Notes & Call Disposition Modal ── */}
       {notesTargetLead && (
         <NotesAndDispositionModal
           isOpen={!!notesTargetLead}
@@ -722,25 +945,102 @@ export function Leads() {
           initialMinutes={notesTargetLead.call_duration_minutes}
           initialResponse={notesTargetLead.customer_response}
           initialNextFollowup={notesTargetLead.next_follow_up_at}
-          onSaveSuccess={(updated) => {
-            setLeads((prev) =>
-              prev.map((l) =>
-                l.id === notesTargetLead.id
-                  ? {
-                      ...l,
-                      ...(updated.status ? { status: updated.status as CrmLead["status"] } : {}),
-                      notes: updated.notes !== undefined ? updated.notes : l.notes,
-                      call_disposition: updated.call_disposition !== undefined ? updated.call_disposition : l.call_disposition,
-                      call_duration_minutes: updated.call_duration_minutes !== undefined ? updated.call_duration_minutes : l.call_duration_minutes,
-                      customer_response: updated.customer_response !== undefined ? updated.customer_response : l.customer_response,
-                      next_follow_up_at: updated.next_follow_up_at !== undefined ? updated.next_follow_up_at : l.next_follow_up_at,
-                    }
-                  : l
-              )
-            );
+          onSaveSuccess={() => {
+            void load();
           }}
         />
       )}
+
+      {/* ── Facebook Settings Modal ── */}
+      <AnimatePresence>
+        {showFbSettings && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card border rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+            >
+              <div className="p-5 border-b flex justify-between items-center bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <Facebook className="size-5 text-blue-600" />
+                  <h3 className="font-bold text-sm">Facebook Lead Ads Settings</h3>
+                </div>
+                <button onClick={() => setShowFbSettings(false)}>
+                  <X className="size-4" />
+                </button>
+              </div>
+              <form onSubmit={saveFbCredentials} className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    Facebook Page ID <span className="text-[10px] font-normal">(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Auto-resolved from token if empty"
+                    value={fbForm.page_or_form_id}
+                    onChange={(e) => setFbForm({ ...fbForm, page_or_form_id: e.target.value })}
+                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    Page Access Token *
+                  </label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                    <input
+                      required
+                      type="password"
+                      placeholder="EAA..."
+                      value={fbForm.access_token}
+                      onChange={(e) => setFbForm({ ...fbForm, access_token: e.target.value })}
+                      className="w-full bg-background border border-border rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none font-mono"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">API Version</label>
+                  <select
+                    value={fbForm.api_version}
+                    onChange={(e) => setFbForm({ ...fbForm, api_version: e.target.value })}
+                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs focus:outline-none"
+                  >
+                    <option value="v25.0">v25.0 (Latest)</option>
+                    <option value="v24.0">v24.0</option>
+                  </select>
+                </div>
+                <div className="pt-3 border-t flex justify-between items-center">
+                  {fbConfigured && (
+                    <button
+                      type="button"
+                      onClick={deleteFbCredentials}
+                      className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600 font-semibold"
+                    >
+                      <Trash2 className="size-3.5" /> Disconnect
+                    </button>
+                  )}
+                  <div className="flex gap-2 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => setShowFbSettings(false)}
+                      className="px-3 py-1.5 text-xs hover:underline"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-primary px-4 py-2 text-xs text-primary-foreground font-bold shadow-xs"
+                    >
+                      Save Settings
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, or_, select
+import io
+import csv
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, or_, and_, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pydantic import BaseModel
@@ -15,14 +19,16 @@ from src.database.session import get_db
 from src.models import (
     AuditLog, Customer, Lead, LeadActivity, Tenant, CRMSupportTicket, 
     CRMQuotation, CRMSalesOrder, CRMOpportunity, EmailCampaign, EmailTemplate, 
-    Employee, Applicant, AdAsset, CRMCallLog
+    Employee, Applicant, AdAsset, CRMCallLog, User, UserRole, Role, UserStatus
 )
 from src.schemas.crm import (
     CustomerCreate, CustomerResponse, CustomerUpdate, LeadActivityCreate, LeadActivityResponse, 
     LeadCreate, LeadResponse, LeadUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate, 
     CreatePaidAdRequestSchema, CRMCallInitiateRequest, CRMCallInitiateResponse, CRMCallTurnRequest, 
     CRMCallTurnResponse, CRMCallCompleteRequest, CRMCallLogResponse, CRMCallStatsResponse,
-    CRMTelephonySettingsSchema, CRMTelephonySettingsUpdate
+    CRMTelephonySettingsSchema, CRMTelephonySettingsUpdate,
+    SalesExecutiveResponse, BulkAssignLeadsRequest, BulkImportLeadsRequest,
+    BulkImportCustomersRequest, ConvertLeadPipelineRequest, ConvertLeadPipelineResponse
 )
 from src.services.telephony_service import TelephonyService
 from src.utils.pagination import PaginatedResponse, paginate
@@ -33,6 +39,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/crm", tags=["CRM & Sales"])
 LEAD_STATUSES = {"New", "Contacted", "Qualified", "Proposal", "Won", "Lost"}
 OPPORTUNITY_STAGES = {"Prospecting", "Qualification", "Needs Analysis", "Value Proposition", "Negotiation", "Closed Won", "Closed Lost"}
+
+
+def _is_crm_manager(ctx: CurrentUserContext) -> bool:
+    """Checks if current user has full manager / administrative visibility for CRM."""
+    if getattr(ctx.user, "is_tenant_owner", False):
+        return True
+    if getattr(ctx.user, "tenant", None) and getattr(ctx.user.tenant, "slug", "") == "system":
+        return True
+    if any(p in ctx.permissions for p in ("all", "*:*", "admin", "super_admin", "manage:all", "manage:erp", "manage:crm", "manage:crm_all_leads", "view:crm_all_leads")):
+        return True
+    if hasattr(ctx.user, "user_roles"):
+        for ur in (ctx.user.user_roles or []):
+            rname = getattr(getattr(ur, "role", None), "name", "").lower()
+            if any(mgr in rname for mgr in ("admin", "manager", "director", "head", "lead", "owner")):
+                return True
+    return False
 
 
 async def _lead_or_404(db: AsyncSession, lead_id: uuid.UUID, tenant_id: uuid.UUID) -> Lead:
@@ -73,21 +95,390 @@ async def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate, reque
     return customer
 
 
+@router.get("/sales-executives", response_model=list[SalesExecutiveResponse])
+async def list_sales_executives(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Returns list of active tenant users / sales staff for lead assignment and performance stats."""
+    users = (
+        await db.scalars(
+            select(User)
+            .where(User.tenant_id == ctx.tenant_id, User.status == UserStatus.ACTIVE)
+            .options(selectinload(User.user_roles).selectinload(UserRole.role))
+        )
+    ).all()
+
+    lead_counts_res = await db.execute(
+        select(Lead.owner_user_id, func.count(Lead.id))
+        .where(Lead.tenant_id == ctx.tenant_id, Lead.owner_user_id.isnot(None))
+        .group_by(Lead.owner_user_id)
+    )
+    lead_count_map = {row[0]: row[1] for row in lead_counts_res.fetchall()}
+
+    call_counts_res = await db.execute(
+        select(CRMCallLog.created_by_user_id, func.count(CRMCallLog.id))
+        .where(CRMCallLog.tenant_id == ctx.tenant_id, CRMCallLog.created_by_user_id.isnot(None))
+        .group_by(CRMCallLog.created_by_user_id)
+    )
+    call_count_map = {row[0]: row[1] for row in call_counts_res.fetchall()}
+
+    executives = []
+    for u in users:
+        role_names = [ur.role.name for ur in (u.user_roles or []) if getattr(ur, "role", None)]
+        primary_role = role_names[0] if role_names else ("Tenant Admin" if u.is_tenant_owner else "Sales Executive")
+        name_str = getattr(u, "full_name", None) or u.email.split("@")[0]
+        executives.append(SalesExecutiveResponse(
+            id=u.id,
+            name=name_str,
+            email=u.email,
+            role_name=primary_role,
+            active_leads_count=lead_count_map.get(u.id, 0),
+            total_calls_count=call_count_map.get(u.id, 0),
+        ))
+    return executives
+
+
 @router.get("/leads", response_model=PaginatedResponse[LeadResponse])
-async def list_leads(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), search: str | None = None, status_filter: str | None = Query(default=None, alias="status")):
+async def list_leads(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=500),
+    search: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+    assigned_to: str | None = Query(default=None),  # 'all' | 'me' | 'unassigned' | <uuid>
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    source: str | None = None,
+):
+    is_mgr = _is_crm_manager(ctx)
     query = select(Lead).where(Lead.tenant_id == ctx.tenant_id)
+
+    # Role-based visibility:
+    if not is_mgr:
+        # Sales Executive sees only assigned leads or leads they own
+        query = query.where(or_(Lead.owner_user_id == ctx.user.id, Lead.owner_user_id.is_(None)))
+    else:
+        # Manager can filter by assigned_to
+        if assigned_to == "me":
+            query = query.where(Lead.owner_user_id == ctx.user.id)
+        elif assigned_to == "unassigned":
+            query = query.where(Lead.owner_user_id.is_(None))
+        elif assigned_to and assigned_to != "all":
+            try:
+                assignee_uuid = uuid.UUID(assigned_to)
+                query = query.where(Lead.owner_user_id == assignee_uuid)
+            except ValueError:
+                pass
+
     if search:
-        term = f"%{search}%"; query = query.where(or_(Lead.name.ilike(term), Lead.company_name.ilike(term), Lead.email.ilike(term), Lead.phone.ilike(term)))
-    if status_filter: query = query.where(Lead.status == status_filter)
+        term = f"%{search}%"
+        query = query.where(or_(
+            Lead.name.ilike(term),
+            Lead.company_name.ilike(term),
+            Lead.email.ilike(term),
+            Lead.phone.ilike(term),
+            Lead.notes.ilike(term)
+        ))
+    if status_filter and status_filter != "all":
+        query = query.where(Lead.status == status_filter)
+    if source and source != "all":
+        query = query.where(Lead.source.ilike(f"%{source}%"))
+    if created_after:
+        query = query.where(Lead.created_at >= created_after)
+    if created_before:
+        query = query.where(Lead.created_at <= created_before)
+
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(query.order_by(Lead.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))
-    return paginate(result.scalars().all(), total or 0, page, page_size)
+    leads_list = result.scalars().all()
+
+    if not leads_list:
+        return paginate([], total or 0, page, page_size)
+
+    lead_ids = [l.id for l in leads_list]
+    owner_ids = [l.owner_user_id for l in leads_list if l.owner_user_id]
+
+    # Batch load owners
+    user_map = {}
+    if owner_ids:
+        owners = (await db.scalars(select(User).where(User.id.in_(set(owner_ids)), User.tenant_id == ctx.tenant_id))).all()
+        for o in owners:
+            user_map[o.id] = {
+                "name": getattr(o, "full_name", None) or o.email.split("@")[0],
+                "email": o.email,
+            }
+
+    # Batch load call counts
+    call_stats_res = await db.execute(
+        select(CRMCallLog.target_id, func.count(CRMCallLog.id))
+        .where(CRMCallLog.tenant_id == ctx.tenant_id, CRMCallLog.target_id.in_(lead_ids), CRMCallLog.target_type == "lead")
+        .group_by(CRMCallLog.target_id)
+    )
+    call_count_map = {row[0]: row[1] for row in call_stats_res.fetchall()}
+
+    # Batch load latest call per lead
+    recent_calls = (
+        await db.scalars(
+            select(CRMCallLog)
+            .where(CRMCallLog.tenant_id == ctx.tenant_id, CRMCallLog.target_id.in_(lead_ids), CRMCallLog.target_type == "lead")
+            .order_by(CRMCallLog.created_at.desc())
+        )
+    ).all()
+    latest_call_map = {}
+    for call in recent_calls:
+        if call.target_id and call.target_id not in latest_call_map:
+            latest_call_map[call.target_id] = call
+
+    enriched_leads = []
+    for l in leads_list:
+        owner_info = user_map.get(l.owner_user_id, {})
+        latest_call = latest_call_map.get(l.id)
+        resp = LeadResponse.model_validate(l)
+        resp.owner_name = owner_info.get("name")
+        resp.owner_email = owner_info.get("email")
+        resp.calls_count = call_count_map.get(l.id, 0)
+        if latest_call:
+            resp.last_call_status = latest_call.status
+            resp.last_call_sentiment = latest_call.sentiment
+        enriched_leads.append(resp)
+
+    return paginate(enriched_leads, total or 0, page, page_size)
+
+
+@router.get("/leads/export-csv")
+async def export_leads_csv(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    search: str | None = None,
+    status: str | None = None,
+    assigned_to: str | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+):
+    """Exports filtered leads to downloadable CSV format."""
+    is_mgr = _is_crm_manager(ctx)
+    query = select(Lead).where(Lead.tenant_id == ctx.tenant_id)
+    if not is_mgr:
+        query = query.where(or_(Lead.owner_user_id == ctx.user.id, Lead.owner_user_id.is_(None)))
+    else:
+        if assigned_to == "me":
+            query = query.where(Lead.owner_user_id == ctx.user.id)
+        elif assigned_to == "unassigned":
+            query = query.where(Lead.owner_user_id.is_(None))
+        elif assigned_to and assigned_to != "all":
+            try:
+                query = query.where(Lead.owner_user_id == uuid.UUID(assigned_to))
+            except ValueError:
+                pass
+
+    if search:
+        term = f"%{search}%"
+        query = query.where(or_(
+            Lead.name.ilike(term), Lead.company_name.ilike(term), Lead.email.ilike(term), Lead.phone.ilike(term)
+        ))
+    if status and status != "all":
+        query = query.where(Lead.status == status)
+    if created_after:
+        query = query.where(Lead.created_at >= created_after)
+    if created_before:
+        query = query.where(Lead.created_at <= created_before)
+
+    leads = (await db.scalars(query.order_by(Lead.updated_at.desc()))).all()
+
+    owner_ids = [l.owner_user_id for l in leads if l.owner_user_id]
+    user_map = {}
+    if owner_ids:
+        owners = (await db.scalars(select(User).where(User.id.in_(set(owner_ids)), User.tenant_id == ctx.tenant_id))).all()
+        for o in owners:
+            user_map[o.id] = getattr(o, "full_name", None) or o.email
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Lead ID", "Name", "Company", "Email", "Phone", "Status", "Source",
+        "Estimated Value", "Assigned To", "Last Contact", "Notes", "Created At"
+    ])
+    for l in leads:
+        writer.writerow([
+            str(l.id),
+            l.name or "",
+            l.company_name or "",
+            l.email or "",
+            l.phone or "",
+            l.status or "",
+            l.source or "",
+            float(l.estimated_value or 0),
+            user_map.get(l.owner_user_id, "Unassigned"),
+            l.last_contact_at.strftime("%Y-%m-%d %H:%M:%S") if l.last_contact_at else "",
+            l.notes or "",
+            l.created_at.strftime("%Y-%m-%d %H:%M:%S") if l.created_at else "",
+        ])
+    output.seek(0)
+    filename = f"crm_leads_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode('utf-8-sig')),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.post("/leads/bulk-assign")
+async def bulk_assign_leads(
+    payload: BulkAssignLeadsRequest,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Assigns multiple leads to a selected Sales Executive or equal Round-Robin distribution."""
+    if not payload.lead_ids:
+        raise HTTPException(status_code=400, detail="No lead IDs provided")
+
+    leads = (await db.scalars(select(Lead).where(Lead.tenant_id == ctx.tenant_id, Lead.id.in_(payload.lead_ids)))).all()
+    if not leads:
+        raise HTTPException(status_code=404, detail="No matching leads found")
+
+    if payload.mode == "round_robin":
+        target_users = payload.user_ids or []
+        if not target_users:
+            users = (await db.scalars(select(User).where(User.tenant_id == ctx.tenant_id, User.status == UserStatus.ACTIVE))).all()
+            target_users = [u.id for u in users]
+        if not target_users:
+            raise HTTPException(status_code=400, detail="No active users available for round-robin assignment")
+        
+        for i, lead in enumerate(leads):
+            assigned_u = target_users[i % len(target_users)]
+            lead.owner_user_id = assigned_u
+    else:
+        for lead in leads:
+            lead.owner_user_id = payload.owner_user_id
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="leads_bulk_assigned",
+        entity_type="lead",
+        new_values={"count": len(leads), "mode": payload.mode, "owner_user_id": str(payload.owner_user_id) if payload.owner_user_id else None},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return {"success": True, "assigned_count": len(leads), "message": f"Successfully assigned {len(leads)} leads."}
+
+
+@router.post("/leads/bulk-import")
+async def bulk_import_leads(
+    payload: BulkImportLeadsRequest,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Imports leads from parsed Excel/CSV data with automatic owner email resolution."""
+    if not payload.leads:
+        raise HTTPException(status_code=400, detail="No leads data provided")
+
+    users = (await db.scalars(select(User).where(User.tenant_id == ctx.tenant_id))).all()
+    email_to_user_map = {u.email.lower(): u.id for u in users}
+
+    imported = []
+    for item in payload.leads:
+        owner_id = payload.default_owner_user_id
+        if item.assigned_user_id:
+            owner_id = item.assigned_user_id
+        elif item.assigned_email and item.assigned_email.lower() in email_to_user_map:
+            owner_id = email_to_user_map[item.assigned_email.lower()]
+
+        lead = Lead(
+            tenant_id=ctx.tenant_id,
+            name=item.name,
+            company_name=item.company_name,
+            email=item.email,
+            phone=item.phone,
+            status=item.status or "New",
+            source=item.source or "Bulk Import",
+            estimated_value=item.estimated_value or 0.0,
+            notes=item.notes,
+            owner_user_id=owner_id,
+        )
+        db.add(lead)
+        imported.append(lead)
+
+    await db.flush()
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="leads_bulk_imported",
+        entity_type="lead",
+        new_values={"count": len(imported)},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return {"success": True, "imported_count": len(imported), "message": f"Successfully imported {len(imported)} leads."}
+
+
+@router.post("/customers/bulk-import")
+async def bulk_import_customers(
+    payload: BulkImportCustomersRequest,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Imports customers from parsed Excel/CSV data with automatic owner email resolution."""
+    if not payload.customers:
+        raise HTTPException(status_code=400, detail="No customer data provided")
+
+    users = (await db.scalars(select(User).where(User.tenant_id == ctx.tenant_id))).all()
+    email_to_user_map = {u.email.lower(): u.id for u in users}
+
+    imported = []
+    for item in payload.customers:
+        owner_id = payload.default_owner_user_id
+        if item.assigned_email and item.assigned_email.lower() in email_to_user_map:
+            owner_id = email_to_user_map[item.assigned_email.lower()]
+
+        cust = Customer(
+            tenant_id=ctx.tenant_id,
+            name=item.name,
+            company_name=item.company_name,
+            email=item.email,
+            phone=item.phone,
+            customer_type=item.customer_type or "Retail",
+            status=item.status or "Active",
+            address=item.address,
+            gst_number=item.gst_number,
+            owner_user_id=owner_id,
+        )
+        db.add(cust)
+        imported.append(cust)
+
+    await db.flush()
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="customers_bulk_imported",
+        entity_type="customer",
+        new_values={"count": len(imported)},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return {"success": True, "imported_count": len(imported), "message": f"Successfully imported {len(imported)} customers."}
 
 
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead(payload: LeadCreate, request: Request, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
     if payload.status not in LEAD_STATUSES: raise HTTPException(status_code=400, detail="Invalid lead status")
     lead = Lead(tenant_id=ctx.tenant_id, **payload.model_dump())
+    if not lead.owner_user_id and not _is_crm_manager(ctx):
+        lead.owner_user_id = ctx.user.id
     db.add(lead); await db.flush()
     await add_system_notification(db, ctx.tenant_id, f"New CRM Lead: {lead.name}", f"Lead '{lead.name}' ({lead.company_name or 'No Company'}) was created by {ctx.user.full_name}", "crm")
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="lead_created", entity_type="lead", entity_id=lead.id, new_values=payload.model_dump(mode="json"), ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
@@ -105,76 +496,6 @@ async def update_lead(lead_id: uuid.UUID, payload: LeadUpdate, request: Request,
     return lead
 
 
-@router.post("/leads/{lead_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
-async def add_lead_activity(lead_id: uuid.UUID, payload: LeadActivityCreate, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
-    lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
-    activity = LeadActivity(
-        tenant_id=ctx.tenant_id,
-        lead_id=lead.id,
-        created_by_user_id=ctx.user.id,
-        occurred_at=payload.occurred_at or datetime.now(timezone.utc),
-        activity_type=payload.activity_type,
-        summary=payload.summary,
-        call_disposition=payload.call_disposition,
-        call_duration_minutes=payload.call_duration_minutes or 0,
-        customer_response=payload.customer_response,
-    )
-    lead.last_contact_at = activity.occurred_at
-    if payload.call_disposition:
-        lead.call_disposition = payload.call_disposition
-    if payload.call_duration_minutes is not None:
-        lead.call_duration_minutes = payload.call_duration_minutes
-    if payload.customer_response:
-        lead.customer_response = payload.customer_response
-    db.add(activity)
-    await db.flush()
-    return activity
-
-
-@router.get("/leads/{lead_id}/activities", response_model=list[LeadActivityResponse])
-async def list_lead_activities(lead_id: uuid.UUID, ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
-    await _lead_or_404(db, lead_id, ctx.tenant_id)
-    result = await db.execute(select(LeadActivity).where(LeadActivity.tenant_id == ctx.tenant_id, LeadActivity.lead_id == lead_id).order_by(LeadActivity.occurred_at.desc()))
-    return result.scalars().all()
-
-
-@router.post("/opportunities/{opportunity_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
-async def add_opportunity_activity(opportunity_id: uuid.UUID, payload: LeadActivityCreate, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
-    opp = await db.scalar(select(CRMOpportunity).where(CRMOpportunity.id == opportunity_id, CRMOpportunity.tenant_id == ctx.tenant_id))
-    if not opp:
-        raise HTTPException(status_code=404, detail="Opportunity not found")
-    activity = LeadActivity(
-        tenant_id=ctx.tenant_id,
-        opportunity_id=opp.id,
-        created_by_user_id=ctx.user.id,
-        occurred_at=payload.occurred_at or datetime.now(timezone.utc),
-        activity_type=payload.activity_type,
-        summary=payload.summary,
-        call_disposition=payload.call_disposition,
-        call_duration_minutes=payload.call_duration_minutes or 0,
-        customer_response=payload.customer_response,
-    )
-    opp.last_contact_at = activity.occurred_at
-    if payload.call_disposition:
-        opp.call_disposition = payload.call_disposition
-    if payload.call_duration_minutes is not None:
-        opp.call_duration_minutes = payload.call_duration_minutes
-    if payload.customer_response:
-        opp.customer_response = payload.customer_response
-    db.add(activity)
-    await db.flush()
-    return activity
-
-
-@router.get("/opportunities/{opportunity_id}/activities", response_model=list[LeadActivityResponse])
-async def list_opportunity_activities(opportunity_id: uuid.UUID, ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
-    opp = await db.scalar(select(CRMOpportunity).where(CRMOpportunity.id == opportunity_id, CRMOpportunity.tenant_id == ctx.tenant_id))
-    if not opp:
-        raise HTTPException(status_code=404, detail="Opportunity not found")
-    result = await db.execute(select(LeadActivity).where(LeadActivity.tenant_id == ctx.tenant_id, LeadActivity.opportunity_id == opportunity_id).order_by(LeadActivity.occurred_at.desc()))
-    return result.scalars().all()
-
-
 @router.post("/leads/{lead_id}/convert", response_model=CustomerResponse)
 async def convert_lead(lead_id: uuid.UUID, request: Request, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
     lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
@@ -186,18 +507,259 @@ async def convert_lead(lead_id: uuid.UUID, request: Request, ctx: Annotated[Curr
     return customer
 
 
+@router.post("/leads/{lead_id}/convert-pipeline", response_model=ConvertLeadPipelineResponse)
+async def convert_lead_to_pipeline(
+    lead_id: uuid.UUID,
+    payload: ConvertLeadPipelineRequest,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Atomically converts a Lead to Customer + Deal Opportunity in pipeline with executive ownership preserved."""
+    lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
+
+    # 1. Find or create Customer
+    customer = await db.scalar(
+        select(Customer).where(
+            Customer.tenant_id == ctx.tenant_id,
+            or_(Customer.lead_id == lead.id, and_(Customer.email == lead.email, Customer.email.isnot(None)))
+        )
+    )
+    if not customer:
+        customer = Customer(
+            tenant_id=ctx.tenant_id,
+            lead_id=lead.id,
+            name=lead.name,
+            email=lead.email,
+            phone=lead.phone,
+            company_name=lead.company_name,
+            customer_type=payload.customer_type or "Retail",
+            status="Active",
+            owner_user_id=lead.owner_user_id or ctx.user.id,
+        )
+        db.add(customer)
+        await db.flush()
+
+    # 2. Create Deal Opportunity
+    deal_name = payload.deal_name or f"{lead.name} - {lead.company_name or 'Deal'}".strip()
+    deal_amt = payload.deal_amount if payload.deal_amount is not None else float(lead.estimated_value or 0)
+    
+    deal = CRMOpportunity(
+        tenant_id=ctx.tenant_id,
+        customer_id=customer.id,
+        lead_id=lead.id,
+        name=deal_name,
+        stage=payload.deal_stage or "Prospecting",
+        amount=deal_amt,
+        probability=60 if payload.deal_stage == "Proposal" else 25,
+        expected_close_date=payload.expected_close_date,
+        owner_user_id=lead.owner_user_id or ctx.user.id,
+        notes=payload.notes or lead.notes,
+    )
+    db.add(deal)
+
+    # 3. Update Lead Status
+    lead.status = "Won"
+    lead.last_contact_at = datetime.now(timezone.utc)
+    
+    await db.flush()
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="lead_converted_to_deal",
+        entity_type="lead",
+        entity_id=lead.id,
+        new_values={"customer_id": str(customer.id), "opportunity_id": str(deal.id)},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+
+    return ConvertLeadPipelineResponse(
+        lead_id=lead.id,
+        customer_id=customer.id,
+        customer_name=customer.name,
+        opportunity_id=deal.id,
+        deal_name=deal.name,
+        deal_stage=deal.stage,
+        deal_amount=float(deal.amount or 0),
+        owner_user_id=deal.owner_user_id,
+        message=f"Lead successfully converted to Customer '{customer.name}' and Deal '{deal.name}' in pipeline!"
+    )
+
+
 # ─── CRM Opportunities & Pipeline ───────────────────────────────
 
 @router.get("/opportunities", response_model=PaginatedResponse[OpportunityResponse])
-async def list_opportunities(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), search: str | None = None, stage: str | None = None):
+async def list_opportunities(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=100),
+    search: str | None = None,
+    stage: str | None = None,
+    assigned_to: str | None = None,
+):
+    is_mgr = _is_crm_manager(ctx)
     query = select(CRMOpportunity).where(CRMOpportunity.tenant_id == ctx.tenant_id)
+    if not is_mgr:
+        query = query.where(CRMOpportunity.owner_user_id == ctx.user.id)
+    elif assigned_to == "me":
+        query = query.where(CRMOpportunity.owner_user_id == ctx.user.id)
+    elif assigned_to and assigned_to != "all":
+        try:
+            query = query.where(CRMOpportunity.owner_user_id == uuid.UUID(assigned_to))
+        except ValueError:
+            pass
+
     if search:
         query = query.where(CRMOpportunity.name.ilike(f"%{search}%"))
-    if stage:
+    if stage and stage != "all":
         query = query.where(CRMOpportunity.stage == stage)
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(query.order_by(CRMOpportunity.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))
-    return paginate(result.scalars().all(), total or 0, page, page_size)
+    deals_list = result.scalars().all()
+
+    if not deals_list:
+        return paginate([], total or 0, page, page_size)
+
+    deal_ids = [d.id for d in deals_list]
+    owner_ids = [d.owner_user_id for d in deals_list if d.owner_user_id]
+    cust_ids = [d.customer_id for d in deals_list if d.customer_id]
+
+    # Pre-fetch owners
+    user_map = {}
+    if owner_ids:
+        owners = (await db.scalars(select(User).where(User.id.in_(set(owner_ids)), User.tenant_id == ctx.tenant_id))).all()
+        for o in owners:
+            user_map[o.id] = {
+                "name": getattr(o, "full_name", None) or o.email.split("@")[0],
+                "email": o.email,
+            }
+
+    # Pre-fetch customers
+    cust_map = {}
+    if cust_ids:
+        customers = (await db.scalars(select(Customer).where(Customer.id.in_(set(cust_ids)), Customer.tenant_id == ctx.tenant_id))).all()
+        for c in customers:
+            cust_map[c.id] = c.name
+
+    # Batch load call counts
+    call_stats_res = await db.execute(
+        select(CRMCallLog.target_id, func.count(CRMCallLog.id))
+        .where(
+            CRMCallLog.tenant_id == ctx.tenant_id,
+            CRMCallLog.target_id.in_(deal_ids),
+            CRMCallLog.target_type.in_(["opportunity", "deal"])
+        )
+        .group_by(CRMCallLog.target_id)
+    )
+    call_count_map = {row[0]: row[1] for row in call_stats_res.fetchall()}
+
+    # Batch load latest calls
+    recent_calls = (
+        await db.scalars(
+            select(CRMCallLog)
+            .where(
+                CRMCallLog.tenant_id == ctx.tenant_id,
+                CRMCallLog.target_id.in_(deal_ids),
+                CRMCallLog.target_type.in_(["opportunity", "deal"])
+            )
+            .order_by(CRMCallLog.created_at.desc())
+        )
+    ).all()
+    latest_call_map = {}
+    for call in recent_calls:
+        if call.target_id and call.target_id not in latest_call_map:
+            latest_call_map[call.target_id] = call
+
+    enriched_deals = []
+    for d in deals_list:
+        owner_info = user_map.get(d.owner_user_id, {})
+        latest_call = latest_call_map.get(d.id)
+        resp = OpportunityResponse.model_validate(d)
+        resp.owner_name = owner_info.get("name")
+        resp.owner_email = owner_info.get("email")
+        resp.customer_name = cust_map.get(d.customer_id)
+        resp.calls_count = call_count_map.get(d.id, 0)
+        if latest_call:
+            resp.last_call_status = latest_call.status
+            resp.last_call_sentiment = latest_call.sentiment
+        enriched_deals.append(resp)
+
+    return paginate(enriched_deals, total or 0, page, page_size)
+
+
+@router.get("/opportunities/export-csv")
+async def export_opportunities_csv(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    search: str | None = None,
+    stage: str | None = None,
+    assigned_to: str | None = None,
+):
+    """Exports filtered deals/opportunities to downloadable CSV format."""
+    is_mgr = _is_crm_manager(ctx)
+    query = select(CRMOpportunity).where(CRMOpportunity.tenant_id == ctx.tenant_id)
+    if not is_mgr:
+        query = query.where(CRMOpportunity.owner_user_id == ctx.user.id)
+    elif assigned_to == "me":
+        query = query.where(CRMOpportunity.owner_user_id == ctx.user.id)
+    elif assigned_to and assigned_to != "all":
+        try:
+            query = query.where(CRMOpportunity.owner_user_id == uuid.UUID(assigned_to))
+        except ValueError:
+            pass
+
+    if search:
+        query = query.where(CRMOpportunity.name.ilike(f"%{search}%"))
+    if stage and stage != "all":
+        query = query.where(CRMOpportunity.stage == stage)
+
+    deals = (await db.scalars(query.order_by(CRMOpportunity.updated_at.desc()))).all()
+
+    owner_ids = [d.owner_user_id for d in deals if d.owner_user_id]
+    cust_ids = [d.customer_id for d in deals if d.customer_id]
+    user_map = {}
+    cust_map = {}
+    if owner_ids:
+        owners = (await db.scalars(select(User).where(User.id.in_(set(owner_ids)), User.tenant_id == ctx.tenant_id))).all()
+        for o in owners:
+            user_map[o.id] = getattr(o, "full_name", None) or o.email
+    if cust_ids:
+        customers = (await db.scalars(select(Customer).where(Customer.id.in_(set(cust_ids)), Customer.tenant_id == ctx.tenant_id))).all()
+        for c in customers:
+            cust_map[c.id] = c.name
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Deal ID", "Deal Name", "Customer", "Stage", "Amount", "Probability (%)",
+        "Expected Close Date", "Assigned Rep", "Next Step", "Notes", "Created At"
+    ])
+    for d in deals:
+        writer.writerow([
+            str(d.id),
+            d.name or "",
+            cust_map.get(d.customer_id, "—"),
+            d.stage or "",
+            float(d.amount or 0),
+            d.probability or 0,
+            d.expected_close_date.strftime("%Y-%m-%d") if d.expected_close_date else "",
+            user_map.get(d.owner_user_id, "Unassigned"),
+            d.next_step or "",
+            d.notes or "",
+            d.created_at.strftime("%Y-%m-%d %H:%M:%S") if d.created_at else "",
+        ])
+    output.seek(0)
+    filename = f"crm_deals_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode('utf-8-sig')),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @router.post("/opportunities", response_model=OpportunityResponse, status_code=status.HTTP_201_CREATED)
@@ -2079,16 +2641,28 @@ async def list_crm_call_logs(
     target_type: str | None = None,
     target_id: uuid.UUID | None = None,
     search: str | None = None,
-    sentiment: str | None = None
+    sentiment: str | None = None,
+    status: str | None = None,
+    user_id: uuid.UUID | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ):
-    """Lists historical AI call logs and transcripts with filtering."""
+    """Lists historical AI call logs and transcripts with date, status, agent, and sentiment filtering."""
     query = select(CRMCallLog).where(CRMCallLog.tenant_id == ctx.tenant_id)
-    if target_type:
+    if target_type and target_type != "all":
         query = query.where(CRMCallLog.target_type == target_type)
     if target_id:
         query = query.where(CRMCallLog.target_id == target_id)
-    if sentiment:
+    if sentiment and sentiment != "all":
         query = query.where(CRMCallLog.sentiment == sentiment)
+    if status and status != "all":
+        query = query.where(CRMCallLog.status == status)
+    if user_id:
+        query = query.where(CRMCallLog.created_by_user_id == user_id)
+    if start_date:
+        query = query.where(CRMCallLog.created_at >= start_date)
+    if end_date:
+        query = query.where(CRMCallLog.created_at <= end_date)
     if search:
         search_fmt = f"%{search}%"
         query = query.where(
@@ -2106,6 +2680,80 @@ async def list_crm_call_logs(
         .limit(page_size)
     )
     return paginate(result.scalars().all(), total or 0, page, page_size)
+
+
+@router.get("/calls/export-csv")
+async def export_call_logs_csv(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    target_type: str | None = None,
+    sentiment: str | None = None,
+    status: str | None = None,
+    user_id: uuid.UUID | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    search: str | None = None,
+):
+    """Exports filtered call logs to downloadable CSV."""
+    query = select(CRMCallLog).where(CRMCallLog.tenant_id == ctx.tenant_id)
+    if target_type and target_type != "all":
+        query = query.where(CRMCallLog.target_type == target_type)
+    if sentiment and sentiment != "all":
+        query = query.where(CRMCallLog.sentiment == sentiment)
+    if status and status != "all":
+        query = query.where(CRMCallLog.status == status)
+    if user_id:
+        query = query.where(CRMCallLog.created_by_user_id == user_id)
+    if start_date:
+        query = query.where(CRMCallLog.created_at >= start_date)
+    if end_date:
+        query = query.where(CRMCallLog.created_at <= end_date)
+    if search:
+        s = f"%{search}%"
+        query = query.where(or_(
+            CRMCallLog.contact_name.ilike(s),
+            CRMCallLog.contact_phone.ilike(s),
+            CRMCallLog.company_name.ilike(s),
+            CRMCallLog.ai_summary.ilike(s)
+        ))
+
+    logs = (await db.scalars(query.order_by(CRMCallLog.created_at.desc()))).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Call ID", "Date & Time", "Target Type", "Contact Name", "Phone", "Email",
+        "Company", "Status", "Direction", "Duration (Seconds)", "Agent Persona",
+        "Sentiment", "Score", "Summary", "Action Items"
+    ])
+
+    for l in logs:
+        action_items_str = "; ".join(l.action_items) if isinstance(l.action_items, list) else ""
+        writer.writerow([
+            str(l.id),
+            l.created_at.strftime("%Y-%m-%d %H:%M:%S") if l.created_at else "",
+            l.target_type or "",
+            l.contact_name or "",
+            l.contact_phone or "",
+            l.contact_email or "",
+            l.company_name or "",
+            l.status or "",
+            l.direction or "",
+            l.duration_seconds or 0,
+            l.agent_persona or "",
+            l.sentiment or "",
+            l.qualification_score or "",
+            l.ai_summary or "",
+            action_items_str
+        ])
+
+    output.seek(0)
+    filename = f"crm_call_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode('utf-8-sig')),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @router.get("/calls/stats", response_model=CRMCallStatsResponse)

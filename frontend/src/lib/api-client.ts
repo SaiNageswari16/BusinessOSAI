@@ -2111,6 +2111,11 @@ export interface CrmLead {
   status: "New" | "Contacted" | "Qualified" | "Proposal" | "Won" | "Lost";
   source: string | null;
   owner_user_id: string | null;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  calls_count?: number;
+  last_call_status?: string | null;
+  last_call_sentiment?: string | null;
   estimated_value: number;
   last_contact_at: string | null;
   next_follow_up_at: string | null;
@@ -2126,6 +2131,15 @@ export interface CrmLead {
   ai_sentiment: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SalesExecutive {
+  id: string;
+  name: string;
+  email: string;
+  role_name?: string;
+  active_leads_count: number;
+  total_calls_count: number;
 }
 
 export interface CrmLeadActivity {
@@ -2298,6 +2312,8 @@ export const crmCustomersApi = {
     request<PaginatedResponse<CrmCustomer>>("GET", "/crm/customers", undefined, { page, page_size: pageSize, search, customer_type: customerType }),
   create: (data: Record<string, unknown>) => request<CrmCustomer>("POST", "/crm/customers", data),
   update: (id: string, data: Record<string, unknown>) => request<CrmCustomer>("PATCH", `/crm/customers/${id}`, data),
+  bulkImport: (data: { customers: any[]; default_owner_user_id?: string | null }) =>
+    request<{ success: boolean; imported_count: number; message: string }>("POST", "/crm/customers/bulk-import", data),
 };
 
 // ── CRM Modules ──────────────────────────────────────────────────────────────
@@ -2562,15 +2578,50 @@ export const crmDiscountsApi = {
 };
 
 export const crmLeadsApi = {
-  list: (page = 1, pageSize = 100, search?: string, status?: string) =>
-    request<PaginatedResponse<CrmLead>>("GET", "/crm/leads", undefined, { page, page_size: pageSize, search, status }),
+  list: (
+    page = 1,
+    pageSize = 100,
+    search?: string,
+    status?: string,
+    assignedTo?: string,
+    createdAfter?: string,
+    createdBefore?: string,
+    source?: string
+  ) =>
+    request<PaginatedResponse<CrmLead>>("GET", "/crm/leads", undefined, {
+      page,
+      page_size: pageSize,
+      search,
+      status,
+      assigned_to: assignedTo,
+      created_after: createdAfter,
+      created_before: createdBefore,
+      source,
+    }),
+  listSalesExecutives: () => request<SalesExecutive[]>("GET", "/crm/sales-executives"),
+  bulkAssign: (data: { lead_ids: string[]; owner_user_id?: string | null; mode?: string; user_ids?: string[] }) =>
+    request<{ success: boolean; assigned_count: number; message: string }>("POST", "/crm/leads/bulk-assign", data),
+  bulkImport: (data: { leads: any[]; default_owner_user_id?: string | null }) =>
+    request<{ success: boolean; imported_count: number; message: string }>("POST", "/crm/leads/bulk-import", data),
   create: (data: Record<string, unknown>) => request<CrmLead>("POST", "/crm/leads", data),
   update: (id: string, data: Record<string, unknown>) => request<CrmLead>("PATCH", `/crm/leads/${id}`, data),
   listActivities: (id: string) => request<CrmLeadActivity[]>("GET", `/crm/leads/${id}/activities`),
   addActivity: (id: string, data: Record<string, unknown>) => request<CrmLeadActivity>("POST", `/crm/leads/${id}/activities`, data),
   convert: (id: string) => request<CrmCustomer>("POST", `/crm/leads/${id}/convert`),
+  convertPipeline: (id: string, data: { deal_name?: string; deal_amount?: number; deal_stage?: string; customer_type?: string; expected_close_date?: string; notes?: string }) =>
+    request<{ lead_id: string; customer_id: string; customer_name: string; opportunity_id: string; deal_name: string; deal_stage: string; deal_amount: number; message: string }>("POST", `/crm/leads/${id}/convert-pipeline`, data),
   getAttribution: (id: string) =>
     request<LeadAttribution>("GET", `/crm/leads/${id}/attribution`),
+  exportCsvUrl: (params?: { search?: string; status?: string; assigned_to?: string; created_after?: string; created_before?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.append("search", params.search);
+    if (params?.status && params.status !== "all") q.append("status", params.status);
+    if (params?.assigned_to && params.assigned_to !== "all") q.append("assigned_to", params.assigned_to);
+    if (params?.created_after) q.append("created_after", params.created_after);
+    if (params?.created_before) q.append("created_before", params.created_before);
+    const qs = q.toString();
+    return `${API_BASE_URL}/crm/leads/export-csv${qs ? `?${qs}` : ""}`;
+  },
 
   // ── Facebook OAuth page connection (proper flow) ─────────────────────────────
   /** Get this tenant's Meta App configuration status */
@@ -2773,6 +2824,12 @@ export interface CrmOpportunity {
   probability: number;
   expected_close_date: string | null;
   owner_user_id: string | null;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  customer_name?: string | null;
+  calls_count?: number | null;
+  last_call_status?: string | null;
+  last_call_sentiment?: string | null;
   next_step: string | null;
   next_step_at: string | null;
   forecast_category: string;
@@ -2787,14 +2844,27 @@ export interface CrmOpportunity {
 }
 
 export const crmOpportunitiesApi = {
-  list: async () => {
-    const res = await request<any>("GET", "/crm/opportunities");
+  list: async (params?: { search?: string; stage?: string; assigned_to?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.append("search", params.search);
+    if (params?.stage && params.stage !== "all") q.append("stage", params.stage);
+    if (params?.assigned_to && params.assigned_to !== "all") q.append("assigned_to", params.assigned_to);
+    const qs = q.toString();
+    const res = await request<any>("GET", `/crm/opportunities${qs ? `?${qs}` : ""}`);
     return Array.isArray(res) ? res : res?.items ?? [];
   },
   create: (data: Record<string, unknown>) => request<CrmOpportunity>("POST", "/crm/opportunities", data),
   update: (id: string, data: Record<string, unknown>) => request<CrmOpportunity>("PATCH", `/crm/opportunities/${id}`, data),
   listActivities: (id: string) => request<CrmLeadActivity[]>("GET", `/crm/opportunities/${id}/activities`),
   addActivity: (id: string, data: Record<string, unknown>) => request<CrmLeadActivity>("POST", `/crm/opportunities/${id}/activities`, data),
+  exportCsvUrl: (params?: { search?: string; stage?: string; assigned_to?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.append("search", params.search);
+    if (params?.stage && params.stage !== "all") q.append("stage", params.stage);
+    if (params?.assigned_to && params.assigned_to !== "all") q.append("assigned_to", params.assigned_to);
+    const qs = q.toString();
+    return `${API_BASE_URL}/crm/opportunities/export-csv${qs ? `?${qs}` : ""}`;
+  },
 };
 
 export interface EmailCampaign {
@@ -4777,15 +4847,51 @@ export const crmCallsApi = {
     targetType?: string,
     targetId?: string,
     search?: string,
-    sentiment?: string
+    sentiment?: string,
+    status?: string,
+    userId?: string,
+    startDate?: string,
+    endDate?: string
   ) =>
     request<{ items: CRMCallLog[]; total: number }>(
       "GET",
       "/crm/calls/logs",
       undefined,
-      { page, page_size: pageSize, target_type: targetType, target_id: targetId, search, sentiment }
+      {
+        page,
+        page_size: pageSize,
+        target_type: targetType,
+        target_id: targetId,
+        search,
+        sentiment,
+        status,
+        user_id: userId,
+        start_date: startDate,
+        end_date: endDate,
+      }
     ),
 
   getStats: () =>
     request<CRMCallStats>("GET", "/crm/calls/stats"),
+
+  exportCsvUrl: (params?: {
+    target_type?: string;
+    sentiment?: string;
+    status?: string;
+    user_id?: string;
+    start_date?: string;
+    end_date?: string;
+    search?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.target_type && params.target_type !== "all") query.set("target_type", params.target_type);
+    if (params?.sentiment && params.sentiment !== "all") query.set("sentiment", params.sentiment);
+    if (params?.status && params.status !== "all") query.set("status", params.status);
+    if (params?.user_id && params.user_id !== "all") query.set("user_id", params.user_id);
+    if (params?.start_date) query.set("start_date", params.start_date);
+    if (params?.end_date) query.set("end_date", params.end_date);
+    if (params?.search) query.set("search", params.search);
+    const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+    return `${API_BASE}/crm/calls/export-csv?${query.toString()}`;
+  },
 };

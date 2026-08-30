@@ -93,52 +93,81 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 import os
+import shutil
 from pathlib import Path
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # backend/src
-BACKEND_DIR = os.path.dirname(BASE_DIR)              # backend
-UPLOAD_IMAGES_DIR = os.path.join(BACKEND_DIR, "upload_images")
-IMAGES_DIR = os.path.join(BACKEND_DIR, "images")
-STATIC_DIR = os.path.join(BACKEND_DIR, "static")
+BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__))) # backend/src
+BACKEND_DIR = BASE_DIR.parent                               # backend
+WORKSPACE_DIR = BACKEND_DIR.parent                          # BusinessOSAI
+
+UPLOAD_IMAGES_DIR = BACKEND_DIR / "upload_images"
+IMAGES_DIR = BACKEND_DIR / "images"
+STATIC_DIR = BACKEND_DIR / "static"
 
 # Ensure backend/upload_images, backend/images & static folders exist
-os.makedirs(UPLOAD_IMAGES_DIR, exist_ok=True)
-os.makedirs(IMAGES_DIR, exist_ok=True)
-os.makedirs(STATIC_DIR, exist_ok=True)
+UPLOAD_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
-app.mount("/upload_images", StaticFiles(directory=UPLOAD_IMAGES_DIR), name="upload_images")
-app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# Sync any images stored in src/upload_images to backend/upload_images
+src_upload_dir = BASE_DIR / "upload_images"
+if src_upload_dir.exists():
+    for f in src_upload_dir.glob("*"):
+        if f.is_file():
+            dest = UPLOAD_IMAGES_DIR / f.name
+            if not dest.exists():
+                shutil.copy2(f, dest)
+
+DEFAULT_PLACEHOLDER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="background:#f8fafc;border-radius:12px;"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>"""
+
+def find_image_on_disk(file_path: str) -> Path | None:
+    clean_name = os.path.basename(file_path)
+    search_dirs = [
+        UPLOAD_IMAGES_DIR,
+        IMAGES_DIR,
+        STATIC_DIR / "uploads" / "products",
+        STATIC_DIR / "uploads",
+        STATIC_DIR,
+        BASE_DIR / "upload_images",
+        BASE_DIR / "images",
+        BACKEND_DIR / "uploaded_images",
+        BACKEND_DIR / "uploaded images",
+        WORKSPACE_DIR / "upload_images",
+        WORKSPACE_DIR / "uploaded_images",
+        WORKSPACE_DIR / "uploaded images",
+        WORKSPACE_DIR / "frontend" / "public" / "images",
+        WORKSPACE_DIR / "frontend" / "public" / "upload_images",
+    ]
+    for d in search_dirs:
+        if d.is_file():
+            return d
+        p = d / file_path
+        if p.is_file():
+            return p
+        p_base = d / clean_name
+        if p_base.is_file():
+            return p_base
+    return None
 
 @app.get("/upload_images/{file_path:path}")
 async def serve_upload_image_fallback(file_path: str):
-    candidate_dirs = [
-        UPLOAD_IMAGES_DIR,
-        IMAGES_DIR,
-        os.path.join(BASE_DIR, "images"),
-        STATIC_DIR,
-    ]
-    for d in candidate_dirs:
-        p = os.path.join(d, file_path)
-        if os.path.isfile(p):
-            return FileResponse(p)
-    raise HTTPException(status_code=404, detail="Image not found")
+    p = find_image_on_disk(file_path)
+    if p:
+        return FileResponse(str(p))
+    # Graceful fallback: return clean SVG placeholder instead of 404
+    return Response(content=DEFAULT_PLACEHOLDER_SVG, media_type="image/svg+xml")
 
 @app.get("/images/{file_path:path}")
 async def serve_image_fallback(file_path: str):
-    candidate_dirs = [
-        UPLOAD_IMAGES_DIR,
-        IMAGES_DIR,
-        os.path.join(BASE_DIR, "images"),
-        STATIC_DIR,
-    ]
-    for d in candidate_dirs:
-        p = os.path.join(d, file_path)
-        if os.path.isfile(p):
-            return FileResponse(p)
-    raise HTTPException(status_code=404, detail="Image not found")
+    p = find_image_on_disk(file_path)
+    if p:
+        return FileResponse(str(p))
+    # Graceful fallback: return clean SVG placeholder instead of 404
+    return Response(content=DEFAULT_PLACEHOLDER_SVG, media_type="image/svg+xml")
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/privacy-policy", response_class=FileResponse)
 async def get_privacy_policy():

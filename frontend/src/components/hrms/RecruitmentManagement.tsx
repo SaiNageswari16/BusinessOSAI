@@ -49,6 +49,8 @@ import { recruitmentApi, employeesApi, inventoryApi, JobOpening, Applicant, Inte
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { OfferLetterStudioModal } from "./OfferLetterStudioModal";
+import { downloadOfferLetterWordDoc } from "@/lib/offer-letter-doc-utils";
 
 export const PREDEFINED_OFFER_TEMPLATES = [
   {
@@ -1600,10 +1602,10 @@ ${customClausesText || offerForm.customTemplate}`;
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => handleInjectSimulatedCandidate("LinkedIn")} className="h-8 text-xs font-semibold gap-1 border-indigo-500/30 hover:bg-indigo-500/10">
-                    <Sparkles className="size-3.5 text-indigo-500" /> Inject LinkedIn Candidate
+                    <Sparkles className="size-3.5 text-indigo-500" /> Import LinkedIn Profile
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => handleInjectSimulatedCandidate("Indeed")} className="h-8 text-xs font-semibold gap-1 border-orange-500/30 hover:bg-orange-500/10">
-                    <Sparkles className="size-3.5 text-orange-500" /> Inject Indeed Candidate
+                    <Sparkles className="size-3.5 text-orange-500" /> Import Indeed Profile
                   </Button>
                 </div>
               </div>
@@ -1908,17 +1910,9 @@ ${customClausesText || offerForm.customTemplate}`;
                             </Button>
 
                             {offer.status === "Awaiting Acceptance" && (
-                              <>
-                                <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-500 hover:bg-blue-500/10 gap-1.5 h-8 text-xs font-bold" onClick={() => handleEmailOffer(offer.id)}>
-                                  <Send className="size-3.5" /> Re-send Email
-                                </Button>
-                                <Button size="sm" variant="outline" className="border-emerald-500/35 text-emerald-500 hover:bg-emerald-500/10 h-8 text-xs font-bold" onClick={() => handleSimulateOfferResponse(offer.id, "Accepted")}>
-                                  Simulate Accept
-                                </Button>
-                                <Button size="sm" variant="outline" className="border-red-500/35 text-red-500 hover:bg-red-500/10 h-8 text-xs font-bold" onClick={() => handleSimulateOfferResponse(offer.id, "Declined")}>
-                                  Simulate Decline
-                                </Button>
-                              </>
+                              <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-500 hover:bg-blue-500/10 gap-1.5 h-8 text-xs font-bold" onClick={() => handleEmailOffer(offer.id)}>
+                                <Send className="size-3.5" /> Re-send Email
+                              </Button>
                             )}
 
                             {offer.status === "Accepted" && (
@@ -2605,8 +2599,8 @@ ${customClausesText || offerForm.customTemplate}`;
             >
               <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex justify-between items-center">
                 <div>
-                  <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5"><Globe className="size-5 text-primary" /> Public Careers Site — Nimbus Retail</h3>
-                  <p className="text-xs text-zinc-400 dark:text-zinc-500">Preview and test applications. HR credentials are bypassed to simulate candidates.</p>
+                  <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5"><Globe className="size-5 text-primary" /> Public Careers Portal — LazyMonkeyAI</h3>
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500">Live candidate application preview and test portal.</p>
                 </div>
                 <button onClick={() => setCareersPortalOpen(false)} className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800">
                   <XCircle className="size-6 text-zinc-400 dark:text-zinc-500 hover:text-zinc-900" />
@@ -2646,7 +2640,7 @@ ${customClausesText || offerForm.customTemplate}`;
                       </div>
 
                       <div className="bg-white dark:bg-zinc-950 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-4">
-                        <h5 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-200 border-b pb-2">Apply for this Role (Simulated Candidate)</h5>
+                        <h5 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-200 border-b pb-2">Apply for this Role</h5>
                         
                         <div className="grid grid-cols-2 gap-3">
                           <div>
@@ -3055,566 +3049,35 @@ ${customClausesText || offerForm.customTemplate}`;
         )}
       </AnimatePresence>
 
-      {/* Offer Letter Studio Modal */}
-      <AnimatePresence>
-        {createOfferOpen && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card border border-border rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] font-sans"
-            >
-              {/* Studio Header */}
-              <div className="p-5 border-b border-border flex justify-between items-center bg-muted/20">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
-                    <Sparkles className="size-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-foreground">Offer Letter Studio & Contract Builder</h3>
-                    <p className="text-xs text-muted-foreground">Predefined templates, dynamic salary compensation matrices, and letterhead exports.</p>
-                  </div>
-                </div>
-                <button onClick={() => setCreateOfferOpen(false)} className="p-1.5 rounded-lg hover:bg-muted/40 transition-colors">
-                  <XCircle className="size-6 text-muted-foreground hover:text-foreground" />
-                </button>
-              </div>
+      {/* Offer Letter Studio & Custom Template Builder Modal */}
+      <OfferLetterStudioModal
+        open={createOfferOpen}
+        onClose={() => setCreateOfferOpen(false)}
+        applicants={applicants}
+        selectedApplicantId={offerForm.applicantId}
+        onOfferSent={() => {
+          void loadAllData();
+        }}
+        showNotification={showNotification}
+        handleSaveOfferDocument={handleSaveOfferDocument}
+        handleSendOfferApi={async (payload) => {
+          const res = await recruitmentApi.createOffer({
+            applicant_id: payload.applicant_id,
+            ctc: payload.ctc,
+            expiry_date: payload.expiry_date,
+            joining_date: payload.joining_date,
+            signer_name: `${payload.signing_authority} (${payload.signing_title})`,
+            custom_template: `Template: ${payload.template_name}
+CTC: ${currency.symbol}${payload.ctc} (Basic: ${payload.basic_pct}%, HRA: ${payload.hra_pct}%, Special: ${payload.special_pct}%, PF: ${payload.pf_pct}%)
+Probation: ${payload.probation_months} Months | Notice: ${payload.notice_days} Days
+Watermark: ${payload.watermark_text || "None"}
 
-              {/* Studio Navigation Ribbon */}
-              <div className="flex items-center justify-between px-6 py-2.5 border-b border-border bg-muted/10">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setOfferStudioTab("templates")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      offerStudioTab === "templates" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    <Layers className="size-3.5" /> 1. Predefined Templates
-                  </button>
-                  <button
-                    onClick={() => setOfferStudioTab("salary")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      offerStudioTab === "salary" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    <DollarSign className="size-3.5" /> 2. Salary & CTC Structure
-                  </button>
-                  <button
-                    onClick={() => setOfferStudioTab("clauses")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      offerStudioTab === "clauses" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    <ShieldCheck className="size-3.5" /> 3. Terms & Covenants
-                  </button>
-                  <button
-                    onClick={() => setOfferStudioTab("preview")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      offerStudioTab === "preview" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    <Eye className="size-3.5" /> 4. Live Letterhead Preview
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-muted-foreground uppercase">Candidate:</span>
-                  <select
-                    value={offerForm.applicantId}
-                    onChange={(e) => {
-                      const appId = e.target.value;
-                      const app = applicants.find(a => a.id === appId);
-                      setOfferForm({
-                        ...offerForm,
-                        applicantId: appId,
-                        ctc: app?.expected_salary ? Number(app.expected_salary) : offerForm.ctc,
-                        joiningDate: offerForm.joiningDate || new Date(Date.now() + 15 * 86400000).toISOString().split("T")[0],
-                        expiryDate: offerForm.expiryDate || new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0]
-                      });
-                    }}
-                    className="h-8 px-2.5 text-xs rounded-md border border-input bg-background font-semibold max-w-[220px]"
-                  >
-                    <option value="">-- Choose Candidate --</option>
-                    {applicants.map(a => (
-                      <option key={a.id} value={a.id}>{a.name} ({a.job_title})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              
-              {/* Studio Body Content */}
-              <div className="flex-1 overflow-y-auto p-6 text-sm">
-                {/* TAB 1: PREDEFINED TEMPLATES */}
-                {offerStudioTab === "templates" && (
-                  <div className="space-y-6">
-                    <div>
-                      <h4 className="text-base font-bold text-foreground">Select Predefined Offer Template</h4>
-                      <p className="text-xs text-muted-foreground">Each template comes pre-configured with standardized statutory percentages, probation clauses, and notice periods.</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {PREDEFINED_OFFER_TEMPLATES.map((tpl) => {
-                        const isSelected = selectedOfferTemplateId === tpl.id;
-                        return (
-                          <div
-                            key={tpl.id}
-                            onClick={() => handleSelectPredefinedTemplate(tpl.id)}
-                            className={`p-5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
-                              isSelected
-                                ? "border-primary bg-primary/5 shadow-md"
-                                : "border-border/70 hover:border-primary/40 bg-card hover:shadow-sm"
-                            }`}
-                          >
-                            <div>
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-primary/10 text-primary">
-                                  {tpl.badge}
-                                </span>
-                                {isSelected && (
-                                  <span className="flex items-center gap-1 text-xs font-bold text-primary">
-                                    <CheckCircle className="size-4" /> Active
-                                  </span>
-                                )}
-                              </div>
-                              <h5 className="font-bold text-sm text-foreground mb-1.5">{tpl.name}</h5>
-                              <p className="text-xs text-muted-foreground leading-relaxed mb-4">{tpl.description}</p>
-                            </div>
-
-                            <div className="pt-3 border-t border-border/50 text-[11px] space-y-1.5 text-muted-foreground">
-                              <div className="flex justify-between">
-                                <span>Probation Duration:</span>
-                                <span className="font-bold text-foreground">{tpl.probationMonths > 0 ? `${tpl.probationMonths} Months` : "None (Contractor)"}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Notice Period:</span>
-                                <span className="font-bold text-foreground">{tpl.noticeDays} Days</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Basic Pay Split:</span>
-                                <span className="font-bold text-foreground">{tpl.salarySplit.basicPct}% of CTC</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Sparkles className="size-5 text-indigo-500" />
-                        <div>
-                          <p className="text-xs font-bold text-foreground">Need custom salary distributions or legal clauses?</p>
-                          <p className="text-[11px] text-muted-foreground">Switch to 'Salary & CTC Structure' or 'Terms & Covenants' to tailor specific percentages and clauses.</p>
-                        </div>
-                      </div>
-                      <Button size="sm" onClick={() => setOfferStudioTab("salary")} className="text-xs font-bold gap-1.5">
-                        Customize Salary <ArrowRight className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 2: SALARY & CTC STRUCTURE */}
-                {offerStudioTab === "salary" && (
-                  <div className="space-y-6">
-                    <div>
-                      <h4 className="text-base font-bold text-foreground">Salary CTC Breakdown & Component Split</h4>
-                      <p className="text-xs text-muted-foreground">Configure the annual compensation package. Percentages automatically compute monthly disbursements and statutory deductions.</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="md:col-span-1 space-y-4">
-                        <div>
-                          <label className="block text-xs font-bold text-foreground mb-1.5">Annual CTC Compensation ({currency.symbol})</label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-                            <Input
-                              type="number"
-                              value={offerForm.ctc}
-                              onChange={(e) => setOfferForm({ ...offerForm, ctc: Number(e.target.value) })}
-                              className="pl-8 text-sm font-bold font-mono"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 p-4 rounded-xl border bg-muted/20">
-                          <h5 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Percentage Distribution</h5>
-
-                          <div>
-                            <div className="flex justify-between text-xs font-semibold mb-1">
-                              <span>Basic Salary</span>
-                              <span>{salarySplit.basicPct}%</span>
-                            </div>
-                            <Input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={salarySplit.basicPct}
-                              onChange={(e) => setSalarySplit({ ...salarySplit, basicPct: Number(e.target.value) })}
-                              className="h-8 text-xs font-mono"
-                            />
-                          </div>
-
-                          <div>
-                            <div className="flex justify-between text-xs font-semibold mb-1">
-                              <span>House Rent Allowance (HRA)</span>
-                              <span>{salarySplit.hraPct}%</span>
-                            </div>
-                            <Input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={salarySplit.hraPct}
-                              onChange={(e) => setSalarySplit({ ...salarySplit, hraPct: Number(e.target.value) })}
-                              className="h-8 text-xs font-mono"
-                            />
-                          </div>
-
-                          <div>
-                            <div className="flex justify-between text-xs font-semibold mb-1">
-                              <span>Special / Flexi Allowance</span>
-                              <span>{salarySplit.specialPct}%</span>
-                            </div>
-                            <Input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={salarySplit.specialPct}
-                              onChange={(e) => setSalarySplit({ ...salarySplit, specialPct: Number(e.target.value) })}
-                              className="h-8 text-xs font-mono"
-                            />
-                          </div>
-
-                          <div>
-                            <div className="flex justify-between text-xs font-semibold mb-1">
-                              <span>Employer PF (Statutory)</span>
-                              <span>{salarySplit.pfPct}%</span>
-                            </div>
-                            <Input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={salarySplit.pfPct}
-                              onChange={(e) => setSalarySplit({ ...salarySplit, pfPct: Number(e.target.value) })}
-                              className="h-8 text-xs font-mono"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right side live matrix breakdown */}
-                      <div className="md:col-span-2 space-y-4">
-                        <div className="glass-panel p-5 rounded-xl border border-border/80 bg-card">
-                          <h5 className="font-bold text-sm text-foreground mb-3 flex items-center gap-2">
-                            <Calculator className="size-4 text-primary" /> Calculated Compensation Matrix
-                          </h5>
-
-                          {(() => {
-                            const ctcVal = Number(offerForm.ctc || 0);
-                            const basic = (ctcVal * salarySplit.basicPct) / 100;
-                            const hra = (ctcVal * salarySplit.hraPct) / 100;
-                            const special = (ctcVal * salarySplit.specialPct) / 100;
-                            const pf = (ctcVal * salarySplit.pfPct) / 100;
-                            const monthlyGrossInHand = (ctcVal - pf) / 12;
-
-                            return (
-                              <div className="space-y-3">
-                                <table className="w-full text-xs text-left">
-                                  <thead className="bg-muted/40 uppercase font-bold text-muted-foreground border-b">
-                                    <tr>
-                                      <th className="py-2.5 px-3">Salary Component</th>
-                                      <th className="py-2.5 px-3 text-right">Split</th>
-                                      <th className="py-2.5 px-3 text-right">Monthly ({currency.symbol})</th>
-                                      <th className="py-2.5 px-3 text-right">Annual ({currency.symbol})</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-border/40 font-mono">
-                                    <tr>
-                                      <td className="py-2 px-3 font-sans font-semibold">Basic Pay</td>
-                                      <td className="py-2 px-3 text-right">{salarySplit.basicPct}%</td>
-                                      <td className="py-2 px-3 text-right">{currency.symbol}{(basic / 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                      <td className="py-2 px-3 text-right font-bold">{currency.symbol}{basic.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="py-2 px-3 font-sans font-semibold">House Rent Allowance (HRA)</td>
-                                      <td className="py-2 px-3 text-right">{salarySplit.hraPct}%</td>
-                                      <td className="py-2 px-3 text-right">{currency.symbol}{(hra / 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                      <td className="py-2 px-3 text-right font-bold">{currency.symbol}{hra.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="py-2 px-3 font-sans font-semibold">Special Allowance</td>
-                                      <td className="py-2 px-3 text-right">{salarySplit.specialPct}%</td>
-                                      <td className="py-2 px-3 text-right">{currency.symbol}{(special / 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                      <td className="py-2 px-3 text-right font-bold">{currency.symbol}{special.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="py-2 px-3 font-sans font-semibold text-muted-foreground">Employer PF Contribution</td>
-                                      <td className="py-2 px-3 text-right text-muted-foreground">{salarySplit.pfPct}%</td>
-                                      <td className="py-2 px-3 text-right text-muted-foreground">{currency.symbol}{(pf / 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                      <td className="py-2 px-3 text-right text-muted-foreground">{currency.symbol}{pf.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    </tr>
-                                    <tr className="bg-primary/5 font-bold border-t-2 border-primary/20">
-                                      <td className="py-2.5 px-3 font-sans text-primary">Gross Cost to Company (CTC)</td>
-                                      <td className="py-2.5 px-3 text-right text-primary">100%</td>
-                                      <td className="py-2.5 px-3 text-right text-primary">{currency.symbol}{(ctcVal / 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                      <td className="py-2.5 px-3 text-right text-primary">{currency.symbol}{ctcVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    </tr>
-                                  </tbody>
-                                </table>
-
-                                <div className="grid grid-cols-2 gap-4 mt-4 pt-3 border-t">
-                                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                                    <p className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">Estimated Monthly In-Hand Gross</p>
-                                    <p className="text-xl font-bold font-mono text-emerald-700 dark:text-emerald-300 mt-0.5">
-                                      {currency.symbol}{monthlyGrossInHand.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
-                                    <p className="text-[10px] text-muted-foreground mt-0.5">Pre-tax declaration estimate</p>
-                                  </div>
-                                  <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                                    <p className="text-[10px] font-bold uppercase text-indigo-600 dark:text-indigo-400">Annual Statutory Retentions</p>
-                                    <p className="text-xl font-bold font-mono text-indigo-700 dark:text-indigo-300 mt-0.5">
-                                      {currency.symbol}{pf.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
-                                    <p className="text-[10px] text-muted-foreground mt-0.5">Provident fund allocation</p>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 3: TERMS & COVENANTS */}
-                {offerStudioTab === "clauses" && (
-                  <div className="space-y-6">
-                    <div>
-                      <h4 className="text-base font-bold text-foreground">Terms, Conditions & Legal Covenants</h4>
-                      <p className="text-xs text-muted-foreground">Specify target dates, probation periods, authorized signatories, and customizable legal clauses.</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Target Joining Date</label>
-                        <Input
-                          type="date"
-                          value={offerForm.joiningDate}
-                          onChange={(e) => setOfferForm({ ...offerForm, joiningDate: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Offer Expiration Date</label>
-                        <Input
-                          type="date"
-                          value={offerForm.expiryDate}
-                          onChange={(e) => setOfferForm({ ...offerForm, expiryDate: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Probation Duration</label>
-                        <select
-                          value={offerProbationMonths}
-                          onChange={(e) => setOfferProbationMonths(Number(e.target.value))}
-                          className="w-full h-10 px-3 text-sm rounded-md border bg-background"
-                        >
-                          <option value={0}>No Probation (Direct Full / Contractor)</option>
-                          <option value={1}>1 Month</option>
-                          <option value={3}>3 Months (Standard)</option>
-                          <option value={6}>6 Months (Senior / Executive)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Notice Period (Days)</label>
-                        <Input
-                          type="number"
-                          value={offerNoticeDays}
-                          onChange={(e) => setOfferNoticeDays(Number(e.target.value))}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Authorized HR Signatory Name</label>
-                        <Input
-                          type="text"
-                          value={offerForm.signingAuthority}
-                          onChange={(e) => setOfferForm({ ...offerForm, signingAuthority: e.target.value })}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <label className="block text-xs font-bold text-foreground">Custom Legal Clauses & Covenants</label>
-                        <span className="text-[11px] text-muted-foreground">Markdown & custom formatted paragraphs supported</span>
-                      </div>
-                      <Textarea
-                        value={customClausesText}
-                        onChange={(e) => setCustomClausesText(e.target.value)}
-                        rows={7}
-                        className="font-mono text-xs leading-relaxed"
-                        placeholder="Define confidentiality, IP assignment, working hours, and non-compete clauses..."
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 4: LIVE LETTERHEAD PREVIEW */}
-                {offerStudioTab === "preview" && (
-                  <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h4 className="text-base font-bold text-foreground">Live Official Letterhead Preview</h4>
-                        <p className="text-xs text-muted-foreground">High-resolution preview with active corporate branding, compensation grid, and signatures.</p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-indigo-500/30 text-indigo-600 dark:text-indigo-400 gap-1.5 h-8 text-xs font-bold"
-                        onClick={() => handlePrintOfferLetter()}
-                      >
-                        <Printer className="size-3.5" /> Print / Save as PDF
-                      </Button>
-                    </div>
-
-                    {/* Styled Letterhead Canvas */}
-                    <div className="border border-border/80 rounded-2xl p-8 bg-white dark:bg-zinc-950 font-sans shadow-lg max-w-3xl mx-auto text-zinc-900 dark:text-zinc-100">
-                      {/* Header banner with logo */}
-                      <div className="flex justify-between items-start border-b-2 border-zinc-900 dark:border-zinc-100 pb-4 mb-6">
-                        <div className="flex items-center gap-3.5">
-                          {orgLogo ? (
-                            <img src={orgLogo} alt={orgName} className="h-12 max-w-[140px] object-contain rounded-md" />
-                          ) : (
-                            <div className="size-11 rounded-lg bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 flex items-center justify-center font-extrabold text-sm">
-                              {orgInitials}
-                            </div>
-                          )}
-                          <div>
-                            <h3 className="font-extrabold text-xl tracking-tight text-zinc-900 dark:text-zinc-50">{orgName}</h3>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{orgAddress}</p>
-                            <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Email: {orgEmail} • Phone: {orgPhone}{orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <span className="inline-block px-3 py-1 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 text-[10px] font-extrabold uppercase rounded tracking-wider">
-                            Official Offer
-                          </span>
-                          <p className="text-[10px] text-zinc-400 mt-1 font-mono">REF: BOS-OFFER-{Math.floor(1000 + Math.random() * 9000)}</p>
-                        </div>
-                      </div>
-
-                      {/* Recipient details */}
-                      <div className="bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 mb-6 text-xs space-y-1">
-                        <p className="text-[10px] font-bold uppercase text-zinc-400">Addressed To:</p>
-                        <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{applicants.find(a => a.id === offerForm.applicantId)?.name || "[Candidate Name]"}</h4>
-                        <p className="text-zinc-500">{applicants.find(a => a.id === offerForm.applicantId)?.email || "[Candidate Email]"}</p>
-                        <p className="text-zinc-600 dark:text-zinc-300 font-semibold pt-1">
-                          Role: {applicants.find(a => a.id === offerForm.applicantId)?.job_title || "[Role Designation]"} | Joining: {offerForm.joiningDate ? new Date(offerForm.joiningDate).toLocaleDateString() : "[Joining Date]"}
-                        </p>
-                      </div>
-
-                      <div className="space-y-4 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
-                        <p className="font-bold text-zinc-900 dark:text-zinc-100">
-                          Dear {applicants.find(a => a.id === offerForm.applicantId)?.name || "[Candidate Name]"},
-                        </p>
-                        <p>
-                          We are pleased to extend this formal offer of employment to join <strong>{orgName}</strong> as a <strong>{applicants.find(a => a.id === offerForm.applicantId)?.job_title || "[Role]"}</strong>. Your expertise and leadership will be invaluable to our continuous expansion.
-                        </p>
-
-                        <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden my-4">
-                          <table className="w-full text-xs text-left">
-                            <thead className="bg-zinc-100 dark:bg-zinc-900 font-bold border-b border-zinc-200 dark:border-zinc-800">
-                              <tr>
-                                <th className="p-2">Component</th>
-                                <th className="p-2 text-right">Split</th>
-                                <th className="p-2 text-right">Monthly</th>
-                                <th className="p-2 text-right">Annual ({currency.symbol})</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-mono">
-                              <tr>
-                                <td className="p-2 font-sans font-semibold">Basic Pay</td>
-                                <td className="p-2 text-right">{salarySplit.basicPct}%</td>
-                                <td className="p-2 text-right">{currency.symbol}{(((offerForm.ctc * salarySplit.basicPct) / 100) / 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                <td className="p-2 text-right font-bold">{currency.symbol}{((offerForm.ctc * salarySplit.basicPct) / 100).toLocaleString()}</td>
-                              </tr>
-                              <tr>
-                                <td className="p-2 font-sans font-semibold">House Rent Allowance</td>
-                                <td className="p-2 text-right">{salarySplit.hraPct}%</td>
-                                <td className="p-2 text-right">{currency.symbol}{(((offerForm.ctc * salarySplit.hraPct) / 100) / 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                <td className="p-2 text-right font-bold">{currency.symbol}{((offerForm.ctc * salarySplit.hraPct) / 100).toLocaleString()}</td>
-                              </tr>
-                              <tr className="bg-zinc-50 dark:bg-zinc-900/40 font-bold">
-                                <td className="p-2 font-sans text-primary">Total Annual Cost to Company (CTC)</td>
-                                <td className="p-2 text-right text-primary">100%</td>
-                                <td className="p-2 text-right text-primary">{currency.symbol}{(offerForm.ctc / 12).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                <td className="p-2 text-right text-primary">{currency.symbol}{offerForm.ctc.toLocaleString()}</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-
-                        <div className="p-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 whitespace-pre-wrap font-sans text-[11px] leading-relaxed">
-                          {customClausesText}
-                        </div>
-
-                        <div className="pt-8 flex justify-between items-end border-t border-zinc-200 dark:border-zinc-800 text-[11px] mt-8">
-                          <div>
-                            <p className="font-bold text-zinc-900 dark:text-zinc-100">{offerForm.signingAuthority}</p>
-                            <p className="text-zinc-400">{offerForm.signingTitle} • {orgName}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[10px] text-zinc-400 italic">Valid until: {offerForm.expiryDate ? new Date(offerForm.expiryDate).toLocaleDateString() : "[Expiry Date]"}</p>
-                            <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">✓ SEC-SIGNATURE-VERIFIED</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Studio Footer Controls */}
-              <div className="p-5 border-t border-border flex flex-wrap gap-2 justify-between items-center bg-muted/20 text-sm">
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-8 text-xs font-bold gap-1.5"
-                    onClick={() => handlePrintOfferLetter()}
-                  >
-                    <Printer className="size-3.5" /> Print / Save PDF
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 text-xs font-bold gap-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50"
-                    onClick={() => handleSaveOfferDocument(offerForm.applicantId)}
-                    disabled={!offerForm.applicantId}
-                  >
-                    <FileCheck className="size-3.5" /> Save to Vault
-                  </Button>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button variant="outline" className="h-8 text-xs" onClick={() => setCreateOfferOpen(false)}>
-                    Close
-                  </Button>
-                  <Button
-                    onClick={handleSendOffer}
-                    disabled={!offerForm.applicantId || !offerForm.joiningDate || !offerForm.expiryDate}
-                    className="h-8 text-xs font-bold gradient-brand text-white shadow-md gap-1.5"
-                  >
-                    <Send className="size-3.5" /> Save & Email Offer to Candidate
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+Terms & Clauses:
+${payload.clauses}`
+          });
+          await handleEmailOffer(res.id);
+        }}
+      />
     </div>
   );
 }

@@ -14,6 +14,8 @@ import {
   DollarSign,
   ShoppingCart,
   Tag,
+  Download,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { crmCustomersApi, inventoryApi, type CrmCustomer } from "@/lib/api-client";
@@ -23,6 +25,8 @@ import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock } from "lucide-react"
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { AiCallingModal } from "./AiCallingModal";
 import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
+import { downloadCustomersTemplateExcel } from "@/lib/crm-excel-utils";
+import { BulkImportCustomersModal } from "./BulkImportCustomersModal";
 
 const CUSTOMER_TYPES = [
   "Retail",
@@ -82,6 +86,7 @@ export function Customers() {
   const [selectedCustomer, setSelectedCustomer] = useState<CrmCustomer | null>(null);
   const [callingCustomer, setCallingCustomer] = useState<CrmCustomer | null>(null);
   const [callStatusMap, setCallStatusMap] = useState<Record<string, CRMCallLog>>({});
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [form, setForm] = useState<Record<string, unknown>>(blankCustomer);
 
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
@@ -314,12 +319,29 @@ export function Customers() {
             Manage your customer relationships from one tenant-scoped source of truth.
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center justify-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold"
-        >
-          <UserPlus className="size-3.5" /> Add Customer
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={downloadCustomersTemplateExcel}
+            className="flex items-center gap-1.5 px-3 h-8 bg-muted/60 hover:bg-muted border border-border rounded-xl text-xs font-semibold text-foreground transition-colors"
+            title="Download sample formatted Excel template for customer import"
+          >
+            <Download className="size-3.5 text-primary" />
+            Sample Excel
+          </button>
+          <button
+            onClick={() => setShowBulkImport(true)}
+            className="flex items-center gap-1.5 px-3 h-8 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 transition-colors"
+          >
+            <Upload className="size-3.5 text-emerald-600" />
+            Import Customers
+          </button>
+          <button
+            onClick={openCreate}
+            className="flex items-center justify-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold"
+          >
+            <UserPlus className="size-3.5" /> Add Customer
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -667,6 +689,17 @@ export function Customers() {
           defaultNotes={callingCustomer.city ? `Customer based in ${callingCustomer.city}, ${callingCustomer.state}. Total orders: ${callingCustomer.total_orders || 0}.` : undefined}
           onCallCompleted={async () => {
             await load();
+          }}
+        />
+      )}
+
+      {/* Bulk Customer Excel / CSV Import Modal */}
+      {showBulkImport && (
+        <BulkImportCustomersModal
+          isOpen={showBulkImport}
+          onClose={() => setShowBulkImport(false)}
+          onSuccess={() => {
+            void load();
           }}
         />
       )}

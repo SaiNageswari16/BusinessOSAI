@@ -824,6 +824,35 @@ function ImportPreviewModal({
   const [selectedSubCategoryId, setSelectedSubCategoryId] = useState<string>("");
 
   const isAISourced = item.source === "AI_WEB_SEARCH";
+  const [productImage, setProductImage] = useState<string>(item.image_url || "");
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file (PNG, JPG, WEBP, SVG)");
+      return;
+    }
+    try {
+      const res = await inventoryApi.uploadProductImage(file);
+      if (res && res.image_url) {
+        setProductImage(res.image_url);
+        toast.success("Product image uploaded to server!");
+        return;
+      }
+    } catch (err) {
+      console.warn("Direct upload fallback to base64:", err);
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setProductImage(dataUrl);
+      toast.success("Product image loaded!");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const parentCategories = categories.filter(c => !c.parent_id);
   const subCategories = selectedCategoryId ? categories.filter(c => c.parent_id === selectedCategoryId) : [];
 
@@ -845,21 +874,63 @@ function ImportPreviewModal({
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Product card */}
-          <div className="flex gap-3 p-3 bg-muted/50 rounded-xl">
-            {item.image_url ? (
-              <img src={resolveImageUrl(item.image_url)} alt={item.name} className="size-14 rounded-lg object-cover border bg-white shrink-0" />
-            ) : (
-              <div className="size-14 rounded-lg bg-indigo-100/30 flex items-center justify-center shrink-0">
-                <Package className="size-7 text-indigo-500" />
+          {/* Product card with Image Upload action */}
+          <div className="flex gap-3 p-3 bg-muted/50 rounded-xl items-center justify-between">
+            <div className="flex gap-3 items-center min-w-0">
+              <div className="relative group shrink-0">
+                {productImage ? (
+                  <img src={resolveImageUrl(productImage)} alt={item.name} className="size-16 rounded-xl object-cover border bg-white shadow-xs" />
+                ) : (
+                  <div className="size-16 rounded-xl bg-indigo-100/30 flex items-center justify-center">
+                    <Package className="size-8 text-indigo-500" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="absolute inset-0 bg-black/50 text-white rounded-xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-[9px] font-bold"
+                  title="Click to Upload Image"
+                >
+                  <Upload className="size-4 mb-0.5" />
+                  Upload
+                </button>
               </div>
-            )}
-            <div className="min-w-0">
-              <p className="text-sm font-bold truncate">{item.name}</p>
-              <p className="text-xs text-muted-foreground">{item.brand_name || item.brand || ""}</p>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[10px] mt-1 ${isAISourced ? "bg-amber-500/10 text-amber-600" : "bg-indigo-500/10 text-indigo-600"}`}>
-                <Sparkles className="size-3" /> {isAISourced ? "AI Sourced" : "Global Catalog"}
-              </span>
+
+              <div className="min-w-0">
+                <p className="text-sm font-bold truncate">{item.name}</p>
+                <p className="text-xs text-muted-foreground">{item.brand_name || item.brand || ""}</p>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[10px] mt-1 ${isAISourced ? "bg-amber-500/10 text-amber-600" : "bg-indigo-500/10 text-indigo-600"}`}>
+                  <Sparkles className="size-3" /> {isAISourced ? "AI Sourced" : "Global Catalog"}
+                </span>
+              </div>
+            </div>
+
+            <div className="shrink-0 flex flex-col gap-1 items-end">
+              <input
+                type="file"
+                ref={imageInputRef}
+                accept="image/*"
+                onChange={handleImageFileChange}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => imageInputRef.current?.click()}
+                className="h-8 text-xs font-semibold gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+              >
+                <Upload className="size-3.5 text-indigo-600" /> Upload Photo
+              </Button>
+              {productImage && (
+                <button
+                  type="button"
+                  onClick={() => setProductImage("")}
+                  className="text-[10px] text-rose-500 hover:underline font-semibold"
+                >
+                  Remove Photo
+                </button>
+              )}
             </div>
           </div>
 
@@ -1052,6 +1123,7 @@ function ImportPreviewModal({
                 _selected_sub_category_id: selectedSubCategoryId || undefined,
                 category_name: selectedCat?.name || item.category_name || "",
                 sub_category_name: selectedSubCat?.name || item.sub_category_name || "",
+                image_url: productImage || item.image_url || "",
               });
             }} disabled={isImporting} className="gradient-brand text-white border-0">
               {isImporting ? <><Loader2 className="size-3 mr-1 animate-spin" /> Importing...</> : <><ShoppingCart className="size-3 mr-1" /> Confirm Import</>}
@@ -2677,6 +2749,93 @@ export function Products() {
               {/* TAB 1: BASIC & IDENTITY */}
               {activeModalTab === "basic" && (
                 <div className="space-y-6">
+                  {/* Product Image Upload Section */}
+                  <div className="p-4 rounded-2xl bg-indigo-50/40 border border-indigo-100 flex flex-col md:flex-row items-start md:items-center gap-4">
+                    <div className="relative group shrink-0">
+                      {currentForm.image_url ? (
+                        <div className="relative">
+                          <img
+                            src={resolveImageUrl(currentForm.image_url)}
+                            alt="Product Preview"
+                            className="size-20 rounded-2xl object-cover border-2 border-indigo-200 bg-white shadow-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setCurrentForm(prev => ({ ...prev, image_url: "" }))}
+                            className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 shadow-md hover:bg-rose-600 transition-colors"
+                            title="Remove Image"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="size-20 rounded-2xl border-2 border-dashed border-indigo-300 bg-white/80 flex flex-col items-center justify-center text-indigo-400">
+                          <Package className="size-8 opacity-60" />
+                          <span className="text-[9px] font-bold mt-1">No Image</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 space-y-2 w-full">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <Upload className="size-3.5 text-indigo-600" />
+                          Product Image / Photo
+                        </label>
+                        <span className="text-[10px] text-slate-500">Supports JPG, PNG, WEBP, SVG</span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="file"
+                          id="product_photo_file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            try {
+                              const res = await inventoryApi.uploadProductImage(file);
+                              if (res && res.image_url) {
+                                setCurrentForm(prev => ({ ...prev, image_url: res.image_url }));
+                                toast.success("Image uploaded to server successfully!");
+                                return;
+                              }
+                            } catch (err) {
+                              console.warn("Direct upload fallback to base64:", err);
+                            }
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                              const dataUrl = evt.target?.result as string;
+                              setCurrentForm(prev => ({ ...prev, image_url: dataUrl }));
+                              toast.success("Image loaded for product draft!");
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => document.getElementById("product_photo_file")?.click()}
+                          className="h-9 px-3 text-xs font-bold border-indigo-300 text-indigo-700 hover:bg-indigo-50 rounded-xl"
+                        >
+                          <Upload className="size-3.5 mr-1.5 text-indigo-600" /> Upload from Computer
+                        </Button>
+                        <div className="flex-1 min-w-[200px]">
+                          <input
+                            type="text"
+                            name="image_url"
+                            value={currentForm.image_url || ""}
+                            onChange={handleFormChange}
+                            placeholder="Or paste external image URL / CDN link..."
+                            className="w-full h-9 px-3 text-xs rounded-xl border border-indigo-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Basic Identifiers */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">

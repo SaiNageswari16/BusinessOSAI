@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     app_host: str = Field(default="127.0.0.1", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
     api_v1_prefix: str = Field(default="/api/v1", alias="API_V1_PREFIX")
+    app_public_url: str = Field(default="https://lazymonkeyai.com", alias="APP_PUBLIC_URL")
+    frontend_url: str = Field(default="https://lazymonkeyai.com", alias="FRONTEND_URL")
 
     # PostgreSQL
     postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")

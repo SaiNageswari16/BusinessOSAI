@@ -34,6 +34,42 @@ def _parse_status(value: str) -> EntityStatus:
 
 import json
 import os
+import base64
+from pathlib import Path
+
+def _save_base64_image_if_present(image_url: str | None) -> str | None:
+    if not image_url or not isinstance(image_url, str):
+        return image_url
+    if image_url.startswith("data:image/") and ";base64," in image_url:
+        try:
+            header, encoded = image_url.split(";base64,", 1)
+            ext = "png"
+            if "jpeg" in header or "jpg" in header:
+                ext = "jpg"
+            elif "webp" in header:
+                ext = "webp"
+            elif "svg" in header:
+                ext = "svg"
+
+            backend_dir = Path(__file__).resolve().parents[4]
+            upload_dir = backend_dir / "upload_images"
+            images_dir = backend_dir / "images"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            images_dir.mkdir(parents=True, exist_ok=True)
+
+            filename = f"prod_{uuid.uuid4().hex}.{ext}"
+            file_path = upload_dir / filename
+            images_path = images_dir / filename
+            decoded_bytes = base64.b64decode(encoded)
+            with open(file_path, "wb") as f:
+                f.write(decoded_bytes)
+            with open(images_path, "wb") as f:
+                f.write(decoded_bytes)
+            return f"/upload_images/{filename}"
+        except Exception as e:
+            print(f"Failed to decode and save base64 image: {e}")
+            return image_url
+    return image_url
 
 HSN_DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "hsn_codes_gst.json")
 
@@ -776,6 +812,7 @@ async def create_product(
 
     barcode = (data.get("barcode") or "").strip()
     name = (data.get("name") or "").strip()
+    data["image_url"] = _save_base64_image_if_present(data.get("image_url"))
 
     existing_prod = None
     if barcode:
@@ -900,6 +937,8 @@ async def update_product(
         raise HTTPException(status_code=404, detail="Product not found")
 
     updates = payload.model_dump(exclude_unset=True)
+    if "image_url" in updates:
+        updates["image_url"] = _save_base64_image_if_present(updates.get("image_url"))
     
     if "brand" in updates:
         brand_name = updates.pop("brand", None)
