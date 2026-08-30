@@ -116,7 +116,13 @@ async def init_database() -> None:
         "ALTER TABLE crm_support_tickets ALTER COLUMN status TYPE VARCHAR(50);",
         "ALTER TABLE crm_quotations ALTER COLUMN status TYPE VARCHAR(50);",
         "ALTER TABLE crm_sales_orders ALTER COLUMN status TYPE VARCHAR(50);",
-        "ALTER TABLE crm_sales_orders ALTER COLUMN payment_status TYPE VARCHAR(50);"
+        "ALTER TABLE crm_sales_orders ALTER COLUMN payment_status TYPE VARCHAR(50);",
+        "ALTER TABLE erp_products ALTER COLUMN image_url TYPE TEXT;",
+        "ALTER TABLE pos_products ALTER COLUMN image_url TYPE TEXT;",
+        "ALTER TABLE erp_product_categories ALTER COLUMN image_url TYPE TEXT;",
+        "ALTER TABLE erp_brands ALTER COLUMN image_url TYPE TEXT;",
+        "ALTER TABLE erp_product_images ALTER COLUMN image_url TYPE TEXT;",
+        "ALTER TABLE erp_master_catalog ALTER COLUMN image_url TYPE TEXT;"
     ]
 
     for stmt in migration_statements:
