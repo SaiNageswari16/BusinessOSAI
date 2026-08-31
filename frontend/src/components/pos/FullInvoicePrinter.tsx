@@ -130,7 +130,16 @@ export function FullInvoicePrinter({
     ...(template?.fields || {}),
   };
 
-  const theme = template.themeName || (template.id?.includes('luxury') ? 'luxury' : template.id?.includes('tally') ? 'tally' : template.id?.includes('adv') ? 'adv_gst' : template.id?.includes('billbook') ? 'billbook' : template.id?.includes('modern') ? 'modern' : 'stylish');
+  const theme =
+    template.themeName ||
+    (template.name?.toLowerCase().includes('luxury') || template.id?.includes('luxury') ? 'luxury' :
+     template.name?.toLowerCase().includes('tally') || template.id?.includes('tally') ? 'tally' :
+     template.name?.toLowerCase().includes('adv') || template.id?.includes('adv') ? 'adv_gst' :
+     template.name?.toLowerCase().includes('billbook') || template.id?.includes('billbook') ? 'billbook' :
+     template.name?.toLowerCase().includes('modern') || template.id?.includes('modern') ? 'modern' :
+     template.name?.toLowerCase().includes('god') || template.id?.includes('god') ? 'culture_god' :
+     'stylish');
+
   const isLuxury = theme === 'luxury';
   const isTally = theme === 'tally';
   const isStylish = theme === 'stylish';
@@ -144,7 +153,7 @@ export function FullInvoicePrinter({
   const primaryColor = template.primaryColor || (isLuxury ? '#b45309' : isTally ? '#0f172a' : isAdvGst ? '#16a34a' : isModern ? '#475569' : '#2563eb');
   const fontFamily = template.fontFamily || (isLuxury || isModern ? 'Outfit, sans-serif' : 'Inter, sans-serif');
 
-  // ── Dynamic Multi-Tenant Organization Data Resolution ───────────────
+  // ── Dynamic Multi-Tenant Organization & Template Data Resolution ─────
   const activeBillingGst = getActiveBillingGst();
 
   const activeCompany = (() => {
@@ -157,15 +166,33 @@ export function FullInvoicePrinter({
     }
   })();
 
+  // 1. Store Name / Company Name Resolution (Honor template custom name if set, else org)
+  const isTemplateStoreNameCustom = Boolean(
+    template.storeName &&
+    template.storeName.trim() !== '' &&
+    !template.storeName.includes('LazyMonkeyAI') &&
+    !template.storeName.includes('Organization')
+  );
+
   const dynamicStoreName =
+    (isTemplateStoreNameCustom ? template.storeName : '') ||
     activeBillingGst?.trade_name ||
     activeBillingGst?.legal_name ||
     activeCompany?.name ||
     activeCompany?.legal_name ||
     tenant?.name ||
-    (template.storeName && !template.storeName.includes('LazyMonkeyAI') ? template.storeName : 'venatic');
+    template.storeName ||
+    'Business Organization';
+
+  // 2. Logo Resolution (Honor template custom logo if set, else org, else default brand logo)
+  const isTemplateLogoCustom = Boolean(
+    template.logoUrl &&
+    template.logoUrl.trim() !== '' &&
+    !template.logoUrl.includes('default')
+  );
 
   const dynamicLogoUrl =
+    (isTemplateLogoCustom ? template.logoUrl : '') ||
     activeBillingGst?.logo_url ||
     activeCompany?.logo_url ||
     tenant?.logo_url ||
@@ -173,58 +200,84 @@ export function FullInvoicePrinter({
     template.logoUrl ||
     '/Logo.png';
 
+  // 3. Address Resolution
+  const isTemplateAddressCustom = Boolean(
+    template.storeAddress &&
+    template.storeAddress.trim() !== '' &&
+    !template.storeAddress.includes('KK Street, Proddatur')
+  );
+
   const dynamicAddress =
+    (isTemplateAddressCustom ? template.storeAddress : '') ||
     activeBillingGst?.address ||
     activeCompany?.address ||
     (tenant?.settings?.address ? `${tenant.settings.address}${tenant.settings.city ? `, ${tenant.settings.city}` : ''}${tenant.settings.state ? `, ${tenant.settings.state}` : ''}${tenant.settings.pincode ? ` - ${tenant.settings.pincode}` : ''}` : '') ||
-    (template.storeAddress && !template.storeAddress.includes('KK Street, Proddatur') ? template.storeAddress : '') ||
-    'Main Commercial Complex, Sector 4';
+    '';
+
+  // 4. Phone Resolution
+  const isTemplatePhoneCustom = Boolean(
+    template.storePhone &&
+    template.storePhone.trim() !== '' &&
+    !template.storePhone.includes('+91 9849344919')
+  );
 
   const dynamicPhone =
+    (isTemplatePhoneCustom ? template.storePhone : '') ||
     activeBillingGst?.phone ||
     activeCompany?.phone ||
     tenant?.settings?.phone ||
     (tenant as any)?.phone ||
-    (template.storePhone && !template.storePhone.includes('+91 9849344919') ? template.storePhone : '') ||
-    '+91 98765 43210';
+    '';
 
+  // 5. Email Resolution
   const dynamicEmail =
+    template.storeEmail ||
     activeBillingGst?.email ||
     activeCompany?.email ||
     tenant?.settings?.email ||
     (tenant as any)?.email ||
-    template.storeEmail ||
-    'support@businessos.ai';
+    '';
+
+  // 6. GSTIN Resolution
+  const isTemplateGstinCustom = Boolean(
+    template.gstin &&
+    template.gstin.trim() !== '' &&
+    !template.gstin.includes('37AABCCH694G1Z4')
+  );
 
   const dynamicGstin =
-    (activeBillingGst?.gstin ||
-    activeCompany?.gst_number ||
-    activeCompany?.gstin ||
-    tenant?.settings?.gstin ||
-    tenant?.settings?.tax_id ||
-    (template.gstin && !template.gstin.includes('37AABCCH694G1Z4') ? template.gstin : '') ||
-    '37AAAAA0000A1Z5'
+    (
+      (isTemplateGstinCustom ? template.gstin : '') ||
+      activeBillingGst?.gstin ||
+      activeCompany?.gst_number ||
+      activeCompany?.gstin ||
+      tenant?.settings?.gstin ||
+      tenant?.settings?.tax_id ||
+      ''
     ).trim().toUpperCase();
 
   const sellerGstin = dynamicGstin;
   const sellerStateCode = sellerGstin.slice(0, 2) || (tenant?.settings?.state_code || '29');
 
+  // 7. Bank Details Resolution
   const dynamicBank = (() => {
+    const rawTplBank = (template.bankDetails || '').trim();
+    const isTplDummy = !rawTplBank ||
+      rawTplBank.includes('334455667788') ||
+      rawTplBank.includes('TEST') ||
+      rawTplBank.includes('000405102030') ||
+      rawTplBank.includes('000405103000') ||
+      rawTplBank.includes('502000492811') ||
+      rawTplBank.includes('912010023456') ||
+      rawTplBank.includes('SBIN0001234') ||
+      rawTplBank.toLowerCase().includes('dummy');
+
+    if (!isTplDummy && rawTplBank.length > 5) return rawTplBank;
     if (activeCompany?.bank_details) return activeCompany.bank_details;
     if (activeCompany?.bank_name && activeCompany?.account_number) {
       return `Bank: ${activeCompany.bank_name} | A/C: ${activeCompany.account_number} | IFSC: ${activeCompany.ifsc_code || ''} ${activeCompany.branch_name ? `| Branch: ${activeCompany.branch_name}` : ''}`;
     }
-    const rawBank = (template.bankDetails || '').trim();
-    const isDummy = !rawBank ||
-      rawBank.includes('334455667788') ||
-      rawBank.includes('TEST') ||
-      rawBank.includes('000405102030') ||
-      rawBank.includes('000405103000') ||
-      rawBank.includes('502000492811') ||
-      rawBank.includes('912010023456') ||
-      rawBank.includes('SBIN0001234') ||
-      rawBank.toLowerCase().includes('dummy');
-    return isDummy ? '' : rawBank;
+    return '';
   })();
 
   const hasRealBank = Boolean(f.showBankDetails && dynamicBank && dynamicBank.length > 5);
