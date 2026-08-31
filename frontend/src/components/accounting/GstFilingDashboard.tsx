@@ -17,13 +17,22 @@ import {
   Clock,
   ShieldCheck,
   Zap,
+  KeyRound,
+  Smartphone,
+  CheckCircle,
+  X,
+  Lock,
+  ArrowRight,
 } from 'lucide-react';
 import { gstFilingApi } from '@/lib/api-client';
 import { toast } from 'sonner';
 import { useCurrency } from '@/hooks/use-currency';
+import { useTenant } from '@/contexts/tenant-context';
+import { getActiveBillingGst } from '@/lib/receipt-template-store';
 
 export function GstFilingDashboard() {
   const { currency } = useCurrency();
+  const { tenant } = useTenant();
   const currentDate = new Date();
   const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
@@ -36,6 +45,40 @@ export function GstFilingDashboard() {
   const [summaryData, setSummaryData] = useState<any | null>(null);
   const [gstr3bData, setGstr3bData] = useState<any | null>(null);
   const [filingReceipt, setFilingReceipt] = useState<any | null>(null);
+
+  // ── GST Portal 6-Hour OTP Session State ───────────────────────
+  const [sessionStatus, setSessionStatus] = useState<{
+    is_active: boolean;
+    expires_at: string | null;
+    remaining_minutes: number;
+    gstin?: string;
+    username?: string;
+  }>({
+    is_active: false,
+    expires_at: null,
+    remaining_minutes: 0,
+  });
+
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpStep, setOtpStep] = useState<'request' | 'verify'>('request');
+  const [otpValue, setOtpValue] = useState('');
+  const [otpTxnId, setOtpTxnId] = useState('');
+  const [requestingOtp, setRequestingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+
+  const activeBilling = getActiveBillingGst(tenant?.id);
+  const currentGstin = activeBilling?.gstin || (tenant as any)?.raw?.gstin || (tenant as any)?.raw?.gst_number || '';
+  const currentTradeName = activeBilling?.trade_name || activeBilling?.legal_name || tenant?.name || 'Organization';
+
+  const checkSessionStatus = async () => {
+    try {
+      const res = await gstFilingApi.getSessionStatus();
+      if (res) {
+        setSessionStatus(res);
+      }
+    } catch {}
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -58,7 +101,75 @@ export function GstFilingDashboard() {
 
   useEffect(() => {
     loadData();
-  }, [selectedYear, selectedMonth, selectedInvoiceType]);
+    checkSessionStatus();
+    const interval = setInterval(checkSessionStatus, 60000);
+    return () => clearInterval(interval);
+  }, [selectedYear, selectedMonth, selectedInvoiceType, tenant?.id]);
+
+  useEffect(() => {
+    let timer: any;
+    if (otpCountdown > 0) {
+      timer = setInterval(() => {
+        setOtpCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [otpCountdown]);
+
+  const handleRequestOtp = async () => {
+    if (!currentGstin) {
+      toast.error('Please configure your Company GSTIN under Organization Master first.');
+      return;
+    }
+    setRequestingOtp(true);
+    try {
+      const res = await gstFilingApi.requestOtp({
+        gstin: currentGstin,
+        username: currentTradeName,
+      });
+      if (res && res.success) {
+        setOtpTxnId(res.txn || '');
+        setOtpStep('verify');
+        setOtpCountdown(600); // 10 minutes
+        toast.success(res.message || `OTP sent by GSTN to registered mobile & email for ${currentGstin}!`);
+      } else {
+        toast.error(res?.message || 'Failed to trigger GST Portal OTP');
+      }
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || 'Failed to connect to Whitebooks GSTN gateway');
+    } finally {
+      setRequestingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpValue || otpValue.trim().length !== 6) {
+      toast.error('Please enter a valid 6-digit numeric OTP.');
+      return;
+    }
+    setVerifyingOtp(true);
+    try {
+      const res = await gstFilingApi.verifyOtp({
+        otp: otpValue.trim(),
+        txn: otpTxnId,
+        gstin: currentGstin,
+        username: currentTradeName,
+      });
+      if (res && res.success) {
+        toast.success('GST Portal 6-Hour Authenticated Session established successfully!');
+        setShowOtpModal(false);
+        setOtpValue('');
+        setOtpStep('request');
+        await checkSessionStatus();
+      } else {
+        toast.error(res?.message || 'OTP verification failed. Please try again.');
+      }
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || 'GSTN verification gateway error');
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
 
   const handleDownloadJson = () => {
     if (!summaryData) return;
@@ -76,6 +187,11 @@ export function GstFilingDashboard() {
 
   const handleUploadToGstn = async () => {
     if (!summaryData) return;
+    if (!sessionStatus.is_active) {
+      toast.info('GST Portal authorization required before direct upload.');
+      setShowOtpModal(true);
+      return;
+    }
     setUploading(true);
     try {
       const res = await gstFilingApi.uploadGstr1({
@@ -164,6 +280,63 @@ export function GstFilingDashboard() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+        </div>
+      </div>
+
+      {/* ── GSTN Portal Live Session Status & OTP Quick Auth Card ── */}
+      <div className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
+        sessionStatus.is_active
+          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200'
+          : 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-200'
+      }`}>
+        <div className="flex items-center gap-3.5">
+          <div className={`p-2.5 rounded-xl text-white shadow-xs ${
+            sessionStatus.is_active ? 'bg-emerald-600' : 'bg-amber-600'
+          }`}>
+            {sessionStatus.is_active ? <ShieldCheck className="w-5 h-5" /> : <Smartphone className="w-5 h-5" />}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${
+                sessionStatus.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+              }`} />
+              <h4 className="font-bold text-sm">
+                {sessionStatus.is_active ? 'GSTN Portal 6-Hour Session Active' : 'GST Portal Session Inactive / Authorization Required'}
+              </h4>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-black/10 dark:bg-white/10">
+                GSTIN: {currentGstin || 'Not Configured'}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {sessionStatus.is_active
+                ? `Authorized via GST Mobile OTP. Session valid for another ${Math.floor(sessionStatus.remaining_minutes / 60)}h ${sessionStatus.remaining_minutes % 60}m.`
+                : 'Authenticate with 1-click mobile OTP to enable direct 1-click filing to Government GSTN Portal.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-end md:self-auto">
+          {sessionStatus.is_active ? (
+            <button
+              onClick={() => {
+                setOtpStep('request');
+                setShowOtpModal(true);
+              }}
+              className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-500/30"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Re-authenticate Session
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setOtpStep('request');
+                setShowOtpModal(true);
+              }}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md flex items-center gap-2 animate-pulse"
+            >
+              <KeyRound className="w-4 h-4" /> Authenticate with Mobile OTP
+            </button>
+          )}
         </div>
       </div>
 
@@ -677,6 +850,160 @@ export function GstFilingDashboard() {
                 Done
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Interactive GST Portal Mobile OTP Authentication Modal ── */}
+      {showOtpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full p-6 space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-600 rounded-2xl text-white shadow-md">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    GSTN Mobile OTP Authentication
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Government of India • GST Portal Gateway
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowOtpModal(false);
+                  setOtpValue('');
+                }}
+                className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">Authorized Entity:</span>
+                <span className="font-bold text-slate-900 dark:text-white">{currentTradeName}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">Company GSTIN:</span>
+                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{currentGstin || 'Not Set'}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">Session Validity:</span>
+                <span className="font-bold text-emerald-600">6 Hours (GSTN Standard)</span>
+              </div>
+            </div>
+
+            {otpStep === 'request' ? (
+              <div className="space-y-4 pt-2">
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 mx-auto grid place-items-center">
+                    <Smartphone className="w-6 h-6" />
+                  </div>
+                  <p className="text-xs text-muted-foreground px-4">
+                    Click below to trigger a live 6-digit OTP from the GSTN Portal directly to the registered authorized signatory mobile & email.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowOtpModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={requestingOtp || !currentGstin}
+                    onClick={handleRequestOtp}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md flex items-center gap-2"
+                  >
+                    {requestingOtp ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Triggering GSTN OTP...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-3.5 h-3.5" />
+                        Request 6-Digit OTP
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 pt-1">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                    <span>Enter 6-Digit GST Portal OTP:</span>
+                    {otpCountdown > 0 && (
+                      <span className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Expires in {Math.floor(otpCountdown / 60)}:{(otpCountdown % 60).toString().padStart(2, '0')}
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    autoFocus
+                    value={otpValue}
+                    onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ''))}
+                    placeholder="• • • • • •"
+                    className="w-full text-center tracking-[0.6em] text-2xl font-mono font-black h-12 rounded-2xl border-2 border-indigo-500/40 bg-indigo-50/30 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-200 outline-none focus:ring-4 focus:ring-indigo-500/20"
+                  />
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    Check the SMS or Email received from GSTN / Government Portal.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    disabled={requestingOtp}
+                    onClick={handleRequestOtp}
+                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer flex items-center gap-1"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${requestingOtp ? 'animate-spin' : ''}`} /> Resend OTP
+                  </button>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpStep('request');
+                        setOtpValue('');
+                      }}
+                      className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      disabled={verifyingOtp || otpValue.length !== 6}
+                      onClick={handleVerifyOtp}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md flex items-center gap-2"
+                    >
+                      {verifyingOtp ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying...
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-4 h-4" /> Authorize Session
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

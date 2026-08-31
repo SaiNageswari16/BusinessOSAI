@@ -298,7 +298,7 @@ function CompanyFormModal({
           cin: form.registration_number || "",
           pan: form.pan_number || "",
           logo_url: form.logo_url || "",
-        });
+        }, tenant?.id);
       }
 
       onSaved();
@@ -1176,6 +1176,28 @@ export function CompanyManagement() {
   }, [search, tenant?.id]);
 
   useEffect(() => { void load(); }, [tenant?.id]);
+
+  useEffect(() => {
+    if (activeCompany && tenant?.id) {
+      const tid = tenant.id;
+      localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(activeCompany));
+      const primaryReg = activeCompany.gst_registrations?.find((r: any) => r.is_primary) || activeCompany.gst_registrations?.[0];
+      const gstin = primaryReg?.gstin || activeCompany.gst_number || '';
+      setActiveBillingGst({
+        gstin,
+        trade_name: primaryReg?.trade_name || activeCompany.name,
+        legal_name: activeCompany.legal_name || activeCompany.name,
+        state_code: primaryReg?.state_code || (gstin ? gstin.slice(0, 2) : '29'),
+        state_name: primaryReg?.state_name || activeCompany.state || 'State',
+        address: primaryReg?.address || activeCompany.address || '',
+        phone: activeCompany.phone || '',
+        email: activeCompany.email || '',
+        cin: activeCompany.registration_number || '',
+        pan: activeCompany.pan_number || '',
+        logo_url: activeCompany.logo_url || null,
+      }, tid);
+    }
+  }, [activeCompany, tenant?.id]);
 
   useEffect(() => {
     if (!activeCompany) return;

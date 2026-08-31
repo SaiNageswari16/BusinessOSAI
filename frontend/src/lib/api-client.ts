@@ -4734,6 +4734,12 @@ export const gstFilingApi = {
     request<any>("GET", "/erp/gst/gstr2b", undefined, params),
   getGstr3bSummary: (params: { year: number; month: number; invoice_type?: string }) =>
     request<any>("GET", "/erp/gst/gstr3b-summary", undefined, params),
+  requestOtp: (payload: { gstin?: string; username?: string }) =>
+    request<any>("POST", "/erp/gst/otp/request", payload),
+  verifyOtp: (payload: { otp: string; txn?: string; gstin?: string; username?: string }) =>
+    request<any>("POST", "/erp/gst/otp/verify", payload),
+  getSessionStatus: () =>
+    request<any>("GET", "/erp/gst/session-status"),
 };
 
 export const whitebooksSettingsApi = {

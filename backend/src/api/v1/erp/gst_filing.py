@@ -25,6 +25,18 @@ class GSTR1UploadRequest(BaseModel):
     gstr1_payload: Dict[str, Any]
 
 
+class GSTOTPRequestPayload(BaseModel):
+    gstin: Optional[str] = None
+    username: Optional[str] = None
+
+
+class GSTOTPVerifyPayload(BaseModel):
+    otp: str
+    txn: Optional[str] = None
+    gstin: Optional[str] = None
+    username: Optional[str] = None
+
+
 async def _get_tenant_settings(db: AsyncSession, tenant_id: str) -> Dict[str, Any]:
     try:
         t_uuid = uuid.UUID(str(tenant_id))
@@ -164,3 +176,51 @@ async def get_gstr3b_summary(
             "total": round((cgst_payable + sgst_payable + igst_payable) * 0.6, 2),
         },
     }
+
+
+@router.post("/otp/request")
+async def request_gst_portal_otp(
+    payload: GSTOTPRequestPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Trigger a 6-digit OTP from GSTN Portal to the taxpayer's registered mobile number & email.
+    """
+    tenant_settings = await _get_tenant_settings(db, ctx.tenant_id)
+    client = whitebooks_service.get_gst_client(tenant_settings)
+    res = await client.request_otp(gstin=payload.gstin, username=payload.username)
+    return res
+
+
+@router.post("/otp/verify")
+async def verify_gst_portal_otp(
+    payload: GSTOTPVerifyPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("create:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Verify the 6-digit OTP and establish a live 6-hour authenticated session with GSTN Portal.
+    """
+    tenant_settings = await _get_tenant_settings(db, ctx.tenant_id)
+    client = whitebooks_service.get_gst_client(tenant_settings)
+    res = await client.verify_otp(
+        otp=payload.otp,
+        txn=payload.txn,
+        gstin=payload.gstin,
+        username=payload.username,
+    )
+    return res
+
+
+@router.get("/session-status")
+async def get_gst_portal_session_status(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Get current GSTN session status, expiration timestamp, and remaining session minutes.
+    """
+    tenant_settings = await _get_tenant_settings(db, ctx.tenant_id)
+    client = whitebooks_service.get_gst_client(tenant_settings)
+    return client.get_session_status()

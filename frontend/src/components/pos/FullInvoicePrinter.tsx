@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Printer, X } from 'lucide-react';
-import { getActiveInvoicePrintTemplate, getActiveBillingGst } from '../../lib/receipt-template-store';
+import { getActiveInvoicePrintTemplate, getActiveBillingGst, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 
@@ -157,8 +157,9 @@ export function FullInvoicePrinter({
   // ── Dynamic Multi-Tenant Organization & Template Data Resolution ─────
   const tenantRaw = (tenant as any)?.raw || {};
   const tenantSettings = (tenant as any)?.settings || tenantRaw?.settings || {};
+  const activeBillingGst = getActiveBillingGst(tenant?.id);
 
-  // 1. Store Name / Company Name Resolution (Honor template custom name if set, else logged-in tenant)
+  // 1. Store Name / Company Name Resolution (Honor template custom name if set, else active org company, else tenant)
   const isTemplateStoreNameCustom = Boolean(
     template.storeName &&
     template.storeName.trim() !== '' &&
@@ -168,6 +169,8 @@ export function FullInvoicePrinter({
 
   const dynamicStoreName =
     (isTemplateStoreNameCustom ? template.storeName : '') ||
+    activeBillingGst?.trade_name ||
+    activeBillingGst?.legal_name ||
     tenant?.name ||
     tenantRaw?.trade_name ||
     tenantRaw?.legal_name ||
@@ -175,8 +178,14 @@ export function FullInvoicePrinter({
     template.storeName ||
     'Business Organization';
 
-  // 2. Logo Resolution (Current workspace tenant logo strictly isolated)
-  const tenantLogo = tenant?.logo_url || tenantRaw?.logo_url || (tenant as any)?.raw?.logo_url || null;
+  // 2. Logo Resolution (Active organization company logo strictly isolated per tenant)
+  const activeLogo =
+    activeBillingGst?.logo_url ||
+    tenant?.logo_url ||
+    tenantRaw?.logo_url ||
+    (tenant as any)?.raw?.logo_url ||
+    null;
+
   const isTemplateLogoCustom = Boolean(
     template.logoUrl &&
     template.logoUrl.trim() !== '' &&
@@ -185,7 +194,7 @@ export function FullInvoicePrinter({
   );
 
   const dynamicLogoUrl =
-    tenantLogo ||
+    activeLogo ||
     (isTemplateLogoCustom ? template.logoUrl : '') ||
     '/Logo.png';
 
@@ -205,6 +214,7 @@ export function FullInvoicePrinter({
 
   const dynamicAddress =
     (isTemplateAddressCustom ? template.storeAddress : '') ||
+    activeBillingGst?.address ||
     tenantAddressFormatted ||
     '';
 
@@ -217,6 +227,7 @@ export function FullInvoicePrinter({
 
   const dynamicPhone =
     (isTemplatePhoneCustom ? template.storePhone : '') ||
+    activeBillingGst?.phone ||
     tenantRaw?.phone ||
     tenantSettings?.phone ||
     (tenant as any)?.phone ||
@@ -225,6 +236,7 @@ export function FullInvoicePrinter({
   // 5. Email Resolution
   const dynamicEmail =
     (template.storeEmail && !template.storeEmail.includes('support@businessos.ai') ? template.storeEmail : '') ||
+    activeBillingGst?.email ||
     tenantRaw?.email ||
     tenantSettings?.email ||
     (tenant as any)?.email ||
@@ -240,6 +252,7 @@ export function FullInvoicePrinter({
   const dynamicGstin =
     (
       (isTemplateGstinCustom ? template.gstin : '') ||
+      activeBillingGst?.gstin ||
       tenantRaw?.gst_number ||
       tenantRaw?.gstin ||
       tenantSettings?.gstin ||

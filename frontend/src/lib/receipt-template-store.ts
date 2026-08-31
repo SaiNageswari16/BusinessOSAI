@@ -99,10 +99,55 @@ export interface ActiveGstDetails {
   logo_url?: string;
 }
 
-export function getActiveBillingGst(): ActiveGstDetails | null {
+export function getTenantIdFromStorage(): string {
+  if (typeof window === 'undefined') return 'default';
+  try {
+    const raw = localStorage.getItem('bos-tenant');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.id) return parsed.id;
+    }
+  } catch {}
+  return 'default';
+}
+
+export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null {
   if (typeof window === 'undefined') return null;
   try {
-    // 1. Active Tenant from authenticated session (bos-tenant)
+    const tid = tenantId || getTenantIdFromStorage();
+
+    // 1. Scoped Active Billing GST details for this specific tenant/workspace
+    const storedGstRaw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`);
+    if (storedGstRaw) {
+      const parsed = JSON.parse(storedGstRaw);
+      if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url)) return parsed;
+    }
+
+    // 2. Scoped Active Company in localStorage for this specific tenant
+    const activeCompanyRaw = localStorage.getItem(`bos_active_company_${tid}`);
+    if (activeCompanyRaw) {
+      const comp = JSON.parse(activeCompanyRaw);
+      if (comp) {
+        const activeReg = comp.gst_registrations?.find((r: any) => r.is_primary) || comp.gst_registrations?.[0];
+        const gstin = activeReg?.gstin || comp.gst_number || '';
+        const stateCode = activeReg?.state_code || (gstin ? gstin.slice(0, 2) : '29');
+        return {
+          gstin,
+          trade_name: activeReg?.trade_name || comp.name || 'Organization',
+          legal_name: comp.legal_name || comp.name || 'Organization',
+          state_code: stateCode,
+          state_name: activeReg?.state_name || comp.state || 'State',
+          address: activeReg?.address || comp.address || '',
+          phone: comp.phone || '',
+          email: comp.email || '',
+          cin: comp.registration_number || '',
+          pan: comp.pan_number || '',
+          logo_url: comp.logo_url || null,
+        };
+      }
+    }
+
+    // 3. Fallback: Authenticated session tenant from bos-tenant
     const tenantRaw = localStorage.getItem('bos-tenant');
     if (tenantRaw) {
       const tenant = JSON.parse(tenantRaw);
@@ -133,11 +178,12 @@ export function getActiveBillingGst(): ActiveGstDetails | null {
   return null;
 }
 
-export function setActiveBillingGst(details: ActiveGstDetails): void {
+export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem('bos_active_billing_gst_details', JSON.stringify(details));
-    localStorage.setItem('bos_active_billing_gstin', details.gstin);
+    const tid = tenantId || getTenantIdFromStorage();
+    localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(details));
+    localStorage.setItem(`bos_active_billing_gstin_${tid}`, details.gstin);
     window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: details }));
     window.dispatchEvent(new Event('storage'));
   } catch (err) {
