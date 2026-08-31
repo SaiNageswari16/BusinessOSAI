@@ -12,6 +12,7 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { RealBarcodeSvg, SingleBarcodeLabelCard } from "../../lib/barcode-svg";
+import { generateClientTenantBarcode } from "../../lib/code128";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
 import { FreeQtySettingsModal } from "./FreeQtySettingsModal";
@@ -418,12 +419,17 @@ type LayoutType = "1up" | "2up" | "3up" | "a4";
 
 function BarcodePrintDrawer({
   products,
+  initialSelectedId,
   onClose,
 }: {
   products: InventoryProduct[];
+  initialSelectedId?: string;
   onClose: () => void;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(products.filter(p => p.barcode).map(p => p.id)));
+  const [selected, setSelected] = useState<Set<string>>(() => {
+    if (initialSelectedId) return new Set([initialSelectedId]);
+    return new Set(products.filter(p => p.barcode).map(p => p.id));
+  });
   const [copies, setCopies] = useState(1);
   const [layout, setLayout] = useState<LayoutType>("2up");
   const activeTemplate = getActiveBarcodeTemplate();
@@ -672,6 +678,7 @@ function QuickAddModal({
   uoms: any[];
   warehouses: Warehouse[];
 }) {
+  const { activeTenant } = useTenant();
   const [form, setForm] = useState(() => ({
     name: initialName,
     sku: "",
@@ -759,9 +766,24 @@ function QuickAddModal({
           <div className="grid grid-cols-2 gap-3">
             {quickFields.map(field => (
               <div key={field.name} className={field.name === "name" ? "col-span-2" : ""}>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-muted-foreground">
+                    {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
+                  </label>
+                  {field.name === "barcode" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const code = generateClientTenantBarcode(activeTenant?.id || activeTenant?.name || "BOS", "EAN-13");
+                        setForm(prev => ({ ...prev, barcode: code }));
+                        toast.success(`Generated tenant barcode: ${code}`);
+                      }}
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Zap className="size-2.5 text-amber-500" /> Auto-Gen
+                    </button>
+                  )}
+                </div>
                 {field.type === "select" ? (
                   <select name={field.name} value={(form as any)[field.name]} onChange={handleChange}
                     className="w-full h-9 px-3 text-sm rounded-lg border bg-background">
@@ -1213,6 +1235,7 @@ export function Products() {
 
   // ── Barcode Print Drawer state ───────────────────────────────────
   const [isBarcodeDrawerOpen, setIsBarcodeDrawerOpen] = useState(false);
+  const [barcodeDrawerInitialId, setBarcodeDrawerInitialId] = useState<string | undefined>(undefined);
 
   // ── Inline popover state (brand / category / sub-category) ───────
   const [brandPopoverOpen, setBrandPopoverOpen] = useState(false);
@@ -1234,7 +1257,11 @@ export function Products() {
   const [isFreeQtyModalOpen, setIsFreeQtyModalOpen] = useState(false);
   const [freeQtyTriggerProductId, setFreeQtyTriggerProductId] = useState<string | undefined>(undefined);
 
+  // ── Barcode Bulk Generator state ─────────────────────────────────
+  const [isGeneratingBarcodes, setIsGeneratingBarcodes] = useState(false);
+
   // ── Derived ──────────────────────────────────────────────────────
+  const missingBarcodesCount = useMemo(() => products.filter(p => !p.barcode || !p.barcode.trim()).length, [products]);
   const localBarcodes = useMemo(() => new Set(products.map(p => p.barcode).filter(Boolean)), [products]);
   const localNames = useMemo(() => new Set(products.map(p => p.name.toLowerCase())), [products]);
   const localSkus = useMemo(() => new Set(products.map(p => p.sku?.toLowerCase()).filter(Boolean) as string[]), [products]);
@@ -2899,17 +2926,67 @@ export function Products() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                        Primary BarCode (EAN/UPC)
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                          Primary BarCode (EAN/UPC)
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const code = generateClientTenantBarcode(tenant?.id || tenant?.name || "BOS", "EAN-13");
+                              setCurrentForm(prev => ({ ...prev, barcode: code }));
+                              toast.success(`Generated GS1 EAN-13 barcode: ${code}`);
+                            }}
+                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
+                            title="Auto-generate GS1 EAN-13 in-store restricted circulation barcode (starts with 20)"
+                          >
+                            <Zap className="size-2.5 text-amber-500" /> Auto-Gen (EAN)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const code = generateClientTenantBarcode(tenant?.id || tenant?.name || "BOS", "Code-128");
+                              setCurrentForm(prev => ({ ...prev, barcode: code }));
+                              toast.success(`Generated Code-128 barcode: ${code}`);
+                            }}
+                            className="text-[10px] font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md border border-slate-200 transition-colors cursor-pointer"
+                            title="Auto-generate Code-128 alphanumeric barcode"
+                          >
+                            Code-128
+                          </button>
+                          {currentForm.barcode && editingProductId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBarcodeDrawerInitialId(editingProductId);
+                                setIsBarcodeDrawerOpen(true);
+                              }}
+                              className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded-md border border-emerald-200 transition-colors flex items-center gap-1 cursor-pointer"
+                              title="Print barcode label for this product"
+                            >
+                              <Printer className="size-2.5" /> Print
+                            </button>
+                          )}
+                        </div>
+                      </div>
                       <input
                         type="text"
                         name="barcode"
                         value={currentForm.barcode}
                         onChange={handleFormChange}
-                        placeholder="e.g. 8901234567890"
-                        className="w-full h-10 px-3.5 text-sm font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder="e.g. 2010420001484 (EAN-13) or 890123..."
+                        className="w-full h-10 px-3.5 text-sm font-mono font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                       />
+
+                      {currentForm.barcode && (
+                        <div className="mt-2 p-2 bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-col items-center justify-center">
+                          <RealBarcodeSvg code={currentForm.barcode} height={36} unitPx={1.5} />
+                          <span className="text-[10px] font-mono font-semibold text-slate-500 mt-1">
+                            {currentForm.barcode.length === 13 && currentForm.barcode.startsWith("20") ? "GS1 In-Store Internal Barcode" : "Hardware Scannable Barcode"}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -4187,7 +4264,45 @@ export function Products() {
             case "barcode":
               return (
                 <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
-                  {product.barcode || "-"}
+                  {product.barcode ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800">{product.barcode}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBarcodeDrawerInitialId(product.id);
+                          setIsBarcodeDrawerOpen(true);
+                        }}
+                        className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition cursor-pointer"
+                        title="Print Barcode Label"
+                      >
+                        <Printer className="size-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isGeneratingBarcodes}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          setIsGeneratingBarcodes(true);
+                          const res = await inventoryApi.generateBarcode(product.id, "EAN-13");
+                          toast.success(`Generated barcode: ${res.barcode}`);
+                          await loadData(search);
+                        } catch (err: any) {
+                          toast.error(err?.detail || err?.message || "Failed to generate barcode");
+                        } finally {
+                          setIsGeneratingBarcodes(false);
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Click to auto-generate scannable GS1 EAN-13 barcode"
+                    >
+                      <Zap className="size-2.5 text-amber-500 fill-amber-500" /> Gen Barcode
+                    </button>
+                  )}
                 </td>
               );
 
@@ -4688,6 +4803,20 @@ export function Products() {
         {/* Action column */}
         <td className="py-2.5 px-3 whitespace-nowrap text-right sticky right-0 bg-white/95 backdrop-blur-xs border-l border-slate-100 shadow-sm">
           <div className="flex items-center justify-end gap-1.5">
+            {product.barcode && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  setBarcodeDrawerInitialId(product.id);
+                  setIsBarcodeDrawerOpen(true);
+                }}
+                className="size-8 rounded-lg hover:bg-emerald-50 text-emerald-600"
+                title="Print Barcode Label"
+              >
+                <Printer className="size-3.5" />
+              </Button>
+            )}
             <Button
               size="icon"
               variant="ghost"
@@ -4838,6 +4967,33 @@ export function Products() {
           >
             <Printer className="size-4" /> Print Barcodes
           </Button>
+          {missingBarcodesCount > 0 && (
+            <Button
+              variant="outline"
+              disabled={isGeneratingBarcodes}
+              onClick={async () => {
+                try {
+                  setIsGeneratingBarcodes(true);
+                  const res = await inventoryApi.generateBulkBarcodes("EAN-13");
+                  toast.success(res.message || `Generated ${res.generated_count} barcodes`);
+                  await loadData(search);
+                } catch (err: any) {
+                  toast.error(err?.detail || err?.message || "Failed to bulk generate barcodes");
+                } finally {
+                  setIsGeneratingBarcodes(false);
+                }
+              }}
+              className="flex items-center gap-2 border-amber-300 bg-amber-50/90 text-amber-800 hover:bg-amber-100 font-bold shadow-xs transition-all cursor-pointer"
+              title={`Auto-generate scannable GS1 EAN-13 barcodes for all ${missingBarcodesCount} products missing barcodes`}
+            >
+              {isGeneratingBarcodes ? (
+                <Loader2 className="size-4 animate-spin text-amber-600" />
+              ) : (
+                <Zap className="size-4 text-amber-500 fill-amber-500" />
+              )}
+              <span>Auto-Gen Barcodes ({missingBarcodesCount})</span>
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={() => {
@@ -5133,7 +5289,11 @@ export function Products() {
         {isBarcodeDrawerOpen && (
           <BarcodePrintDrawer
             products={products}
-            onClose={() => setIsBarcodeDrawerOpen(false)}
+            initialSelectedId={barcodeDrawerInitialId}
+            onClose={() => {
+              setIsBarcodeDrawerOpen(false);
+              setBarcodeDrawerInitialId(undefined);
+            }}
           />
         )}
       </AnimatePresence>

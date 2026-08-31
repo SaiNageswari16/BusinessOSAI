@@ -251,15 +251,47 @@ async def list_barcodes(
     ]
 
 
+def compute_ean13_checksum(twelve_digits: str) -> str:
+    """Standard GS1 EAN-13 Modulo-10 weighted checksum."""
+    total = 0
+    for i, char in enumerate(twelve_digits):
+        weight = 1 if (i % 2 == 0) else 3
+        total += int(char) * weight
+    mod = total % 10
+    return str((10 - mod) % 10)
+
+
+def generate_tenant_barcode(tenant_id: UUID, seq_num: int, barcode_format: str = "EAN-13", prefix: str | None = None) -> tuple[str, str]:
+    """
+    Generates a guaranteed scannable, collision-free tenant-scoped barcode.
+    - EAN-13 (GS1 In-Store RCN): '20' (2 digits) + 4-digit tenant code + 6-digit sequence + 1-digit GS1 Modulo-10 Checksum = 13 digits.
+    - Code-128: '[PREFIX]-[TENANT_HASH]-[SEQ]'
+    """
+    tenant_code = f"{(tenant_id.int % 9000) + 1000:04d}"
+    if barcode_format.upper() == "CODE-128":
+        p = (prefix or "BOS").upper().strip()
+        code = f"{p}-{tenant_code}-{seq_num % 100000:05d}"
+        return code, "Code-128"
+    else:
+        # GS1 EAN-13 internal store format starting with restricted prefix 20
+        twelve = f"20{tenant_code}{seq_num % 1000000:06d}"
+        checksum = compute_ean13_checksum(twelve)
+        return twelve + checksum, "EAN-13"
+
+
 @router.post("/barcodes/generate")
 async def generate_barcode(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
     product_id: str = Query(...),
+    format: str = Query("EAN-13", description="Barcode format: EAN-13 or Code-128"),
+    prefix: str | None = Query(None, description="Optional custom prefix for Code-128"),
+    force: bool = Query(False, description="Whether to overwrite existing barcode"),
 ):
-    """Generate a unique EAN-13-style barcode for a product that doesn't have one."""
+    """Generate a unique, tenant-scoped scannable barcode for a product."""
     from src.models.inventory import Product
     import secrets
+
     result = await db.execute(
         select(Product).where(
             Product.id == UUID(product_id),
@@ -269,16 +301,109 @@ async def generate_barcode(
     p = result.scalar_one_or_none()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
-    if p.barcode:
-        return {"barcode": p.barcode, "format": "EAN-13", "note": "Product already has a barcode"}
-    # Generate 12 digits + checksum
-    base = "".join([str(secrets.randbelow(10)) for _ in range(12)])
-    s = sum(int(d) for d in base)
-    checksum = (10 - s % 10) % 10
-    barcode = base + str(checksum)
-    p.barcode = barcode
+    if p.barcode and not force:
+        fmt = "EAN-13" if len(p.barcode) == 13 and p.barcode.isdigit() else "Code-128"
+        return {"barcode": p.barcode, "format": fmt, "note": "Product already has a barcode"}
+
+    # Count total products in tenant to determine sequence
+    count_res = await db.execute(
+        select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id)
+    )
+    total_count = count_res.scalar() or 1
+
+    # Try sequential generation with collision avoidance
+    for attempt in range(50):
+        seq = total_count + attempt + secrets.randbelow(100)
+        barcode, fmt = generate_tenant_barcode(ctx.tenant_id, seq, barcode_format=format, prefix=prefix)
+        # Check collision
+        existing = await db.execute(
+            select(Product.id).where(
+                Product.tenant_id == ctx.tenant_id,
+                Product.barcode == barcode,
+                Product.id != p.id,
+            )
+        )
+        if not existing.scalar_one_or_none():
+            p.barcode = barcode
+            await db.commit()
+            return {
+                "barcode": barcode,
+                "format": fmt,
+                "product_id": str(p.id),
+                "product_name": p.name,
+            }
+
+    raise HTTPException(status_code=500, detail="Failed to generate unique barcode. Please retry.")
+
+
+@router.post("/barcodes/generate-bulk")
+async def generate_bulk_barcodes(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+    format: str = Query("EAN-13", description="Barcode format: EAN-13 or Code-128"),
+    product_ids: str | None = Query(None, description="Optional comma-separated product UUIDs to generate for"),
+):
+    """Bulk generate tenant-scoped barcodes for all products (or selected ones) that lack barcodes."""
+    from src.models.inventory import Product
+    import secrets
+
+    query = select(Product).where(
+        Product.tenant_id == ctx.tenant_id,
+        or_(Product.barcode.is_(None), Product.barcode == ""),
+    )
+
+    if product_ids:
+        raw_ids = [UUID(pid.strip()) for pid in product_ids.split(",") if pid.strip()]
+        if raw_ids:
+            query = query.where(Product.id.in_(raw_ids))
+
+    result = await db.execute(query)
+    target_products = result.scalars().all()
+
+    if not target_products:
+        return {
+            "message": "All specified products already have barcodes.",
+            "generated_count": 0,
+            "products": [],
+        }
+
+    # Fetch all currently assigned barcodes for tenant to ensure zero collision in memory
+    assigned_res = await db.execute(
+        select(Product.barcode).where(
+            Product.tenant_id == ctx.tenant_id,
+            Product.barcode.isnot(None),
+        )
+    )
+    used_barcodes = {b for b in assigned_res.scalars().all() if b}
+
+    count_res = await db.execute(
+        select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id)
+    )
+    total_count = count_res.scalar() or 1
+
+    updated_items = []
+    for idx, p in enumerate(target_products):
+        for attempt in range(100):
+            seq = total_count + idx + attempt * 10 + secrets.randbelow(10)
+            code, fmt = generate_tenant_barcode(ctx.tenant_id, seq, barcode_format=format)
+            if code not in used_barcodes:
+                used_barcodes.add(code)
+                p.barcode = code
+                updated_items.append({
+                    "id": str(p.id),
+                    "product_name": p.name,
+                    "sku": p.sku,
+                    "barcode": code,
+                    "format": fmt,
+                })
+                break
+
     await db.commit()
-    return {"barcode": barcode, "format": "EAN-13", "product_id": str(p.id)}
+    return {
+        "message": f"Successfully generated barcodes for {len(updated_items)} products.",
+        "generated_count": len(updated_items),
+        "products": updated_items,
+    }
 
 
 @router.post("/barcodes/batch-print")

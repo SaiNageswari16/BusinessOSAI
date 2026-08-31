@@ -247,35 +247,37 @@ class RAGEnricherService:
     @classmethod
     async def stop(cls):
         """Stops workers gracefully."""
-        global _http_client
-        cls._should_run = False
         if cls._inv_task is not None and not cls._inv_task.done():
             try:
                 cls._inv_task.cancel()
                 await cls._inv_task
             except (asyncio.CancelledError, Exception):
                 pass
-        cls._inv_task = None
+        for t in cls._tasks:
+            try:
+                t.cancel()
+            except Exception:
+                pass
+        cls._tasks = []
         if _http_client and not _http_client.is_closed:
-            await _http_client.aclose()
-            _http_client = None
-        logger.info("RAG Background Enricher stopped.")
+            try:
+                await _http_client.aclose()
+                _http_client = None
+            except Exception:
+                pass
+        logger.info("🛑 [RAG Enricher] Background enrichment workers stopped.")
 
     @classmethod
-    async def enrich_product_on_demand(cls, product_id, barcode: str, name: str) -> dict | None:
-        """
-        On-demand real-time enrichment triggered when a product is scanned or added.
-        Uses 24-hr cache deduplication and fast 5-10s Gemini AI / Web metadata.
-        """
-        clean_code = (barcode or "").strip()
+    async def enrich_on_demand(cls, product_id, barcode: str, name: str):
+        """Enrich a single product on demand (e.g. from UI trigger)."""
         now = datetime.utcnow().timestamp()
+        clean_code = (barcode or "").strip()
 
-        # 1. Check 24-Hour Cache
+        # 1. Check in-memory cache
         if clean_code and clean_code in _ENRICHMENT_CACHE:
-            cached_entry = _ENRICHMENT_CACHE[clean_code]
-            if now - cached_entry.get("timestamp", 0) < _CACHE_TTL_SECONDS:
-                logger.info("[RAG Enricher] Returning 24-hour cached details for barcode %s (0 API calls)", clean_code)
-                return cached_entry.get("data")
+            cached = _ENRICHMENT_CACHE[clean_code]
+            if now - cached["timestamp"] < _CACHE_TTL_SECONDS:
+                return cached["data"]
 
         # 2. Perform Single High-Fidelity Lookup
         semaphore = asyncio.Semaphore(1)
@@ -289,27 +291,32 @@ class RAGEnricherService:
     @classmethod
     async def _inventory_worker_loop(cls):
         """
-        Low-frequency fallback worker for user inventory items. Runs every 60s to prevent API waste.
-        Always gathers text metadata, descriptions & specifications.
+        Low-frequency fallback worker for user inventory items.
         """
         semaphore = asyncio.Semaphore(2)
+        from src.utils.ai_image_control import is_ai_image_search_paused
 
         while cls._should_run:
             try:
-                batch = await cls._fetch_pending_inventory_batch()
-                if not batch:
-                    await asyncio.sleep(60.0)  # Check only once per minute
+                if is_ai_image_search_paused():
+                    await asyncio.sleep(5.0)
                     continue
 
-                logger.info("[RAG Enricher] Processing %d pending items with rate-limit pacing...", len(batch))
+                batch = await cls._fetch_pending_inventory_batch()
+                if not batch:
+                    await asyncio.sleep(30.0)  # Check every 30s
+                    continue
+
                 for pid, barcode, name in batch:
-                    if not cls._should_run:
+                    if not cls._should_run or is_ai_image_search_paused():
                         break
+                    if is_internal_or_store_barcode(barcode):
+                        continue
                     try:
                         await cls._enrich_single_product(pid, barcode, name, "inventory", semaphore)
                     except Exception as p_err:
                         logger.debug("[RAG Enricher] Item enrichment error: %s", p_err)
-                    await asyncio.sleep(3.5)  # 3.5s delay guarantees < 15 requests/min (under Gemini free-tier limits)
+                    await asyncio.sleep(3.5)
 
             except asyncio.CancelledError:
                 break
@@ -322,30 +329,50 @@ class RAGEnricherService:
     @classmethod
     async def _master_worker_loop(cls):
         """
-        Worker 2: BACKGROUND PRIORITY — Enriches Master Catalog products (MasterCatalogProduct table).
-        Runs concurrently in parallel to populate product descriptions, specifications, brands, and categories.
+        Worker 2: BACKGROUND PRIORITY — Enriches Master Catalog products.
         """
         semaphore = asyncio.Semaphore(3)
+        from src.utils.ai_image_control import is_ai_image_search_paused
 
         while cls._should_run:
             try:
+                if is_ai_image_search_paused():
+                    await asyncio.sleep(5.0)
+                    continue
+
                 batch = await cls._fetch_pending_master_batch()
                 if not batch:
                     await asyncio.sleep(8.0)
                     continue
 
-                logger.info("[RAG Enricher - Master Worker] Processing %d master catalog items...", len(batch))
+                valid_batch = []
+                for pid, barcode, name in batch:
+                    if is_internal_or_store_barcode(barcode):
+                        # Mark internal barcodes as completed/skipped immediately in master catalog with 0 API calls
+                        try:
+                            async with AsyncSessionLocal() as session:
+                                res = await session.execute(select(MasterCatalogProduct).where(MasterCatalogProduct.id == pid))
+                                mp = res.scalars().first()
+                                if mp:
+                                    mp.ai_search_done = True
+                                    mp.rag_status = "internal_store_code"
+                                    await session.commit()
+                        except Exception:
+                            pass
+                        continue
+                    valid_batch.append((pid, barcode, name))
 
-                tasks = [
-                    asyncio.create_task(
-                        cls._enrich_single_product(pid, barcode, name, "master_catalog", semaphore)
-                    )
-                    for pid, barcode, name in batch
-                ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for r in results:
-                    if isinstance(r, Exception):
-                        logger.debug("[RAG Enricher - Master Worker] Task exception: %s", r)
+                if valid_batch:
+                    tasks = [
+                        asyncio.create_task(
+                            cls._enrich_single_product(pid, barcode, name, "master_catalog", semaphore)
+                        )
+                        for pid, barcode, name in valid_batch
+                    ]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    for r in results:
+                        if isinstance(r, Exception):
+                            logger.debug("[RAG Enricher - Master Worker] Task exception: %s", r)
 
             except asyncio.CancelledError:
                 break
@@ -376,14 +403,14 @@ class RAGEnricherService:
                             )
                         )
                     )
-                    .order_by(Product.created_at.desc()) # Newest uploaded user products FIRST
+                    .order_by(Product.created_at.desc())
                     .limit(6)
                 )
                 res = await session.execute(stmt)
                 products = res.scalars().all()
                 if not products:
                     return []
-                return [(p.id, p.barcode.strip(), p.name) for p in products]
+                return [(p.id, p.barcode.strip(), p.name) for p in products if not is_internal_or_store_barcode(p.barcode)]
         except Exception as e:
             logger.warning("[RAG Enricher] Could not fetch pending inventory batch: %s", e)
             return []
@@ -426,7 +453,6 @@ class RAGEnricherService:
 
     @classmethod
     async def _enrich_single_product(
-
         cls, product_id, barcode: str, name: str, target_type: str, semaphore: asyncio.Semaphore
     ):
         """
@@ -437,7 +463,7 @@ class RAGEnricherService:
         async with semaphore:
             logger.info("[RAG Enricher - %s] Enriching metadata for '%s' (barcode: %s)...", target_type.upper(), name, barcode)
 
-            # 1. AI RAG search for text metadata (short/long descriptions, brand, category, specs, prices, HSN)
+            # 1. AI RAG search for text metadata
             success = False
             err_msg = None
             ai_item = None
@@ -445,15 +471,15 @@ class RAGEnricherService:
             provider = settings.ai_provider or "gemini"
             results = []
 
-            # Step 1A: Try barcode resolution first
-            if barcode and len(barcode.strip()) >= 5:
+            # Step 1A: Only query public barcode registry if it is NOT an internal in-store barcode
+            if barcode and len(barcode.strip()) >= 5 and not is_internal_or_store_barcode(barcode):
                 try:
                     results = await _perform_ai_rag_web_search(barcode.strip(), provider=provider)
                 except Exception as b_ex:
                     logger.debug("[RAG Enricher] Barcode %s not found in public registry (%s)", barcode, b_ex)
 
             # Step 1B: Fallback to product name if barcode returned nothing (e.g. internal store SKU/barcodes)
-            if not results and name and name.strip() and name.strip() != barcode:
+            if not results and name and name.strip() and name.strip() != barcode and not is_internal_or_store_barcode(name):
                 try:
                     logger.info("[RAG Enricher] Resolving metadata by product name '%s'...", name.strip())
                     results = await _perform_ai_rag_web_search(name.strip(), provider=provider)

@@ -186,11 +186,13 @@ export function BarcodeManagement() {
     }, 150);
   };
 
-  const handleGenerate = async (productId: string) => {
+  const [genFormat, setGenFormat] = useState<"EAN-13" | "Code-128">("EAN-13");
+
+  const handleGenerate = async (productId: string, format: "EAN-13" | "Code-128" = genFormat) => {
     try {
       setWorking(true);
-      const result = await inventoryApi.generateBarcode(productId);
-      flash(`Generated barcode: ${result.barcode}`);
+      const result = await inventoryApi.generateBarcode(productId, format);
+      flash(`Generated ${result.format || format} barcode: ${result.barcode}`);
       await load();
     } catch (e: any) {
       alert(`Generate failed: ${e?.detail ?? e?.message}`);
@@ -199,22 +201,27 @@ export function BarcodeManagement() {
     }
   };
 
-  const handleBulkGenerate = async () => {
+  const handleBulkGenerate = async (targetFormat: "EAN-13" | "Code-128" = genFormat) => {
     const targets = filtered.filter(i => !i.barcode);
     if (targets.length === 0) return;
-    if (!confirm(`Generate barcodes for ${targets.length} products?`)) return;
+    if (!confirm(`Generate tenant-scoped ${targetFormat} barcodes for ${targets.length} products without barcodes?`)) return;
     try {
       setWorking(true);
-      for (const p of targets) {
-        try {
-          await inventoryApi.generateBarcode(p.id);
-        } catch {}
-      }
-      flash(`Generated ${targets.length} barcodes`);
+      const res = await inventoryApi.generateBulkBarcodes(targetFormat, targets.map(t => t.id));
+      flash(res.message || `Successfully generated ${res.generated_count} barcodes`);
       await load();
+    } catch (e: any) {
+      alert(`Bulk generate failed: ${e?.detail ?? e?.message}`);
     } finally {
       setWorking(false);
     }
+  };
+
+  const handlePrintSingle = (e: React.MouseEvent, item: ProductBarcode) => {
+    e.stopPropagation();
+    setSelected(new Set([item.id]));
+    setCopiesPerItem(1);
+    setIsPrintModalOpen(true);
   };
 
   return (
@@ -230,7 +237,7 @@ export function BarcodeManagement() {
             Active Master Barcode Template: <strong className="text-emerald-300 font-bold">{activeTemplate.name || 'Retail Jewelry & Apparel Tag (50x25mm)'}</strong> ({activeTemplate.paperSize || '50x25mm'})
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           <Button variant="outline" onClick={() => window.location.href = '/inventory?tab=print_templates&sub=barcodes'} className="bg-slate-800 border-slate-600 text-white hover:bg-slate-700 text-xs font-bold">
             <Settings2 className="size-3.5 mr-1.5 text-emerald-400" /> Template Settings
           </Button>
@@ -257,7 +264,7 @@ export function BarcodeManagement() {
           onClick={() => { setMode("without"); setSelected(new Set()); }}>
           <div className="text-xs uppercase font-bold text-muted-foreground">Without Barcodes</div>
           <div className="text-3xl font-bold text-amber-600 mt-1">{withoutBarcode.length}</div>
-          <div className="text-xs text-muted-foreground mt-1">Need EAN-13 code assignment</div>
+          <div className="text-xs text-muted-foreground mt-1">Need tenant EAN-13 / Code-128 assignment</div>
         </Card>
         <Card className={`p-4 cursor-pointer transition ${mode === "all" ? "ring-2 ring-blue-500 bg-blue-50/20" : ""}`}
           onClick={() => { setMode("all"); setSelected(new Set()); }}>
@@ -266,6 +273,45 @@ export function BarcodeManagement() {
           <div className="text-xs text-muted-foreground mt-1">Total catalog products</div>
         </Card>
       </div>
+
+      {/* Bulk Generator Banner when products lack barcodes */}
+      {withoutBarcode.length > 0 && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-xl bg-amber-500/20 text-amber-600 flex items-center justify-center font-bold shrink-0">
+              <Sparkles className="size-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                {withoutBarcode.length} Products lack Barcodes
+              </h4>
+              <p className="text-xs text-slate-500">
+                Generate 100% hardware-scannable, tenant-scoped internal barcodes in one click.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
+            <select
+              value={genFormat}
+              onChange={(e) => setGenFormat(e.target.value as any)}
+              className="h-9 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 text-xs font-bold outline-none"
+            >
+              <option value="EAN-13">GS1 EAN-13 (In-Store RCN)</option>
+              <option value="Code-128">ISO Code-128</option>
+            </select>
+            <Button
+              size="sm"
+              disabled={working}
+              onClick={() => handleBulkGenerate(genFormat)}
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20"
+            >
+              {working ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Zap className="size-3.5 mr-1.5 text-amber-200" />}
+              Auto-Generate All ({withoutBarcode.length})
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Search & Selection Controls */}
       <Card className="p-4">
@@ -293,8 +339,8 @@ export function BarcodeManagement() {
             Showing <strong className="text-foreground">{filtered.length}</strong> of {allProducts.length} products
           </div>
           {mode === "without" && filtered.some(i => !i.barcode) && (
-            <Button size="sm" onClick={handleBulkGenerate} disabled={working} className="bg-amber-600 hover:bg-amber-700 text-white text-xs">
-              <Sparkles className="size-3.5 mr-1.5" /> Bulk Generate All ({filtered.filter(i => !i.barcode).length})
+            <Button size="sm" onClick={() => handleBulkGenerate(genFormat)} disabled={working} className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold">
+              <Sparkles className="size-3.5 mr-1.5" /> Bulk Generate Filtered ({filtered.filter(i => !i.barcode).length})
             </Button>
           )}
         </div>
@@ -332,13 +378,25 @@ export function BarcodeManagement() {
               >
                 <div className="flex items-center justify-between mb-3 border-b pb-2">
                   <span className="text-xs font-bold text-slate-500 uppercase">Product Label Preview</span>
-                  {item.barcode ? (
-                    <div className={`size-4 rounded border-2 ${selected.has(item.id) ? "bg-indigo-500 border-indigo-500" : "border-slate-300"}`} />
-                  ) : (
-                    <Button size="sm" variant="outline" disabled={working} onClick={(e) => { e.stopPropagation(); handleGenerate(item.id); }}>
-                      <Plus className="size-3 mr-1" /> Generate Barcode
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {item.barcode ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => handlePrintSingle(e, item)}
+                          className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 flex items-center gap-1 transition"
+                          title="Print this label"
+                        >
+                          <Printer className="size-3" /> Print
+                        </button>
+                        <div className={`size-4 rounded border-2 ${selected.has(item.id) ? "bg-indigo-500 border-indigo-500" : "border-slate-300"}`} />
+                      </>
+                    ) : (
+                      <Button size="sm" variant="outline" disabled={working} onClick={(e) => { e.stopPropagation(); handleGenerate(item.id, genFormat); }} className="text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200">
+                        <Zap className="size-3 mr-1 text-amber-500" /> Auto-Gen Barcode
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Render Template Card */}

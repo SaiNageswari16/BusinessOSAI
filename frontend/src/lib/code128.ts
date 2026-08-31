@@ -322,3 +322,46 @@ export function getHardwareScannableBarcode(text: string): BarcodeElement[] {
   }
   return encodeCode128(clean);
 }
+
+/**
+ * Calculates GS1 Modulo-10 Checksum for 12 digits
+ */
+export function calculateEan13Checksum(twelveDigits: string): string {
+  const clean = twelveDigits.replace(/\D/g, "").slice(0, 12).padEnd(12, "0");
+  let total = 0;
+  for (let i = 0; i < clean.length; i++) {
+    const weight = i % 2 === 0 ? 1 : 3;
+    total += parseInt(clean[i], 10) * weight;
+  }
+  const mod = total % 10;
+  return String((10 - mod) % 10);
+}
+
+/**
+ * Generate a guaranteed scannable, tenant-scoped internal barcode
+ */
+export function generateClientTenantBarcode(
+  tenantIdOrName?: string,
+  format: "EAN-13" | "Code-128" = "EAN-13",
+  customPrefix?: string
+): string {
+  let hash = 1042;
+  if (tenantIdOrName) {
+    let sum = 0;
+    for (let i = 0; i < tenantIdOrName.length; i++) {
+      sum = (sum * 31 + tenantIdOrName.charCodeAt(i)) % 9000;
+    }
+    hash = Math.abs(sum) + 1000;
+  }
+  const randomSeq = Math.floor(100000 + Math.random() * 900000);
+
+  if (format === "Code-128") {
+    const p = (customPrefix || "BOS").toUpperCase().trim();
+    return `${p}-${hash}-${randomSeq.toString().slice(-4)}`;
+  }
+
+  // GS1 EAN-13 Internal Store Prefix: 20 + 4-digit Org Code + 6-digit Item Sequence + Checksum
+  const twelve = `20${hash}${randomSeq}`;
+  const check = calculateEan13Checksum(twelve);
+  return twelve + check;
+}

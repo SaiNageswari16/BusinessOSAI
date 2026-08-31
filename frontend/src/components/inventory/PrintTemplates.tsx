@@ -2043,6 +2043,7 @@ function TemplatePreviewModal({
 
 function LiveTemplateRender({ template }: { template: PrintTemplate }) {
   const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
   const f = template.fields;
   const theme = template.themeName || "stylish";
 
@@ -2116,20 +2117,11 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
           <div>
             {f.showLogo && (
               <div className="flex items-center gap-2.5 mb-2">
-                {(template.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url) ? (
-                  <img
-                    src={template.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url}
-                    alt="Logo"
-                    className="h-9 max-w-[120px] object-contain rounded-lg shadow-2xs"
-                  />
-                ) : (
-                  <div
-                    className="h-9 w-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
-                    style={{ backgroundColor: template.primaryColor }}
-                  >
-                    {template.storeName ? template.storeName.substring(0, 2).toUpperCase() : (tenant?.name ? tenant.name.substring(0, 2).toUpperCase() : "IS")}
-                  </div>
-                )}
+                <img
+                  src={template.logoUrl || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "/Logo.png"}
+                  alt="Logo"
+                  className="h-9 max-w-[120px] object-contain rounded-lg shadow-2xs"
+                />
                 <span className="font-bold text-base text-slate-900">{template.storeName || tenant?.name}</span>
               </div>
             )}

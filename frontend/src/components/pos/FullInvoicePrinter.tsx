@@ -1,9 +1,7 @@
-'use client';
-
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Printer, X } from 'lucide-react';
-import { getActiveInvoicePrintTemplate } from '../../lib/receipt-template-store';
+import { getActiveInvoicePrintTemplate, getActiveBillingGst } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 
@@ -78,6 +76,24 @@ export function FullInvoicePrinter({
   const { tenant } = useTenant();
   const printContainerRef = useRef<HTMLDivElement>(null);
 
+  const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('businessos_print_templates_v1');
+        if (saved) {
+          const list = JSON.parse(saved);
+          if (Array.isArray(list)) {
+            const invTpls = list.filter((t: any) => t.category === 'invoices');
+            setAvailableTemplates(invTpls);
+          }
+        }
+      } catch {}
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     if (isOpen && autoPrint && invoice) {
       const timer = setTimeout(() => {
@@ -91,24 +107,30 @@ export function FullInvoicePrinter({
   if (typeof document === 'undefined') return null;
 
   // Retrieve active template or fallback
-  const template = customTemplate || getActiveInvoicePrintTemplate();
-  const f = template.fields || {
-    showLogo: true,
-    showHSN: true,
-    showTaxSplit: true,
-    showBankDetails: true,
-    showSignature: true,
-    showCustomerDetails: true,
-    showProductName: true,
-    showPrice: true,
-    showMRP: true,
-    showSKU: true,
-    showPartyBalance: true,
-    showItemDescription: true,
-    showTime: true,
+  const activeMasterTemplate = getActiveInvoicePrintTemplate();
+  const activeFromList = selectedTemplateId
+    ? availableTemplates.find((t) => t.id === selectedTemplateId)
+    : null;
+  const template = customTemplate || activeFromList || activeMasterTemplate;
+
+  const f = {
+    showLogo: template?.fields?.showLogo !== false,
+    showHSN: template?.fields?.showHSN !== false,
+    showTaxSplit: template?.fields?.showTaxSplit !== false,
+    showBankDetails: template?.fields?.showBankDetails !== false,
+    showSignature: template?.fields?.showSignature !== false,
+    showCustomerDetails: template?.fields?.showCustomerDetails !== false,
+    showProductName: template?.fields?.showProductName !== false,
+    showPrice: template?.fields?.showPrice !== false,
+    showMRP: template?.fields?.showMRP !== false,
+    showSKU: template?.fields?.showSKU !== false,
+    showPartyBalance: template?.fields?.showPartyBalance !== false,
+    showItemDescription: template?.fields?.showItemDescription !== false,
+    showTime: template?.fields?.showTime !== false,
+    ...(template?.fields || {}),
   };
 
-  const theme = template.themeName || 'stylish';
+  const theme = template.themeName || (template.id?.includes('luxury') ? 'luxury' : template.id?.includes('tally') ? 'tally' : template.id?.includes('adv') ? 'adv_gst' : template.id?.includes('billbook') ? 'billbook' : template.id?.includes('modern') ? 'modern' : 'stylish');
   const isLuxury = theme === 'luxury';
   const isTally = theme === 'tally';
   const isStylish = theme === 'stylish';
@@ -119,10 +141,95 @@ export function FullInvoicePrinter({
   const isCultureUp = theme === 'culture_up';
   const isCultureGod = theme === 'culture_god';
 
-  const primaryColor = template.primaryColor || '#2563eb';
-  const fontFamily = template.fontFamily || 'Inter, sans-serif';
+  const primaryColor = template.primaryColor || (isLuxury ? '#b45309' : isTally ? '#0f172a' : isAdvGst ? '#16a34a' : isModern ? '#475569' : '#2563eb');
+  const fontFamily = template.fontFamily || (isLuxury || isModern ? 'Outfit, sans-serif' : 'Inter, sans-serif');
 
-  // 1. Group / aggregate identical items so rows aren't repeated
+  // ── Dynamic Multi-Tenant Organization Data Resolution ───────────────
+  const activeBillingGst = getActiveBillingGst();
+
+  const activeCompany = (() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('bos_active_company') || localStorage.getItem('bos_selected_company');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const dynamicStoreName =
+    activeBillingGst?.trade_name ||
+    activeBillingGst?.legal_name ||
+    activeCompany?.name ||
+    activeCompany?.legal_name ||
+    tenant?.name ||
+    (template.storeName && !template.storeName.includes('LazyMonkeyAI') ? template.storeName : 'venatic');
+
+  const dynamicLogoUrl =
+    activeBillingGst?.logo_url ||
+    activeCompany?.logo_url ||
+    tenant?.logo_url ||
+    (tenant as any)?.raw?.logo_url ||
+    template.logoUrl ||
+    '/Logo.png';
+
+  const dynamicAddress =
+    activeBillingGst?.address ||
+    activeCompany?.address ||
+    (tenant?.settings?.address ? `${tenant.settings.address}${tenant.settings.city ? `, ${tenant.settings.city}` : ''}${tenant.settings.state ? `, ${tenant.settings.state}` : ''}${tenant.settings.pincode ? ` - ${tenant.settings.pincode}` : ''}` : '') ||
+    (template.storeAddress && !template.storeAddress.includes('KK Street, Proddatur') ? template.storeAddress : '') ||
+    'Main Commercial Complex, Sector 4';
+
+  const dynamicPhone =
+    activeBillingGst?.phone ||
+    activeCompany?.phone ||
+    tenant?.settings?.phone ||
+    (tenant as any)?.phone ||
+    (template.storePhone && !template.storePhone.includes('+91 9849344919') ? template.storePhone : '') ||
+    '+91 98765 43210';
+
+  const dynamicEmail =
+    activeBillingGst?.email ||
+    activeCompany?.email ||
+    tenant?.settings?.email ||
+    (tenant as any)?.email ||
+    template.storeEmail ||
+    'support@businessos.ai';
+
+  const dynamicGstin =
+    (activeBillingGst?.gstin ||
+    activeCompany?.gst_number ||
+    activeCompany?.gstin ||
+    tenant?.settings?.gstin ||
+    tenant?.settings?.tax_id ||
+    (template.gstin && !template.gstin.includes('37AABCCH694G1Z4') ? template.gstin : '') ||
+    '37AAAAA0000A1Z5'
+    ).trim().toUpperCase();
+
+  const sellerGstin = dynamicGstin;
+  const sellerStateCode = sellerGstin.slice(0, 2) || (tenant?.settings?.state_code || '29');
+
+  const dynamicBank = (() => {
+    if (activeCompany?.bank_details) return activeCompany.bank_details;
+    if (activeCompany?.bank_name && activeCompany?.account_number) {
+      return `Bank: ${activeCompany.bank_name} | A/C: ${activeCompany.account_number} | IFSC: ${activeCompany.ifsc_code || ''} ${activeCompany.branch_name ? `| Branch: ${activeCompany.branch_name}` : ''}`;
+    }
+    const rawBank = (template.bankDetails || '').trim();
+    const isDummy = !rawBank ||
+      rawBank.includes('334455667788') ||
+      rawBank.includes('TEST') ||
+      rawBank.includes('000405102030') ||
+      rawBank.includes('000405103000') ||
+      rawBank.includes('502000492811') ||
+      rawBank.includes('912010023456') ||
+      rawBank.includes('SBIN0001234') ||
+      rawBank.toLowerCase().includes('dummy');
+    return isDummy ? '' : rawBank;
+  })();
+
+  const hasRealBank = Boolean(f.showBankDetails && dynamicBank && dynamicBank.length > 5);
+
+  // 1. Group / aggregate identical items
   const rawItems = invoice.items || [];
   const items = rawItems.reduce((acc: typeof rawItems, item) => {
     const pId = item.product_id || "";
@@ -145,14 +252,10 @@ export function FullInvoicePrinter({
     return acc;
   }, []);
 
-  // 2. GST State Detection (Intra-State vs Inter-State)
-  const sellerGstin = (template.gstin || '37AABCCH694G1Z4').trim().toUpperCase();
-  const sellerStateCode = sellerGstin.slice(0, 2) || '37';
-
+  // 2. GST State Detection
   const customerGstin = (invoice.customerGST || '').trim().toUpperCase();
   const customerStateCode = customerGstin.slice(0, 2);
 
-  // If customer has a different valid 2-digit state GSTIN code, or user selected IGST -> Inter-State (IGST)
   const isInterState = Boolean(
     invoice.gst_type === 'igst' ||
     invoice.is_interstate === true ||
@@ -195,23 +298,12 @@ export function FullInvoicePrinter({
   );
   const totalDiscount = Number(invoice.discount_amount !== undefined ? invoice.discount_amount : calculatedDiscount);
 
-  // Dominant statutory tax rate (e.g. 18%, 12%, 5%)
   const dominantTaxRate = items.length > 0 && items[0].tax_rate ? Number(items[0].tax_rate) : (taxableSubtotal > 0 && totalTax > 0 ? Math.round((totalTax / taxableSubtotal) * 100) : 18);
   const halfTaxRate = (dominantTaxRate / 2);
 
   const cgstAmount = invoice.cgst_amount !== undefined ? Number(invoice.cgst_amount) : (totalTax / 2);
   const sgstAmount = invoice.sgst_amount !== undefined ? Number(invoice.sgst_amount) : (totalTax / 2);
   const igstAmount = invoice.igst_amount !== undefined ? Number(invoice.igst_amount) : totalTax;
-
-  // 4. Clean Bank Details: Only display if real organization bank details exist (filter out dummy strings)
-  const rawBank = (template.bankDetails || '').trim();
-  const isDummyBank = !rawBank || 
-    rawBank.includes('334455667788') || 
-    rawBank.includes('TEST') || 
-    rawBank.includes('000405103000') || 
-    rawBank.includes('SBIN0001234') ||
-    rawBank.toLowerCase().includes('dummy');
-  const hasRealBank = Boolean(f.showBankDetails && !isDummyBank && rawBank.length > 5);
 
   const handlePrint = () => {
     document.body.classList.add('printing-a4-invoice');
@@ -230,64 +322,13 @@ export function FullInvoicePrinter({
 
   const modalJSX = (
     <>
-      {/* Dynamic Print Styles for A4 Single Page Invoice */}
       <style>{`
         @media print {
-          @page {
-            size: A4 portrait !important;
-            margin: 6mm 8mm 6mm 8mm !important;
-          }
-          html, body {
-            width: 100% !important;
-            height: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-            overflow: visible !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          body > *:not(#a4-invoice-portal),
-          #root,
-          header, nav, footer, .no-print, [data-no-print] {
-            display: none !important;
-            visibility: hidden !important;
-          }
-          #a4-invoice-portal {
-            display: block !important;
-            visibility: visible !important;
-            position: static !important;
-            width: 100% !important;
-            height: auto !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-            overflow: visible !important;
-            z-index: 999999 !important;
-          }
-          #a4-invoice-portal * {
-            visibility: visible !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          #a4-invoice-printable-area {
-            display: block !important;
-            visibility: visible !important;
-            position: static !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            height: auto !important;
-            margin: 0 !important;
-            padding: 4mm 6mm !important;
-            background: #ffffff !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            overflow: visible !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
+          @page { size: A4 portrait !important; margin: 6mm 8mm 6mm 8mm !important; }
+          html, body { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          body > *:not(#a4-invoice-portal), #root, header, nav, footer, .no-print, [data-no-print] { display: none !important; visibility: hidden !important; }
+          #a4-invoice-portal { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: transparent !important; }
+          #a4-invoice-printable-area { width: 100% !important; max-width: 100% !important; height: auto !important; margin: 0 !important; padding: 4mm 6mm !important; background: #ffffff !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; page-break-inside: avoid !important; break-inside: avoid !important; }
         }
       `}</style>
 
@@ -297,15 +338,43 @@ export function FullInvoicePrinter({
       >
         <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:static print:w-full print:max-w-none print:max-h-none print:h-auto print:overflow-visible print:shadow-none print:border-none print:rounded-none print:m-0 print:p-0 print:bg-white">
           
-          {/* Header Bar (Hidden during print) */}
-          <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+          <div className="px-6 py-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 print:hidden">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-600 rounded-xl">
                 <Printer className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-white">Tax Invoice Preview (A4 Format)</h3>
-                <p className="text-xs text-slate-300">Selected Template: <span className="font-semibold text-blue-400">{template.name || 'Stylish Theme'}</span></p>
+                <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                  Tax Invoice Preview (A4 Format)
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                    {dynamicStoreName}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-300 flex items-center gap-2 mt-0.5">
+                  Template:
+                  <select
+                    value={selectedTemplateId || template.id}
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    className="bg-slate-800 text-blue-300 border border-slate-700 rounded px-2 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  >
+                    {availableTemplates.length > 0 ? (
+                      availableTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} {t.isDefault ? '(Org Default)' : ''}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="tpl-inv-stylish">Stylish Theme (A4)</option>
+                        <option value="tpl-inv-luxury">Luxury Theme (A4)</option>
+                        <option value="tpl-inv-tally">Advanced GST (Tally) Theme (A4)</option>
+                        <option value="tpl-inv-adv-gst">Advanced GST Theme (A4)</option>
+                        <option value="tpl-inv-billbook">BillBook Theme (A4)</option>
+                        <option value="tpl-inv-modern">Modern Theme (A4)</option>
+                      </>
+                    )}
+                  </select>
+                </p>
               </div>
             </div>
 
@@ -314,7 +383,7 @@ export function FullInvoicePrinter({
                 onClick={handlePrint}
                 className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-600/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
               >
-                <Printer className="w-4 h-4" /> Save as PDF / Print A4 Invoice
+                <Printer className="w-4 h-4" /> Save / Print
               </button>
               <button
                 onClick={onClose}
@@ -325,7 +394,6 @@ export function FullInvoicePrinter({
             </div>
           </div>
 
-          {/* Printable Invoice Container */}
           <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-100 print:static print:w-full print:h-auto print:overflow-visible print:bg-white print:p-0 print:m-0">
             <div
               id="a4-invoice-printable-area"
@@ -339,26 +407,12 @@ export function FullInvoicePrinter({
                 borderTop: isStylish || isCultureUp || isCultureGod ? `6px solid ${primaryColor}` : undefined,
               }}
             >
-              {/* Culture God / UP Header tags */}
               {(isCultureGod || isCultureUp) && (
                 <div className="text-center text-[11px] font-bold tracking-widest text-amber-800 bg-amber-50 py-1 rounded-md border border-amber-200 mb-1">
                   {isCultureGod ? '॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥' : '॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥'}
                 </div>
               )}
 
-              {/* Recipient Copy Checkboxes */}
-              {(isBillBook || isAdvGst) && (
-                <div className="flex justify-between items-center text-[10px] text-slate-500 border-b border-dashed pb-1.5">
-                  <span className="font-bold text-slate-700 uppercase tracking-wider">TAX INVOICE</span>
-                  <div className="flex gap-4 font-semibold">
-                    <span>[✓] Original for Recipient</span>
-                    <span>[ ] Duplicate for Transporter</span>
-                    <span>[ ] Triplicate for Supplier</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Header Info: Store Details vs Invoice Header */}
               <div
                 className={`flex items-start justify-between border-b pb-4 z-10 relative ${
                   isTally ? 'border-slate-900 border-b-2' : 'border-slate-200'
@@ -367,27 +421,21 @@ export function FullInvoicePrinter({
               >
                 <div className="space-y-1 max-w-[60%]">
                   {f.showLogo && (
-                    <div className="flex items-center gap-2.5 mb-1">
-                      {(template.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url) ? (
-                        <img
-                          src={template.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url}
-                          alt="Logo"
-                          className="h-10 max-w-[140px] object-contain rounded-lg shadow-2xs"
-                        />
-                      ) : (
-                        <div
-                          className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-extrabold text-base shadow-sm shrink-0"
-                          style={{ backgroundColor: primaryColor }}
-                        >
-                          {template.storeName ? template.storeName.substring(0, 2).toUpperCase() : (tenant?.name ? tenant.name.substring(0, 2).toUpperCase() : 'LM')}
-                        </div>
-                      )}
+                    <div className="flex items-center gap-3 mb-1.5">
+                      <img
+                        src={dynamicLogoUrl || "/Logo.png"}
+                        alt="Organization Logo"
+                        className="h-11 max-w-[150px] object-contain rounded-lg shadow-2xs"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = "/Logo.png";
+                        }}
+                      />
                       <div>
                         <h2 className="font-extrabold text-base text-slate-900 leading-tight">
-                          {template.storeName || tenant?.name || 'BusinessOS AI'}
+                          {dynamicStoreName}
                         </h2>
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                          Authorized Business Partner
+                          Authorized Business Organization
                         </span>
                       </div>
                     </div>
@@ -395,14 +443,19 @@ export function FullInvoicePrinter({
 
                   {!f.showLogo && (
                     <h2 className="font-extrabold text-lg mb-1" style={{ color: primaryColor }}>
-                      {template.storeName || 'LazyMonkeyAI'}
+                      {dynamicStoreName}
                     </h2>
                   )}
 
-                  <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
-                    {template.storeAddress || 'KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh, 516360'}
-                  </p>
-                  <p className="text-[11px] text-slate-600 font-medium">Ph: {template.storePhone || '+91 9849344919'}</p>
+                  {dynamicAddress && (
+                    <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                      {dynamicAddress}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-600 font-medium">
+                    {dynamicPhone && <span>Ph: {dynamicPhone}</span>}
+                    {dynamicEmail && <span>Email: {dynamicEmail}</span>}
+                  </div>
                   {sellerGstin && (
                     <p className="text-[11px] font-bold text-slate-900">
                       GSTIN: {sellerGstin}
@@ -415,17 +468,12 @@ export function FullInvoicePrinter({
                     {template.headerTitle || 'TAX INVOICE'}
                   </h1>
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 inline-block text-right mt-0.5">
-                    <p className="text-xs font-bold text-slate-900">Invoice No: {invoice.invoice_number || '#INV-2026/0809'}</p>
+                    <p className="text-xs font-bold text-slate-900">Invoice No: {invoice.invoice_number || '#INV'}</p>
                     <p className="text-[11px] text-slate-600 font-medium">Date: {invoice.invoice_date || new Date().toLocaleDateString()}</p>
-                    {invoice.due_date && <p className="text-[11px] text-slate-600 font-medium">Due Date: {invoice.due_date}</p>}
-                    <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded mt-0.5 inline-block border border-emerald-200">
-                      Status: {invoice.payment_status || 'PAID'} ({invoice.payment_method || 'Cash'})
-                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* Billed To / Party Details */}
               {f.showCustomerDetails && (
                 <div
                   className={`grid grid-cols-2 gap-4 p-3 rounded-xl border z-10 relative ${
@@ -533,7 +581,7 @@ export function FullInvoicePrinter({
                         Bank & Wire Transfer Details
                       </span>
                       <p className="text-[10px] text-slate-700 font-mono leading-relaxed whitespace-pre-line">
-                        {rawBank}
+                        {dynamicBank}
                       </p>
                     </div>
                   )}

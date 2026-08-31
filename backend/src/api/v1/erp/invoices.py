@@ -297,7 +297,10 @@ async def create_invoice(
         "balance_due": actual_due,
     })
 
-    invoice = Invoice(**inv_kwargs)
+    valid_cols = {c.name for c in Invoice.__table__.columns}
+    inv_data = {k: v for k, v in inv_kwargs.items() if k in valid_cols}
+
+    invoice = Invoice(**inv_data)
     db.add(invoice)
     await db.flush()
 

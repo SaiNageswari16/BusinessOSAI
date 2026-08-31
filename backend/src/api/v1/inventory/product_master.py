@@ -846,6 +846,14 @@ async def create_product(
             prefix = re.sub(r'[^A-Za-z0-9]', '', name[:4].upper()) if name else "PROD"
             product_data["sku"] = f"SKU-{prefix}-{uuid.uuid4().hex[:6].upper()}"
 
+        if not product_data.get("barcode"):
+            from src.api.v1.inventory.identifiers import generate_tenant_barcode
+            import secrets
+            count_res = await db.execute(select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id))
+            seq = (count_res.scalar() or 0) + 1 + secrets.randbelow(50)
+            code, _ = generate_tenant_barcode(ctx.tenant_id, seq, barcode_format="EAN-13")
+            product_data["barcode"] = code
+
         product = Product(
             tenant_id=ctx.tenant_id,
             **product_data
@@ -1146,12 +1154,19 @@ async def master_import_products(
             if item_hsn in hsn_tax_map:
                 item_tax = hsn_tax_map[item_hsn]
 
+        item_barcode = (item.barcode or "").strip()
+        if not item_barcode:
+            from src.api.v1.inventory.identifiers import generate_tenant_barcode
+            import secrets
+            seq = products_created + 1 + secrets.randbelow(100)
+            item_barcode, _ = generate_tenant_barcode(tenant_id, seq, barcode_format="EAN-13")
+
         new_product = Product(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             name=item.name,
             sku=item.sku,
-            barcode=item.barcode,
+            barcode=item_barcode,
             hsn_code=item_hsn,
             short_description=item.short_description,
             long_description=item.long_description,

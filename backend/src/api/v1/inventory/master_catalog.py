@@ -2508,30 +2508,35 @@ async def get_rag_enrichment_status(
     
     is_image_paused = is_ai_image_search_paused()
     
-    total_stmt = select(func.count()).select_from(MasterCatalogProduct).where(MasterCatalogProduct.barcode != None)
-    pending_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
-        (MasterCatalogProduct.ai_search_done == False) & 
-        (MasterCatalogProduct.barcode != None) & 
-        (MasterCatalogProduct.rag_status != "processing")
-    )
-    processing_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
-        (MasterCatalogProduct.rag_status == "processing") & 
-        (MasterCatalogProduct.barcode != None)
-    )
-    completed_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
-        (MasterCatalogProduct.ai_search_done == True) & 
-        (MasterCatalogProduct.barcode != None)
-    )
-    failed_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
-        (MasterCatalogProduct.rag_status == "failed") & 
-        (MasterCatalogProduct.barcode != None)
-    )
-    
-    total = await db.scalar(total_stmt) or 0
-    pending = await db.scalar(pending_stmt) or 0
-    processing = await db.scalar(processing_stmt) or 0
-    completed = await db.scalar(completed_stmt) or 0
-    failed = await db.scalar(failed_stmt) or 0
+    try:
+        total_stmt = select(func.count()).select_from(MasterCatalogProduct).where(MasterCatalogProduct.barcode != None)
+        pending_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
+            (MasterCatalogProduct.ai_search_done == False) & 
+            (MasterCatalogProduct.barcode != None) & 
+            (MasterCatalogProduct.rag_status != "processing")
+        )
+        processing_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
+            (MasterCatalogProduct.rag_status == "processing") & 
+            (MasterCatalogProduct.barcode != None)
+        )
+        completed_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
+            (MasterCatalogProduct.ai_search_done == True) & 
+            (MasterCatalogProduct.barcode != None)
+        )
+        failed_stmt = select(func.count()).select_from(MasterCatalogProduct).where(
+            (MasterCatalogProduct.rag_status == "failed") & 
+            (MasterCatalogProduct.barcode != None)
+        )
+        
+        total = await db.scalar(total_stmt) or 0
+        pending = await db.scalar(pending_stmt) or 0
+        processing = await db.scalar(processing_stmt) or 0
+        completed = await db.scalar(completed_stmt) or 0
+        failed = await db.scalar(failed_stmt) or 0
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"RAG enrichment status query warning: {e}")
+        total, pending, processing, completed, failed = 0, 0, 0, 0, 0
     
     return {
         "total": total,

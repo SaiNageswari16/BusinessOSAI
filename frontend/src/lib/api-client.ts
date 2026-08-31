@@ -4101,7 +4101,13 @@ export const inventoryApi = {
 
   // Barcodes
   getBarcodes: (search?: string) => request<ProductBarcode[]>("GET", `/inventory/barcodes${search ? `?search=${encodeURIComponent(search)}` : ""}`),
-  generateBarcode: (productId: string) => request<any>("POST", `/inventory/barcodes/generate?product_id=${productId}`),
+  generateBarcode: (productId: string, format: "EAN-13" | "Code-128" = "EAN-13", prefix?: string, force: boolean = false) =>
+    request<any>("POST", `/inventory/barcodes/generate?product_id=${productId}&format=${format}${prefix ? `&prefix=${encodeURIComponent(prefix)}` : ""}${force ? `&force=true` : ""}`),
+  generateBulkBarcodes: (format: "EAN-13" | "Code-128" = "EAN-13", productIds?: string[]) =>
+    request<{ message: string; generated_count: number; products: ProductBarcode[] }>(
+      "POST",
+      `/inventory/barcodes/generate-bulk?format=${format}${productIds && productIds.length > 0 ? `&product_ids=${encodeURIComponent(productIds.join(","))}` : ""}`
+    ),
   batchPrintBarcodes: (productIds: string[]) => request<any>("POST", "/inventory/barcodes/batch-print", undefined, { product_ids: productIds } as Record<string, any>),
 
   // QR Codes
