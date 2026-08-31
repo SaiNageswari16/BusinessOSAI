@@ -306,6 +306,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRefreshToken(null);
     localStorage.removeItem("bos-auth");
     localStorage.removeItem("bos-active-role");
+    localStorage.removeItem("bos-tenant");
+    localStorage.removeItem("bos-branch");
+    localStorage.removeItem("bos_active_company");
+    localStorage.removeItem("bos_selected_company");
+    localStorage.removeItem("bos_active_billing_gst_details");
+    localStorage.removeItem("bos_current_tenant");
   };
 
   // Auto-refresh the access token periodically so the session never expires as

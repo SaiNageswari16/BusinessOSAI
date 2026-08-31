@@ -47,7 +47,9 @@ import {
   ShoppingCart,
   Eye,
   MoreVertical,
-  Gift
+  Gift,
+  Package,
+  Upload,
 } from "lucide-react";
 import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -1500,26 +1502,44 @@ export function PosSalesInvoice() {
     }
   };
 
-  const handleCreateNewProduct = (e: React.FormEvent) => {
+  const handleCreateNewProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProdName.trim()) return toast.error("Product name is required");
     const unitPriceVal = Number(newProdPrice) || 0;
     const mrpVal = Number(newProdMrp) || unitPriceVal;
     const wholesaleVal = Number(newProdWholesalePrice) || Number((unitPriceVal * 0.85).toFixed(2));
     const b2bVal = Number(newProdB2bPrice) || Number((unitPriceVal * 0.70).toFixed(2));
-    const generatedProduct = {
+    const skuVal = newProdSku.trim() || `SKU-${Date.now().toString().slice(-4)}`;
+    const barcodeVal = newProdBarcode.trim() || `BC-${Date.now().toString().slice(-4)}`;
+
+    const generatedProduct: any = {
       id: `prod-${Date.now()}`,
       name: newProdName.trim(),
-      sku: newProdSku.trim() || `SKU-${Date.now().toString().slice(-4)}`,
-      barcode: newProdBarcode.trim() || `BC-${Date.now().toString().slice(-4)}`,
+      sku: skuVal,
+      barcode: barcodeVal,
       category: newProdCategory,
       selling_price: unitPriceVal,
+      price: unitPriceVal,
       wholesale_price: wholesaleVal,
       b2b_price: b2bVal,
       mrp: mrpVal,
       tax_percent: Number(newProdTax) || 18,
       stock_quantity: Number(newProdStock) || 100,
+      stock: Number(newProdStock) || 100,
+      image_url: newProdImage || undefined,
     };
+
+    try {
+      if (typeof (inventoryApi as any)?.createProduct === "function") {
+        const res = await (inventoryApi as any).createProduct(generatedProduct);
+        if (res && res.id) generatedProduct.id = res.id;
+      } else if (typeof (posApi as any)?.createProduct === "function") {
+        const res = await (posApi as any).createProduct(generatedProduct);
+        if (res && res.id) generatedProduct.id = res.id;
+      }
+    } catch (err) {
+      console.warn("Could not persist product to backend API, saved locally:", err);
+    }
 
     const targetTierPrice =
       pricingMode === "B2B" ? b2bVal : pricingMode === "Wholesale" ? wholesaleVal : unitPriceVal;
@@ -1537,6 +1557,7 @@ export function PosSalesInvoice() {
         discount_value: 0,
         discount_type: "percent",
         tax_rate: generatedProduct.tax_percent,
+        is_tax_inclusive: true,
       },
     ]);
 
@@ -1548,6 +1569,7 @@ export function PosSalesInvoice() {
     setNewProdWholesalePrice("");
     setNewProdB2bPrice("");
     setNewProdMrp("");
+    setNewProdImage("");
     toast.success(`Created "${generatedProduct.name}" & added to bill!`);
   };
 

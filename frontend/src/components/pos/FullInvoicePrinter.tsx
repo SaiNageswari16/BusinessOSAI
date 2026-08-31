@@ -154,19 +154,10 @@ export function FullInvoicePrinter({
   const fontFamily = template.fontFamily || (isLuxury || isModern ? 'Outfit, sans-serif' : 'Inter, sans-serif');
 
   // ── Dynamic Multi-Tenant Organization & Template Data Resolution ─────
-  const activeBillingGst = getActiveBillingGst();
+  const tenantRaw = (tenant as any)?.raw || {};
+  const tenantSettings = (tenant as any)?.settings || tenantRaw?.settings || {};
 
-  const activeCompany = (() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = localStorage.getItem('bos_active_company') || localStorage.getItem('bos_selected_company');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  })();
-
-  // 1. Store Name / Company Name Resolution (Honor template custom name if set, else org)
+  // 1. Store Name / Company Name Resolution (Honor template custom name if set, else logged-in tenant)
   const isTemplateStoreNameCustom = Boolean(
     template.storeName &&
     template.storeName.trim() !== '' &&
@@ -176,15 +167,14 @@ export function FullInvoicePrinter({
 
   const dynamicStoreName =
     (isTemplateStoreNameCustom ? template.storeName : '') ||
-    activeBillingGst?.trade_name ||
-    activeBillingGst?.legal_name ||
-    activeCompany?.name ||
-    activeCompany?.legal_name ||
     tenant?.name ||
+    tenantRaw?.trade_name ||
+    tenantRaw?.legal_name ||
+    tenantRaw?.name ||
     template.storeName ||
     'Business Organization';
 
-  // 2. Logo Resolution (Honor template custom logo if set, else org, else default brand logo)
+  // 2. Logo Resolution (Honor template custom logo if set, else logged-in tenant's uploaded logo)
   const isTemplateLogoCustom = Boolean(
     template.logoUrl &&
     template.logoUrl.trim() !== '' &&
@@ -193,9 +183,8 @@ export function FullInvoicePrinter({
 
   const dynamicLogoUrl =
     (isTemplateLogoCustom ? template.logoUrl : '') ||
-    activeBillingGst?.logo_url ||
-    activeCompany?.logo_url ||
     tenant?.logo_url ||
+    tenantRaw?.logo_url ||
     (tenant as any)?.raw?.logo_url ||
     template.logoUrl ||
     '/Logo.png';
@@ -207,11 +196,16 @@ export function FullInvoicePrinter({
     !template.storeAddress.includes('KK Street, Proddatur')
   );
 
+  const tenantAddressFormatted = [
+    tenantRaw?.address || tenantSettings?.address,
+    tenantRaw?.city || tenantSettings?.city,
+    tenantRaw?.state || tenantSettings?.state,
+    tenantRaw?.postal_code || tenantSettings?.pincode,
+  ].filter(Boolean).join(', ');
+
   const dynamicAddress =
     (isTemplateAddressCustom ? template.storeAddress : '') ||
-    activeBillingGst?.address ||
-    activeCompany?.address ||
-    (tenant?.settings?.address ? `${tenant.settings.address}${tenant.settings.city ? `, ${tenant.settings.city}` : ''}${tenant.settings.state ? `, ${tenant.settings.state}` : ''}${tenant.settings.pincode ? ` - ${tenant.settings.pincode}` : ''}` : '') ||
+    tenantAddressFormatted ||
     '';
 
   // 4. Phone Resolution
@@ -223,18 +217,16 @@ export function FullInvoicePrinter({
 
   const dynamicPhone =
     (isTemplatePhoneCustom ? template.storePhone : '') ||
-    activeBillingGst?.phone ||
-    activeCompany?.phone ||
-    tenant?.settings?.phone ||
+    tenantRaw?.phone ||
+    tenantSettings?.phone ||
     (tenant as any)?.phone ||
     '';
 
   // 5. Email Resolution
   const dynamicEmail =
-    template.storeEmail ||
-    activeBillingGst?.email ||
-    activeCompany?.email ||
-    tenant?.settings?.email ||
+    (template.storeEmail && !template.storeEmail.includes('support@businessos.ai') ? template.storeEmail : '') ||
+    tenantRaw?.email ||
+    tenantSettings?.email ||
     (tenant as any)?.email ||
     '';
 
@@ -248,16 +240,15 @@ export function FullInvoicePrinter({
   const dynamicGstin =
     (
       (isTemplateGstinCustom ? template.gstin : '') ||
-      activeBillingGst?.gstin ||
-      activeCompany?.gst_number ||
-      activeCompany?.gstin ||
-      tenant?.settings?.gstin ||
-      tenant?.settings?.tax_id ||
+      tenantRaw?.gst_number ||
+      tenantRaw?.gstin ||
+      tenantSettings?.gstin ||
+      tenantSettings?.tax_id ||
       ''
     ).trim().toUpperCase();
 
   const sellerGstin = dynamicGstin;
-  const sellerStateCode = sellerGstin.slice(0, 2) || (tenant?.settings?.state_code || '29');
+  const sellerStateCode = sellerGstin.slice(0, 2) || (tenantSettings?.state_code || tenantRaw?.state_code || '29');
 
   // 7. Bank Details Resolution
   const dynamicBank = (() => {
@@ -273,9 +264,10 @@ export function FullInvoicePrinter({
       rawTplBank.toLowerCase().includes('dummy');
 
     if (!isTplDummy && rawTplBank.length > 5) return rawTplBank;
-    if (activeCompany?.bank_details) return activeCompany.bank_details;
-    if (activeCompany?.bank_name && activeCompany?.account_number) {
-      return `Bank: ${activeCompany.bank_name} | A/C: ${activeCompany.account_number} | IFSC: ${activeCompany.ifsc_code || ''} ${activeCompany.branch_name ? `| Branch: ${activeCompany.branch_name}` : ''}`;
+    if (tenantRaw?.bank_details) return tenantRaw.bank_details;
+    if (tenantSettings?.bank_details) return tenantSettings.bank_details;
+    if (tenantRaw?.bank_name && tenantRaw?.account_number) {
+      return `Bank: ${tenantRaw.bank_name} | A/C: ${tenantRaw.account_number} | IFSC: ${tenantRaw.ifsc_code || ''} ${tenantRaw.branch_name ? `| Branch: ${tenantRaw.branch_name}` : ''}`;
     }
     return '';
   })();

@@ -69,9 +69,29 @@ function getAuthIsPlatformAdmin(): boolean {
   }
 }
 
+function getAuthUserTenantId(): string | null {
+  try {
+    const stored = localStorage.getItem("bos-auth");
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as { user?: { tenantId?: string; tenant_id?: string } };
+    return parsed.user?.tenantId || (parsed.user as any)?.tenant_id || null;
+  } catch {
+    return null;
+  }
+}
 
+function getAuthUserTenantName(): string | null {
+  try {
+    const stored = localStorage.getItem("bos-auth");
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as { user?: { tenantName?: string; tenant_name?: string } };
+    return parsed.user?.tenantName || (parsed.user as any)?.tenant_name || null;
+  } catch {
+    return null;
+  }
+}
 
-export function TenantProvider({ children }: { children: React.ReactNode }) {
+export function TenantProvider({ children }: { children: ReactNode }) {
     const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [companiesList, setCompaniesList] = useState<TenantCompany[]>([]);
@@ -124,7 +144,10 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const loadData = useCallback(async () => {
     const token = getAuthToken();
     const slug = getAuthUserSlug();
+    const authTenantId = getAuthUserTenantId();
+    const authTenantName = getAuthUserTenantName();
     const isPlatformAdminUser = getAuthIsPlatformAdmin();
+
     if (!token) {
       // Reset to mock data if not logged in
       const mappedMocks = mockCompanies.map(c => ({
@@ -141,11 +164,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       let mappedCompanies: TenantCompany[] = [];
-      // Platform admin = strictly isPlatformAdminUser (user.isPlatformAdmin === true or email === "venaticfungus@gmail.com")
       const isPlatformAdmin = isPlatformAdminUser;
-
-
-
 
       if (isPlatformAdmin) {
         // Fetch all client tenant environments for SaaS impersonation switcher
@@ -167,6 +186,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
               name: t.name,
               logo_initials: t.name.slice(0, 2).toUpperCase(),
               logo_url: t.logo_url || null,
+              ...(t.settings || {}),
             } as any
           }));
         }
@@ -199,10 +219,24 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setCompaniesList(mappedCompanies);
       setBranchesList(mappedBranches);
 
-      // Auto-select first real company if the current selected one is mock/invalid
-      const currentIsValid = mappedCompanies.some(c => c.id === tenant.id);
-      if (!currentIsValid && mappedCompanies.length > 0) {
-        setTenant(mappedCompanies[0]);
+      // Prioritize matching authenticated user's own tenant
+      const userTenant = mappedCompanies.find(
+        c => (authTenantId && c.id === authTenantId) ||
+             (slug && (c.raw as any)?.slug === slug) ||
+             (authTenantName && c.name.toLowerCase() === authTenantName.toLowerCase())
+      );
+
+      const currentStoredValid = mappedCompanies.find(c => c.id === tenant.id);
+
+      if (userTenant && (!currentStoredValid || tenant.id.startsWith("c"))) {
+        setTenant(userTenant);
+      } else if (currentStoredValid) {
+        // Sync any updated properties (like newly uploaded logo_url or name)
+        if (currentStoredValid.logo_url !== tenant.logo_url || currentStoredValid.name !== tenant.name) {
+          setTenant(currentStoredValid);
+        }
+      } else if (mappedCompanies.length > 0) {
+        setTenant(userTenant || mappedCompanies[0]);
       }
 
       // Auto-select first branch if none selected
@@ -216,7 +250,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [tenant.id, activeBranch?.id, setTenant, setActiveBranch]);
+  }, [tenant.id, tenant.logo_url, tenant.name, activeBranch?.id, setTenant, setActiveBranch]);
 
   useEffect(() => {
     void loadData();

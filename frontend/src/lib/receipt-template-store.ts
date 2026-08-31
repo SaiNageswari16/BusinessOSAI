@@ -102,57 +102,28 @@ export interface ActiveGstDetails {
 export function getActiveBillingGst(): ActiveGstDetails | null {
   if (typeof window === 'undefined') return null;
   try {
-    // 1. Explicitly stored active billing GST object
-    const storedGstRaw = localStorage.getItem('bos_active_billing_gst_details');
-    if (storedGstRaw) {
-      const parsed = JSON.parse(storedGstRaw);
-      if (parsed && parsed.gstin) return parsed;
-    }
-
-    // 2. Active Company in localStorage
-    const activeCompanyRaw = localStorage.getItem('bos_active_company') || localStorage.getItem('bos_selected_company');
-    if (activeCompanyRaw) {
-      const comp = JSON.parse(activeCompanyRaw);
-      if (comp) {
-        const activeReg = comp.gst_registrations?.find((r: any) => r.is_primary) || comp.gst_registrations?.[0];
-        const gstin = activeReg?.gstin || comp.gst_number;
-        if (gstin) {
-          const stateCode = activeReg?.state_code || gstin.slice(0, 2);
-          return {
-            gstin,
-            trade_name: activeReg?.trade_name || comp.name || 'Organization',
-            legal_name: comp.legal_name || comp.name || 'Organization',
-            state_code: stateCode,
-            state_name: activeReg?.state_name || comp.state || 'State',
-            address: activeReg?.address || comp.address || '',
-            phone: comp.phone || '',
-            email: comp.email || '',
-            cin: comp.registration_number || '',
-            pan: comp.pan_number || '',
-            logo_url: comp.logo_url || '',
-          };
-        }
-      }
-    }
-
-    // 3. Tenant in localStorage
-    const tenantRaw = localStorage.getItem('bos_current_tenant');
+    // 1. Active Tenant from authenticated session (bos-tenant)
+    const tenantRaw = localStorage.getItem('bos-tenant');
     if (tenantRaw) {
       const tenant = JSON.parse(tenantRaw);
-      if (tenant?.settings?.gstin || tenant?.settings?.gst_number || tenant?.name) {
-        const gstin = tenant.settings?.gstin || tenant.settings?.gst_number || '36AAAAA0000A1Z5';
+      if (tenant && (tenant.name || tenant.id)) {
+        const raw = tenant.raw || {};
+        const settings = raw.settings || tenant.settings || {};
+        const gstin = raw.gstin || raw.gst_number || settings.gstin || settings.gst_number || '';
+        const stateCode = gstin ? gstin.slice(0, 2) : (settings.state_code || raw.state_code || '29');
+
         return {
           gstin,
-          trade_name: tenant.name || 'Organization',
-          legal_name: tenant.legal_name || tenant.name || 'Organization',
-          state_code: gstin.slice(0, 2),
-          state_name: tenant.settings?.state || 'State',
-          address: tenant.settings?.address || '',
-          phone: tenant.settings?.phone || '',
-          email: tenant.settings?.email || '',
-          cin: tenant.settings?.cin || '',
-          pan: tenant.settings?.pan || '',
-          logo_url: tenant.logo_url || tenant.raw?.logo_url || '',
+          trade_name: tenant.name || raw.name || raw.trade_name || 'Organization',
+          legal_name: raw.legal_name || tenant.name || 'Organization',
+          state_code: stateCode,
+          state_name: settings.state || raw.state || 'State',
+          address: raw.address || settings.address || '',
+          phone: raw.phone || settings.phone || tenant.phone || '',
+          email: raw.email || settings.email || tenant.email || '',
+          cin: raw.cin || raw.registration_number || settings.cin || '',
+          pan: raw.pan || raw.pan_number || settings.pan || '',
+          logo_url: tenant.logo_url || raw.logo_url || null,
         };
       }
     }
