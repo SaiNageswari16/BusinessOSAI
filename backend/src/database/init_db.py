@@ -122,7 +122,14 @@ async def init_database() -> None:
         "ALTER TABLE erp_product_categories ALTER COLUMN image_url TYPE TEXT;",
         "ALTER TABLE erp_brands ALTER COLUMN image_url TYPE TEXT;",
         "ALTER TABLE erp_product_images ALTER COLUMN image_url TYPE TEXT;",
-        "ALTER TABLE erp_master_catalog ALTER COLUMN image_url TYPE TEXT;"
+        "ALTER TABLE erp_master_catalog ALTER COLUMN image_url TYPE TEXT;",
+        "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS opportunity_id UUID REFERENCES crm_opportunities(id) ON DELETE CASCADE;",
+        "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS call_disposition VARCHAR(100);",
+        "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS call_duration_minutes INTEGER DEFAULT 0;",
+        "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS customer_response TEXT;",
+        "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();",
+        "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
+        "ALTER TABLE crm_lead_activities ALTER COLUMN lead_id DROP NOT NULL;"
     ]
 
     for stmt in migration_statements:
