@@ -6,13 +6,14 @@ import {
   ExternalLink, Edit2, ShieldCheck, CreditCard, ChevronRight, LayoutGrid, List,
   Users, Sparkles, X, Save, Loader2, Trash2, AlertCircle, Globe, FileText, CheckCircle,
   Truck, Receipt, KeyRound, Server, Activity, ArrowRight, ShieldAlert, CheckCircle2,
-  Copy, RefreshCw, Layers, Shield, Upload
+  Copy, RefreshCw, Layers, Shield, Upload, Smartphone, Lock, Clock, Zap
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   companiesApi,
   branchesApi,
   taxConfigurationsApi,
+  gstFilingApi,
   type Company,
   type Branch,
   type TaxConfiguration,
@@ -59,6 +60,15 @@ function CompanyFormModal({
   const [saving, setSaving] = useState(false);
   const [testingModule, setTestingModule] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string; token_preview?: string }>>({});
+
+  // ── GST Portal Mobile OTP & Session State ──────────────────────────────
+  const [gstSession, setGstSession] = useState<{ is_active: boolean; remaining_minutes: number; expires_at: string | null } | null>(null);
+  const [requestingGstOtp, setRequestingGstOtp] = useState(false);
+  const [verifyingGstOtp, setVerifyingGstOtp] = useState(false);
+  const [gstOtpInput, setGstOtpInput] = useState("");
+  const [gstOtpTxn, setGstOtpTxn] = useState("");
+  const [gstOtpSent, setGstOtpSent] = useState(false);
+  const [gstOtpCountdown, setGstOtpCountdown] = useState(0);
 
   const [form, setForm] = useState({
     name: company?.name ?? "",
@@ -237,6 +247,79 @@ function CompanyFormModal({
       toast.error(`${module.toUpperCase()} Error: ${msg}`);
     } finally {
       setTestingModule(null);
+    }
+  };
+
+  useEffect(() => {
+    if (activeModalTab === "gsp") {
+      gstFilingApi.getSessionStatus().then((res) => {
+        if (res) setGstSession(res);
+      }).catch(() => {});
+    }
+  }, [activeModalTab]);
+
+  useEffect(() => {
+    let t: any;
+    if (gstOtpCountdown > 0) {
+      t = setInterval(() => setGstOtpCountdown((p) => p - 1), 1000);
+    }
+    return () => clearInterval(t);
+  }, [gstOtpCountdown]);
+
+  const handleRequestGstOtp = async () => {
+    const gstinToUse = gspCreds.gst?.gstin || form.gst_number || gstRegistrations[0]?.gstin;
+    if (!gstinToUse) {
+      toast.error("Please enter a valid GSTIN before requesting OTP.");
+      return;
+    }
+    setRequestingGstOtp(true);
+    try {
+      const res = await gstFilingApi.requestOtp({
+        gstin: gstinToUse,
+        username: gspCreds.gst?.username || form.name,
+      });
+      if (res && res.success) {
+        setGstOtpTxn(res.txn || "");
+        setGstOtpSent(true);
+        setGstOtpCountdown(600); // 10 minutes
+        toast.success(res.message || "OTP triggered from GSTN to registered mobile & email!");
+      } else {
+        toast.error(res?.message || "Failed to trigger GST Portal OTP");
+      }
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || "Failed to send GSTN OTP");
+    } finally {
+      setRequestingGstOtp(false);
+    }
+  };
+
+  const handleVerifyGstOtp = async () => {
+    if (!gstOtpInput || gstOtpInput.trim().length !== 6) {
+      toast.error("Please enter the 6-digit numeric OTP sent by GSTN.");
+      return;
+    }
+    const gstinToUse = gspCreds.gst?.gstin || form.gst_number || gstRegistrations[0]?.gstin;
+    setVerifyingGstOtp(true);
+    try {
+      const res = await gstFilingApi.verifyOtp({
+        otp: gstOtpInput.trim(),
+        txn: gstOtpTxn,
+        gstin: gstinToUse,
+        username: gspCreds.gst?.username || form.name,
+      });
+      if (res && res.success) {
+        toast.success("GST Portal 6-Hour Session Established & Verified!");
+        setGstOtpSent(false);
+        setGstOtpInput("");
+        const updatedSession = await gstFilingApi.getSessionStatus();
+        if (updatedSession) setGstSession(updatedSession);
+      } else {
+        toast.error(res?.message || "OTP verification failed");
+      }
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || "OTP verification failed");
+    } finally {
+      setVerifyingGstOtp(false);
     }
   };
 
@@ -899,18 +982,89 @@ function CompanyFormModal({
                       <p className="text-[10px] text-muted-foreground">GSTR-1, GSTR-2B & GSTR-3B GSTN Access</p>
                     </div>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={testingModule === "gst"}
-                    onClick={() => handleTestConnection("gst")}
-                    className="h-7 text-xs font-bold gap-1 px-2.5 border-purple-200 text-purple-600 hover:bg-purple-50"
-                  >
-                    {testingModule === "gst" ? <Loader2 className="size-3 animate-spin" /> : <Activity className="size-3" />}
-                    Test GST Returns
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={testingModule === "gst"}
+                      onClick={() => handleTestConnection("gst")}
+                      className="h-7 text-xs font-bold gap-1 px-2.5 border-purple-200 text-purple-600 hover:bg-purple-50"
+                    >
+                      {testingModule === "gst" ? <Loader2 className="size-3 animate-spin" /> : <Activity className="size-3" />}
+                      Test API
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={requestingGstOtp}
+                      onClick={handleRequestGstOtp}
+                      className="h-7 text-xs font-bold gap-1 px-3 bg-purple-600 hover:bg-purple-700 text-white shadow-xs"
+                    >
+                      {requestingGstOtp ? <Loader2 className="size-3 animate-spin" /> : <Smartphone className="size-3" />}
+                      Request Mobile OTP
+                    </Button>
+                  </div>
                 </div>
+
+                {/* Live GST Portal 6-Hour Session Status Badge */}
+                <div className={cn(
+                  "p-2.5 rounded-lg text-xs flex items-center justify-between border",
+                  gstSession?.is_active
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-amber-50 text-amber-800 border-amber-200"
+                )}>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("size-2 rounded-full", gstSession?.is_active ? "bg-emerald-500 animate-pulse" : "bg-amber-500")} />
+                    <span className="font-semibold text-[11px]">
+                      {gstSession?.is_active
+                        ? `GST Portal Session Active (Valid for ${Math.floor((gstSession.remaining_minutes || 0) / 60)}h ${(gstSession.remaining_minutes || 0) % 60}m)`
+                        : "GST Portal Session Inactive (Mobile OTP auth required for live return uploads)"}
+                    </span>
+                  </div>
+                  {gstSession?.token_preview && (
+                    <span className="font-mono text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                      SEK: {gstSession.token_preview}
+                    </span>
+                  )}
+                </div>
+
+                {/* Inline 6-Digit OTP Verification Box */}
+                {gstOtpSent && (
+                  <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2.5 animate-in fade-in">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-purple-950 flex items-center gap-1.5">
+                        <KeyRound className="size-3.5 text-purple-600" /> Enter 6-Digit OTP from GSTN Portal:
+                      </span>
+                      {gstOtpCountdown > 0 && (
+                        <span className="font-mono font-bold text-[10px] text-purple-700 flex items-center gap-1">
+                          <Clock className="size-3" /> {Math.floor(gstOtpCountdown / 60)}:{(gstOtpCountdown % 60).toString().padStart(2, "0")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        maxLength={6}
+                        autoFocus
+                        value={gstOtpInput}
+                        onChange={(e) => setGstOtpInput(e.target.value.replace(/\D/g, ""))}
+                        placeholder="• • • • • •"
+                        className="flex-1 text-center tracking-[0.5em] text-lg font-mono font-black h-9 rounded-lg border-2 border-purple-300 bg-white text-purple-950 outline-none focus:ring-2 focus:ring-purple-400"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={verifyingGstOtp || gstOtpInput.length !== 6}
+                        onClick={handleVerifyGstOtp}
+                        className="h-9 px-4 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold gap-1.5 shadow-xs"
+                      >
+                        {verifyingGstOtp ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
+                        Verify & Authorize (6h)
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {testResults.gst && (
                   <div className={cn(
@@ -1058,13 +1212,14 @@ export function CompanyManagement() {
   const [editCompany, setEditCompany] = useState<Company | null>(null);
   const [deleteCompany, setDeleteCompany] = useState<Company | null>(null);
   const [activeTab, setActiveTab] = useState("Overview");
+  const [gstSessionStatus, setGstSessionStatus] = useState<{ is_active: boolean; remaining_minutes: number } | null>(null);
 
   const [companyBranches, setCompanyBranches] = useState<Branch[]>([]);
   const [companyTaxes, setCompanyTaxes] = useState<TaxConfiguration[]>([]);
   const [totalUsers, setTotalUsers] = useState(0);
   const [subLoading, setSubLoading] = useState(false);
 
-  const [activeBillingGst, setActiveBillingGstState] = useState<ActiveGstDetails | null>(() => getActiveBillingGst());
+  const [activeBillingGstState, setActiveBillingGstState] = useState<ActiveGstDetails | null>(() => getActiveBillingGst());
 
   const activeCompany = companies.find((c) => c.id === activeCompanyId) ?? companies[0] ?? null;
 
@@ -1198,6 +1353,12 @@ export function CompanyManagement() {
       }, tid);
     }
   }, [activeCompany, tenant?.id]);
+
+  useEffect(() => {
+    gstFilingApi.getSessionStatus().then((res) => {
+      if (res) setGstSessionStatus(res);
+    }).catch(() => {});
+  }, [activeTab, tenant?.id, showForm]);
 
   useEffect(() => {
     if (!activeCompany) return;
@@ -1835,6 +1996,29 @@ export function CompanyManagement() {
                               <div>
                                 <span className="text-[10px] text-muted-foreground block">GSTN Username:</span>
                                 <span className="font-semibold">{activeCompany.gsp_credentials?.gst?.username || "Default"}</span>
+                              </div>
+                              <div className="pt-2 border-t flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={cn("size-2 rounded-full", gstSessionStatus?.is_active ? "bg-emerald-500 animate-pulse" : "bg-amber-500")} />
+                                  <span className="text-[10px] font-bold text-muted-foreground">
+                                    {gstSessionStatus?.is_active
+                                      ? `Active (${Math.floor((gstSessionStatus.remaining_minutes || 0) / 60)}h ${(gstSessionStatus.remaining_minutes || 0) % 60}m)`
+                                      : "Session Inactive"}
+                                  </span>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditCompany(activeCompany);
+                                    setFormInitialTab("gsp");
+                                    setShowForm(true);
+                                  }}
+                                  className="h-6 text-[10px] font-bold px-2 text-purple-700 border-purple-200 hover:bg-purple-50 gap-1"
+                                >
+                                  <Smartphone className="size-3" />
+                                  {gstSessionStatus?.is_active ? "Re-auth" : "Authorize OTP"}
+                                </Button>
                               </div>
                             </div>
                           </Card>
