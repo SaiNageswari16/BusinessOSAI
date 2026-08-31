@@ -129,7 +129,8 @@ async def init_database() -> None:
         "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS customer_response TEXT;",
         "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();",
         "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
-        "ALTER TABLE crm_lead_activities ALTER COLUMN lead_id DROP NOT NULL;"
+        "ALTER TABLE crm_lead_activities ALTER COLUMN lead_id DROP NOT NULL;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS addresses JSONB DEFAULT '[]'::jsonb;"
     ]
 
     for stmt in migration_statements:

@@ -17,11 +17,10 @@ import {
   Download,
   Upload,
 } from "lucide-react";
-import { toast } from "sonner";
-import { crmCustomersApi, inventoryApi, type CrmCustomer } from "@/lib/api-client";
+import { crmCustomersApi, inventoryApi, type CrmCustomer, type CustomerAddressItem } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
-import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock } from "lucide-react";
+import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock, Trash2, Check } from "lucide-react";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { AiCallingModal } from "./AiCallingModal";
 import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
@@ -42,6 +41,22 @@ const CUSTOMER_TYPES = [
 const GENDERS = ["Male", "Female", "Other", "Prefer not to say"] as const;
 
 const STATUSES = ["Active", "Inactive", "Blocked", "Pending"] as const;
+
+const createBlankAddress = (index: number = 1, tag: string = "Head Office"): CustomerAddressItem => ({
+  id: `addr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  tag,
+  type: index === 1 ? "both" : "shipping",
+  street: "",
+  city: "",
+  state: "",
+  pincode: "",
+  country: "India",
+  gst_number: "",
+  contact_person: "",
+  contact_phone: "",
+  is_default_billing: index === 1,
+  is_default_shipping: index === 1,
+});
 
 const blankCustomer: Record<string, unknown> = {
   name: "",
@@ -69,6 +84,7 @@ const blankCustomer: Record<string, unknown> = {
   gender: "",
   preferred_language: "English",
   credit_limit: 0,
+  addresses: [createBlankAddress(1, "Head Office / Billing")],
 };
 
 export function Customers() {
@@ -213,6 +229,64 @@ export function Customers() {
 
   const openEdit = (customer: CrmCustomer) => {
     setEditingId(customer.id);
+    
+    // Normalize address list from customer object
+    let loadedAddresses: CustomerAddressItem[] = [];
+    if (Array.isArray(customer.addresses) && customer.addresses.length > 0) {
+      loadedAddresses = customer.addresses.map((a, idx) => ({
+        id: a.id || `addr-${idx + 1}-${Date.now()}`,
+        tag: a.tag || (idx === 0 ? "Head Office" : `Branch ${idx + 1}`),
+        type: a.type || "both",
+        street: a.street || "",
+        city: a.city || customer.city || "",
+        state: a.state || customer.state || "",
+        pincode: a.pincode || customer.postal_code || customer.pincode || "",
+        country: a.country || customer.country || "India",
+        gst_number: a.gst_number || "",
+        contact_person: a.contact_person || customer.contact_person || "",
+        contact_phone: a.contact_phone || customer.phone || "",
+        is_default_billing: a.is_default_billing ?? (idx === 0),
+        is_default_shipping: a.is_default_shipping ?? (idx === 0),
+      }));
+    } else if (customer.billing_address || customer.address || customer.shipping_address) {
+      const bAddr = customer.billing_address || customer.address || "";
+      const sAddr = customer.shipping_address || "";
+      loadedAddresses.push({
+        id: "addr-1",
+        tag: "Head Office / Billing",
+        type: sAddr && sAddr !== bAddr ? "billing" : "both",
+        street: bAddr,
+        city: customer.city || "",
+        state: customer.state || "",
+        pincode: customer.postal_code || customer.pincode || "",
+        country: customer.country || "India",
+        gst_number: customer.gst_number || "",
+        contact_person: customer.contact_person || "",
+        contact_phone: customer.phone || "",
+        is_default_billing: true,
+        is_default_shipping: !sAddr || sAddr === bAddr,
+      });
+      if (sAddr && sAddr !== bAddr) {
+        loadedAddresses.push({
+          id: "addr-2",
+          tag: "Warehouse / Delivery Site",
+          type: "shipping",
+          street: sAddr,
+          city: customer.city || "",
+          state: customer.state || "",
+          pincode: customer.postal_code || customer.pincode || "",
+          country: customer.country || "India",
+          gst_number: customer.gst_number || "",
+          contact_person: customer.contact_person || "",
+          contact_phone: customer.phone || "",
+          is_default_billing: false,
+          is_default_shipping: true,
+        });
+      }
+    } else {
+      loadedAddresses = [createBlankAddress(1, "Head Office / Billing")];
+    }
+
     setForm({
       name: customer.name,
       email: customer.email || "",
@@ -239,14 +313,89 @@ export function Customers() {
       gender: customer.gender || "",
       preferred_language: customer.preferred_language || "English",
       credit_limit: customer.credit_limit,
+      addresses: loadedAddresses,
     });
     setShowForm(true);
+  };
+
+  const handleAddAddress = () => {
+    const currList = (form.addresses as CustomerAddressItem[]) || [];
+    const nextIdx = currList.length + 1;
+    const newAddr = createBlankAddress(nextIdx, `Location / Branch ${nextIdx}`);
+    setForm(prev => ({
+      ...prev,
+      addresses: [...currList, newAddr],
+    }));
+  };
+
+  const handleRemoveAddress = (id: string) => {
+    const currList = (form.addresses as CustomerAddressItem[]) || [];
+    if (currList.length <= 1) {
+      toast.error("Customer must have at least one address location");
+      return;
+    }
+    const updated = currList.filter(a => a.id !== id);
+    // If we removed default billing or shipping, ensure first one becomes default
+    if (!updated.some(a => a.is_default_billing)) updated[0].is_default_billing = true;
+    if (!updated.some(a => a.is_default_shipping)) updated[0].is_default_shipping = true;
+    setForm(prev => ({ ...prev, addresses: updated }));
+  };
+
+  const handleUpdateAddressItem = (id: string, field: keyof CustomerAddressItem, val: any) => {
+    const currList = (form.addresses as CustomerAddressItem[]) || [];
+    const updated = currList.map(item => {
+      if (item.id !== id) return item;
+      return { ...item, [field]: val };
+    });
+    setForm(prev => ({ ...prev, addresses: updated }));
+  };
+
+  const handleAddressPincodeLookup = async (id: string, val: string) => {
+    handleUpdateAddressItem(id, "pincode", val);
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (clean.length === 6) {
+      const res = await lookupPincode(clean);
+      if (res) {
+        const currList = (form.addresses as CustomerAddressItem[]) || [];
+        const updated = currList.map(item => {
+          if (item.id !== id) return item;
+          return {
+            ...item,
+            pincode: clean,
+            city: res.city || item.city,
+            state: res.state || item.state,
+            country: res.country || item.country || "India",
+            street: item.street || res.area || "",
+          };
+        });
+        setForm(prev => ({ ...prev, addresses: updated }));
+      }
+    }
+  };
+
+  const handleSetDefaultAddress = (id: string, defType: "billing" | "shipping") => {
+    const currList = (form.addresses as CustomerAddressItem[]) || [];
+    const updated = currList.map(item => {
+      if (defType === "billing") {
+        return { ...item, is_default_billing: item.id === id };
+      } else {
+        return { ...item, is_default_shipping: item.id === id };
+      }
+    });
+    setForm(prev => ({ ...prev, addresses: updated }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
+      const addrList = (form.addresses as CustomerAddressItem[]) || [];
+      const defaultBilling = addrList.find(a => a.is_default_billing) || addrList[0];
+      const defaultShipping = addrList.find(a => a.is_default_shipping) || addrList.find(a => a.type === "shipping" || a.type === "both") || addrList[0];
+
+      const fullBilling = [defaultBilling?.street, defaultBilling?.city, defaultBilling?.state, defaultBilling?.pincode].filter(Boolean).join(", ");
+      const fullShipping = [defaultShipping?.street, defaultShipping?.city, defaultShipping?.state, defaultShipping?.pincode].filter(Boolean).join(", ");
+
       const payload = {
         name: form.name,
         email: form.email || null,
@@ -254,18 +403,19 @@ export function Customers() {
         alternate_phone: form.alternate_phone || null,
         whatsapp_number: form.whatsapp_number || null,
         company_name: form.company_name || null,
-        contact_person: form.contact_person || null,
+        contact_person: form.contact_person || defaultBilling?.contact_person || null,
         customer_type: form.customer_type,
         status: form.status,
         source: form.source || null,
-        address: form.address || null,
-        billing_address: form.address || null,
-        shipping_address: form.isShippingSameAsBilling ? (form.address || null) : (form.shipping_address || null),
-        city: form.city || null,
-        state: form.state || null,
-        country: form.country || null,
-        postal_code: form.postal_code || form.pincode || null,
-        gst_number: form.gst_number || null,
+        addresses: addrList,
+        address: defaultBilling?.street || fullBilling || (form.address as string) || null,
+        billing_address: defaultBilling?.street || fullBilling || (form.address as string) || null,
+        shipping_address: defaultShipping?.street || fullShipping || (form.shipping_address as string) || null,
+        city: defaultBilling?.city || (form.city as string) || null,
+        state: defaultBilling?.state || (form.state as string) || null,
+        country: defaultBilling?.country || (form.country as string) || "India",
+        postal_code: defaultBilling?.pincode || form.postal_code || form.pincode || null,
+        gst_number: defaultBilling?.gst_number || form.gst_number || null,
         pan_number: form.pan_number || null,
         date_of_birth: form.date_of_birth || null,
         anniversary_date: form.anniversary_date || null,
@@ -278,17 +428,17 @@ export function Customers() {
         const updated = await crmCustomersApi.update(editingId, payload);
         setCustomers((curr) => curr.map((c) => (c.id === editingId ? updated : c)));
         if (selectedCustomer?.id === editingId) setSelectedCustomer(updated);
-        toast.success("Customer updated");
+        toast.success("Customer and addresses updated successfully");
       } else {
         const created = await crmCustomersApi.create(payload);
         setCustomers((curr) => [created, ...curr]);
         setTotal((t) => t + 1);
-        toast.success("Customer created");
+        toast.success("Customer created with multi-location addresses");
       }
       setShowForm(false);
       resetForm();
     } catch {
-      toast.error(editingId ? "Could not update customer" : "Could not create customer");
+      toast.error("Failed to save customer");
     } finally {
       setSaving(false);
     }
@@ -383,37 +533,141 @@ export function Customers() {
             </div>
           </FieldSection>
 
-          {/* Address */}
-          <FieldSection label="Address">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input
-                label={`Pincode ${isLookingUpPincode ? "(Detecting...)" : ""}`}
-                value={form.postal_code as string}
-                onChange={handlePincodeChange}
-                placeholder="e.g. 560001"
-              />
-              <Input label="City" value={form.city as string} onChange={(v) => setForm({ ...form, city: v })} />
-              <Input label="State" value={form.state as string} onChange={(v) => setForm({ ...form, state: v })} />
-              <Input label="Country" value={form.country as string} onChange={(v) => setForm({ ...form, country: v })} />
-              <Input label="Billing Address / Area" value={form.address as string} onChange={(v) => setForm({ ...form, address: v })} placeholder="Street address, building..." />
-            </div>
-
-            <div className="flex items-center gap-2 mt-4 mb-2">
-              <input 
-                type="checkbox" 
-                id="sameAsBilling" 
-                checked={form.isShippingSameAsBilling as boolean} 
-                onChange={(e) => setForm({...form, isShippingSameAsBilling: e.target.checked})}
-                className="rounded border-border text-primary focus:ring-primary"
-              />
-              <label htmlFor="sameAsBilling" className="text-xs cursor-pointer text-muted-foreground">Shipping address same as Billing address</label>
-            </div>
-            
-            {!(form.isShippingSameAsBilling as boolean) && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Input label="Shipping Address" value={(form.shipping_address as string) || ""} onChange={(v) => setForm({ ...form, shipping_address: v })} />
+          {/* Address Book & Locations */}
+          <FieldSection label={`Address Book & Locations (${((form.addresses as CustomerAddressItem[]) || []).length})`}>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Define multiple branch, warehouse, and billing locations for this customer.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAddAddress}
+                  className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <Plus className="size-3.5" /> Add Location / Address
+                </button>
               </div>
-            )}
+
+              {((form.addresses as CustomerAddressItem[]) || []).map((addr, idx) => (
+                <div key={addr.id || idx} className="rounded-xl border border-border/80 bg-background/60 p-4 space-y-3.5 shadow-2xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="size-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        value={addr.tag || ""}
+                        onChange={(e) => handleUpdateAddressItem(addr.id, "tag", e.target.value)}
+                        placeholder="Location Tag (e.g. Head Office, Warehouse 1, Factory)"
+                        className="text-xs font-bold text-foreground bg-transparent border-b border-dashed border-border px-1 py-0.5 focus:outline-none focus:border-primary"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={addr.type || "both"}
+                        onChange={(e) => handleUpdateAddressItem(addr.id, "type", e.target.value)}
+                        className="text-[11px] font-semibold bg-muted/60 border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none"
+                      >
+                        <option value="both">Both (Billing & Shipping)</option>
+                        <option value="billing">Billing Only</option>
+                        <option value="shipping">Shipping Only</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSetDefaultAddress(addr.id, "billing")}
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md border flex items-center gap-1 transition ${
+                          addr.is_default_billing
+                            ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/30"
+                            : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
+                        }`}
+                        title="Set this address as Default Billing"
+                      >
+                        {addr.is_default_billing ? <Check className="size-3" /> : null}
+                        Default Billing
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSetDefaultAddress(addr.id, "shipping")}
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md border flex items-center gap-1 transition ${
+                          addr.is_default_shipping
+                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                            : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
+                        }`}
+                        title="Set this address as Default Shipping"
+                      >
+                        {addr.is_default_shipping ? <Check className="size-3" /> : null}
+                        Default Shipping
+                      </button>
+
+                      {((form.addresses as CustomerAddressItem[]) || []).length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAddress(addr.id)}
+                          className="p-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-md transition"
+                          title="Remove Address"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div className="md:col-span-2">
+                      <Input
+                        label="Street / Building / Area"
+                        value={addr.street || ""}
+                        onChange={(v) => handleUpdateAddressItem(addr.id, "street", v)}
+                        placeholder="Plot #, Street, Area name..."
+                      />
+                    </div>
+                    <Input
+                      label={`Pincode ${isLookingUpPincode ? "(Looking up...)" : ""}`}
+                      value={addr.pincode || ""}
+                      onChange={(v) => void handleAddressPincodeLookup(addr.id, v)}
+                      placeholder="e.g. 500081"
+                    />
+                    <Input
+                      label="City"
+                      value={addr.city || ""}
+                      onChange={(v) => handleUpdateAddressItem(addr.id, "city", v)}
+                      placeholder="City"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <Input
+                      label="State"
+                      value={addr.state || ""}
+                      onChange={(v) => handleUpdateAddressItem(addr.id, "state", v)}
+                      placeholder="State"
+                    />
+                    <Input
+                      label="Country"
+                      value={addr.country || "India"}
+                      onChange={(v) => handleUpdateAddressItem(addr.id, "country", v)}
+                    />
+                    <Input
+                      label="Location GSTIN (Optional)"
+                      value={addr.gst_number || ""}
+                      onChange={(v) => handleUpdateAddressItem(addr.id, "gst_number", v.toUpperCase())}
+                      placeholder="Branch GSTIN"
+                    />
+                    <Input
+                      label="Contact Person / Phone"
+                      value={addr.contact_person || ""}
+                      onChange={(v) => handleUpdateAddressItem(addr.id, "contact_person", v)}
+                      placeholder="e.g. Manager (9849...)"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </FieldSection>
 
           {/* Tax & Financial */}
@@ -663,6 +917,59 @@ export function Customers() {
             <Detail label="Lifetime Value" value={`₹${(selectedCustomer.lifetime_value || 0).toLocaleString()}`} icon={<Star className="size-3.5" />} />
             <Detail label="Loyalty Points" value={String(selectedCustomer.loyalty_points_balance ?? 0)} />
           </div>
+
+          {/* Customer Multi-Address Book List */}
+          <div className="pt-3 border-t border-border space-y-2">
+            <h4 className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <MapPin className="size-3.5 text-primary" />
+              Saved Locations & Branches ({Array.isArray(selectedCustomer.addresses) && selectedCustomer.addresses.length > 0 ? selectedCustomer.addresses.length : 1})
+            </h4>
+            
+            {Array.isArray(selectedCustomer.addresses) && selectedCustomer.addresses.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {selectedCustomer.addresses.map((addr: CustomerAddressItem, idx: number) => (
+                  <div key={addr.id || idx} className="rounded-xl border border-border/80 bg-muted/20 p-3 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-foreground flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-primary" />
+                        {addr.tag || `Location ${idx + 1}`}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {addr.is_default_billing && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+                            Default Billing
+                          </span>
+                        )}
+                        {addr.is_default_shipping && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                            Default Shipping
+                          </span>
+                        )}
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-muted text-muted-foreground uppercase">
+                          {addr.type || "Both"}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-muted-foreground leading-relaxed">
+                      {[addr.street, addr.city, addr.state, addr.pincode, addr.country].filter(Boolean).join(", ") || "No street address provided"}
+                    </p>
+                    {(addr.gst_number || addr.contact_person) && (
+                      <div className="flex items-center gap-3 pt-1 text-[11px] text-muted-foreground">
+                        {addr.gst_number && <span>GSTIN: <strong className="text-foreground">{addr.gst_number}</strong></span>}
+                        {addr.contact_person && <span>Contact: <strong className="text-foreground">{addr.contact_person}</strong></span>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">Primary Location</p>
+                <p>{selectedCustomer.address || selectedCustomer.billing_address || "No address defined."}</p>
+              </div>
+            )}
+          </div>
+
           {(selectedCustomer as any).membership_plan_id && (
             <div className="pt-3 border-t">
               <p className="text-xs text-muted-foreground">

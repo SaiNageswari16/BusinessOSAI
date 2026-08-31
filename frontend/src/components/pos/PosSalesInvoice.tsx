@@ -49,7 +49,7 @@ import {
   MoreVertical,
   Gift
 } from "lucide-react";
-import { posApi, crmApi, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord } from "../../lib/api-client";
+import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
@@ -237,6 +237,215 @@ export function PosSalesInvoice() {
   ]);
   const [activeAddrIndex, setActiveAddrIndex] = useState<number>(0);
   const [selectedDeliveryAddress, setSelectedDeliveryAddress] = useState<any | null>(null);
+  const [selectedBillingAddress, setSelectedBillingAddress] = useState<any | null>(null);
+  const [isEditAddressesModalOpen, setIsEditAddressesModalOpen] = useState(false);
+  const [editingCustomerAddresses, setEditingCustomerAddresses] = useState<Array<CustomerAddressItem>>([]);
+  const [activeEditingAddrIndex, setActiveEditingAddrIndex] = useState(0);
+  const [isSavingCustomerAddresses, setIsSavingCustomerAddresses] = useState(false);
+
+  // Auto-sync selected addresses when customer changes
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setSelectedBillingAddress(null);
+      setSelectedDeliveryAddress(null);
+      return;
+    }
+    const cust = customers.find(c => c.id === selectedCustomer);
+    if (!cust) return;
+
+    if (Array.isArray(cust.addresses) && cust.addresses.length > 0) {
+      const defBilling = cust.addresses.find((a: any) => a.is_default_billing) || cust.addresses[0];
+      const defShipping = cust.addresses.find((a: any) => a.is_default_shipping) || cust.addresses.find((a: any) => a.type === "shipping" || a.type === "both") || cust.addresses[0];
+      setSelectedBillingAddress(defBilling);
+      setSelectedDeliveryAddress(defShipping);
+      if (defShipping?.state && (!defShipping.state.toLowerCase().includes("andhra") && !defShipping.state.toLowerCase().includes("ap"))) {
+        setGstType("igst");
+      } else {
+        setGstType("cgst_sgst");
+      }
+    } else {
+      const primaryBilling = {
+        id: "addr-def-b",
+        tag: "Head Office / Billing",
+        street: cust.billing_address || cust.address || "",
+        city: cust.city || "",
+        state: cust.state || "Andhra Pradesh",
+        pincode: cust.postal_code || cust.pincode || "",
+        is_default_billing: true,
+        is_default_shipping: true,
+      };
+      const primaryShipping = cust.shipping_address && cust.shipping_address !== (cust.billing_address || cust.address) ? {
+        id: "addr-def-s",
+        tag: "Delivery Location",
+        street: cust.shipping_address,
+        city: cust.city || "",
+        state: cust.state || "Andhra Pradesh",
+        pincode: cust.postal_code || cust.pincode || "",
+        is_default_billing: false,
+        is_default_shipping: true,
+      } : primaryBilling;
+      setSelectedBillingAddress(primaryBilling);
+      setSelectedDeliveryAddress(primaryShipping);
+    }
+  }, [selectedCustomer, customers]);
+
+  const handleOpenEditCustomerAddresses = () => {
+    const cust = customers.find(c => c.id === selectedCustomer);
+    if (!cust) {
+      toast.error("Please select a customer first to manage addresses");
+      return;
+    }
+    let addrs: CustomerAddressItem[] = [];
+    if (Array.isArray(cust.addresses) && cust.addresses.length > 0) {
+      addrs = JSON.parse(JSON.stringify(cust.addresses));
+    } else {
+      addrs = [
+        {
+          id: `addr-1`,
+          tag: "Head Office / Billing",
+          type: "both",
+          street: cust.billing_address || cust.address || "",
+          city: cust.city || "",
+          state: cust.state || "Andhra Pradesh",
+          pincode: cust.postal_code || cust.pincode || "",
+          country: "India",
+          gst_number: cust.gst_number || "",
+          contact_person: cust.contact_person || cust.name || "",
+          contact_phone: cust.phone || "",
+          is_default_billing: true,
+          is_default_shipping: true,
+        }
+      ];
+      if (cust.shipping_address && cust.shipping_address !== (cust.billing_address || cust.address)) {
+        addrs.push({
+          id: `addr-2`,
+          tag: "Warehouse / Delivery Site",
+          type: "shipping",
+          street: cust.shipping_address,
+          city: cust.city || "",
+          state: cust.state || "Andhra Pradesh",
+          pincode: cust.postal_code || cust.pincode || "",
+          country: "India",
+          gst_number: cust.gst_number || "",
+          contact_person: cust.contact_person || cust.name || "",
+          contact_phone: cust.phone || "",
+          is_default_billing: false,
+          is_default_shipping: true,
+        });
+      }
+    }
+    setEditingCustomerAddresses(addrs);
+    setActiveEditingAddrIndex(0);
+    setIsEditAddressesModalOpen(true);
+  };
+
+  const handleAddNewEditingAddress = (tag: string = "Branch") => {
+    const newIdx = editingCustomerAddresses.length + 1;
+    const newSlot: CustomerAddressItem = {
+      id: `addr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      tag: `${tag} ${newIdx}`,
+      type: "shipping",
+      street: "",
+      city: editingCustomerAddresses[0]?.city || "",
+      state: editingCustomerAddresses[0]?.state || "Andhra Pradesh",
+      pincode: "",
+      country: "India",
+      gst_number: "",
+      contact_person: "",
+      contact_phone: "",
+      is_default_billing: false,
+      is_default_shipping: false,
+    };
+    setEditingCustomerAddresses([...editingCustomerAddresses, newSlot]);
+    setActiveEditingAddrIndex(editingCustomerAddresses.length);
+  };
+
+  const handleRemoveEditingAddress = (idx: number) => {
+    if (editingCustomerAddresses.length <= 1) {
+      toast.error("Customer must have at least one address");
+      return;
+    }
+    const filtered = editingCustomerAddresses.filter((_, i) => i !== idx);
+    if (!filtered.some(a => a.is_default_billing)) filtered[0].is_default_billing = true;
+    if (!filtered.some(a => a.is_default_shipping)) filtered[0].is_default_shipping = true;
+    setEditingCustomerAddresses(filtered);
+    setActiveEditingAddrIndex(Math.max(0, idx - 1));
+  };
+
+  const handleUpdateEditingAddressField = (idx: number, field: keyof CustomerAddressItem, val: any) => {
+    const updated = [...editingCustomerAddresses];
+    updated[idx] = { ...updated[idx], [field]: val };
+    setEditingCustomerAddresses(updated);
+  };
+
+  const handleEditingAddrPincodeChange = async (val: string) => {
+    handleUpdateEditingAddressField(activeEditingAddrIndex, "pincode", val);
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (clean.length === 6) {
+      const res = await lookupPincode(clean);
+      if (res) {
+        const updated = [...editingCustomerAddresses];
+        const curr = { ...updated[activeEditingAddrIndex] };
+        curr.pincode = clean;
+        if (res.city) curr.city = res.city;
+        if (res.state) {
+          const matched = INDIAN_STATES.find(s => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase()));
+          curr.state = matched?.name || res.state;
+        }
+        if (!curr.street && res.area) curr.street = res.area;
+        updated[activeEditingAddrIndex] = curr;
+        setEditingCustomerAddresses(updated);
+      }
+    }
+  };
+
+  const handleSaveCustomerAddresses = async () => {
+    const cust = customers.find(c => c.id === selectedCustomer);
+    if (!cust) return;
+    setIsSavingCustomerAddresses(true);
+    try {
+      const defaultBilling = editingCustomerAddresses.find(a => a.is_default_billing) || editingCustomerAddresses[0];
+      const defaultShipping = editingCustomerAddresses.find(a => a.is_default_shipping) || editingCustomerAddresses.find(a => a.type === "shipping" || a.type === "both") || editingCustomerAddresses[0];
+
+      const fullBilling = [defaultBilling?.street, defaultBilling?.city, defaultBilling?.state, defaultBilling?.pincode].filter(Boolean).join(", ");
+      const fullShipping = [defaultShipping?.street, defaultShipping?.city, defaultShipping?.state, defaultShipping?.pincode].filter(Boolean).join(", ");
+
+      const updatePayload = {
+        addresses: editingCustomerAddresses,
+        address: defaultBilling?.street || fullBilling || cust.address,
+        billing_address: defaultBilling?.street || fullBilling || cust.billing_address,
+        shipping_address: defaultShipping?.street || fullShipping || cust.shipping_address,
+        city: defaultBilling?.city || cust.city,
+        state: defaultBilling?.state || cust.state,
+        postal_code: defaultBilling?.pincode || cust.postal_code,
+      };
+
+      const res = await crmCustomersApi.update(cust.id, updatePayload);
+      const updatedCust = {
+        ...cust,
+        ...updatePayload,
+        ...(res || {}),
+      };
+
+      setCustomers((prev) => prev.map((c) => (c.id === cust.id ? updatedCust : c)));
+      setSelectedBillingAddress(defaultBilling);
+      setSelectedDeliveryAddress(defaultShipping);
+
+      if (defaultShipping?.state && (!defaultShipping.state.toLowerCase().includes("andhra") && !defaultShipping.state.toLowerCase().includes("ap"))) {
+        setGstType("igst");
+        toast.info(`Updated destination: ${defaultShipping.tag} (${defaultShipping.state}) — Tax switched to IGST.`);
+      } else {
+        setGstType("cgst_sgst");
+      }
+
+      toast.success("Customer address book updated & applied to current bill!");
+      setIsEditAddressesModalOpen(false);
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || "Failed to update customer addresses");
+    } finally {
+      setIsSavingCustomerAddresses(false);
+    }
+  };
 
   // Free Quantity / Schemes State
   const [freeItems, setFreeItems] = useState<FreeQtyItem[]>([]);
@@ -1365,8 +1574,10 @@ export function PosSalesInvoice() {
       customerPhone: customerObj?.phone || '',
       customerEmail: customerObj?.email || '',
       customerCompany: customerObj?.company || '',
-      customerGST: customerObj?.gst_number || '',
-      customerAddress: customerObj?.address || '',
+      customerGST: selectedBillingAddress?.gst_number || customerObj?.gst_number || '',
+      customerAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.address || ''),
+      customerBillingAddress: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customerObj?.billing_address || customerObj?.address || ''),
+      customerShippingAddress: selectedDeliveryAddress ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") : (customerObj?.shipping_address || ''),
       customerType: customerObj?.customer_type || 'Retail',
       items: items.map(it => ({
         product_id: it.product_id,
@@ -1399,7 +1610,6 @@ export function PosSalesInvoice() {
       terms: notes || undefined,
     };
   };
-
 
   const handlePreviewFullInvoice = () => {
     if (items.length === 0) return toast.error("Please add at least one item to preview invoice.");
@@ -1454,14 +1664,19 @@ export function PosSalesInvoice() {
       discount_type: "percent",
       discount_value: 0,
     }]);
+    setFreeItems([]);
     setSelectedCustomer("");
-    setCustomerSummary(null);
+    setSelectedDeliveryAddress(null);
+    setSelectedBillingAddress(null);
     setAmountReceived("");
     setNotes("");
     setInvoiceDiscountValue(0);
     setIncludePreviousDueInBill(false);
     setSettlingInvoice(null);
-    setCustomCharges([]);
+    setCustomCharges([
+      { id: "1", name: "Freight / Transport", amount: 0, tax_rate: 0 },
+      { id: "2", name: "Packing Charge", amount: 0, tax_rate: 0 }
+    ]);
     setGstType("cgst_sgst");
     setPaymentMode("Cash");
     setPricingMode("Retail");
@@ -1499,6 +1714,14 @@ export function PosSalesInvoice() {
         if (Number(splitOnline) > 0) splitPaymentsPayload["upi"] = Number(splitOnline);
       }
 
+      const formattedBillingAddress = selectedBillingAddress
+        ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ")
+        : (customer?.billing_address || customer?.address || null);
+
+      const formattedShippingAddress = selectedDeliveryAddress
+        ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ")
+        : (customer?.shipping_address || null);
+
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
         invoice_number: invoiceNumber.trim(),
@@ -1507,9 +1730,9 @@ export function PosSalesInvoice() {
         customer_name: customer?.name || "Walk-in Customer",
         customer_phone: customer?.phone || null,
         customer_email: customer?.email || null,
-        customer_gstin: customer?.gst_number || null,
-        billing_address: customer?.billing_address || customer?.address || null,
-        shipping_address: customer?.shipping_address || null,
+        customer_gstin: selectedBillingAddress?.gst_number || customer?.gst_number || null,
+        billing_address: formattedBillingAddress,
+        shipping_address: formattedShippingAddress,
         invoice_date: invoiceDate,
         due_date: dueDate,
         payment_terms: isCredit ? "Credit / Due" : paymentMode,
@@ -1833,13 +2056,69 @@ export function PosSalesInvoice() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCustomer("")}
-                      className="px-2.5 py-1 text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200/80 transition-colors cursor-pointer shrink-0"
-                    >
-                      Change Party
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleOpenEditCustomerAddresses}
+                        className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                        title="Manage and edit addresses for this customer"
+                      >
+                        <MapPin className="size-3" /> Edit Addresses
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => window.open('/crm?tab=customers', '_blank')}
+                        className="px-2 py-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                        title="Open customer in CRM module"
+                      >
+                        <Building className="size-3" /> CRM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCustomer("")}
+                        className="px-2 py-1 text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200/80 transition-colors cursor-pointer shrink-0"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Billing Location Selector */}
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-slate-700 flex items-center gap-1">
+                        Billing Location:
+                      </span>
+                      <span className="text-[10px] text-indigo-600 font-semibold">
+                        {selectedBillingAddress?.tag || "Head Office"}
+                      </span>
+                    </div>
+
+                    {activeCustomerObj.addresses && activeCustomerObj.addresses.length > 1 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeCustomerObj.addresses.filter((a: any) => a.type === "billing" || a.type === "both" || !a.type).map((addr: any, idx: number) => {
+                          const isSel = selectedBillingAddress?.id === addr.id || (!selectedBillingAddress && (addr.is_default_billing || idx === 0));
+                          return (
+                            <button
+                              key={addr.id || idx}
+                              type="button"
+                              onClick={() => setSelectedBillingAddress(addr)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                                isSel
+                                  ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              {addr.tag || `Branch ${idx + 1}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <p className="text-[11px] text-slate-600 leading-snug">
+                      {selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (activeCustomerObj.billing_address || activeCustomerObj.address || "Standard Billing Address")}
+                    </p>
                   </div>
 
                   {/* Unified Purchase History & Financial Summary */}
@@ -1918,10 +2197,11 @@ export function PosSalesInvoice() {
               </span>
               <button
                 type="button"
-                onClick={() => toast.info("Change/Add Address feature coming soon")}
-                className="px-2.5 py-1 text-[10px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg border border-slate-200/80 transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+                onClick={handleOpenEditCustomerAddresses}
+                className="px-2.5 py-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+                title="Edit or add shipping locations for this customer"
               >
-                <RefreshCw className="size-3" /> Change Address
+                <Plus className="size-3" /> Edit / Add Address
               </button>
             </div>
 
@@ -1930,17 +2210,17 @@ export function PosSalesInvoice() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="font-bold text-slate-700 flex items-center gap-1">
-                      Delivery Address:
+                      Delivery Location:
                     </span>
                     <span className="text-[10px] text-indigo-600 font-semibold">
-                      {activeCustomerObj.addresses?.length ? `${activeCustomerObj.addresses.length} Location(s) Saved` : "Default Address"}
+                      {activeCustomerObj.addresses?.length ? `${activeCustomerObj.addresses.length} Location(s) Available` : "Default Address"}
                     </span>
                   </div>
                   
-                  {activeCustomerObj.addresses && activeCustomerObj.addresses.length > 1 ? (
+                  {activeCustomerObj.addresses && activeCustomerObj.addresses.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
                       {activeCustomerObj.addresses.map((addr: any, idx: number) => {
-                        const isSel = selectedDeliveryAddress?.id === addr.id || (!selectedDeliveryAddress && idx === 0);
+                        const isSel = selectedDeliveryAddress?.id === addr.id || (!selectedDeliveryAddress && (addr.is_default_shipping || idx === 0));
                         return (
                           <button
                             key={addr.id || idx}
@@ -1949,7 +2229,7 @@ export function PosSalesInvoice() {
                               setSelectedDeliveryAddress(addr);
                               if (addr.state && (!addr.state.toLowerCase().includes("andhra") && !addr.state.toLowerCase().includes("ap"))) {
                                 setGstType("igst");
-                                toast.info(`Switched destination to ${addr.tag} (${addr.state}). Tax: IGST.`);
+                                toast.info(`Switched destination to ${addr.tag || `Location ${idx + 1}`} (${addr.state}). Tax: IGST.`);
                               } else {
                                 setGstType("cgst_sgst");
                               }
@@ -1960,10 +2240,10 @@ export function PosSalesInvoice() {
                                 : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
                             }`}
                           >
-                            <span className="text-sm">{addr.tag === "Home" ? "🏠" : addr.tag === "Office" ? "🏢" : addr.tag === "Warehouse" ? "🏭" : addr.tag === "Branch" ? "🏬" : "📍"}</span>
+                            <span className="text-sm">{addr.tag?.toLowerCase().includes("home") ? "🏠" : addr.tag?.toLowerCase().includes("warehouse") ? "🏭" : addr.tag?.toLowerCase().includes("branch") ? "🏬" : "🏢"}</span>
                             <span className="truncate max-w-[140px] text-left">
-                              <span className="block leading-tight">{addr.tag}</span>
-                              <span className="block text-[9px] font-medium opacity-80 truncate">{addr.street || addr.city}</span>
+                              <span className="block leading-tight">{addr.tag || `Location ${idx + 1}`}</span>
+                              <span className="block text-[9px] font-medium opacity-80 truncate">{addr.street || addr.city || addr.state}</span>
                             </span>
                           </button>
                         );
@@ -1978,6 +2258,14 @@ export function PosSalesInvoice() {
                       <span className="text-[11px] leading-relaxed">
                         {activeCustomerObj.shipping_address || activeCustomerObj.billing_address || activeCustomerObj.address || "No detailed address provided."}
                       </span>
+                    </div>
+                  )}
+
+                  {selectedDeliveryAddress && (
+                    <div className="p-2 bg-indigo-50/40 rounded-xl border border-indigo-100 text-[11px] text-slate-600">
+                      <span className="font-bold text-indigo-900">Ship to: </span>
+                      {[selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ")}
+                      {selectedDeliveryAddress.gst_number && <span className="ml-2 font-mono text-[10px] font-bold bg-white px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-700">GSTIN: {selectedDeliveryAddress.gst_number}</span>}
                     </div>
                   )}
                 </div>
@@ -4147,6 +4435,263 @@ export function PosSalesInvoice() {
           })),
         }}
       />
+
+      {/* Inline Customer Address Book Manager Modal */}
+      {isEditAddressesModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-3xl w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+                  <MapPin className="size-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base md:text-lg text-slate-900 leading-tight">
+                    Manage Addresses — {customers.find(c => c.id === selectedCustomer)?.name || "Customer"}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Add or update multiple branch, warehouse, or billing destinations for this customer.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditAddressesModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {/* Address Tabs & Add Button */}
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5 shrink-0 flex-wrap">
+              <div className="flex flex-wrap gap-1.5 items-center">
+                {editingCustomerAddresses.map((addr, idx) => (
+                  <div
+                    key={addr.id || idx}
+                    onClick={() => setActiveEditingAddrIndex(idx)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border ${
+                      activeEditingAddrIndex === idx
+                        ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span>{addr.tag || `Location ${idx + 1}`}</span>
+                    {addr.is_default_billing && <span className="text-[9px] bg-white/20 px-1 rounded">Bill</span>}
+                    {addr.is_default_shipping && <span className="text-[9px] bg-white/20 px-1 rounded">Ship</span>}
+                    {editingCustomerAddresses.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveEditingAddress(idx);
+                        }}
+                        className={`p-0.5 rounded hover:bg-rose-500 hover:text-white transition-colors ${activeEditingAddrIndex === idx ? "text-white/80" : "text-slate-400"}`}
+                        title="Remove address"
+                      >
+                        <Trash2 className="size-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleAddNewEditingAddress("Branch")}
+                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 transition-colors flex items-center gap-1 shrink-0"
+              >
+                <Plus className="size-3.5" /> Add Location
+              </button>
+            </div>
+
+            {/* Active Address Form */}
+            {editingCustomerAddresses[activeEditingAddrIndex] && (
+              <div className="space-y-3.5 overflow-y-auto pr-1 flex-1 py-1">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Location Tag</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Head Office, Warehouse 1"
+                      value={editingCustomerAddresses[activeEditingAddrIndex].tag || ""}
+                      onChange={(e) => handleUpdateEditingAddressField(activeEditingAddrIndex, "tag", e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Address Usage</label>
+                    <select
+                      value={editingCustomerAddresses[activeEditingAddrIndex].type || "both"}
+                      onChange={(e) => handleUpdateEditingAddressField(activeEditingAddrIndex, "type", e.target.value as any)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="both">Both (Billing & Shipping)</option>
+                      <option value="billing">Billing Only</option>
+                      <option value="shipping">Shipping Only</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Location GSTIN</label>
+                    <input
+                      type="text"
+                      placeholder="Optional branch GSTIN"
+                      value={editingCustomerAddresses[activeEditingAddrIndex].gst_number || ""}
+                      onChange={(e) => handleUpdateEditingAddressField(activeEditingAddrIndex, "gst_number", e.target.value.toUpperCase())}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Street Address / Landmark</label>
+                    <input
+                      type="text"
+                      placeholder="Door / Plot no., Street name, Area..."
+                      value={editingCustomerAddresses[activeEditingAddrIndex].street || ""}
+                      onChange={(e) => handleUpdateEditingAddressField(activeEditingAddrIndex, "street", e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Pincode {isLookingUpPincode && <span className="text-indigo-600 font-normal">(Looking up...)</span>}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 500081"
+                      value={editingCustomerAddresses[activeEditingAddrIndex].pincode || ""}
+                      onChange={(e) => void handleEditingAddrPincodeChange(e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">City</label>
+                    <input
+                      type="text"
+                      placeholder="City"
+                      value={editingCustomerAddresses[activeEditingAddrIndex].city || ""}
+                      onChange={(e) => handleUpdateEditingAddressField(activeEditingAddrIndex, "city", e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">State</label>
+                    <input
+                      type="text"
+                      placeholder="State"
+                      value={editingCustomerAddresses[activeEditingAddrIndex].state || ""}
+                      onChange={(e) => handleUpdateEditingAddressField(activeEditingAddrIndex, "state", e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Country</label>
+                    <input
+                      type="text"
+                      placeholder="Country"
+                      value={editingCustomerAddresses[activeEditingAddrIndex].country || "India"}
+                      onChange={(e) => handleUpdateEditingAddressField(activeEditingAddrIndex, "country", e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Contact Person at Site</label>
+                    <input
+                      type="text"
+                      placeholder="Site Manager name"
+                      value={editingCustomerAddresses[activeEditingAddrIndex].contact_person || ""}
+                      onChange={(e) => handleUpdateEditingAddressField(activeEditingAddrIndex, "contact_person", e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Contact Phone</label>
+                    <input
+                      type="text"
+                      placeholder="Site Phone"
+                      value={editingCustomerAddresses[activeEditingAddrIndex].contact_phone || ""}
+                      onChange={(e) => handleUpdateEditingAddressField(activeEditingAddrIndex, "contact_phone", e.target.value)}
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(editingCustomerAddresses[activeEditingAddrIndex].is_default_billing)}
+                      onChange={(e) => {
+                        const updated = editingCustomerAddresses.map((a, i) => ({
+                          ...a,
+                          is_default_billing: i === activeEditingAddrIndex ? e.target.checked : false,
+                        }));
+                        setEditingCustomerAddresses(updated);
+                      }}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 size-4"
+                    />
+                    <span>Set as Primary Billing Location</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(editingCustomerAddresses[activeEditingAddrIndex].is_default_shipping)}
+                      onChange={(e) => {
+                        const updated = editingCustomerAddresses.map((a, i) => ({
+                          ...a,
+                          is_default_shipping: i === activeEditingAddrIndex ? e.target.checked : false,
+                        }));
+                        setEditingCustomerAddresses(updated);
+                      }}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 size-4"
+                    />
+                    <span>Set as Primary Shipping / Delivery Location</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 rounded-2xl flex items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => window.open('/crm?tab=customers', '_blank')}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5"
+              >
+                <Building className="size-3.5" /> Open Full Profile in CRM Customers
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditAddressesModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingCustomerAddresses}
+                  onClick={handleSaveCustomerAddresses}
+                  className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                >
+                  {isSavingCustomerAddresses ? "Saving..." : "Save & Apply to Current Bill"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

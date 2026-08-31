@@ -2012,6 +2012,22 @@ export const backupApi = {
 
 // ─── CRM & Sales — Customers and Leads ──────────────────────────────────────
 
+export interface CustomerAddressItem {
+  id: string;
+  tag?: string; // "Head Office" | "Warehouse" | "Branch" | "Billing" | "Shipping" | "Home" | "Other"
+  type?: "billing" | "shipping" | "both";
+  street?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  country?: string;
+  gst_number?: string;
+  contact_person?: string;
+  contact_phone?: string;
+  is_default_billing?: boolean;
+  is_default_shipping?: boolean;
+}
+
 export interface CrmCustomer {
   id: string;
   tenant_id: string;
@@ -2051,6 +2067,7 @@ export interface CrmCustomer {
   gst_treatment?: string | null;
   billing_address?: string | null;
   shipping_address?: string | null;
+  addresses?: CustomerAddressItem[];
   payment_terms?: string | null;
   credit_limit: number;
   outstanding_balance: number;
