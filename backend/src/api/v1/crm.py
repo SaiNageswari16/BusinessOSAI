@@ -496,6 +496,74 @@ async def update_lead(lead_id: uuid.UUID, payload: LeadUpdate, request: Request,
     return lead
 
 
+@router.get("/leads/{lead_id}/activities", response_model=list[LeadActivityResponse])
+async def list_lead_activities(
+    lead_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Retrieves chronological activity and call interaction history for a lead."""
+    lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
+    activities = (
+        await db.scalars(
+            select(LeadActivity)
+            .where(LeadActivity.tenant_id == ctx.tenant_id, LeadActivity.lead_id == lead_id)
+            .order_by(LeadActivity.occurred_at.desc(), LeadActivity.created_at.desc())
+        )
+    ).all()
+    return activities
+
+
+@router.post("/leads/{lead_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
+async def create_lead_activity(
+    lead_id: uuid.UUID,
+    payload: LeadActivityCreate,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Logs a call, notes, or outcome disposition for a lead."""
+    lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
+    activity = LeadActivity(
+        tenant_id=ctx.tenant_id,
+        lead_id=lead_id,
+        opportunity_id=payload.opportunity_id,
+        activity_type=payload.activity_type or "Call",
+        summary=payload.summary or "Call / Interaction Logged",
+        call_disposition=payload.call_disposition,
+        call_duration_minutes=payload.call_duration_minutes or 0,
+        customer_response=payload.customer_response,
+        occurred_at=payload.occurred_at or datetime.now(timezone.utc),
+        created_by_user_id=ctx.user.id,
+    )
+    db.add(activity)
+
+    # Automatically update the lead's latest interaction metadata & call history
+    lead.last_contact_at = activity.occurred_at
+    if payload.call_disposition:
+        lead.call_disposition = payload.call_disposition
+    if payload.call_duration_minutes is not None and payload.call_duration_minutes > 0:
+        lead.call_duration_minutes = payload.call_duration_minutes
+    if payload.customer_response:
+        lead.customer_response = payload.customer_response
+
+    await db.flush()
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="lead_activity_created",
+        entity_type="lead_activity",
+        entity_id=activity.id,
+        new_values=payload.model_dump(mode="json"),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return activity
+
+
 @router.post("/leads/{lead_id}/convert", response_model=CustomerResponse)
 async def convert_lead(lead_id: uuid.UUID, request: Request, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
     lead = await _lead_or_404(db, lead_id, ctx.tenant_id)
@@ -787,6 +855,69 @@ async def update_opportunity(opportunity_id: uuid.UUID, payload: OpportunityUpda
     for key, value in updates.items(): setattr(opportunity, key, value)
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="opportunity_updated", entity_type="opportunity", entity_id=opportunity.id, new_values=updates, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     return opportunity
+
+
+@router.get("/opportunities/{opportunity_id}/activities", response_model=list[LeadActivityResponse])
+async def list_opportunity_activities(
+    opportunity_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Retrieves chronological activity and call interaction history for an opportunity/deal."""
+    opp = await db.scalar(select(CRMOpportunity).where(CRMOpportunity.id == opportunity_id, CRMOpportunity.tenant_id == ctx.tenant_id))
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    activities = (
+        await db.scalars(
+            select(LeadActivity)
+            .where(LeadActivity.tenant_id == ctx.tenant_id, LeadActivity.opportunity_id == opportunity_id)
+            .order_by(LeadActivity.occurred_at.desc(), LeadActivity.created_at.desc())
+        )
+    ).all()
+    return activities
+
+
+@router.post("/opportunities/{opportunity_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
+async def create_opportunity_activity(
+    opportunity_id: uuid.UUID,
+    payload: LeadActivityCreate,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Logs a call, notes, or outcome disposition for an opportunity/deal."""
+    opp = await db.scalar(select(CRMOpportunity).where(CRMOpportunity.id == opportunity_id, CRMOpportunity.tenant_id == ctx.tenant_id))
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    activity = LeadActivity(
+        tenant_id=ctx.tenant_id,
+        lead_id=opp.lead_id,
+        opportunity_id=opportunity_id,
+        activity_type=payload.activity_type or "Call",
+        summary=payload.summary or "Call / Interaction Logged",
+        call_disposition=payload.call_disposition,
+        call_duration_minutes=payload.call_duration_minutes or 0,
+        customer_response=payload.customer_response,
+        occurred_at=payload.occurred_at or datetime.now(timezone.utc),
+        created_by_user_id=ctx.user.id,
+    )
+    db.add(activity)
+
+    await db.flush()
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="opportunity_activity_created",
+        entity_type="opportunity_activity",
+        entity_id=activity.id,
+        new_values=payload.model_dump(mode="json"),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return activity
 
 
 # ─── Facebook / Meta Integration (fully multi-tenant) ───────────────────────
