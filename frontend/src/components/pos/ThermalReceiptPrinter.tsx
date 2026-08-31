@@ -2,57 +2,28 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { getActiveReceiptTemplate, ReceiptTemplate } from '../../lib/receipt-template-store';
+import { getActiveReceiptTemplate, getTenantTemplatesKey, getTenantDefaultsKey, ReceiptTemplate } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 
 interface ThermalReceiptPrinterProps {
-  bill: {
-    id?: string;
-    rawId?: string;
-    invoice_number?: string;
-    date?: string | Date;
-    customer_id?: string;
-    customerName?: string;
-    customerPhone?: string;
-    customer_phone?: string;
-    items?: Array<{
-      product_id?: string;
-      name?: string;
-      product_name?: string;
-      hsn_code?: string;
-      sku?: string;
-      quantity: number;
-      unit_price?: number;
-      price?: number;
-      subtotal?: number;
-      discount?: number;
-      tax_rate?: number;
-    }>;
-    subtotal?: number;
-    tax?: number;
-    tax_amount?: number;
-    discount?: number;
-    discount_amount?: number;
-    total?: number;
-    grand_total?: number;
-    payment_method?: string;
-    payment_status?: string;
-  } | null;
-  customTemplate?: ReceiptTemplate;
+  bill: any;
+  customTemplate?: any;
 }
 
 export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPrinterProps) {
-    const { currency, formatCurrency } = useCurrency();
-    const { tenant } = useTenant();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
   if (!bill) return null;
   if (typeof document === 'undefined') return null;
 
   // Retrieve Active Inventory Print Template
   let invTemplate: any = null;
   try {
-    const rawInv = localStorage.getItem('businessos_print_templates_v1');
-    const rawActive = localStorage.getItem('user_active_print_templates_v1');
+    const storageKey = getTenantTemplatesKey(tenant?.id);
+    const defaultsKey = getTenantDefaultsKey(tenant?.id);
+    const rawInv = localStorage.getItem(storageKey);
+    const rawActive = localStorage.getItem(defaultsKey);
     if (rawInv) {
       const templates = JSON.parse(rawInv);
       const activeMap = rawActive ? JSON.parse(rawActive) : {};
@@ -67,27 +38,20 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   }
 
   const fallbackStore = getActiveReceiptTemplate();
-  const templateName = invTemplate?.name || fallbackStore.name || 'Express POS Receipt (80mm Thermal)';
-  const storeName = invTemplate?.storeName || fallbackStore.storeName || 'LAZYMONKEY AI SUPERSTORE';
-  const storeAddress = invTemplate?.storeAddress || fallbackStore.address || 'Main Market, MG Road, Bengaluru';
-  const storePhone = invTemplate?.storePhone || fallbackStore.phone || 'Ph: 080-25589999';
-  const gstin = invTemplate?.gstin || fallbackStore.gstin || '29ABCDE1234F1ZH';
+  const tenantRaw = (tenant as any)?.raw || {};
+  const storeName = tenant?.name || invTemplate?.storeName || fallbackStore.storeName || 'Store';
+  const storeAddress = invTemplate?.storeAddress || tenantRaw?.address || fallbackStore.address || '';
+  const storePhone = invTemplate?.storePhone || tenantRaw?.phone || fallbackStore.phone || '';
+  const gstin = invTemplate?.gstin || tenantRaw?.gstin || fallbackStore.gstin || '';
   const headerTitle = invTemplate?.headerTitle || fallbackStore.invoiceTitle || 'RETAIL RECEIPT';
-  const footerText = invTemplate?.footerText || fallbackStore.footerNote || '*** THANK YOU FOR SHOPPING ***\nVisit us again at www.lazymonkeyai.com';
+  const footerText = invTemplate?.footerText || fallbackStore.footerNote || '*** THANK YOU FOR SHOPPING ***';
   const termsText = invTemplate?.termsText || fallbackStore.declarationText || '';
 
   const f = invTemplate?.fields || {
     showLogo: true,
     showStoreAddress: true,
-    showTaxSplit: true,
+    showTaxId: true,
     showCustomerDetails: true,
-    showProductName: true,
-    showPrice: true,
-    showMRP: true,
-    showSKU: true,
-    showHSN: true,
-    showPartyBalance: true,
-    showItemDescription: true,
     showTime: true,
     showPaymentQR: true
   };

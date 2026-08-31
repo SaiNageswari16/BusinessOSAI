@@ -66,12 +66,16 @@ const STATE_GST_CODES: Record<string, string> = {
 };
 
 export function FullInvoicePrinter({
-  invoice,
   isOpen,
   onClose,
+  invoice,
   autoPrint = false,
-  customTemplate,
-}: FullInvoicePrinterProps) {
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  invoice: FullInvoiceData | null;
+  autoPrint?: boolean;
+}) {
   const { currency } = useCurrency();
   const { tenant } = useTenant();
   const printContainerRef = useRef<HTMLDivElement>(null);
@@ -82,7 +86,8 @@ export function FullInvoicePrinter({
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('businessos_print_templates_v1');
+        const storageKey = getTenantTemplatesKey(tenant?.id);
+        const saved = localStorage.getItem(storageKey);
         if (saved) {
           const list = JSON.parse(saved);
           if (Array.isArray(list)) {
@@ -92,7 +97,7 @@ export function FullInvoicePrinter({
         }
       } catch {}
     }
-  }, [isOpen]);
+  }, [isOpen, tenant?.id]);
 
   useEffect(() => {
     if (isOpen && autoPrint && invoice) {
@@ -108,25 +113,21 @@ export function FullInvoicePrinter({
 
   // Retrieve active template or fallback
   const activeMasterTemplate = getActiveInvoicePrintTemplate();
-  const activeFromList = selectedTemplateId
-    ? availableTemplates.find((t) => t.id === selectedTemplateId)
-    : null;
-  const template = customTemplate || activeFromList || activeMasterTemplate;
+  const selectedTemplate = availableTemplates.find((t) => t.id === selectedTemplateId);
+  const template = selectedTemplate || activeMasterTemplate;
 
   const f = {
-    showLogo: template?.fields?.showLogo !== false,
-    showHSN: template?.fields?.showHSN !== false,
-    showTaxSplit: template?.fields?.showTaxSplit !== false,
-    showBankDetails: template?.fields?.showBankDetails !== false,
-    showSignature: template?.fields?.showSignature !== false,
-    showCustomerDetails: template?.fields?.showCustomerDetails !== false,
-    showProductName: template?.fields?.showProductName !== false,
-    showPrice: template?.fields?.showPrice !== false,
-    showMRP: template?.fields?.showMRP !== false,
-    showSKU: template?.fields?.showSKU !== false,
-    showPartyBalance: template?.fields?.showPartyBalance !== false,
-    showItemDescription: template?.fields?.showItemDescription !== false,
-    showTime: template?.fields?.showTime !== false,
+    showLogo: true,
+    showHSN: true,
+    showTaxSplit: true,
+    showBankDetails: false,
+    showSignature: true,
+    showCustomerDetails: true,
+    showProductName: true,
+    showPrice: true,
+    showMRP: true,
+    showSKU: true,
+    showPartyBalance: true,
     ...(template?.fields || {}),
   };
 
@@ -174,19 +175,18 @@ export function FullInvoicePrinter({
     template.storeName ||
     'Business Organization';
 
-  // 2. Logo Resolution (Honor template custom logo if set, else logged-in tenant's uploaded logo)
+  // 2. Logo Resolution (Current workspace tenant logo strictly isolated)
+  const tenantLogo = tenant?.logo_url || tenantRaw?.logo_url || (tenant as any)?.raw?.logo_url || null;
   const isTemplateLogoCustom = Boolean(
     template.logoUrl &&
     template.logoUrl.trim() !== '' &&
-    !template.logoUrl.includes('default')
+    !template.logoUrl.includes('default') &&
+    !template.logoUrl.includes('/Logo.png')
   );
 
   const dynamicLogoUrl =
+    tenantLogo ||
     (isTemplateLogoCustom ? template.logoUrl : '') ||
-    tenant?.logo_url ||
-    tenantRaw?.logo_url ||
-    (tenant as any)?.raw?.logo_url ||
-    template.logoUrl ||
     '/Logo.png';
 
   // 3. Address Resolution

@@ -652,22 +652,39 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
 ];
 
 export function PrintTemplates() {
-    const { currency, formatCurrency } = useCurrency();
-    const { tenant } = useTenant();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const tenantId = tenant?.id || "default";
+
   const [activeCategory, setActiveCategory] = useState<"invoices" | "thermal" | "barcodes" | "qrcodes">("invoices");
+  
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
-    const saved = localStorage.getItem("businessos_print_templates_v1");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {}
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`);
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {}
+      }
     }
     return INITIAL_TEMPLATES;
   });
 
+  // Re-sync templates if user switches workspace tenant
   useEffect(() => {
-    localStorage.setItem("businessos_print_templates_v1", JSON.stringify(templates));
-  }, [templates]);
+    const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`);
+    if (saved) {
+      try {
+        setTemplates(JSON.parse(saved));
+        return;
+      } catch (e) {}
+    }
+    setTemplates(INITIAL_TEMPLATES);
+  }, [tenantId]);
+
+  useEffect(() => {
+    localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(templates));
+  }, [templates, tenantId]);
 
   const handleCategoryChange = (cat: "invoices" | "thermal" | "barcodes" | "qrcodes") => {
     setActiveCategory(cat);
@@ -700,16 +717,26 @@ export function PrintTemplates() {
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
 
   const [userActiveDefaults, setUserActiveDefaults] = useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem("user_active_print_templates_v1");
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`user_active_print_templates_v1_${tenantId}`);
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
     }
     return {};
   });
 
   useEffect(() => {
-    localStorage.setItem("user_active_print_templates_v1", JSON.stringify(userActiveDefaults));
-  }, [userActiveDefaults]);
+    const saved = localStorage.getItem(`user_active_print_templates_v1_${tenantId}`);
+    if (saved) {
+      try { setUserActiveDefaults(JSON.parse(saved)); return; } catch (e) {}
+    }
+    setUserActiveDefaults({});
+  }, [tenantId]);
+
+  useEffect(() => {
+    localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(userActiveDefaults));
+  }, [userActiveDefaults, tenantId]);
 
   const handleSetActiveOrg = (id: string, category: string) => {
     setTemplates((prev) =>

@@ -228,11 +228,43 @@ export function getActiveReceiptTemplate(): ReceiptTemplate {
   return active;
 }
 
+export function getTenantTemplatesKey(tenantId?: string): string {
+  if (typeof window === 'undefined') return 'businessos_print_templates_v1';
+  let tid = tenantId;
+  if (!tid) {
+    try {
+      const raw = localStorage.getItem('bos-tenant');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        tid = parsed?.id;
+      }
+    } catch {}
+  }
+  return `businessos_print_templates_v1_${tid || 'default'}`;
+}
+
+export function getTenantDefaultsKey(tenantId?: string): string {
+  if (typeof window === 'undefined') return 'user_active_print_templates_v1';
+  let tid = tenantId;
+  if (!tid) {
+    try {
+      const raw = localStorage.getItem('bos-tenant');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        tid = parsed?.id;
+      }
+    } catch {}
+  }
+  return `user_active_print_templates_v1_${tid || 'default'}`;
+}
+
 export function getActiveBarcodeTemplate(): any {
   if (typeof window !== 'undefined') {
     try {
-      const invTemplatesRaw = localStorage.getItem('businessos_print_templates_v1');
-      const userActiveDefaultsRaw = localStorage.getItem('user_active_print_templates_v1');
+      const storageKey = getTenantTemplatesKey();
+      const defaultsKey = getTenantDefaultsKey();
+      const invTemplatesRaw = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
+      const userActiveDefaultsRaw = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
 
       if (invTemplatesRaw) {
         const invTemplates = JSON.parse(invTemplatesRaw);
@@ -282,8 +314,10 @@ export function getActiveInvoicePrintTemplate(): any {
 
   if (typeof window !== 'undefined') {
     try {
-      const invTemplatesRaw = localStorage.getItem('businessos_print_templates_v1');
-      const userActiveDefaultsRaw = localStorage.getItem('user_active_print_templates_v1');
+      const storageKey = getTenantTemplatesKey();
+      const defaultsKey = getTenantDefaultsKey();
+      const invTemplatesRaw = localStorage.getItem(storageKey);
+      const userActiveDefaultsRaw = localStorage.getItem(defaultsKey);
 
       if (invTemplatesRaw) {
         const invTemplates = JSON.parse(invTemplatesRaw);
@@ -308,7 +342,7 @@ export function getActiveInvoicePrintTemplate(): any {
               storePhone: activeGst.phone || matched.storePhone,
               storeEmail: activeGst.email || matched.storeEmail,
               cin: activeGst.cin || matched.cin,
-              logoUrl: activeGst.logo_url || matched.logoUrl || '',
+              logoUrl: activeGst.logo_url || (activeGst.trade_name ? '' : matched.logoUrl) || '',
             };
           }
           return matched;
