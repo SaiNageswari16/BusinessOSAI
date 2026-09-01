@@ -423,6 +423,8 @@ class VendorBillCreate(BaseModel):
     purchase_order_id: uuid.UUID
     due_date: Optional[datetime] = None
     total_amount: float
+    paid_amount: Optional[float] = 0.0
+    status: Optional[str] = "Unpaid"
 
 
 class VendorBillResponse(VendorBillBase):

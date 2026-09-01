@@ -21,7 +21,15 @@ import {
   ScanLine,
   Loader2,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Boxes,
+  Check,
+  Minus,
+  Search,
+  X,
+  Layers,
+  Tag,
+  Filter
 } from "lucide-react";
 import { inventoryApi, posApi } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -134,8 +142,27 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [products, setProducts] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [activeSearchRowId, setActiveSearchRowId] = useState<string | null>(null);
+
+  // Multi-Product Selection Modal State
+  const [isMultiProductModalOpen, setIsMultiProductModalOpen] = useState<boolean>(false);
+  const [multiProductSearch, setMultiProductSearch] = useState<string>("");
+  const [selectedProductQuantities, setSelectedProductQuantities] = useState<Record<string, number>>({});
+
+  // Quick Add Product Modal State
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState<boolean>(false);
+  const [newProdName, setNewProdName] = useState<string>("");
+  const [newProdSku, setNewProdSku] = useState<string>("");
+  const [newProdBarcode, setNewProdBarcode] = useState<string>("");
+  const [newProdHsn, setNewProdHsn] = useState<string>("2202");
+  const [newProdCostPrice, setNewProdCostPrice] = useState<number | "">("");
+  const [newProdSellingPrice, setNewProdSellingPrice] = useState<number | "">("");
+  const [newProdMrp, setNewProdMrp] = useState<number | "">("");
+  const [newProdTax, setNewProdTax] = useState<number>(18);
+  const [newProdStock, setNewProdStock] = useState<number>(100);
+  const [isCreatingProduct, setIsCreatingProduct] = useState<boolean>(false);
 
   // Form State
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
@@ -146,6 +173,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     new Date().toISOString().slice(0, 10)
   );
   const [paymentTerms, setPaymentTerms] = useState<string>("0");
+  const [paymentMode, setPaymentMode] = useState<string>("Cash");
   const [barcodeInput, setBarcodeInput] = useState<string>("");
   const [notes, setNotes] = useState<string>(
     docType === "PR"
@@ -181,9 +209,65 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [ocrResult, setOcrResult] = useState<any>(null);
   const [selectedOcrInvoiceIdx, setSelectedOcrInvoiceIdx] = useState<number>(0);
   // PO / PINV status update state
-  const [currentPoStatus, setCurrentPoStatus] = useState<string>(docType === "PINV" ? "Received" : "Draft");
+  const [currentPoStatus, setCurrentPoStatus] = useState<string>(docType === "PINV" ? "Paid" : "Draft");
   // GRN received date state
   const [receivedDate, setReceivedDate] = useState<string>(new Date().toISOString().slice(0, 10));
+
+  const loadProducts = async () => {
+    setIsLoadingProducts(true);
+    try {
+      const combined: any[] = [];
+      const idSet = new Set<string>();
+
+      try {
+        const invRes: any = await inventoryApi.getProducts({ page_size: 1000 });
+        const invItems = invRes?.items || (Array.isArray(invRes) ? invRes : []);
+        if (Array.isArray(invItems)) {
+          invItems.forEach((p: any) => {
+            if (p && p.id && !idSet.has(String(p.id))) {
+              idSet.add(String(p.id));
+              combined.push({
+                ...p,
+                stock: p.stock ?? p.initial_stock ?? p.stock_quantity ?? 0,
+                price: p.purchase_price ?? p.cost_price ?? p.selling_price ?? p.price ?? p.mrp ?? 0,
+                cost_price: p.cost_price ?? p.purchase_price ?? p.selling_price ?? 0,
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("inventoryApi.getProducts error:", e);
+      }
+
+      try {
+        const posRes: any = await posApi.getProducts();
+        const posItems = posRes?.items || (Array.isArray(posRes) ? posRes : []);
+        if (Array.isArray(posItems)) {
+          posItems.forEach((p: any) => {
+            if (p && p.id && !idSet.has(String(p.id))) {
+              idSet.add(String(p.id));
+              combined.push({
+                ...p,
+                stock: p.stock ?? p.initial_stock ?? p.stock_quantity ?? 0,
+                price: p.purchase_price ?? p.cost_price ?? p.selling_price ?? p.price ?? p.mrp ?? 0,
+                cost_price: p.cost_price ?? p.purchase_price ?? p.selling_price ?? 0,
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("posApi.getProducts error:", e);
+      }
+
+      setProducts(combined);
+      return combined;
+    } catch (err) {
+      console.error("Failed to load products for procurement:", err);
+      return [];
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -192,8 +276,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         const supps = await inventoryApi.getSuppliers().catch(() => []);
         setSuppliers(supps || []);
 
-        const prods = await inventoryApi.getProducts({ page_size: 5000 }).catch(() => ({ items: [] }));
-        setProducts(prods.items || []);
+        const loadedProds = await loadProducts();
 
         const prs = await inventoryApi.getPurchaseRequests().catch(() => []);
         setApprovedPRs(prs || []);
@@ -210,11 +293,12 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           if (initialData.notes) setNotes(initialData.notes);
           if (initialData.status) setCurrentPoStatus(initialData.status);
           if (initialData.delivery_date) setDueDate(new Date(initialData.delivery_date).toISOString().slice(0, 10));
+          if (initialData.paid_amount !== undefined) setAmountPaid(Number(initialData.paid_amount) || 0);
           if (initialData.items && initialData.items.length > 0) {
             setItems(initialData.items.map((it: any, idx: number) => {
               const pName = it.product_name || it.name || "";
-              const foundProd = (it.product_id ? (prods.items || []).find((p: any) => p.id === it.product_id) : undefined) ||
-                findMatchingInventoryProduct(pName, it.sku, it.barcode, it.hsn_code, prods.items || []);
+              const foundProd = (it.product_id ? loadedProds.find((p: any) => p.id === it.product_id) : undefined) ||
+                findMatchingInventoryProduct(pName, it.sku, it.barcode, it.hsn_code, loadedProds);
               const price = Number(it.unit_price || it.estimated_unit_cost || it.cost_price || it.mrp || it.selling_price || it.price) 
                 || (foundProd ? (Number((foundProd as any).cost_price) || Number((foundProd as any).selling_price) || Number(foundProd.mrp) || Number((foundProd as any).wholesale_price) || 0) : 0);
               const mrpVal = Number(it.mrp) || (foundProd ? Number(foundProd.mrp) : 0) || price;
@@ -356,52 +440,211 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     );
   };
 
+  // Multi-Product Selection Handlers
+  const toggleMultiSelectProduct = (productId: string) => {
+    setSelectedProductQuantities((prev) => {
+      const copy = { ...prev };
+      if (copy[productId]) {
+        delete copy[productId];
+      } else {
+        copy[productId] = 1;
+      }
+      return copy;
+    });
+  };
+
+  const updateMultiSelectQty = (productId: string, delta: number) => {
+    setSelectedProductQuantities((prev) => {
+      const current = prev[productId] || 1;
+      const next = current + delta;
+      if (next <= 0) {
+        const copy = { ...prev };
+        delete copy[productId];
+        return copy;
+      }
+      return { ...prev, [productId]: next };
+    });
+  };
+
+  const handleAddSelectedProductsToItems = () => {
+    const selectedIds = Object.keys(selectedProductQuantities);
+    if (selectedIds.length === 0) {
+      toast.error("Please select at least one product.");
+      return;
+    }
+
+    const newItems: ProcurementItem[] = [];
+    selectedIds.forEach((pid) => {
+      const prod = products.find((p) => String(p.id) === String(pid));
+      if (prod) {
+        const qty = selectedProductQuantities[pid] || 1;
+        const costPrice = Number((prod as any).purchase_price || (prod as any).cost_price || prod.selling_price || prod.price || prod.mrp || 0);
+        const mrpVal = Number(prod.mrp || prod.selling_price || costPrice || 0);
+
+        newItems.push({
+          id: Math.random().toString(36).substring(2, 9),
+          product_id: prod.id,
+          product_name: prod.name,
+          hsn_code: prod.hsn_code || "2202",
+          uom: (prod as any).uom_name || "Nos",
+          batch_number: `B-${Date.now().toString().slice(-4)}`,
+          mrp: mrpVal,
+          quantity: qty,
+          unit_price: costPrice,
+          tax_inclusive_rate: mrpVal,
+          tax_exclusive_rate: costPrice,
+          discount_value: 0,
+          discount_type: "percent",
+          tax_rate: prod.tax_percent || (prod as any).gst || 18,
+        });
+      }
+    });
+
+    setItems((prev) => {
+      const filteredPrev = prev.filter((it) => it.product_id || (it.product_name && it.product_name.trim().length > 0));
+      return [...filteredPrev, ...newItems];
+    });
+
+    toast.success(`Added ${newItems.length} product(s) to line items!`);
+    setSelectedProductQuantities({});
+    setIsMultiProductModalOpen(false);
+  };
+
+  // Quick Create New Product Modal Handler
+  const handleCreateProductAndAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProdName.trim()) {
+      toast.error("Product name is required");
+      return;
+    }
+    setIsCreatingProduct(true);
+    try {
+      const costVal = Number(newProdCostPrice) || Number(newProdSellingPrice) || 0;
+      const sellingVal = Number(newProdSellingPrice) || costVal;
+      const mrpVal = Number(newProdMrp) || sellingVal;
+      const skuVal = newProdSku.trim() || `SKU-${Date.now().toString().slice(-4)}`;
+      const barcodeVal = newProdBarcode.trim() || `BC-${Date.now().toString().slice(-4)}`;
+
+      const created = await inventoryApi.createProduct({
+        name: newProdName.trim(),
+        sku: skuVal,
+        barcode: barcodeVal,
+        hsn_code: newProdHsn.trim() || "2202",
+        purchase_price: costVal,
+        cost_price: costVal,
+        selling_price: sellingVal,
+        mrp: mrpVal,
+        tax_percent: newProdTax,
+        initial_stock: newProdStock,
+        status: "active"
+      });
+
+      const newProdObj = {
+        ...created,
+        stock: newProdStock,
+        price: costVal,
+        cost_price: costVal,
+      };
+
+      setProducts((prev) => [newProdObj, ...prev]);
+
+      setItems((prev) => [
+        ...prev.filter((it) => it.product_id || (it.product_name && it.product_name.trim().length > 0)),
+        {
+          id: Math.random().toString(36).substring(2, 9),
+          product_id: created.id,
+          product_name: created.name,
+          hsn_code: created.hsn_code || "2202",
+          uom: "Nos",
+          batch_number: `B-${Date.now().toString().slice(-4)}`,
+          mrp: mrpVal,
+          quantity: 1,
+          unit_price: costVal,
+          discount_value: 0,
+          discount_type: "percent",
+          tax_rate: newProdTax,
+        }
+      ]);
+
+      toast.success(`Created "${created.name}" and added to invoice!`);
+      setIsAddProductModalOpen(false);
+      setNewProdName("");
+      setNewProdSku("");
+      setNewProdBarcode("");
+      setNewProdCostPrice("");
+      setNewProdSellingPrice("");
+      setNewProdMrp("");
+    } catch (err: any) {
+      toast.error("Failed to create product: " + (err?.detail || err?.message || "Unknown error"));
+    } finally {
+      setIsCreatingProduct(false);
+    }
+  };
+
   // Barcode Submit Handler
   const handleBarcodeSubmit = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && barcodeInput.trim() !== "") {
-      const code = barcodeInput.trim();
-      const product = products.find((p) => p.barcode === code || p.sku === code);
+      const code = barcodeInput.trim().toLowerCase();
+      const product = products.find((p) =>
+        (p.barcode && p.barcode.toLowerCase() === code) ||
+        (p.sku && p.sku.toLowerCase() === code) ||
+        (p.name && p.name.toLowerCase() === code)
+      );
+
       if (product) {
-        setItems((prev) => [
-          ...prev,
-          {
-            id: Math.random().toString(36).substring(2, 9),
-            product_id: product.id,
-            product_name: product.name,
-            hsn_code: product.hsn_code || "2202",
-            batch_number: `B-${Date.now().toString().slice(-4)}`,
-            mrp: product.mrp || product.selling_price || 0,
-            quantity: 1,
-            unit_price: product.cost_price || product.selling_price || 0,
-            discount_value: 0,
-            discount_type: "percent",
-            tax_rate: product.tax_percent || 18,
-          },
-        ]);
-        toast.success(`Added ${product.name} to list`);
+        const costPrice = Number((product as any).purchase_price || (product as any).cost_price || product.selling_price || product.price || product.mrp || 0);
+        const mrpVal = Number(product.mrp || product.selling_price || costPrice || 0);
+
+        // If product already in items, increment qty
+        const existingIdx = items.findIndex((it) => it.product_id === product.id);
+        if (existingIdx !== -1) {
+          const updated = [...items];
+          updated[existingIdx].quantity += 1;
+          setItems(updated);
+          toast.success(`Incremented quantity for ${product.name} (Qty: ${updated[existingIdx].quantity})`);
+        } else {
+          setItems((prev) => [
+            ...prev.filter((it) => it.product_id || (it.product_name && it.product_name.trim().length > 0)),
+            {
+              id: Math.random().toString(36).substring(2, 9),
+              product_id: product.id,
+              product_name: product.name,
+              hsn_code: product.hsn_code || "2202",
+              batch_number: `B-${Date.now().toString().slice(-4)}`,
+              mrp: mrpVal,
+              quantity: 1,
+              unit_price: costPrice,
+              discount_value: 0,
+              discount_type: "percent",
+              tax_rate: product.tax_percent || (product as any).gst || 18,
+            },
+          ]);
+          toast.success(`Added ${product.name} to list`);
+        }
         setBarcodeInput("");
         return;
       }
 
       // External Barcode Lookup
       try {
-        toast.info(`Searching barcode ${code}...`);
-        const res = await posApi.lookupBarcode(code);
+        toast.info(`Searching barcode ${barcodeInput.trim()}...`);
+        const res = await posApi.lookupBarcode(barcodeInput.trim());
         if (res && res.success && res.product) {
           const p = res.product;
+          const costPrice = Number(p.purchase_price || p.cost_price || p.selling_price || p.price || p.mrp || 0);
           setItems((prev) => [
-            ...prev,
+            ...prev.filter((it) => it.product_id || (it.product_name && it.product_name.trim().length > 0)),
             {
               id: Math.random().toString(36).substring(2, 9),
               product_id: p.id,
               product_name: p.name,
-              hsn_code: "2202",
-              mrp: p.mrp || p.selling_price || 0,
+              hsn_code: p.hsn_code || "2202",
+              mrp: p.mrp || p.selling_price || costPrice || 0,
               quantity: 1,
-              unit_price: p.selling_price || p.mrp || 0,
+              unit_price: costPrice,
               discount_value: 0,
               discount_type: "percent",
-              tax_rate: p.gst || 18,
+              tax_rate: p.gst || p.tax_percent || 18,
             },
           ]);
           toast.success(`Found & Added: ${p.name}`);
@@ -464,7 +707,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const rawTotal = subtotal + totalTax + additionalChargesTotal;
   const roundedTotal = autoRoundOff ? Math.round(rawTotal * 100) / 100 : rawTotal;
   const roundOffAmount = roundedTotal - rawTotal;
-  const paidVal = typeof amountPaid === "number" ? amountPaid : 0;
+  
+  // Auto-sync amountPaid if status is Paid
+  const paidVal = currentPoStatus === "Paid" ? roundedTotal : (typeof amountPaid === "number" ? amountPaid : 0);
   const balanceDue = Math.max(0, roundedTotal - paidVal);
 
   // Submit Handler
@@ -488,7 +733,6 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         toast.success(`Purchase Requisition ${docNumber} created successfully!`);
       } else if (docType === "PO") {
         if (linkedPrId) {
-          // Check if the linked PR is Approved before allowing PO creation
           const linkedPr = approvedPRs.find((pr) => pr.id === linkedPrId);
           if (linkedPr && linkedPr.status !== "Approved" && linkedPr.status !== "approved") {
             return toast.error(`Cannot create PO from PR ${linkedPr.request_number} — PR status is "${linkedPr.status}". PR must be Approved first.`);
@@ -524,7 +768,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             po_number: `PO-${docNumber.replace(/^PINV-/, '')}`,
             supplier_id: selectedSupplierId,
             delivery_date: dueDate ? new Date(dueDate).toISOString() : undefined,
-            status: currentPoStatus || "Received",
+            status: currentPoStatus === "Paid" ? "Billed" : (currentPoStatus || "Received"),
             items: items.map((it) => ({
               product_id: it.product_id || products[0]?.id,
               quantity: Number(it.quantity),
@@ -535,13 +779,19 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           poIdToUse = createdPo.id;
         }
 
+        const isPaid = currentPoStatus === "Paid" || Number(paidVal) >= roundedTotal;
+        const finalPaidAmount = isPaid ? roundedTotal : Number(paidVal);
+        const billStatus = isPaid ? "Paid" : (finalPaidAmount > 0 ? "Partial" : (currentPoStatus || "Unpaid"));
+
         await inventoryApi.createVendorBill({
           bill_number: docNumber,
           purchase_order_id: poIdToUse,
           total_amount: roundedTotal,
+          paid_amount: finalPaidAmount,
+          status: billStatus,
           due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
         });
-        toast.success(`Purchase Invoice ${docNumber} recorded successfully (Status: ${currentPoStatus || "Received"})!`);
+        toast.success(`Purchase Invoice ${docNumber} recorded successfully (Status: ${billStatus})!`);
       }
 
       if (onSaved) onSaved();
@@ -1246,17 +1496,31 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             </div>
           </div>
 
-          {/* Barcode Search Box */}
-          <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-sm w-full md:w-80 focus-within:ring-2 focus-within:ring-blue-500">
-            <ScanBarcode className="w-4 h-4 text-slate-400 shrink-0" />
-            <input
-              type="text"
-              value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
-              onKeyDown={handleBarcodeSubmit}
-              placeholder="Scan barcode or type SKU..."
-              className="bg-transparent border-none text-xs text-slate-800 outline-none w-full"
-            />
+          {/* Barcode Search Box & Multi-Product Button */}
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                loadProducts();
+                setIsMultiProductModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+            >
+              <Boxes className="w-3.5 h-3.5" />
+              <span>Multi-Product Catalog ({products.length})</span>
+            </button>
+
+            <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-sm w-full md:w-64 focus-within:ring-2 focus-within:ring-blue-500">
+              <ScanBarcode className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={barcodeInput}
+                onChange={(e) => setBarcodeInput(e.target.value)}
+                onKeyDown={handleBarcodeSubmit}
+                placeholder="Scan barcode or SKU..."
+                className="bg-transparent border-none text-xs text-slate-800 outline-none w-full"
+              />
+            </div>
           </div>
         </div>
 
@@ -1265,7 +1529,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-3 py-3 w-10 text-center">#</th>
-                <th className="px-3 py-3 min-w-[220px]">Items / Services</th>
+                <th className="px-3 py-3 min-w-[260px]">Items / Services</th>
                 <th className="px-3 py-3 w-24">HSN/SAC</th>
                 <th className="px-3 py-3 w-24">Batch No</th>
                 <th className="px-3 py-3 w-28">Exp Date</th>
@@ -1304,12 +1568,24 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     lineAmount = lineTaxable + lineTax;
                   }
 
+                  const query = (item.product_name || "").toLowerCase().trim();
+                  const matchingSuggestions = products.filter((p: any) => {
+                    if (!query) return true;
+                    return (
+                      p.name?.toLowerCase().includes(query) ||
+                      p.sku?.toLowerCase().includes(query) ||
+                      p.barcode?.toLowerCase().includes(query) ||
+                      p.hsn_code?.toLowerCase().includes(query) ||
+                      (p.category?.name || p.category)?.toLowerCase().includes(query)
+                    );
+                  }).slice(0, 10);
+
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-3 py-2 text-center font-bold text-slate-400">{idx + 1}</td>
 
                       {/* Product Selector / Smart Inventory Mapping */}
-                      <td className="px-3 py-2 min-w-[260px]">
+                      <td className="px-3 py-2 min-w-[280px]">
                         {item.product_id ? (
                           (() => {
                             const linkedProd = products.find((p) => p.id === item.product_id);
@@ -1328,11 +1604,19 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                                         ({linkedProd.sku})
                                       </span>
                                     )}
+                                    {linkedProd?.stock !== undefined && (
+                                      <span className="text-slate-600 ml-1">
+                                        • Stock: <strong>{linkedProd.stock}</strong>
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => updateItem(item.id, "product_id", undefined)}
+                                  onClick={() => {
+                                    updateItem(item.id, "product_id", undefined);
+                                    setActiveSearchRowId(item.id);
+                                  }}
                                   className="text-[10px] text-slate-400 hover:text-rose-600 font-semibold px-1.5 py-0.5 rounded hover:bg-white/60 transition-colors shrink-0 cursor-pointer"
                                   title="Unlink from this inventory product"
                                 >
@@ -1342,24 +1626,130 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                             );
                           })()
                         ) : (
-                          <div className="space-y-1.5">
+                          <div className="space-y-1.5 relative">
                             <div className="relative">
                               <input
                                 type="text"
                                 placeholder="Type item name or search catalog..."
                                 value={item.product_name}
+                                onFocus={() => setActiveSearchRowId(item.id)}
                                 onChange={(e) => {
                                   const val = e.target.value;
                                   updateItem(item.id, "product_name", val);
-                                  const match = findMatchingInventoryProduct(val, undefined, undefined, item.hsn_code, products);
-                                  if (match) {
-                                    updateItem(item.id, "product_id", match.id);
-                                    if (match.hsn_code && !item.hsn_code) updateItem(item.id, "hsn_code", match.hsn_code);
-                                  }
+                                  setActiveSearchRowId(item.id);
                                 }}
                                 className="w-full bg-white border border-slate-300 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-400"
                               />
+
+                              {/* Interactive Autocomplete Suggestions Dropdown */}
+                              {activeSearchRowId === item.id && (
+                                <div className="absolute left-0 right-0 top-9 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-72 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
+                                  <div className="p-2 bg-slate-50 flex items-center justify-between text-[11px] font-bold text-slate-600">
+                                    <span className="flex items-center gap-1.5">
+                                      <Boxes className="size-3 text-indigo-600" /> Matching Inventory Products ({matchingSuggestions.length})
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveSearchRowId(null)}
+                                      className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                                    >
+                                      <X className="size-3.5" />
+                                    </button>
+                                  </div>
+
+                                  {matchingSuggestions.length === 0 ? (
+                                    <div className="p-3 text-center text-xs text-slate-400 space-y-2">
+                                      <p>No products match "{item.product_name}".</p>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setNewProdName(item.product_name);
+                                          setIsAddProductModalOpen(true);
+                                          setActiveSearchRowId(null);
+                                        }}
+                                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <Plus className="size-3" /> Create "{item.product_name}" in Inventory
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    matchingSuggestions.map((p: any) => {
+                                      const costPrice = Number(p.purchase_price || p.cost_price || p.selling_price || p.price || p.mrp || 0);
+                                      const mrpVal = Number(p.mrp || p.selling_price || costPrice || 0);
+
+                                      return (
+                                        <div
+                                          key={p.id}
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            updateItem(item.id, "product_id", p.id);
+                                            updateItem(item.id, "product_name", p.name);
+                                            if (p.hsn_code) updateItem(item.id, "hsn_code", p.hsn_code);
+                                            if ((p as any).uom_name) updateItem(item.id, "uom", (p as any).uom_name);
+                                            updateItem(item.id, "unit_price", costPrice);
+                                            updateItem(item.id, "mrp", mrpVal);
+                                            if (p.tax_percent !== undefined) updateItem(item.id, "tax_rate", Number(p.tax_percent));
+                                            setActiveSearchRowId(null);
+                                          }}
+                                          className="p-2.5 hover:bg-indigo-50/70 transition-colors cursor-pointer flex items-center justify-between gap-3 text-left"
+                                        >
+                                          <div className="min-w-0 flex-1">
+                                            <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                                              <Package className="size-3 text-indigo-600 shrink-0" />
+                                              <span className="truncate">{p.name}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5 flex-wrap">
+                                              {p.sku && <span className="font-mono bg-slate-100 px-1 rounded">SKU: {p.sku}</span>}
+                                              {p.barcode && <span className="font-mono bg-slate-100 px-1 rounded">BC: {p.barcode}</span>}
+                                              {p.hsn_code && <span>HSN: <strong>{p.hsn_code}</strong></span>}
+                                              <span className={cn("font-semibold", (p.stock || 0) > 0 ? "text-emerald-700" : "text-amber-700")}>
+                                                Stock: {p.stock ?? 0}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="text-right shrink-0">
+                                            <div className="text-xs font-black text-indigo-700">
+                                              {currency.symbol}{costPrice.toFixed(2)}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400">
+                                              MRP: {currency.symbol}{mrpVal.toFixed(2)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  )}
+
+                                  <div className="p-2 bg-slate-50 flex items-center justify-between border-t text-[11px]">
+                                    <button
+                                      type="button"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        setNewProdName(item.product_name);
+                                        setIsAddProductModalOpen(true);
+                                        setActiveSearchRowId(null);
+                                      }}
+                                      className="font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Plus className="size-3" /> Add New Product to Inventory
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        loadProducts();
+                                        setIsMultiProductModalOpen(true);
+                                        setActiveSearchRowId(null);
+                                      }}
+                                      className="font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Boxes className="size-3" /> Open Catalog
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
+
                             <div className="flex items-center justify-between gap-1 px-0.5">
                               <span className="text-[10px] text-amber-600 font-semibold flex items-center gap-1">
                                 <AlertCircle className="size-3 text-amber-500 shrink-0" />
@@ -1500,9 +1890,31 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 })
               ) : (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
-                    <Package className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                    No line items added yet. Click "+ Add Line Item" or scan a barcode above.
+                  <td colSpan={12} className="py-12 text-center text-slate-400 space-y-3">
+                    <Package className="w-10 h-10 mx-auto text-slate-300" />
+                    <div>
+                      <p className="font-bold text-slate-700">No line items added yet.</p>
+                      <p className="text-xs text-slate-400">Search products from inventory catalog or click below to add.</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          loadProducts();
+                          setIsMultiProductModalOpen(true);
+                        }}
+                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Boxes className="w-4 h-4" /> Open Multi-Product Catalog
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddItem}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" /> Add Blank Row
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -1510,13 +1922,33 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           </table>
         </div>
 
-        <div className="p-3 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
+        <div className="p-3 bg-slate-50/50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleAddItem}
+              className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-blue-600 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Line Item
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                loadProducts();
+                setIsMultiProductModalOpen(true);
+              }}
+              className="px-3.5 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <Boxes className="w-3.5 h-3.5" /> Select Multiple Products
+            </button>
+          </div>
+
           <button
             type="button"
-            onClick={handleAddItem}
-            className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-blue-600 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5"
+            onClick={() => setIsAddProductModalOpen(true)}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 flex items-center gap-1.5 cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" /> Add Line Item
+            <Plus className="w-3.5 h-3.5" /> Quick Create Product
           </button>
         </div>
       </div>
@@ -1618,20 +2050,106 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             </div>
 
             {docType === "PINV" && (
-              <div className="pt-3 border-t border-slate-200 grid grid-cols-2 gap-3">
+              <div className="pt-3 border-t border-slate-200 space-y-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid ({currency.symbol})</label>
-                  <input
-                    type="number"
-                    value={amountPaid}
-                    onChange={(e) => setAmountPaid(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none"
-                  />
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1.5">Payment Settlement Status</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentPoStatus("Paid");
+                        setAmountPaid(roundedTotal);
+                      }}
+                      className={cn(
+                        "py-2 px-2.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                        currentPoStatus === "Paid"
+                          ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                          : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                      )}
+                    >
+                      <Check className="size-3.5" />
+                      <span>Paid in Full</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentPoStatus("Unpaid");
+                        setAmountPaid(0);
+                      }}
+                      className={cn(
+                        "py-2 px-2.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                        currentPoStatus === "Unpaid" || currentPoStatus === "Pending Payment"
+                          ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                          : "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100"
+                      )}
+                    >
+                      <Clock className="size-3.5" />
+                      <span>Unpaid / Due</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentPoStatus("Partial");
+                        if (!amountPaid) setAmountPaid(Math.round(roundedTotal / 2));
+                      }}
+                      className={cn(
+                        "py-2 px-2.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                        currentPoStatus === "Partial" || currentPoStatus === "Partially Received"
+                          ? "bg-amber-600 text-white border-amber-600 shadow-sm"
+                          : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                      )}
+                    >
+                      <Receipt className="size-3.5" />
+                      <span>Partial Paid</span>
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Balance Due ({currency.symbol})</label>
-                  <div className="h-9 bg-rose-50 border border-rose-200 rounded-xl px-2.5 flex items-center font-black text-rose-700 text-xs">
-                    {currency.symbol}{balanceDue.toFixed(2)}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Method</label>
+                    <select
+                      value={paymentMode}
+                      onChange={(e) => setPaymentMode(e.target.value)}
+                      className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold text-slate-800 outline-none"
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="UPI">UPI / QR</option>
+                      <option value="Bank Transfer">Bank Transfer / NEFT</option>
+                      <option value="Cheque">Cheque</option>
+                      <option value="Credit Card">Credit Card</option>
+                      <option value="Credit">Credit / Net 30</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid ({currency.symbol})</label>
+                    <input
+                      type="number"
+                      value={currentPoStatus === "Paid" ? roundedTotal : amountPaid}
+                      onChange={(e) => {
+                        const val = e.target.value ? Number(e.target.value) : "";
+                        setAmountPaid(val);
+                        if (typeof val === "number" && val >= roundedTotal && roundedTotal > 0) {
+                          setCurrentPoStatus("Paid");
+                        } else if (typeof val === "number" && val > 0) {
+                          setCurrentPoStatus("Partial");
+                        } else {
+                          setCurrentPoStatus("Unpaid");
+                        }
+                      }}
+                      className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Balance Due ({currency.symbol})</label>
+                    <div className={cn(
+                      "h-9 border rounded-xl px-2.5 flex items-center font-black text-xs",
+                      balanceDue <= 0 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700"
+                    )}>
+                      {currency.symbol}{balanceDue.toFixed(2)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1646,7 +2164,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           <button
             disabled={isSaving}
             onClick={onClose}
-            className="px-5 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300 transition-all"
+            className="px-5 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300 transition-all cursor-pointer"
           >
             Cancel
           </button>
@@ -1656,15 +2174,20 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               <span className="text-xs font-bold text-slate-500">Status:</span>
               <select
                 value={currentPoStatus}
-                onChange={(e) => setCurrentPoStatus(e.target.value)}
+                onChange={(e) => {
+                  const s = e.target.value;
+                  setCurrentPoStatus(s);
+                  if (s === "Paid") setAmountPaid(roundedTotal);
+                  else if (s === "Unpaid") setAmountPaid(0);
+                }}
                 className="h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
               >
                 {docType === "PINV" ? (
                   <>
+                    <option value="Paid">Paid / Settled (Direct Bill)</option>
                     <option value="Received">Received / Full Delivery</option>
-                    <option value="Partially Received">Partially Received</option>
-                    <option value="Paid">Paid / Settled</option>
-                    <option value="Pending Payment">Pending Payment</option>
+                    <option value="Partial">Partially Paid</option>
+                    <option value="Unpaid">Unpaid / Due</option>
                     <option value="Draft">Draft Invoice</option>
                   </>
                 ) : (
@@ -1685,12 +2208,482 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         <button
           disabled={isSaving}
           onClick={handleSaveDocument}
-          className="w-full sm:w-auto px-8 py-3 text-sm font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99]"
+          className="w-full sm:w-auto px-8 py-3 text-sm font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
         >
-          <Save className="w-4 h-4" />
-          {isSaving ? "Saving..." : "Submit"}
+          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {isSaving ? "Saving..." : (docType === "PINV" ? (currentPoStatus === "Paid" ? "Save Paid Invoice" : "Save Purchase Invoice") : "Save Document")}
         </button>
       </div>
+
+      {/* ── Multi-Product Selection Catalog Modal (Sales Invoice Style) ──────── */}
+      {isMultiProductModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-4xl w-full h-[85vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-md shadow-indigo-200">
+                  <Boxes className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-lg text-slate-900 leading-tight">
+                      Multi-Product Inventory Catalog
+                    </h3>
+                    <span className="text-[11px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
+                      {products.length} Products Available
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    Select multiple products and quantities to batch-add to this purchase invoice
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadProducts}
+                  disabled={isLoadingProducts}
+                  title="Reload inventory products"
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingProducts ? "animate-spin text-indigo-600" : "text-slate-600"}`} />
+                  <span>{isLoadingProducts ? "Loading..." : "Refresh"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsMultiProductModalOpen(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="p-4 border-b border-slate-100 bg-white flex flex-col sm:flex-row gap-3 items-center justify-between">
+              <div className="relative flex-1 w-full">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  placeholder="Search by product name, barcode, SKU, brand, HSN..."
+                  value={multiProductSearch}
+                  onChange={(e) => setMultiProductSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white font-medium"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filtered = products.filter((p: any) => {
+                      const q = multiProductSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        p.name?.toLowerCase().includes(q) ||
+                        p.barcode?.toLowerCase().includes(q) ||
+                        p.sku?.toLowerCase().includes(q) ||
+                        (p.brand?.name || p.brand)?.toLowerCase().includes(q) ||
+                        (p.category?.name || p.category)?.toLowerCase().includes(q) ||
+                        p.hsn_code?.toLowerCase().includes(q)
+                      );
+                    });
+                    const newSelected: Record<string, number> = {};
+                    filtered.forEach((p: any) => {
+                      newSelected[p.id] = selectedProductQuantities[p.id] || 1;
+                    });
+                    setSelectedProductQuantities(newSelected);
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-all shrink-0 cursor-pointer"
+                >
+                  Select All Visible
+                </button>
+                {Object.keys(selectedProductQuantities).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProductQuantities({})}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 transition-all shrink-0 cursor-pointer"
+                  >
+                    Clear Selection
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMultiProductModalOpen(false);
+                    setIsAddProductModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="size-3.5" /> New Product
+                </button>
+              </div>
+            </div>
+
+            {/* Product List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50">
+              {isLoadingProducts && products.length === 0 ? (
+                <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-3 text-center">
+                  <RefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
+                  <p className="text-sm font-bold text-slate-700">Loading products from inventory...</p>
+                  <p className="text-xs text-slate-400">Fetching ERP catalog and POS items.</p>
+                </div>
+              ) : (() => {
+                const filtered = products.filter((p: any) => {
+                  const q = multiProductSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return (
+                    p.name?.toLowerCase().includes(q) ||
+                    p.barcode?.toLowerCase().includes(q) ||
+                    p.sku?.toLowerCase().includes(q) ||
+                    (p.brand?.name || p.brand)?.toLowerCase().includes(q) ||
+                    (p.category?.name || p.category)?.toLowerCase().includes(q) ||
+                    p.hsn_code?.toLowerCase().includes(q)
+                  );
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-20 flex flex-col items-center justify-center text-center p-6 bg-white rounded-2xl border border-dashed border-slate-300">
+                      <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-3">
+                        <Boxes className="w-7 h-7" />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-800 mb-1">
+                        {multiProductSearch.trim() ? "No matching products found" : "No products found in inventory"}
+                      </h4>
+                      <p className="text-xs text-slate-500 max-w-sm mb-4">
+                        {multiProductSearch.trim()
+                          ? `No items match the query "${multiProductSearch}". Try different keywords or add a new product.`
+                          : "Your inventory product catalog is empty. Click below to add your first product."}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {multiProductSearch.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => setMultiProductSearch("")}
+                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                          >
+                            Clear Search
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMultiProductModalOpen(false);
+                            setIsAddProductModalOpen(true);
+                          }}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Add New Product
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return filtered.map((p: any) => {
+                  const isSelected = !!selectedProductQuantities[p.id];
+                  const qty = selectedProductQuantities[p.id] || 1;
+                  const costPrice = Number(p.purchase_price || p.cost_price || p.selling_price || p.price || p.mrp || 0);
+                  const mrpVal = Number(p.mrp || p.selling_price || costPrice || 0);
+                  const brandName = p.brand?.name || p.brand || "";
+                  const categoryName = p.category?.name || p.category || "";
+
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => toggleMultiSelectProduct(p.id)}
+                      className={cn(
+                        "p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4",
+                        isSelected
+                          ? "bg-indigo-50/80 border-indigo-500 shadow-sm ring-1 ring-indigo-500"
+                          : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs"
+                      )}
+                    >
+                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                        <div
+                          className={cn(
+                            "w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0",
+                            isSelected ? "bg-indigo-600 text-white" : "border-2 border-slate-300 text-transparent"
+                          )}
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-xs text-slate-900 truncate">
+                              {p.name}
+                            </span>
+                            {p.barcode && (
+                              <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                                {p.barcode}
+                              </span>
+                            )}
+                            {brandName && (
+                              <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded font-semibold">
+                                {brandName}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
+                            <span>SKU: <strong className="text-slate-700">{p.sku || "N/A"}</strong></span>
+                            {categoryName && (
+                              <>
+                                <span>•</span>
+                                <span>{categoryName}</span>
+                              </>
+                            )}
+                            {p.hsn_code && (
+                              <>
+                                <span>•</span>
+                                <span>HSN: <strong className="text-slate-700">{p.hsn_code}</strong></span>
+                              </>
+                            )}
+                            <span>•</span>
+                            <span className="font-semibold text-slate-700">
+                              Stock: <span className={(p.stock || p.initial_stock || 0) > 10 ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>{p.stock || p.initial_stock || 0}</span>
+                            </span>
+                            <span>•</span>
+                            <span>GST: <strong className="text-slate-700">{p.tax_percent || 18}%</strong></span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pricing & Quantity Stepper */}
+                      <div className="flex items-center gap-4 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <div className="text-right">
+                          <div className="font-black text-xs text-indigo-700">
+                            {currency.symbol}{costPrice.toFixed(2)}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-semibold">
+                            MRP: {currency.symbol}{mrpVal.toFixed(2)}
+                          </div>
+                        </div>
+
+                        {isSelected ? (
+                          <div className="flex items-center gap-1.5 bg-white border border-indigo-300 rounded-xl p-1 shadow-xs">
+                            <button
+                              type="button"
+                              onClick={() => updateMultiSelectQty(p.id, -1)}
+                              className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="w-8 text-center text-xs font-black text-indigo-700">
+                              {qty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateMultiSelectQty(p.id, 1)}
+                              className="w-6 h-6 flex items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => toggleMultiSelectProduct(p.id)}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 text-slate-600 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer"
+                          >
+                            + Select
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Sticky Bottom Summary & Action */}
+            <div className="p-4 border-t border-slate-200 bg-white flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-900 block">
+                  {Object.keys(selectedProductQuantities).length} Product(s) Selected
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Total Items Quantity: {Object.values(selectedProductQuantities).reduce((a, b) => a + b, 0)} Units
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsMultiProductModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={Object.keys(selectedProductQuantities).length === 0}
+                  onClick={handleAddSelectedProductsToItems}
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Selected ({Object.keys(selectedProductQuantities).length}) to Invoice
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick Create Product Modal ────────────────────────────────────────── */}
+      {isAddProductModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 leading-tight">Create & Add Product</h3>
+                  <p className="text-xs text-slate-500">Add to inventory catalog and insert into current bill</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddProductModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateProductAndAdd} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Product / Item Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Stainless Steel Pipe 2-Inch"
+                  value={newProdName}
+                  onChange={(e) => setNewProdName(e.target.value)}
+                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">HSN Code</label>
+                  <input
+                    type="text"
+                    placeholder="2202"
+                    value={newProdHsn}
+                    onChange={(e) => setNewProdHsn(e.target.value)}
+                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-mono outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">SKU Code</label>
+                  <input
+                    type="text"
+                    placeholder="SKU-001"
+                    value={newProdSku}
+                    onChange={(e) => setNewProdSku(e.target.value)}
+                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-mono outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">Barcode</label>
+                  <input
+                    type="text"
+                    placeholder="890123..."
+                    value={newProdBarcode}
+                    onChange={(e) => setNewProdBarcode(e.target.value)}
+                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-mono outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">Purchase / Cost (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={newProdCostPrice}
+                    onChange={(e) => setNewProdCostPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-indigo-700 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">Selling Price (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={newProdSellingPrice}
+                    onChange={(e) => setNewProdSellingPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">MRP (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={newProdMrp}
+                    onChange={(e) => setNewProdMrp(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">GST Tax Rate</label>
+                  <select
+                    value={newProdTax}
+                    onChange={(e) => setNewProdTax(Number(e.target.value))}
+                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold outline-none"
+                  >
+                    <option value={0}>0% GST</option>
+                    <option value={5}>5% GST</option>
+                    <option value={12}>12% GST</option>
+                    <option value={18}>18% GST</option>
+                    <option value={28}>28% GST</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">Initial Stock Qty</label>
+                  <input
+                    type="number"
+                    value={newProdStock}
+                    onChange={(e) => setNewProdStock(Number(e.target.value))}
+                    className="w-full h-8.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddProductModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingProduct}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isCreatingProduct ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  Create & Add to Bill
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Add Vendor Party Modal */}
       {isAddVendorOpen && (

@@ -1147,16 +1147,33 @@ async def create_vendor_bill(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    paid_amt = float(payload.paid_amount or 0.0)
+    bill_status = payload.status or ("Paid" if paid_amt >= payload.total_amount and payload.total_amount > 0 else "Unpaid")
+    if paid_amt > 0 and paid_amt < payload.total_amount and bill_status != "Paid":
+        bill_status = "Partial"
+
     bill = VendorBill(
         tenant_id=ctx.tenant_id,
         bill_number=payload.bill_number,
         purchase_order_id=payload.purchase_order_id,
         due_date=payload.due_date.replace(tzinfo=None) if payload.due_date else None,
         total_amount=payload.total_amount,
-        paid_amount=0.0,
-        status="Unpaid"
+        paid_amount=paid_amt,
+        status=bill_status
     )
     db.add(bill)
+    
+    # If paid or partially paid, also record VendorPayment automatically
+    if paid_amt > 0:
+        v_payment = VendorPayment(
+            tenant_id=ctx.tenant_id,
+            vendor_bill_id=bill.id,
+            payment_date=datetime.utcnow(),
+            payment_method="Direct/Paid",
+            amount_paid=paid_amt,
+            reference_number=f"BILL-PAY-{payload.bill_number}"
+        )
+        db.add(v_payment)
     
     # Update PO status to Billed
     po = await db.get(PurchaseOrder, payload.purchase_order_id)
