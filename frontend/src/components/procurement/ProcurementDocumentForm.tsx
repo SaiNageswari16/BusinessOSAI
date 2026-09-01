@@ -34,6 +34,7 @@ import {
 import { inventoryApi, posApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { cn } from "@/lib/utils";
 
 export type ProcurementDocType = "PR" | "PO" | "PINV";
 
