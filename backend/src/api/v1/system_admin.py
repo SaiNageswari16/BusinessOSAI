@@ -367,6 +367,38 @@ async def update_platform_user_status(
     return MessageResponse(message=f"User account status updated to {user.status.value}")
 
 
+@router.post("/users/{user_id}/reset-password", response_model=MessageResponse)
+async def reset_platform_user_password(
+    user_id: uuid.UUID,
+    payload: ResetPasswordPayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Platform Super Admin: Reset a user's password administratively across any workspace tenant.
+    """
+    require_platform_admin(ctx)
+
+    if not payload.password or len(payload.password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters long.",
+        )
+
+    from src.utils.security import hash_password
+
+    user = await db.scalar(select(User).where(User.id == user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password_hash = hash_password(payload.password)
+    user.must_change_password = True
+    await db.commit()
+    await db.refresh(user)
+
+    return MessageResponse(message=f"Password for user {user.email} has been successfully reset.")
+
+
 @router.post("/users/{user_id}/reset-mfa")
 async def reset_platform_user_mfa(
     user_id: uuid.UUID,
