@@ -193,50 +193,79 @@ async def purge_user_complete(
 
     # Otherwise, purge this individual user and clean up all their activities
     try:
-        from src.models import (
-            UserRole, UserBranch, RefreshToken, AuditLog, LeadActivity, Lead,
-            POSTransaction, POSSession
-        )
-        # 1. Clean tokens, roles, branches
-        await db.execute(delete(RefreshToken).where(RefreshToken.user_id == user_id))
-        await db.execute(delete(UserRole).where(UserRole.user_id == user_id))
-        await db.execute(delete(UserBranch).where(UserBranch.user_id == user_id))
-
-        # 2. Reassign / nullify foreign keys
+        # Determine fallback user ID for non-nullable FK columns like pos_transactions / pos_sessions
         fallback_id = actor_user_id if (actor_user_id and actor_user_id != user_id) else None
-        
-        try:
-            async with db.begin_nested():
-                await db.execute(update(POSTransaction).where(POSTransaction.cashier_id == user_id).values(cashier_id=fallback_id))
-        except Exception as e:
-            logger.debug("POSTransaction cashier reassign note: %s", e)
+        if not fallback_id:
+            # Try to find another active user in the same tenant
+            alt_user_id = await db.scalar(
+                select(User.id).where(User.tenant_id == tenant_id, User.id != user_id).limit(1)
+            )
+            fallback_id = alt_user_id
 
-        try:
-            async with db.begin_nested():
-                await db.execute(update(POSSession).where(POSSession.user_id == user_id).values(user_id=fallback_id))
-        except Exception as e:
-            logger.debug("POSSession user reassign note: %s", e)
+        # 1. Clean tokens, roles, and branches
+        await db.execute(text("DELETE FROM refresh_tokens WHERE user_id = :uid"), {"uid": user_id})
+        await db.execute(text("DELETE FROM user_roles WHERE user_id = :uid"), {"uid": user_id})
+        await db.execute(text("DELETE FROM user_branches WHERE user_id = :uid"), {"uid": user_id})
 
-        try:
-            async with db.begin_nested():
-                await db.execute(update(AuditLog).where(AuditLog.user_id == user_id).values(user_id=None))
-        except Exception as e:
-            logger.debug("AuditLog nullify note: %s", e)
+        # 2. Reassign non-nullable POS transactions and sessions
+        if fallback_id:
+            await db.execute(
+                text("UPDATE pos_transactions SET cashier_id = :fid WHERE cashier_id = :uid"),
+                {"fid": fallback_id, "uid": user_id}
+            )
+            await db.execute(
+                text("UPDATE pos_sessions SET user_id = :fid WHERE user_id = :uid"),
+                {"fid": fallback_id, "uid": user_id}
+            )
+        else:
+            # If no other user exists, clean up the POS cart items, payments, transactions, and sessions
+            await db.execute(
+                text("DELETE FROM pos_cart_items WHERE transaction_id IN (SELECT id FROM pos_transactions WHERE cashier_id = :uid)"),
+                {"uid": user_id}
+            )
+            await db.execute(
+                text("DELETE FROM pos_payments WHERE transaction_id IN (SELECT id FROM pos_transactions WHERE cashier_id = :uid)"),
+                {"uid": user_id}
+            )
+            await db.execute(text("DELETE FROM pos_transactions WHERE cashier_id = :uid"), {"uid": user_id})
+            await db.execute(text("DELETE FROM pos_sessions WHERE user_id = :uid"), {"uid": user_id})
 
-        try:
-            async with db.begin_nested():
-                await db.execute(update(LeadActivity).where(LeadActivity.created_by_user_id == user_id).values(created_by_user_id=None))
-        except Exception as e:
-            logger.debug("LeadActivity nullify note: %s", e)
+        # 3. Nullify all foreign key references pointing to this user across all modules
+        nullify_queries = [
+            "UPDATE employees SET user_id = NULL WHERE user_id = :uid",
+            "UPDATE branches SET manager_user_id = NULL WHERE manager_user_id = :uid",
+            "UPDATE regions SET manager_user_id = NULL WHERE manager_user_id = :uid",
+            "UPDATE zones SET manager_user_id = NULL WHERE manager_user_id = :uid",
+            "UPDATE teams SET lead_user_id = NULL WHERE lead_user_id = :uid",
+            "UPDATE business_units SET head_user_id = NULL WHERE head_user_id = :uid",
+            "UPDATE audit_logs SET user_id = NULL WHERE user_id = :uid",
+            "UPDATE journal_entries SET created_by_user_id = NULL WHERE created_by_user_id = :uid",
+            "UPDATE journal_entries SET posted_by_user_id = NULL WHERE posted_by_user_id = :uid",
+            "UPDATE journal_entries SET reversed_by_user_id = NULL WHERE reversed_by_user_id = :uid",
+            "UPDATE payment_vouchers SET created_by_user_id = NULL WHERE created_by_user_id = :uid",
+            "UPDATE payment_vouchers SET approved_by_user_id = NULL WHERE approved_by_user_id = :uid",
+            "UPDATE expense_claims SET approved_by_user_id = NULL WHERE approved_by_user_id = :uid",
+            "UPDATE bank_reconciliations SET reconciled_by_user_id = NULL WHERE reconciled_by_user_id = :uid",
+            "UPDATE bank_reconciliations SET completed_by_user_id = NULL WHERE completed_by_user_id = :uid",
+            "UPDATE fixed_asset_depreciations SET posted_by_user_id = NULL WHERE posted_by_user_id = :uid",
+            "UPDATE gst_filings SET filed_by_user_id = NULL WHERE filed_by_user_id = :uid",
+            "UPDATE crm_customers SET owner_user_id = NULL WHERE owner_user_id = :uid",
+            "UPDATE crm_leads SET owner_user_id = NULL WHERE owner_user_id = :uid",
+            "UPDATE crm_opportunities SET owner_user_id = NULL WHERE owner_user_id = :uid",
+            "UPDATE crm_deals SET owner_user_id = NULL WHERE owner_user_id = :uid",
+            "UPDATE crm_lead_activities SET created_by_user_id = NULL WHERE created_by_user_id = :uid",
+            "UPDATE performance_reviews SET reviewed_by = NULL WHERE reviewed_by = :uid",
+            "UPDATE performance_reviews SET approved_by = NULL WHERE approved_by = :uid",
+        ]
 
-        try:
-            async with db.begin_nested():
-                await db.execute(update(Lead).where(Lead.owner_user_id == user_id).values(owner_user_id=None))
-        except Exception as e:
-            logger.debug("Lead owner nullify note: %s", e)
+        for q in nullify_queries:
+            try:
+                await db.execute(text(q), {"uid": user_id})
+            except Exception as err:
+                logger.debug("Nullify query '%s' note: %s", q, err)
 
-        # 3. Direct SQL delete user
-        await db.execute(delete(User).where(User.id == user_id))
+        # 4. Direct SQL delete user
+        await db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
         await db.commit()
 
         return {

@@ -454,20 +454,64 @@ async def delete_employee(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms_employees"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    from sqlalchemy import text
+
     emp = await db.scalar(
         select(Employee).where(Employee.id == emp_id, Employee.tenant_id == ctx.tenant_id)
     )
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
+    emp_name = emp.full_name
+    emp_code = emp.employee_code
+
+    # 1. Nullify references pointing to this employee
+    nullify_emp_queries = [
+        "UPDATE employees SET manager_id = NULL WHERE manager_id = :eid",
+        "UPDATE fixed_assets SET custodian_id = NULL WHERE custodian_id = :eid",
+        "UPDATE expense_claims SET employee_id = NULL WHERE employee_id = :eid",
+        "UPDATE users SET employee_id = NULL WHERE employee_id = :code OR employee_id = :eid_str",
+    ]
+    for q in nullify_emp_queries:
+        try:
+            await db.execute(text(q), {"eid": emp_id, "code": emp_code, "eid_str": str(emp_id)})
+        except Exception as e:
+            logger.debug("Employee nullify note: %s", e)
+
+    # 2. Cascade delete all child records tied to this employee
+    cascade_delete_queries = [
+        "DELETE FROM employee_documents WHERE employee_id = :eid",
+        "DELETE FROM attendance_records WHERE employee_id = :eid",
+        "DELETE FROM leave_requests WHERE employee_id = :eid",
+        "DELETE FROM payslips WHERE employee_id = :eid",
+        "DELETE FROM shift_assignments WHERE employee_id = :eid",
+        "DELETE FROM loan_records WHERE employee_id = :eid",
+        "DELETE FROM salary_advances WHERE employee_id = :eid",
+        "DELETE FROM exit_requests WHERE employee_id = :eid",
+        "DELETE FROM performance_appraisals WHERE employee_id = :eid",
+        "DELETE FROM performance_goals WHERE employee_id = :eid",
+        "DELETE FROM performance_kpis WHERE employee_id = :eid",
+        "DELETE FROM performance_reviews WHERE employee_id = :eid",
+        "DELETE FROM hrms_onboardings WHERE employee_id = :eid",
+        "DELETE FROM hrms_offers WHERE employee_id = :eid",
+    ]
+    for q in cascade_delete_queries:
+        try:
+            await db.execute(text(q), {"eid": emp_id})
+        except Exception as e:
+            logger.debug("Employee cascade delete query note: %s", e)
+
+    # 3. Write audit log
     await write_audit_log(
         db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
         action="deleted", entity_type="employee", entity_id=emp.id,
-        old_values={"name": emp.full_name, "code": emp.employee_code},
+        old_values={"name": emp_name, "code": emp_code},
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    await db.delete(emp)
+
+    # 4. Direct SQL delete the employee record
+    await db.execute(text("DELETE FROM employees WHERE id = :eid"), {"eid": emp_id})
     await db.commit()
 
 
