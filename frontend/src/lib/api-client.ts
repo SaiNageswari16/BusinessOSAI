@@ -124,6 +124,19 @@ export interface GspCredentials {
   einv?: GspModuleCredentials;
 }
 
+export interface CompanyEmailSettings {
+  mail_server?: string;
+  mail_port?: number;
+  mail_username?: string;
+  mail_password?: string;
+  mail_from?: string;
+  sender_name?: string;
+  use_tls?: boolean;
+  use_ssl?: boolean;
+  reply_to?: string;
+  enabled?: boolean;
+}
+
 export interface Company {
   id: string;
   tenant_id: string;
@@ -152,6 +165,7 @@ export interface Company {
   established_date: string | null;
   gst_registrations?: GstRegistration[];
   gsp_credentials?: GspCredentials;
+  email_settings?: CompanyEmailSettings;
   google_review_url?: string | null;
   google_place_id?: string | null;
   google_review_enabled?: boolean;
@@ -795,6 +809,12 @@ export const companiesApi = {
     request<{ success: boolean; message: string; module: string; token_preview?: string; client_id?: string; gstin?: string; timestamp?: string }>(
       "POST",
       "/erp/companies/test-gsp-connection",
+      payload
+    ),
+  testSmtpConnection: (payload: { credentials?: any; recipient_email?: string; company_id?: string }) =>
+    request<{ success: boolean; message?: string; error?: string }>(
+      "POST",
+      "/erp/companies/test-smtp",
       payload
     ),
 };

@@ -332,56 +332,22 @@ async def send_recruitment_email(
     html_body: str | None = None,
     attachment_bytes: bytes | None = None,
     attachment_filename: str | None = None,
+    tenant_id: uuid.UUID | str | None = None,
+    company_id: uuid.UUID | str | None = None,
+    db: AsyncSession | None = None,
 ) -> bool:
-    if not settings.mail_server:
-        # Log to server console if SMTP credentials are not yet configured in .env
-        print(f"\n=================== REALTIME SMTP DISPATCH LOG ===================")
-        print(f"TO: {to_email}")
-        print(f"SUBJECT: {subject}")
-        if attachment_filename:
-            print(f"ATTACHED PDF: {attachment_filename} ({len(attachment_bytes or b'')} bytes)")
-        print(f"BODY:\n{body_text}")
-        print(f"==================================================================\n")
-        return False
-
-    try:
-        if attachment_bytes and attachment_filename:
-            msg = MIMEMultipart("mixed")
-            msg["From"] = settings.mail_from or "recruitment@businessos.ai"
-            msg["To"] = to_email
-            msg["Subject"] = subject
-
-            alt_part = MIMEMultipart("alternative")
-            alt_part.attach(MIMEText(body_text, "plain"))
-            if html_body:
-                alt_part.attach(MIMEText(html_body, "html"))
-            msg.attach(alt_part)
-
-            pdf_part = MIMEApplication(attachment_bytes, _subtype="pdf")
-            pdf_part.add_header("Content-Disposition", "attachment", filename=attachment_filename)
-            msg.attach(pdf_part)
-        else:
-            msg = MIMEMultipart("alternative")
-            msg["From"] = settings.mail_from or "recruitment@businessos.ai"
-            msg["To"] = to_email
-            msg["Subject"] = subject
-            msg.attach(MIMEText(body_text, "plain"))
-            if html_body:
-                msg.attach(MIMEText(html_body, "html"))
-
-        # Connect and authenticate
-        server = smtplib.SMTP(settings.mail_server, settings.mail_port or 587)
-        server.starttls()
-        if settings.mail_username and settings.mail_password:
-            server.login(settings.mail_username, settings.mail_password)
-
-        server.send_message(msg)
-        server.quit()
-        print(f"[SMTP SUCCESS] Successfully delivered email with PDF attachment to {to_email}")
-        return True
-    except Exception as e:
-        print(f"[SMTP ERROR] Failed to deliver email to {to_email}: {e}")
-        return False
+    from src.utils.email import send_email as unified_send_email
+    return await unified_send_email(
+        subject=subject,
+        recipients=[to_email],
+        html=html_body,
+        text=body_text,
+        attachment_bytes=attachment_bytes,
+        attachment_filename=attachment_filename,
+        tenant_id=tenant_id,
+        company_id=company_id,
+        db=db,
+    )
 
 
 # ─── Helper Functions & Parsers ──────────────────────────────────────────────────
@@ -1899,6 +1865,22 @@ async def send_offer_email(
     except Exception as e:
         print(f"[VAULT PDF WRITE NOTICE]: {e}")
 
+    # Resolve target company for tenant/company SMTP credentials
+    target_company_id = None
+    if offer.employee_id:
+        from src.models import Employee
+        emp = await db.get(Employee, offer.employee_id)
+        if emp and emp.company_id:
+            target_company_id = emp.company_id
+
+    if not target_company_id:
+        from src.models import Company
+        primary_comp = await db.scalar(
+            select(Company).where(Company.tenant_id == ctx.tenant_id, Company.status == "active").order_by(Company.created_at.asc())
+        )
+        if primary_comp:
+            target_company_id = primary_comp.id
+
     await send_recruitment_email(
         to_email=target_email,
         subject=f"Employment Offer: {offer.role} - {company_name}",
@@ -1906,6 +1888,9 @@ async def send_offer_email(
         html_body=html_body,
         attachment_bytes=pdf_bytes,
         attachment_filename=pdf_filename,
+        tenant_id=ctx.tenant_id,
+        company_id=target_company_id,
+        db=db,
     )
 
     offer.email_sent = True

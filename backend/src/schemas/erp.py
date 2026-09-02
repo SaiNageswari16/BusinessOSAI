@@ -116,6 +116,7 @@ class CompanyBase(BaseModel):
     google_review_url: str | None = None
     google_place_id: str | None = None
     google_review_enabled: bool = True
+    email_settings: dict | None = Field(default_factory=dict)
     status: str = "active"
 
 
@@ -152,6 +153,7 @@ class CompanyUpdate(BaseModel):
     google_review_url: str | None = None
     google_place_id: str | None = None
     google_review_enabled: bool | None = None
+    email_settings: dict | None = None
     status: str | None = None
 
 
@@ -186,6 +188,7 @@ class CompanyResponse(ORMModel):
     google_review_url: str | None = None
     google_place_id: str | None = None
     google_review_enabled: bool | None = True
+    email_settings: dict | None = {}
     status: str
     created_at: datetime
     updated_at: datetime

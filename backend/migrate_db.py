@@ -241,7 +241,8 @@ async def migrate():
         "ALTER TABLE recruitment_offer_letters ADD COLUMN IF NOT EXISTS candidate_email VARCHAR(150)",
         "ALTER TABLE recruitment_applicants ALTER COLUMN job_id DROP NOT NULL",
         "ALTER TABLE recruitment_applicants ADD COLUMN IF NOT EXISTS phone VARCHAR(30)",
-        "ALTER TABLE recruitment_applicants ADD COLUMN IF NOT EXISTS notice_period_days INTEGER DEFAULT 30"
+        "ALTER TABLE recruitment_applicants ADD COLUMN IF NOT EXISTS notice_period_days INTEGER DEFAULT 30",
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS email_settings JSONB DEFAULT '{}'::jsonb"
     ]
 
     for stmt in recruitment_statements:

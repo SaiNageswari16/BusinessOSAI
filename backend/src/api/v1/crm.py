@@ -4668,42 +4668,24 @@ class EmailTemplateResponse(BaseModel):
         from_attributes = True
 
 
-async def send_campaign_html_email(to_email: str, subject: str, body_html: str) -> bool:
-    """Helper to dispatch rich-text HTML emails via SMTP settings."""
-    from src.config import get_settings
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-
-    settings = get_settings()
-    if not settings.mail_server:
-        print(f"\n=================== SMTP DISPATCH OVERRIDE (LOG ONLY) ===================")
-        print(f"TO: {to_email}")
-        print(f"SUBJECT: {subject}")
-        print(f"HTML BODY PREVIEW:\n{body_html[:300]}...")
-        print(f"========================================================================\n")
-        return False
-
-    try:
-        msg = MIMEMultipart()
-        msg["From"] = settings.mail_from or "campaigns@businessos.ai"
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body_html, "html"))
-
-        # Connect and authenticate
-        server = smtplib.SMTP(settings.mail_server, settings.mail_port or 587)
-        server.starttls()
-        if settings.mail_username and settings.mail_password:
-            server.login(settings.mail_username, settings.mail_password)
-
-        server.send_message(msg)
-        server.quit()
-        print(f"[Campaign SMTP SUCCESS] Emailed {to_email}")
-        return True
-    except Exception as e:
-        print(f"[Campaign SMTP ERROR] Failed to email {to_email}: {e}")
-        return False
+async def send_campaign_html_email(
+    to_email: str,
+    subject: str,
+    body_html: str,
+    tenant_id: uuid.UUID | str | None = None,
+    company_id: uuid.UUID | str | None = None,
+    db: AsyncSession | None = None,
+) -> bool:
+    """Helper to dispatch rich-text HTML emails via multi-tenant SMTP settings."""
+    from src.utils.email import send_email as unified_send_email
+    return await unified_send_email(
+        subject=subject,
+        recipients=[to_email],
+        html=body_html,
+        tenant_id=tenant_id,
+        company_id=company_id,
+        db=db,
+    )
 
 
 @router.get("/email-campaigns", response_model=list[EmailCampaignResponse])
@@ -4775,7 +4757,13 @@ async def send_email_campaign(
     # Trigger sending (Sequential for simplicity, or background task in production)
     sent_count = 0
     for email in recipient_emails:
-        success = await send_campaign_html_email(email, campaign.subject, campaign.body_html)
+        success = await send_campaign_html_email(
+            email,
+            campaign.subject,
+            campaign.body_html,
+            tenant_id=ctx.tenant_id,
+            db=db,
+        )
         if success:
             sent_count += 1
 

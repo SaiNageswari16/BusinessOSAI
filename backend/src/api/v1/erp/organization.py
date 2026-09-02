@@ -215,6 +215,76 @@ async def test_company_gsp_connection(
     return res
 
 
+@router.post("/companies/test-smtp")
+async def test_smtp_configuration(
+    payload: dict,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Test outbound SMTP connection and send a verified test email.
+    Accepts explicit credentials dict or company_id.
+    """
+    from src.utils.email import test_smtp_connection, resolve_email_config
+    from src.models import Company
+
+    recipient_email = payload.get("recipient_email") or ctx.user.email
+    credentials = payload.get("credentials") or payload.get("email_settings")
+    company_id = payload.get("company_id")
+
+    if not credentials and company_id:
+        c_uuid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
+        company = await db.get(Company, c_uuid)
+        if company and company.email_settings:
+            credentials = company.email_settings
+
+    if not credentials:
+        # Fallback to resolved config
+        cfg = await resolve_email_config(db=db, tenant_id=ctx.tenant_id, company_id=company_id)
+        credentials = {
+            "mail_server": cfg.mail_server,
+            "mail_port": cfg.mail_port,
+            "mail_username": cfg.mail_username,
+            "mail_password": cfg.mail_password,
+            "mail_from": cfg.mail_from,
+            "sender_name": cfg.sender_name,
+            "use_tls": cfg.use_tls,
+            "use_ssl": cfg.use_ssl,
+        }
+
+    res = await test_smtp_connection(credentials, recipient_email)
+    return res
+
+
+@router.post("/companies/{company_id}/test-smtp")
+async def test_company_saved_smtp(
+    company_id: uuid.UUID,
+    payload: dict,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Test outbound SMTP connection specifically for an existing company.
+    """
+    from src.utils.email import test_smtp_connection
+    from src.models import Company
+
+    company = await db.scalar(
+        select(Company).where(Company.id == company_id, Company.tenant_id == ctx.tenant_id)
+    )
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    recipient_email = payload.get("recipient_email") or ctx.user.email
+    credentials = payload.get("credentials") or company.email_settings
+
+    if not credentials or not credentials.get("mail_server"):
+        raise HTTPException(status_code=400, detail="Company has no outbound SMTP server configured")
+
+    res = await test_smtp_connection(credentials, recipient_email)
+    return res
+
+
 @router.delete("/companies/{company_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_company(
     company_id: uuid.UUID,

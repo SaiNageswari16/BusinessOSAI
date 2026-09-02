@@ -6,7 +6,7 @@ import {
   ExternalLink, Edit2, ShieldCheck, CreditCard, ChevronRight, LayoutGrid, List,
   Users, Sparkles, X, Save, Loader2, Trash2, AlertCircle, Globe, FileText, CheckCircle,
   Truck, Receipt, KeyRound, Server, Activity, ArrowRight, ShieldAlert, CheckCircle2,
-  Copy, RefreshCw, Layers, Shield, Upload, Smartphone, Lock, Clock, Zap, Star, QrCode, Check
+  Copy, RefreshCw, Layers, Shield, Upload, Smartphone, Lock, Clock, Zap, Star, QrCode, Check, Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -18,7 +18,8 @@ import {
   type Branch,
   type TaxConfiguration,
   type GstRegistration,
-  type GspCredentials
+  type GspCredentials,
+  type CompanyEmailSettings
 } from "@/lib/api-client";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -51,16 +52,111 @@ function CompanyFormModal({
   onSaved,
 }: {
   company: Company | null;
-  initialTab?: "general" | "gst" | "gsp" | "reviews";
+  initialTab?: "general" | "gst" | "gsp" | "email" | "reviews";
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isEdit = !!company;
-  const [activeModalTab, setActiveModalTab] = useState<"general" | "gst" | "gsp" | "reviews">(initialTab);
+  const { tenant } = useTenant();
+  const [activeModalTab, setActiveModalTab] = useState<"general" | "gst" | "gsp" | "email" | "reviews">(initialTab);
   const [saving, setSaving] = useState(false);
   const [testingModule, setTestingModule] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string; token_preview?: string }>>({});
   const [copiedReviewLink, setCopiedReviewLink] = useState(false);
+
+  // ── Outbound SMTP Email Settings State ─────────────────────────────────
+  const [emailSettings, setEmailSettings] = useState<CompanyEmailSettings>(() => {
+    const s = company?.email_settings || {};
+    return {
+      mail_server: s.mail_server || "",
+      mail_port: s.mail_port || 587,
+      mail_username: s.mail_username || "",
+      mail_password: s.mail_password || "",
+      mail_from: s.mail_from || "",
+      sender_name: s.sender_name || (company?.name || ""),
+      use_tls: s.use_tls !== undefined ? s.use_tls : true,
+      use_ssl: s.use_ssl !== undefined ? s.use_ssl : false,
+      reply_to: s.reply_to || "",
+      enabled: s.enabled !== undefined ? s.enabled : true,
+    };
+  });
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testEmailRecipient, setTestEmailRecipient] = useState(company?.email || "");
+  const [emailTestResult, setEmailTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const applyEmailPreset = (preset: "gmail" | "outlook" | "ses" | "zoho") => {
+    if (preset === "gmail") {
+      setEmailSettings((p) => ({
+        ...p,
+        mail_server: "smtp.gmail.com",
+        mail_port: 587,
+        use_tls: true,
+        use_ssl: false,
+        enabled: true,
+      }));
+      toast.info("Configured for Gmail / Google Workspace (Port 587 TLS). Please use a 16-character App Password.");
+    } else if (preset === "outlook") {
+      setEmailSettings((p) => ({
+        ...p,
+        mail_server: "smtp.office365.com",
+        mail_port: 587,
+        use_tls: true,
+        use_ssl: false,
+        enabled: true,
+      }));
+      toast.info("Configured for Microsoft 365 / Outlook (Port 587 STARTTLS).");
+    } else if (preset === "ses") {
+      setEmailSettings((p) => ({
+        ...p,
+        mail_server: "email-smtp.us-east-1.amazonaws.com",
+        mail_port: 587,
+        use_tls: true,
+        use_ssl: false,
+        enabled: true,
+      }));
+      toast.info("Configured for Amazon SES (Port 587 TLS).");
+    } else if (preset === "zoho") {
+      setEmailSettings((p) => ({
+        ...p,
+        mail_server: "smtp.zoho.com",
+        mail_port: 587,
+        use_tls: true,
+        use_ssl: false,
+        enabled: true,
+      }));
+      toast.info("Configured for Zoho Mail (Port 587 TLS).");
+    }
+  };
+
+  const handleTestEmail = async () => {
+    if (!emailSettings.mail_server) {
+      toast.error("Please enter an SMTP Host (e.g. smtp.gmail.com)");
+      return;
+    }
+    setTestingEmail(true);
+    setEmailTestResult(null);
+    try {
+      const res = await companiesApi.testSmtpConnection({
+        credentials: emailSettings,
+        recipient_email: testEmailRecipient.trim() || undefined,
+        company_id: company?.id,
+      });
+      if (res.success) {
+        setEmailTestResult({ success: true, message: res.message || "Test email sent successfully!" });
+        toast.success(res.message || "SMTP verified successfully!");
+      } else {
+        const err = res.error || "SMTP test failed";
+        setEmailTestResult({ success: false, message: err });
+        toast.error(err);
+      }
+    } catch (err: any) {
+      const msg = err.detail || err.message || "Failed to reach server for SMTP test";
+      setEmailTestResult({ success: false, message: msg });
+      toast.error(msg);
+    } finally {
+      setTestingEmail(false);
+    }
+  };
 
   // ── GST Portal Mobile OTP & Session State ──────────────────────────────
   const [gstSession, setGstSession] = useState<{ is_active: boolean; remaining_minutes: number; expires_at: string | null } | null>(null);
@@ -364,6 +460,7 @@ function CompanyFormModal({
         status: form.status || "active",
         gst_registrations: gstRegistrations,
         gsp_credentials: gspCreds,
+        email_settings: emailSettings,
       };
 
       if (isEdit) {
@@ -435,6 +532,7 @@ function CompanyFormModal({
             { id: "general", label: "General Profile", icon: Building2 },
             { id: "gst", label: `GST Registrations (${gstRegistrations.length})`, icon: Layers },
             { id: "gsp", label: "GSP & Govt Gateway (Whitebooks)", icon: KeyRound },
+            { id: "email", label: "Outbound SMTP & Email", icon: Mail },
             { id: "reviews", label: "⭐ Google Reviews & QR", icon: Star },
           ].map(({ id, label, icon: Icon }) => (
             <button
@@ -1033,9 +1131,9 @@ function CompanyFormModal({
                         : "GST Portal Session Inactive (Mobile OTP auth required for live return uploads)"}
                     </span>
                   </div>
-                  {gstSession?.token_preview && (
+                  {(gstSession as any)?.token_preview && (
                     <span className="font-mono text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                      SEK: {gstSession.token_preview}
+                      SEK: {(gstSession as any).token_preview}
                     </span>
                   )}
                 </div>
@@ -1127,6 +1225,246 @@ function CompanyFormModal({
                     />
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeModalTab === "email" && (
+            <div className="space-y-5">
+              {/* Header card with toggle */}
+              <div className="p-4 rounded-xl border border-blue-200/80 bg-gradient-to-br from-blue-50/40 via-card to-indigo-50/40 dark:from-blue-950/20 dark:to-indigo-950/20 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
+                      <Mail className="size-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground">Outbound SMTP Mail Server</h3>
+                      <p className="text-[11px] text-muted-foreground">
+                        Dispatch HRMS Offer Letters, Quotations, and CRM Campaigns using your verified custom domain.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={emailSettings.enabled !== false}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, enabled: e.target.checked }))}
+                      className="rounded text-primary focus:ring-primary size-4"
+                    />
+                    <span>Enable SMTP</span>
+                  </label>
+                </div>
+
+                {/* Quick 1-Click Presets */}
+                <div>
+                  <label className="block text-[11px] font-bold mb-1.5 text-muted-foreground">
+                    1-Click Provider Quick Presets:
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => applyEmailPreset("gmail")}
+                      className="px-2.5 py-1.5 rounded-lg border text-xs font-semibold bg-background hover:bg-muted/50 flex items-center gap-1.5 shadow-2xs transition-colors"
+                    >
+                      <span className="size-2 rounded-full bg-red-500" />
+                      Google Workspace / Gmail
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyEmailPreset("outlook")}
+                      className="px-2.5 py-1.5 rounded-lg border text-xs font-semibold bg-background hover:bg-muted/50 flex items-center gap-1.5 shadow-2xs transition-colors"
+                    >
+                      <span className="size-2 rounded-full bg-blue-500" />
+                      Microsoft 365 / Outlook
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyEmailPreset("zoho")}
+                      className="px-2.5 py-1.5 rounded-lg border text-xs font-semibold bg-background hover:bg-muted/50 flex items-center gap-1.5 shadow-2xs transition-colors"
+                    >
+                      <span className="size-2 rounded-full bg-emerald-500" />
+                      Zoho Mail
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyEmailPreset("ses")}
+                      className="px-2.5 py-1.5 rounded-lg border text-xs font-semibold bg-background hover:bg-muted/50 flex items-center gap-1.5 shadow-2xs transition-colors"
+                    >
+                      <span className="size-2 rounded-full bg-amber-500" />
+                      Amazon SES
+                    </button>
+                  </div>
+                </div>
+
+                {/* Main Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
+                      SMTP Host / Server *
+                    </label>
+                    <input
+                      value={emailSettings.mail_server || ""}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, mail_server: e.target.value }))}
+                      placeholder="e.g. smtp.gmail.com or smtp.office365.com"
+                      className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
+                      SMTP Port *
+                    </label>
+                    <input
+                      type="number"
+                      value={emailSettings.mail_port || 587}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, mail_port: parseInt(e.target.value) || 587 }))}
+                      placeholder="587"
+                      className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
+                      SMTP Username / Account *
+                    </label>
+                    <input
+                      value={emailSettings.mail_username || ""}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, mail_username: e.target.value }))}
+                      placeholder="hr@yourcompany.com"
+                      className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
+                      SMTP Password / App Password *
+                    </label>
+                    <input
+                      type="password"
+                      value={emailSettings.mail_password || ""}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, mail_password: e.target.value }))}
+                      placeholder="••••••••••••••••"
+                      className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      For Gmail/Google Workspace, generate a 16-character App Password under Security.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
+                      Sender Email (From) *
+                    </label>
+                    <input
+                      value={emailSettings.mail_from || ""}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, mail_from: e.target.value }))}
+                      placeholder="noreply@yourcompany.com"
+                      className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
+                      Sender Display Name
+                    </label>
+                    <input
+                      value={emailSettings.sender_name || ""}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, sender_name: e.target.value }))}
+                      placeholder={form.name || "Company HR Team"}
+                      className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
+                      Reply-To Email (Optional)
+                    </label>
+                    <input
+                      value={emailSettings.reply_to || ""}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, reply_to: e.target.value }))}
+                      placeholder="careers@yourcompany.com"
+                      className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-6 pt-1">
+                  <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={emailSettings.use_tls !== false}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, use_tls: e.target.checked }))}
+                      className="rounded text-primary focus:ring-primary size-3.5"
+                    />
+                    <span>STARTTLS (Standard for Port 587)</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!emailSettings.use_ssl}
+                      onChange={(e) => setEmailSettings((p) => ({ ...p, use_ssl: e.target.checked }))}
+                      className="rounded text-primary focus:ring-primary size-3.5"
+                    />
+                    <span>Direct SSL (Standard for Port 465)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Live SMTP Diagnostic Test Box */}
+              <div className="p-4 border rounded-xl bg-card space-y-3 shadow-2xs">
+                <div className="flex items-center justify-between pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 grid place-items-center">
+                      <Send className="size-3.5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-foreground">Send Test Email & Validate Connection</h4>
+                      <p className="text-[10px] text-muted-foreground">Verify handshake, TLS credentials, and inbox deliverability</p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={testingEmail || !emailSettings.mail_server}
+                    onClick={handleTestEmail}
+                    className="h-7 text-xs font-bold gap-1.5 px-3 border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-2xs"
+                  >
+                    {testingEmail ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+                    {testingEmail ? "Sending Test..." : "Send Test Email"}
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="email"
+                    value={testEmailRecipient}
+                    onChange={(e) => setTestEmailRecipient(e.target.value)}
+                    placeholder="Enter email address to receive test message..."
+                    className="flex-1 h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                  />
+                </div>
+
+                {emailTestResult && (
+                  <div
+                    className={cn(
+                      "p-3 rounded-lg text-xs flex items-center justify-between animate-in fade-in",
+                      emailTestResult.success
+                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                        : "bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      {emailTestResult.success ? (
+                        <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <AlertCircle className="size-4 text-rose-600 shrink-0" />
+                      )}
+                      <span className="font-semibold">{emailTestResult.message}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1306,6 +1644,7 @@ function CompanyFormModal({
             <div className="text-[11px] text-muted-foreground">
               {activeModalTab === "gst" && `${gstRegistrations.length} GST registrations configured`}
               {activeModalTab === "gsp" && `Environment: ${gspCreds.environment === "production" ? "Live Production" : "Sandbox"}`}
+              {activeModalTab === "email" && (emailSettings.enabled !== false && emailSettings.mail_server ? `SMTP: ${emailSettings.mail_server}:${emailSettings.mail_port || 587}` : "Outbound SMTP Not Configured")}
               {activeModalTab === "reviews" && (form.google_review_enabled ? "Google Review QR Enabled" : "Review QR Disabled")}
             </div>
             <div className="flex gap-2">
@@ -1391,7 +1730,7 @@ export function CompanyManagement() {
   const [search, setSearch] = useState("");
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [formInitialTab, setFormInitialTab] = useState<"general" | "gst" | "gsp">("general");
+  const [formInitialTab, setFormInitialTab] = useState<"general" | "gst" | "gsp" | "email" | "reviews">("general");
   const [editCompany, setEditCompany] = useState<Company | null>(null);
   const [deleteCompany, setDeleteCompany] = useState<Company | null>(null);
   const [activeTab, setActiveTab] = useState("Overview");
@@ -1436,9 +1775,9 @@ export function CompanyManagement() {
           email: activeCompany.email || "",
           cin: activeCompany.registration_number || "",
           pan: activeCompany.pan_number || "",
-          logo_url: activeCompany.logo_url || null,
-          google_review_url: activeCompany.google_review_url || null,
-          google_place_id: activeCompany.google_place_id || null,
+          logo_url: activeCompany.logo_url || undefined,
+          google_review_url: activeCompany.google_review_url || undefined,
+          google_place_id: activeCompany.google_place_id || undefined,
           google_review_enabled: activeCompany.google_review_enabled !== false,
         };
         localStorage.setItem("bos_active_company", JSON.stringify(activeCompany));
@@ -1478,9 +1817,9 @@ export function CompanyManagement() {
         email: activeCompany.email || "",
         cin: activeCompany.registration_number || "",
         pan: activeCompany.pan_number || "",
-        logo_url: activeCompany.logo_url || null,
-        google_review_url: activeCompany.google_review_url || null,
-        google_place_id: activeCompany.google_place_id || null,
+        logo_url: activeCompany.logo_url || undefined,
+        google_review_url: activeCompany.google_review_url || undefined,
+        google_place_id: activeCompany.google_place_id || undefined,
         google_review_enabled: activeCompany.google_review_enabled !== false,
       };
 
@@ -1540,7 +1879,7 @@ export function CompanyManagement() {
         email: activeCompany.email || '',
         cin: activeCompany.registration_number || '',
         pan: activeCompany.pan_number || '',
-        logo_url: activeCompany.logo_url || null,
+        logo_url: activeCompany.logo_url || undefined,
       }, tid);
     }
   }, [activeCompany, tenant?.id]);
@@ -1764,11 +2103,34 @@ export function CompanyManagement() {
                         {activeCompany.gsp_credentials.environment === "production" ? "Govt Production GSP" : "Sandbox GSP"}
                       </span>
                     )}
+                    {activeCompany.email_settings?.mail_server && (
+                      <span className={cn(
+                        "text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1",
+                        activeCompany.email_settings.enabled !== false
+                          ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300"
+                          : "bg-slate-50 text-slate-500 border-slate-200"
+                      )}>
+                        <Mail className="size-2.5" />
+                        {activeCompany.email_settings.enabled !== false ? "SMTP Active" : "SMTP Disabled"}
+                      </span>
+                    )}
                   </div>
                   <p className="text-[10px] text-muted-foreground">{activeCompany.legal_name} • {activeCompany.company_type ?? "Company"}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 font-semibold text-xs px-2.5 text-blue-600 border-blue-200 hover:bg-blue-50"
+                  onClick={() => {
+                    setEditCompany(activeCompany);
+                    setFormInitialTab("email");
+                    setShowForm(true);
+                  }}
+                >
+                  <Mail className="size-3.5" /> Outbound SMTP
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -2054,9 +2416,9 @@ export function CompanyManagement() {
                                 Active Billing GSTIN (Printed on Bills & Invoices)
                               </div>
                               <div className="text-sm font-black text-foreground flex items-center gap-2">
-                                <span className="font-mono">{activeBillingGst?.gstin || activeCompany.gst_number || "Not Configured"}</span>
+                                <span className="font-mono">{activeBillingGstState?.gstin || activeCompany.gst_number || "Not Configured"}</span>
                                 <span className="text-xs font-semibold text-muted-foreground">
-                                  • {activeBillingGst?.trade_name || activeCompany.name} ({activeBillingGst?.state_name || activeCompany.state || "State"})
+                                  • {activeBillingGstState?.trade_name || activeCompany.name} ({activeBillingGstState?.state_name || activeCompany.state || "State"})
                                 </span>
                               </div>
                               <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -2107,7 +2469,7 @@ export function CompanyManagement() {
                                   is_primary: true,
                                 }]
                             ).map((reg, idx) => {
-                              const isThisActive = reg.gstin === (activeBillingGst?.gstin || activeCompany.gst_number);
+                              const isThisActive = reg.gstin === (activeBillingGstState?.gstin || activeCompany.gst_number);
                               return (
                                 <Card
                                   key={reg.id || idx}
