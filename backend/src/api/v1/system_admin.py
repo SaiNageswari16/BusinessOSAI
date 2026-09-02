@@ -375,7 +375,8 @@ async def reset_platform_user_password(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    Platform Super Admin: Reset a user's password administratively across any workspace tenant.
+    Platform Super Admin: Reset a user's password administratively across any workspace tenant
+    and automatically send them an email with their new login credentials.
     """
     require_platform_admin(ctx)
 
@@ -385,7 +386,12 @@ async def reset_platform_user_password(
             detail="Password must be at least 8 characters long.",
         )
 
+    import asyncio
+    from src.config import get_settings
     from src.utils.security import hash_password
+    from src.utils.email import send_email
+
+    cfg = get_settings()
 
     user = await db.scalar(select(User).where(User.id == user_id))
     if not user:
@@ -396,7 +402,43 @@ async def reset_platform_user_password(
     await db.commit()
     await db.refresh(user)
 
-    return MessageResponse(message=f"Password for user {user.email} has been successfully reset.")
+    # Dispatch email notification to the user
+    login_url = f"{cfg.frontend_url}/login" if cfg.frontend_url else "https://lazymonkeyai.com/login"
+    try:
+        asyncio.create_task(
+            send_email(
+                subject=f"Your Password Has Been Reset — {cfg.app_name}",
+                recipients=[user.email],
+                text=(
+                    f"Hello {user.full_name},\n\n"
+                    f"Your password for {cfg.app_name} has been administratively reset by the Platform Administrator.\n\n"
+                    f"Your New Temporary Password: {payload.password}\n"
+                    f"Login URL: {login_url}\n\n"
+                    "For security, you will be required to change your password immediately upon logging in.\n\n"
+                    f"— {cfg.app_name} Security Team"
+                ),
+                html=(
+                    f"<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;'>"
+                    f"<h2 style='color: #4f46e5; margin-top: 0;'>Password Reset Notification</h2>"
+                    f"<p style='color: #334155; font-size: 15px;'>Hello <strong>{user.full_name}</strong>,</p>"
+                    f"<p style='color: #475569; font-size: 14px;'>Your account password for <strong>{cfg.app_name}</strong> has been administratively reset by the Platform Administrator.</p>"
+                    f"<div style='background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4f46e5;'>"
+                    f"<p style='margin: 0; font-size: 13px; color: #64748b;'>New Temporary Password:</p>"
+                    f"<p style='margin: 4px 0 0; font-size: 18px; font-weight: bold; font-family: monospace; color: #0f172a; letter-spacing: 1px;'>{payload.password}</p>"
+                    f"</div>"
+                    f"<p style='color: #475569; font-size: 14px;'>Click the button below to log in with your temporary password. You will be required to choose a new password upon login.</p>"
+                    f"<div style='margin: 24px 0; text-align: center;'>"
+                    f"<a href='{login_url}' style='background-color: #4f46e5; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-block;'>Log In to Your Account</a>"
+                    f"</div>"
+                    f"<p style='color: #94a3b8; font-size: 12px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px;'>If you did not expect this reset, please contact your workspace administrator immediately.</p>"
+                    f"</div>"
+                ),
+            )
+        )
+    except Exception as err:
+        logger.warning("Could not queue password reset email: %s", err)
+
+    return MessageResponse(message=f"Password for user {user.email} has been successfully reset and notification email dispatched.")
 
 
 @router.post("/users/{user_id}/reset-mfa")
