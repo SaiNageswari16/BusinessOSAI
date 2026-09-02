@@ -463,11 +463,14 @@ export function PosInvoicesHistory() {
       return;
     }
 
-    const orgName = tenant?.name || "BusinessOS Store";
-    const orgLogo = tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
-    const orgGstin = (tenant as any)?.tax_id || (tenant as any)?.gstin || (tenant as any)?.raw?.tax_id || "37AAAAA0000A1Z5";
-    const orgAddress = (tenant as any)?.address || (tenant as any)?.raw?.address || "Main Branch Store";
-    const orgPhone = (tenant as any)?.phone || (tenant as any)?.raw?.phone || "";
+    const activeBillingGst = getActiveBillingGst(tenant?.id);
+    const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS Store";
+    const orgLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const orgGstin = activeBillingGst?.gstin || (tenant as any)?.tax_id || (tenant as any)?.gstin || (tenant as any)?.raw?.tax_id || "37AAAAA0000A1Z5";
+    const orgAddress = activeBillingGst?.address || (tenant as any)?.address || (tenant as any)?.raw?.address || "Main Branch Store";
+    const orgPhone = activeBillingGst?.phone || (tenant as any)?.phone || (tenant as any)?.raw?.phone || "";
+    const googleReviewUrl = activeBillingGst?.google_review_url || (tenant as any)?.raw?.google_review_url || null;
+    const showReviewQR = activeBillingGst?.google_review_enabled !== false && Boolean(googleReviewUrl);
 
     const itemsHtml = (inv.items || [])
       .map(
@@ -518,6 +521,14 @@ export function PosInvoicesHistory() {
                     <span>${inv.payment_status === "Unpaid" ? "Payment Status: Unpaid / Credit" : `Payment Mode: ${inv.payment_mode || "Cash"}`}</span>
                     <span>Paid: ₹${Number(inv.amount_received || 0).toFixed(2)}</span>
                   </div>
+          ${showReviewQR && googleReviewUrl ? `
+          <div style="text-align:center; margin: 10px 0 6px 0; padding-top: 8px; border-top: 1px dashed #000;">
+            <div style="font-size:10px; font-weight:bold; letter-spacing: 2px;">★ ★ ★ ★ ★</div>
+            <div style="font-size:9.5px; font-weight:bold; margin-bottom: 4px;">RATE US ON GOOGLE</div>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data=${encodeURIComponent(googleReviewUrl)}" alt="Google Review QR" style="width:75px; height:75px; object-fit:contain; border: 1px solid #000; padding: 2px; margin: 2px auto;" />
+            <div style="font-size:8.5px; margin-top:2px;">Scan to share your 5-star review!</div>
+          </div>
+          ` : ""}
           <div class="line"></div>
           <p style="margin-top:10px; font-weight:bold;">*** THANK YOU FOR YOUR BUSINESS ***</p>
           <script>

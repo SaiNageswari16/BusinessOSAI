@@ -218,6 +218,26 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
         </div>
       )}
 
+      {/* Google Review QR */}
+      {(invTemplate?.showGoogleReviewQR !== false && (invTemplate?.googleReviewUrl || fallbackStore.googleReviewUrl)) && (
+        <div className="flex flex-col items-center justify-center pt-1.5 my-1 border-t border-dashed border-black text-center">
+          <span className="text-[9px] font-black block uppercase tracking-wider text-black">
+            ★ ★ ★ ★ ★ RATE US ON GOOGLE
+          </span>
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=0&data=${encodeURIComponent(
+              invTemplate?.googleReviewUrl || fallbackStore.googleReviewUrl || 'https://search.google.com/local/writereview'
+            )}`}
+            alt="Google Review QR"
+            style={{ imageRendering: 'pixelated' }}
+            className="w-16 h-16 object-contain border-[1.5px] border-black p-0.5 my-1"
+          />
+          <span className="text-[8.5px] font-bold block text-black">
+            Scan to Review Us on Google!
+          </span>
+        </div>
+      )}
+
       {/* Terms & Footer */}
       {termsText && (
         <div className="text-[9.5px] font-semibold border-t border-dashed border-black pt-1 mt-1 text-center text-black leading-tight">

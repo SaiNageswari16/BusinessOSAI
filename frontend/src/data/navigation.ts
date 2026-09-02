@@ -277,8 +277,8 @@ export const nav: NavGroup[] = [
   },
   {
     group: "POS", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
-      { to: "/pos?tab=sales", label: "Sales Invoice", icon: Receipt },
       { to: "/pos?tab=sales_history", label: "Invoices History", icon: History },
+      { to: "/pos?tab=sales", label: "Sales Invoice", icon: Receipt },
       { to: "/pos?tab=payment_in", label: "Payment In", icon: Wallet },
       {
         to: "/pos?tab=terminal",

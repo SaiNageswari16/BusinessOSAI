@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
   Users,
+  User,
+  UserCheck,
+  Phone,
   Star,
   Briefcase,
   CheckCircle,
@@ -327,11 +330,11 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
   // ─── Enhanced Offer Letter Studio & Template States ───────────────────────────
   const activeGst = getActiveBillingGst();
   const orgName = activeGst?.trade_name || activeGst?.legal_name || tenant?.name || "BusinessOS Enterprise";
-  const orgAddress = activeGst?.address || tenant?.settings?.address || "100 Innovation Boulevard, Tech Hub";
-  const orgGstin = activeGst?.gstin || tenant?.settings?.gstin || "";
-  const orgCin = activeGst?.cin || tenant?.settings?.cin || "";
-  const orgEmail = activeGst?.email || tenant?.settings?.email || "hr@businessos.ai";
-  const orgPhone = activeGst?.phone || tenant?.settings?.phone || "+91 (800) 555-0199";
+  const orgAddress = activeGst?.address || (tenant as any)?.settings?.address || "100 Innovation Boulevard, Tech Hub";
+  const orgGstin = activeGst?.gstin || (tenant as any)?.settings?.gstin || "";
+  const orgCin = activeGst?.cin || (tenant as any)?.settings?.cin || "";
+  const orgEmail = activeGst?.email || (tenant as any)?.settings?.email || "hr@businessos.ai";
+  const orgPhone = activeGst?.phone || (tenant as any)?.settings?.phone || "+91 (800) 555-0199";
   const orgLogo = tenant?.logo_url || tenant?.raw?.logo_url || "";
   const orgInitials = tenant?.logo || tenant?.raw?.logo_initials || orgName.slice(0, 2).toUpperCase();
 
@@ -731,6 +734,72 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
   // Ref for AI streaming text window to auto-scroll
   const textStreamRef = useRef<HTMLDivElement>(null);
 
+  // Manual Applicant Onboarding Modal State
+  const [isAddApplicantOpen, setIsAddApplicantOpen] = useState(false);
+  const [savingApplicant, setSavingApplicant] = useState(false);
+  const [applicantForm, setApplicantForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    job_id: "",
+    job_title: "",
+    experience: "1-3 years",
+    expected_salary: 600000,
+    proposed_salary: 550000,
+    notice_period_days: 30,
+    stage: "Applied" as Applicant["stage"],
+    source: "Direct / Walk-in",
+    resume_text: "",
+  });
+
+  const handleCreateApplicant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!applicantForm.name.trim() || !applicantForm.email.trim()) {
+      showNotification("Please provide at least a Candidate Name and Email.", "error");
+      return;
+    }
+    setSavingApplicant(true);
+    try {
+      const selectedJob = jobs.find(j => j.id === applicantForm.job_id);
+      await recruitmentApi.createApplicant({
+        name: applicantForm.name.trim(),
+        email: applicantForm.email.trim(),
+        phone: applicantForm.phone.trim() || undefined,
+        job_id: applicantForm.job_id || undefined,
+        job_title: applicantForm.job_title.trim() || selectedJob?.title || "General Candidate",
+        experience: applicantForm.experience,
+        expected_salary: Number(applicantForm.expected_salary) || undefined,
+        proposed_salary: Number(applicantForm.proposed_salary) || undefined,
+        notice_period_days: Number(applicantForm.notice_period_days) || 30,
+        stage: applicantForm.stage,
+        source: applicantForm.source,
+        resume_text: applicantForm.resume_text.trim() || undefined,
+      });
+
+      showNotification(`Candidate '${applicantForm.name}' registered successfully!`);
+      setIsAddApplicantOpen(false);
+      setApplicantForm({
+        name: "",
+        email: "",
+        phone: "",
+        job_id: "",
+        job_title: "",
+        experience: "1-3 years",
+        expected_salary: 600000,
+        proposed_salary: 550000,
+        notice_period_days: 30,
+        stage: "Applied",
+        source: "Direct / Walk-in",
+        resume_text: "",
+      });
+      await loadApplicants();
+    } catch (err: any) {
+      showNotification(err.message || "Failed to add applicant", "error");
+    } finally {
+      setSavingApplicant(false);
+    }
+  };
+
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
   // Real file upload and server-side PDF/TXT parser
@@ -1073,6 +1142,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
           applicantId: appId,
           ctc: 95000,
           signingAuthority: "Priya Sharma",
+          signingTitle: "Head of Talent & People Operations",
           joiningDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
           expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
           customTemplate: `Subject: Appointment as [Designation] at Nimbus Retail Group\n\nDear [Candidate],\n\nWe are pleased to offer you a position...`
@@ -1179,6 +1249,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
             applicantId,
             ctc: 100000,
             signingAuthority: "Priya Sharma",
+            signingTitle: "Head of Talent & People Operations",
             joiningDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
             expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
             customTemplate: ""
@@ -1242,7 +1313,7 @@ ${customClausesText || offerForm.customTemplate}`;
       // Find matching employee or create document
       const emp = employees.find(e => e.email === applicant.email);
       if (emp) {
-        await employeesApi.addDocument(emp.id, {
+        await employeesApi.createDocument(emp.id, {
           document_name: `Offer_Letter_${applicant.name.replace(/\s+/g, "_")}.pdf`,
           document_type: "Offer Letter",
           file_path: `/hrms/documents/offers/${appId}_offer.pdf`
@@ -1601,6 +1672,9 @@ ${customClausesText || offerForm.customTemplate}`;
                   <p className="text-xs text-muted-foreground">Monitor candidate matching thresholds and progress selection phases.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => setIsAddApplicantOpen(true)} className="h-8 text-xs font-semibold gradient-brand text-white gap-1.5 shadow-sm">
+                    <Plus className="size-3.5" /> Add Applicant
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => handleInjectSimulatedCandidate("LinkedIn")} className="h-8 text-xs font-semibold gap-1 border-indigo-500/30 hover:bg-indigo-500/10">
                     <Sparkles className="size-3.5 text-indigo-500" /> Import LinkedIn Profile
                   </Button>
@@ -1670,6 +1744,7 @@ ${customClausesText || offerForm.customTemplate}`;
                       <th className="px-6 py-4">Source</th>
                       <th className="px-6 py-4 text-center">Rating</th>
                       <th className="px-6 py-4 text-center">Stage</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1687,6 +1762,7 @@ ${customClausesText || offerForm.customTemplate}`;
                           <td className="px-6 py-4">
                             <p className="font-semibold text-foreground">{app.name}</p>
                             <p className="text-xs text-muted-foreground">{app.email}</p>
+                            {app.phone && <p className="text-[11px] text-muted-foreground font-mono">{app.phone}</p>}
                           </td>
                           <td className="px-6 py-4">
                             <p className="font-medium text-foreground">{app.job_title}</p>
@@ -1722,6 +1798,36 @@ ${customClausesText || offerForm.customTemplate}`;
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${stageColor(app.stage)}`}>
                               {app.stage}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setOfferForm(prev => ({
+                                    ...prev,
+                                    applicantId: app.id,
+                                    ctc: app.expected_salary ? Number(app.expected_salary) : prev.ctc
+                                  }));
+                                  setOfferStudioTab("templates");
+                                  setCreateOfferOpen(true);
+                                }}
+                                className="h-7 text-[11px] font-bold gap-1 text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 rounded-md shadow-2xs"
+                                title="Release / Generate Offer Letter for this candidate"
+                              >
+                                <FileText className="size-3" /> Offer Letter
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setSelectedApplicant(app)}
+                                className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                                title="View Details"
+                              >
+                                <Eye className="size-3.5" />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1861,6 +1967,15 @@ ${customClausesText || offerForm.customTemplate}`;
                               }`}>
                                 {offer.status}
                               </span>
+                              {offer.employee_id ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 text-[10px] font-bold border border-indigo-500/20">
+                                  <UserCheck className="size-3" /> Existing Employee
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 text-[10px] font-bold border border-sky-500/20">
+                                  <User className="size-3" /> Candidate Applicant
+                                </span>
+                              )}
                               <span className="text-xs text-muted-foreground font-medium">Extended: {offer.offer_date}</span>
                               {offer.email_sent && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-bold">
@@ -1886,7 +2001,7 @@ ${customClausesText || offerForm.customTemplate}`;
                               onClick={() => {
                                 handlePrintOfferLetter({
                                   candidateName: offer.candidate,
-                                  candidateEmail: applicant?.email || "candidate@email.com",
+                                  candidateEmail: offer.candidate_email || applicant?.email || "candidate@email.com",
                                   role: offer.role,
                                   ctc: Number(offer.ctc),
                                   joiningDate: String(offer.joining_date),
@@ -1904,7 +2019,13 @@ ${customClausesText || offerForm.customTemplate}`;
                               size="sm"
                               variant="outline"
                               className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 gap-1.5 h-8 text-xs font-bold"
-                              onClick={() => handleSaveOfferDocument(offer.applicant_id)}
+                              onClick={() => {
+                                if (offer.applicant_id) {
+                                  handleSaveOfferDocument(offer.applicant_id);
+                                } else {
+                                  showNotification("Offer letter is already permanently archived in Employee Document Vault!");
+                                }
+                              }}
                             >
                               <FileCheck className="size-3.5" /> Save to Vault
                             </Button>
@@ -1915,8 +2036,8 @@ ${customClausesText || offerForm.customTemplate}`;
                               </Button>
                             )}
 
-                            {offer.status === "Accepted" && (
-                              <Button size="sm" className="gradient-brand text-white gap-1.5 h-8 text-xs font-bold shadow-md" onClick={() => handleProgressStage(offer.applicant_id, "Hired")}>
+                            {offer.status === "Accepted" && offer.applicant_id && (
+                              <Button size="sm" className="gradient-brand text-white gap-1.5 h-8 text-xs font-bold shadow-md" onClick={() => handleProgressStage(offer.applicant_id!, "Hired")}>
                                 <UserPlus className="size-3.5" /> Start Onboarding & Create Employee
                               </Button>
                             )}
@@ -3049,11 +3170,204 @@ ${customClausesText || offerForm.customTemplate}`;
         )}
       </AnimatePresence>
 
+      {/* MANUAL ADD APPLICANT MODAL */}
+      <AnimatePresence>
+        {isAddApplicantOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-card border border-border rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-5 border-b border-border flex justify-between items-center bg-muted/20">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md shadow-indigo-600/20">
+                    <UserPlus className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-foreground text-base">Register New Candidate</h3>
+                    <p className="text-xs text-muted-foreground">Manually onboard an applicant with complete profile, CTC, and stage data.</p>
+                  </div>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setIsAddApplicantOpen(false)} className="rounded-full">
+                  <XCircle className="size-5 text-muted-foreground" />
+                </Button>
+              </div>
+
+              <form onSubmit={handleCreateApplicant} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground flex items-center gap-1">Candidate Full Name *</label>
+                    <Input
+                      placeholder="e.g. Ramesh Chandra"
+                      value={applicantForm.name}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, name: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground flex items-center gap-1">Email Address *</label>
+                    <Input
+                      type="email"
+                      placeholder="e.g. ramesh@example.com"
+                      value={applicantForm.email}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, email: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground">Contact Phone / Mobile</label>
+                    <Input
+                      placeholder="e.g. +91 98765 43210"
+                      value={applicantForm.phone}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, phone: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground">Target Job Opening</label>
+                    <select
+                      value={applicantForm.job_id}
+                      onChange={(e) => {
+                        const jId = e.target.value;
+                        const job = jobs.find(j => j.id === jId);
+                        setApplicantForm({
+                          ...applicantForm,
+                          job_id: jId,
+                          job_title: job ? job.title : applicantForm.job_title
+                        });
+                      }}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs focus-visible:outline-none"
+                    >
+                      <option value="">-- Direct / Custom Position --</option>
+                      {jobs.map(j => (
+                        <option key={j.id} value={j.id}>{j.title} ({j.department})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground">Position / Designation Title *</label>
+                    <Input
+                      placeholder="e.g. Senior Frontend Engineer"
+                      value={applicantForm.job_title}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, job_title: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground">Experience Level</label>
+                    <select
+                      value={applicantForm.experience}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, experience: e.target.value })}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs focus-visible:outline-none"
+                    >
+                      <option value="Fresher / Entry">Fresher / 0-1 Year</option>
+                      <option value="1-3 years">1 - 3 Years</option>
+                      <option value="3-5 years">3 - 5 Years</option>
+                      <option value="5-8 years">5 - 8 Years</option>
+                      <option value="8+ years">8+ Years Senior / Lead</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground">Expected Annual CTC ({currency.symbol})</label>
+                    <Input
+                      type="number"
+                      placeholder="e.g. 800000"
+                      value={applicantForm.expected_salary}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, expected_salary: Number(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground">Proposed Budgeted CTC ({currency.symbol})</label>
+                    <Input
+                      type="number"
+                      placeholder="e.g. 750000"
+                      value={applicantForm.proposed_salary}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, proposed_salary: Number(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground">Notice Period (Days)</label>
+                    <Input
+                      type="number"
+                      placeholder="e.g. 30"
+                      value={applicantForm.notice_period_days}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, notice_period_days: Number(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-foreground">Initial Pipeline Stage</label>
+                    <select
+                      value={applicantForm.stage}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, stage: e.target.value as any })}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs focus-visible:outline-none"
+                    >
+                      <option value="Applied">Applied (New Intake)</option>
+                      <option value="Screening">Screening (Resume Reviewed)</option>
+                      <option value="Interview">Interview (Technical / Managerial)</option>
+                      <option value="Offer">Offer (Ready for Contract)</option>
+                      <option value="Hired">Hired (Onboarding Ready)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="font-bold text-foreground">Sourcing Channel / Referral</label>
+                    <select
+                      value={applicantForm.source}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, source: e.target.value })}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs focus-visible:outline-none"
+                    >
+                      <option value="Direct / Walk-in">Direct / Walk-in</option>
+                      <option value="Internal Referral">Employee Referral</option>
+                      <option value="LinkedIn">LinkedIn</option>
+                      <option value="Naukri.com">Naukri.com</option>
+                      <option value="Indeed">Indeed</option>
+                      <option value="Careers Page">Company Careers Page</option>
+                      <option value="Manual HR Entry">Manual HR Entry</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-foreground">Resume Summary / Skills / Candidate Notes</label>
+                  <Textarea
+                    placeholder="Enter key technical capabilities, past employers, or interview assessment notes..."
+                    rows={3}
+                    value={applicantForm.resume_text}
+                    onChange={(e) => setApplicantForm({ ...applicantForm, resume_text: e.target.value })}
+                  />
+                </div>
+
+                <div className="flex gap-2 justify-end pt-4 border-t border-border">
+                  <Button type="button" variant="outline" onClick={() => setIsAddApplicantOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={savingApplicant} className="gradient-brand text-white font-bold gap-1.5 shadow-md">
+                    {savingApplicant ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                    {savingApplicant ? "Saving..." : "Save & Register Applicant"}
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Offer Letter Studio & Custom Template Builder Modal */}
       <OfferLetterStudioModal
         open={createOfferOpen}
         onClose={() => setCreateOfferOpen(false)}
         applicants={applicants}
+        employees={employees}
         selectedApplicantId={offerForm.applicantId}
         onOfferSent={() => {
           void loadAllData();
@@ -3063,6 +3377,10 @@ ${customClausesText || offerForm.customTemplate}`;
         handleSendOfferApi={async (payload) => {
           const res = await recruitmentApi.createOffer({
             applicant_id: payload.applicant_id,
+            employee_id: payload.employee_id,
+            candidate: payload.candidate,
+            candidate_email: payload.candidate_email,
+            role: payload.role,
             ctc: payload.ctc,
             expiry_date: payload.expiry_date,
             joining_date: payload.joining_date,

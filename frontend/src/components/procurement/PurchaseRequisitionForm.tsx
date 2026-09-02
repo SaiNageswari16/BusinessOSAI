@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ArrowLeft,
   ScanBarcode,
@@ -20,11 +20,15 @@ import {
   Search,
   Loader2,
   Sparkles,
-  Upload
+  Upload,
+  CheckSquare,
+  Square,
+  X
 } from "lucide-react";
 import { inventoryApi, employeesApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { Button } from "../ui/button";
 
 interface RequisitionItem {
   id: string;
@@ -46,7 +50,7 @@ interface PurchaseRequisitionFormProps {
 }
 
 export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: PurchaseRequisitionFormProps) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -54,6 +58,12 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isExtractingOcr, setIsExtractingOcr] = useState<boolean>(false);
   const prOcrFileRef = useRef<HTMLInputElement | null>(null);
+
+  // Batch Multi-Select Modal State
+  const [isMultiModalOpen, setIsMultiModalOpen] = useState(false);
+  const [multiSearch, setMultiSearch] = useState("");
+  const [multiCategory, setMultiCategory] = useState("");
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
 
   // Global Enterprise PR Fields
   const [prNumber, setPrNumber] = useState<string>("");
@@ -97,8 +107,9 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
         const supps = await inventoryApi.getSuppliers().catch(() => []);
         setSuppliers(supps || []);
 
-        const prods = await inventoryApi.getProducts().catch(() => ({ items: [] }));
-        setProducts(prods.items || []);
+        const prods = await inventoryApi.getProducts({ page_size: 500 }).catch(() => ({ items: [] }));
+        const prodsList = Array.isArray(prods) ? prods : (prods?.items || []);
+        setProducts(prodsList);
 
         const emps = await fetchSalesEmployees().catch(() => []);
         setEmployees(emps || []);
@@ -201,6 +212,73 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
         return it;
       })
     );
+  };
+
+  const distinctCategories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => {
+      if (p.category || p.category_name) set.add(p.category || p.category_name);
+    });
+    return Array.from(set);
+  }, [products]);
+
+  const filteredMultiProducts = useMemo(() => {
+    const q = multiSearch.trim().toLowerCase();
+    return products.filter((p) => {
+      const cat = p.category || p.category_name;
+      const matchCat = !multiCategory || cat === multiCategory;
+      const matchQuery =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.sku && p.sku.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.includes(q));
+      return matchCat && matchQuery;
+    });
+  }, [products, multiSearch, multiCategory]);
+
+  const toggleSelectProduct = (id: string) => {
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedProductIds(new Set(filteredMultiProducts.map((p) => p.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedProductIds(new Set());
+  };
+
+  const handleAddSelectedProducts = () => {
+    const prodsToAdd = products.filter((p) => selectedProductIds.has(p.id));
+    const newItems: RequisitionItem[] = prodsToAdd.map((p) => {
+      const price = Number(p.cost_price) || Number(p.purchase_price) || Number(p.selling_price) || Number(p.mrp) || 0;
+      return {
+        id: Math.random().toString(36).substring(2, 9),
+        product_id: p.id,
+        product_name: p.name,
+        category: p.category || p.category_name || "General",
+        unit_of_measure: p.uom || p.uom_name || "Pcs",
+        quantity: 1,
+        estimated_unit_cost: price,
+        notes: "",
+        search_query: p.name,
+        is_search_open: false,
+      };
+    });
+
+    setItems((prev) => {
+      const nonEmpty = prev.filter((it) => it.product_name.trim() !== "");
+      return [...nonEmpty, ...newItems];
+    });
+
+    toast.success(`Added ${prodsToAdd.length} products to Requisition!`);
+    setIsMultiModalOpen(false);
+    setSelectedProductIds(new Set());
   };
 
   const handleBarcodeSubmit = async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -703,13 +781,21 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
           </table>
         </div>
 
-        <div className="p-3 bg-slate-50/50 border-t border-slate-200">
+        <div className="p-3 bg-slate-50/50 border-t border-slate-200 flex items-center gap-3">
           <button
             type="button"
             onClick={handleAddItem}
-            className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-purple-600 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5"
+            className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-purple-600 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" /> Add Requisition Item
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsMultiModalOpen(true)}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer border-0"
+          >
+            <Package className="w-3.5 h-3.5" /> + Batch Select Products
           </button>
         </div>
       </div>
@@ -753,6 +839,146 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
           </div>
         </div>
       </div>
+
+      {/* ── BATCH SELECT PRODUCTS MODAL ── */}
+      {isMultiModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 border-b flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <Package className="w-4 h-4 text-purple-600" />
+                  <span>Batch Select Catalog Products for Requisition</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">Check all products to add into this purchase request simultaneously</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMultiModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 border-b bg-slate-50/50 flex flex-col sm:flex-row gap-2 shrink-0">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search products by name, SKU, or barcode..."
+                  value={multiSearch}
+                  onChange={(e) => setMultiSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 h-8 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
+
+              {distinctCategories.length > 0 && (
+                <select
+                  value={multiCategory}
+                  onChange={(e) => setMultiCategory(e.target.value)}
+                  className="h-8 px-2 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none"
+                >
+                  <option value="">All Categories ({distinctCategories.length})</option>
+                  {distinctCategories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={selectAllFiltered}
+                  className="h-8 text-[11px] font-bold px-2.5 rounded-xl"
+                >
+                  Select All
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  className="h-8 text-[11px] text-slate-500 px-2 rounded-xl"
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-1.5 divide-y divide-slate-100">
+              {filteredMultiProducts.length === 0 ? (
+                <div className="py-12 text-center text-xs text-slate-400">
+                  No products found matching "{multiSearch}"
+                </div>
+              ) : (
+                filteredMultiProducts.map((prod) => {
+                  const isChecked = selectedProductIds.has(prod.id);
+                  const price = Number(prod.cost_price) || Number(prod.purchase_price) || Number(prod.selling_price) || Number(prod.mrp) || 0;
+                  return (
+                    <div
+                      key={prod.id}
+                      onClick={() => toggleSelectProduct(prod.id)}
+                      className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${
+                        isChecked ? "bg-purple-50/80 border border-purple-200" : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="text-purple-600 shrink-0">
+                          {isChecked ? (
+                            <CheckSquare className="size-5 fill-purple-100" />
+                          ) : (
+                            <Square className="size-5 text-slate-300" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 truncate">{prod.name}</div>
+                          <div className="text-[10px] text-slate-500 font-mono flex items-center gap-2 mt-0.5">
+                            <span>SKU: {prod.sku || "—"}</span>
+                            <span>• In Stock: {prod.stock ?? 0} {prod.uom || "Pcs"}</span>
+                            {prod.category && <span>• Category: {prod.category}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs font-black text-slate-900">{formatCurrency(price)}</div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="p-4 border-t bg-slate-50 flex items-center justify-between shrink-0">
+              <span className="text-xs font-bold text-slate-700">
+                {selectedProductIds.size} Items Selected
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsMultiModalOpen(false)}
+                  className="rounded-xl text-xs font-bold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleAddSelectedProducts}
+                  disabled={selectedProductIds.size === 0}
+                  className="bg-purple-700 hover:bg-purple-800 text-white border-0 font-bold text-xs rounded-xl shadow-md"
+                >
+                  + Add {selectedProductIds.size} Products to Requisition
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

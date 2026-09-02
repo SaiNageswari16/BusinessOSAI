@@ -113,6 +113,9 @@ class CompanyBase(BaseModel):
     established_date: date | None = None
     gst_registrations: list[dict] | None = Field(default_factory=list)
     gsp_credentials: dict | None = Field(default_factory=dict)
+    google_review_url: str | None = None
+    google_place_id: str | None = None
+    google_review_enabled: bool = True
     status: str = "active"
 
 
@@ -146,6 +149,9 @@ class CompanyUpdate(BaseModel):
     established_date: date | None = None
     gst_registrations: list[dict] | None = None
     gsp_credentials: dict | None = None
+    google_review_url: str | None = None
+    google_place_id: str | None = None
+    google_review_enabled: bool | None = None
     status: str | None = None
 
 
@@ -177,6 +183,9 @@ class CompanyResponse(ORMModel):
     established_date: date | None
     gst_registrations: list[dict] | None = []
     gsp_credentials: dict | None = {}
+    google_review_url: str | None = None
+    google_place_id: str | None = None
+    google_review_enabled: bool | None = True
     status: str
     created_at: datetime
     updated_at: datetime
@@ -1850,11 +1859,16 @@ class JobOpeningResponse(ORMModel):
 class ApplicantBase(BaseModel):
     name: str
     email: str
+    phone: str | None = None
     job_id: uuid.UUID | None = None
-    experience: str
+    job_title: str | None = None
+    experience: str = "Fresher / Entry"
+    notice_period_days: int | None = 30
     resume_text: str | None = None
-    source: str = "Careers Page"
+    source: str = "Manual Entry"
     expected_salary: float | None = None
+    proposed_salary: float | None = None
+    stage: str | None = "Applied"
 
 
 class ApplicantCreate(ApplicantBase):
@@ -1866,6 +1880,8 @@ class ApplicantUpdate(BaseModel):
     stage: str | None = None
     expected_salary: float | None = None
     proposed_salary: float | None = None
+    notice_period_days: int | None = None
+    phone: str | None = None
 
 
 class ApplicantResponse(ORMModel):
@@ -1873,7 +1889,8 @@ class ApplicantResponse(ORMModel):
     tenant_id: uuid.UUID
     name: str
     email: str
-    job_id: uuid.UUID
+    phone: str | None = None
+    job_id: uuid.UUID | None = None
     job_title: str
     applied_date: date
     experience: str
@@ -1884,6 +1901,7 @@ class ApplicantResponse(ORMModel):
     resume_text: str | None
     expected_salary: float | None = None
     proposed_salary: float | None = None
+    notice_period_days: int | None = 30
     notes_json: list[dict] = []
     created_at: datetime
     updated_at: datetime
@@ -1928,11 +1946,17 @@ class InterviewResponse(ORMModel):
 
 
 class OfferLetterBase(BaseModel):
-    applicant_id: uuid.UUID
+    applicant_id: uuid.UUID | None = None
+    employee_id: uuid.UUID | None = None
+    candidate: str | None = None
+    candidate_email: str | None = None
+    role: str | None = None
     ctc: float
+    offer_date: date | None = None
     expiry_date: date
     joining_date: date
     signer_name: str
+    signer_title: str | None = "Head of HR"
     custom_template: str | None = None
 
 
@@ -1948,8 +1972,10 @@ class OfferLetterUpdate(BaseModel):
 class OfferLetterResponse(ORMModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    applicant_id: uuid.UUID
+    applicant_id: uuid.UUID | None = None
+    employee_id: uuid.UUID | None = None
     candidate: str
+    candidate_email: str | None = None
     role: str
     ctc: float
     offer_date: date
@@ -2348,6 +2374,8 @@ class DeliveryChallanItemCreate(BaseModel):
 class DeliveryChallanCreate(BaseModel):
     invoice_id: uuid.UUID | None = None
     customer_id: uuid.UUID | None = None
+    reference_number: str | None = None
+    recipient_name: str | None = None
     challan_date: date
     transporter_name: str | None = None
     vehicle_number: str | None = None
@@ -2368,6 +2396,8 @@ class DeliveryChallanResponse(ORMModel):
     tenant_id: uuid.UUID
     invoice_id: uuid.UUID | None
     customer_id: uuid.UUID | None
+    reference_number: str | None = None
+    recipient_name: str | None = None
     challan_number: str
     challan_date: date
     status: str

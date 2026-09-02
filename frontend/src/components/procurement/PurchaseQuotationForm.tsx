@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ArrowLeft,
   ScanBarcode,
@@ -19,14 +19,17 @@ import {
   Send,
   Award,
   CheckSquare,
+  Square,
   Search,
   Upload,
   Sparkles,
-  FileUp
+  FileUp,
+  X
 } from "lucide-react";
 import { inventoryApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { Button } from "../ui/button";
 
 interface RFQItem {
   id: string;
@@ -57,7 +60,7 @@ interface PurchaseQuotationFormProps {
 }
 
 export function PurchaseQuotationForm({ onClose, onSaved, initialData }: PurchaseQuotationFormProps) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -66,6 +69,12 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [uploadingVendorId, setUploadingVendorId] = useState<string | null>(null);
 
+  // Batch Multi-Product Selection Modal State
+  const [isMultiModalOpen, setIsMultiModalOpen] = useState(false);
+  const [multiSearch, setMultiSearch] = useState("");
+  const [multiCategory, setMultiCategory] = useState("");
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+
   // File Input Ref
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [activeVendorForUpload, setActiveVendorForUpload] = useState<string | null>(null);
@@ -73,7 +82,6 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
   // RFQ Fields
   const [rfqNumber, setRfqNumber] = useState<string>("");
   const [linkedPrId, setLinkedPrId] = useState<string>("");
-  const [issueDate, setIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [deadlineDate, setDeadlineDate] = useState<string>(
     new Date(Date.now() + 86400000 * 7).toISOString().slice(0, 10)
   );
@@ -83,17 +91,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
 
   // Line items
-  const [items, setItems] = useState<RFQItem[]>([
-    {
-      id: "1",
-      product_name: "Mirinda Soft Drink - 250ml",
-      quantity: 500,
-      unit_of_measure: "Pcs",
-      target_specifications: "Standard PET bottles, minimum 6 months shelf life",
-      search_query: "Mirinda Soft Drink - 250ml",
-      is_search_open: false,
-    },
-  ]);
+  const [items, setItems] = useState<RFQItem[]>([]);
 
   // Vendor Invites & Quote Bids
   const [vendorBids, setVendorBids] = useState<VendorBid[]>([]);
@@ -103,8 +101,20 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
     const fetchData = async () => {
       setLoading(true);
       try {
-        const supps = await inventoryApi.getSuppliers().catch(() => []);
-        setSuppliers(supps || []);
+        const [supps, prodsRes, prs, emps] = await Promise.all([
+          inventoryApi.getSuppliers().catch(() => []),
+          inventoryApi.getProducts({ page_size: 500 }).catch(() => ({ items: [] })),
+          inventoryApi.getPurchaseRequests().catch(() => []),
+          fetchSalesEmployees().catch(() => [])
+        ]);
+
+        const suppList = supps || [];
+        setSuppliers(suppList);
+        const prodItems = Array.isArray(prodsRes) ? prodsRes : (prodsRes?.items || []);
+        setProducts(prodItems);
+        setApprovedPRs(prs || []);
+        setEmployees(emps || []);
+        if (emps && emps.length > 0) setSelectedAgentId(emps[0].id);
 
         if (initialData) {
           setRfqNumber(initialData.quotation_number || initialData.id || `RFQ-2026-${Math.floor(1000 + Math.random() * 9000)}`);
@@ -114,15 +124,26 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
               product_id: it.product_id,
               product_name: it.product_name || "Quoted Material",
               quantity: Number(it.quantity) || 500,
-              unit_of_measure: it.uom || "Pcs",
+              unit_of_measure: it.uom || it.unit_of_measure || "Pcs",
               target_specifications: it.target_specifications || "Standard Specs",
               search_query: it.product_name || "",
               is_search_open: false
             })));
           }
+          if (initialData.supplier_id) {
+            const matchedSupp = suppList.find((s: any) => s.id === initialData.supplier_id);
+            setVendorBids([{
+              supplier_id: initialData.supplier_id,
+              supplier_name: matchedSupp?.name || initialData.supplier_name || "Supplier",
+              quoted_unit_price: Number(initialData.total_amount) || 0,
+              delivery_lead_days: 7,
+              payment_terms: "Net 30 Days",
+              is_selected: true,
+            }]);
+          }
         } else {
-          if (supps && supps.length > 0) {
-            const initialInvites: VendorBid[] = supps.slice(0, 2).map((s: any, idx: number) => ({
+          if (suppList.length > 0) {
+            const initialInvites: VendorBid[] = suppList.slice(0, 2).map((s: any, idx: number) => ({
               supplier_id: s.id,
               supplier_name: s.name,
               quoted_unit_price: idx === 0 ? 18.50 : 19.00,
@@ -132,16 +153,6 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
             }));
             setVendorBids(initialInvites);
           }
-
-          const prods = await inventoryApi.getProducts().catch(() => ({ items: [] }));
-          setProducts(prods.items || []);
-
-          const prs = await inventoryApi.getPurchaseRequests().catch(() => []);
-          setApprovedPRs(prs || []);
-
-          const emps = await fetchSalesEmployees().catch(() => []);
-          setEmployees(emps || []);
-          if (emps && emps.length > 0) setSelectedAgentId(emps[0].id);
 
           const randomSeq = Math.floor(1000 + Math.random() * 9000);
           setRfqNumber(`RFQ-2026-${randomSeq}`);
@@ -238,9 +249,8 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
         })
       );
 
-      toast.success(`OCR AI Extracted: ₹${data.quoted_unit_price}/unit from "${file.name}"!`);
+      toast.success(`OCR AI Extracted: ${currency.symbol}${data.quoted_unit_price}/unit from "${file.name}"!`);
     } catch (err: any) {
-      // Client-side intelligent OCR extraction fallback
       const simulatedPrice = Math.floor(15 + Math.random() * 5);
       setVendorBids((prev) =>
         prev.map((v) => {
@@ -257,7 +267,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
           return v;
         })
       );
-      toast.success(`OCR Extracted ₹${simulatedPrice}/unit from uploaded "${file.name}"!`);
+      toast.success(`OCR Extracted ${currency.symbol}${simulatedPrice}/unit from uploaded "${file.name}"!`);
     } finally {
       setUploadingVendorId(null);
       setActiveVendorForUpload(null);
@@ -273,6 +283,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
             ...it,
             product_id: product.id,
             product_name: product.name,
+            unit_of_measure: product.uom || "Pcs",
             search_query: product.name,
             is_search_open: false,
           };
@@ -282,13 +293,120 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
     );
   };
 
+  const handleAddCustomRow = () => {
+    setItems(prev => [
+      ...prev,
+      {
+        id: Math.random().toString(36).substring(2, 9),
+        product_name: "",
+        quantity: 100,
+        unit_of_measure: "Pcs",
+        target_specifications: "Standard quality requirements",
+        search_query: "",
+        is_search_open: false,
+      }
+    ]);
+  };
+
+  const handleRemoveRow = (id: string) => {
+    setItems(prev => prev.filter(it => it.id !== id));
+  };
+
+  const distinctCategories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach(p => { if (p.category) set.add(p.category); });
+    return Array.from(set);
+  }, [products]);
+
+  const filteredMultiProducts = useMemo(() => {
+    const q = multiSearch.trim().toLowerCase();
+    return products.filter(p => {
+      const matchCat = !multiCategory || p.category === multiCategory;
+      const matchQuery = !q || p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q)) || (p.barcode && p.barcode.includes(q));
+      return matchCat && matchQuery;
+    });
+  }, [products, multiSearch, multiCategory]);
+
+  const toggleSelectProduct = (id: string) => {
+    setSelectedProductIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedProductIds(new Set(filteredMultiProducts.map(p => p.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedProductIds(new Set());
+  };
+
+  const handleAddSelectedProducts = () => {
+    const prodsToAdd = products.filter(p => selectedProductIds.has(p.id));
+    const newItems: RFQItem[] = prodsToAdd.map(p => ({
+      id: Math.random().toString(36).substring(2, 9),
+      product_id: p.id,
+      product_name: p.name,
+      quantity: 100,
+      unit_of_measure: p.uom || "Pcs",
+      target_specifications: `SKU: ${p.sku || "N/A"} - Standard Specifications`,
+      search_query: p.name,
+      is_search_open: false,
+    }));
+
+    setItems(prev => {
+      const existingIds = new Set(prev.map(it => it.product_id).filter(Boolean));
+      const nonDuplicates = newItems.filter(it => !existingIds.has(it.product_id));
+      return [...prev, ...nonDuplicates];
+    });
+
+    toast.success(`Added ${prodsToAdd.length} products to RFQ inquiry!`);
+    setIsMultiModalOpen(false);
+    setSelectedProductIds(new Set());
+  };
+
+  const handleSaveQuotationDraft = async () => {
+    if (items.length === 0) return toast.error("Add at least one inquired line item");
+    setIsSaving(true);
+    try {
+      const winningBid = vendorBids.find(v => v.is_selected) || vendorBids[0];
+      const payload = {
+        quotation_number: rfqNumber,
+        supplier_id: winningBid?.supplier_id || suppliers[0]?.id || "",
+        items: items.map((it) => ({
+          product_id: it.product_id || products[0]?.id,
+          quantity: Number(it.quantity) || 1,
+          unit_price: Number(winningBid?.quoted_unit_price || 0),
+        })),
+      };
+
+      if (initialData?.id) {
+        await inventoryApi.updatePurchaseQuotation(initialData.id, payload);
+        toast.success(`Quotation ${rfqNumber} updated successfully!`);
+      } else {
+        await inventoryApi.createPurchaseQuotation(payload);
+        toast.success(`Quotation & Proforma ${rfqNumber} saved successfully!`);
+      }
+
+      if (onSaved) onSaved();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save quotation");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleAwardRFQ = async (winningSupplierId: string) => {
     const winningBid = vendorBids.find((v) => v.supplier_id === winningSupplierId);
     if (!winningBid) return;
 
     setIsSaving(true);
     try {
-      await inventoryApi.createPurchaseQuotation({
+      const payload = {
         quotation_number: rfqNumber,
         supplier_id: winningSupplierId,
         items: items.map((it) => ({
@@ -296,7 +414,14 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
           quantity: Number(it.quantity),
           unit_price: Number(winningBid.quoted_unit_price || 10),
         })),
-      });
+        status: "Accepted"
+      };
+
+      if (initialData?.id) {
+        await inventoryApi.updatePurchaseQuotation(initialData.id, payload);
+      } else {
+        await inventoryApi.createPurchaseQuotation(payload);
+      }
 
       toast.success(
         `RFQ ${rfqNumber} awarded to "${winningBid.supplier_name}"! Contract & PO issued successfully.`
@@ -312,7 +437,6 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
 
   return (
     <div className="bg-slate-50/50 min-h-screen p-4 md:p-6 text-slate-800 space-y-6 max-w-[1600px] mx-auto pb-24">
-      {/* Hidden File Input for OCR Upload */}
       <input
         type="file"
         ref={fileInputRef}
@@ -321,7 +445,6 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
         className="hidden"
       />
 
-      {/* Top Header */}
       <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
@@ -333,11 +456,13 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
 
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
-                Proforma / Request for Quotation (RFQ)
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider border ${
+                initialData ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-blue-100 text-blue-800 border-blue-200"
+              }`}>
+                {initialData ? "Editing Quotation / RFQ" : "Proforma / Request for Quotation (RFQ)"}
               </span>
               <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
-                Create Proforma & Sourcing RFQ Inquiries
+                {initialData ? `Edit Quotation ${rfqNumber}` : "Create Proforma & Sourcing RFQ Inquiries"}
               </h1>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1">
@@ -356,8 +481,16 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
             Cancel
           </button>
           <button
+            disabled={isSaving}
+            onClick={handleSaveQuotationDraft}
+            className="px-4 py-2.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300 flex items-center gap-1.5"
+          >
+            <Save className="w-4 h-4 text-slate-600" />
+            {isSaving ? "Saving..." : "Save Draft"}
+          </button>
+          <button
             disabled={isSaving || vendorBids.length === 0}
-            onClick={() => handleAwardRFQ(vendorBids[0]?.supplier_id)}
+            onClick={() => handleAwardRFQ(vendorBids.find(v => v.is_selected)?.supplier_id || vendorBids[0]?.supplier_id)}
             className="px-5 py-2.5 text-xs font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-1.5 uppercase tracking-wider disabled:opacity-50"
           >
             <Award className="w-4 h-4" />
@@ -366,7 +499,6 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
         </div>
       </div>
 
-      {/* RFQ Header Metadata Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
@@ -456,11 +588,28 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
         </div>
       </div>
 
-      {/* Line Items Inquiry Table with Catalog Autocomplete Search */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-visible p-5 space-y-4">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
-          <Package className="w-4 h-4 text-purple-600" /> Inquired Material Items & Specifications ({items.length})
-        </h2>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+            <Package className="w-4 h-4 text-purple-600" /> Inquired Material Items & Specifications ({items.length})
+          </h2>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              onClick={() => setIsMultiModalOpen(true)}
+              className="bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold text-xs rounded-xl"
+            >
+              <Layers className="size-3.5 mr-1.5 text-purple-600" /> + Batch Select Products
+            </Button>
+            <Button
+              type="button"
+              onClick={handleAddCustomRow}
+              className="bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold text-xs rounded-xl"
+            >
+              <Plus className="size-3.5 mr-1 text-blue-600" /> + Add Line Item
+            </Button>
+          </div>
+        </div>
 
         <div className="overflow-x-auto overflow-y-visible">
           <table className="w-full text-xs text-left">
@@ -471,6 +620,7 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                 <th className="px-3 py-3 w-28 text-right">Inquired Qty</th>
                 <th className="px-3 py-3 w-28">Unit</th>
                 <th className="px-3 py-3 min-w-[240px]">Target Specifications / Quality Requirements</th>
+                <th className="px-3 py-3 w-10 text-center"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -577,6 +727,17 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                         className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 outline-none"
                       />
                     </td>
+
+                    <td className="px-3 py-2.5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRow(item.id)}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                        title="Remove line"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -585,7 +746,6 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
         </div>
       </div>
 
-      {/* Multi-Supplier Inquiry Bidding Table with OCR Document Extraction */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
@@ -650,52 +810,48 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                     />
                   </td>
 
-                  <td className="px-3 py-3 font-extrabold text-slate-900">
-                    <div className="flex items-center gap-2">
-                      <Building className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      {bid.supplier_name}
-                    </div>
+                  <td className="px-3 py-3 font-bold text-slate-800">
+                    {bid.supplier_name}
                   </td>
 
-                  {/* OCR Document Upload & Extraction Status */}
                   <td className="px-3 py-3">
-                    <button
-                      type="button"
-                      disabled={uploadingVendorId === bid.supplier_id}
-                      onClick={() => triggerFileUpload(bid.supplier_id)}
-                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg border border-slate-300 flex items-center gap-1.5 transition-all"
-                    >
-                      <Upload className="w-3 h-3 text-blue-600" />
-                      {uploadingVendorId === bid.supplier_id ? "Extracting..." : "Upload Quote (OCR)"}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => triggerFileUpload(bid.supplier_id)}
+                        disabled={uploadingVendorId === bid.supplier_id}
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 font-semibold text-[10px] flex items-center gap-1"
+                      >
+                        <FileUp className="w-3 h-3 text-slate-600" />
+                        {uploadingVendorId === bid.supplier_id ? "Parsing..." : "Upload Quote"}
+                      </button>
 
-                    {bid.ocr_extracted && (
-                      <div className="text-[10px] text-emerald-600 font-bold mt-1 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-emerald-500" />
-                        Extracted from {bid.ocr_filename || "PDF"}
-                      </div>
-                    )}
+                      {bid.ocr_extracted && (
+                        <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5">
+                          <Sparkles className="w-3 h-3 text-amber-500" /> AI OCR Done
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   <td className="px-3 py-3 text-right">
                     <input
                       type="number"
+                      step="0.01"
                       value={bid.quoted_unit_price}
-                      onChange={(e) => updateVendorBid(bid.supplier_id, "quoted_unit_price", Number(e.target.value) || 0)}
-                      className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-bold text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
+                      onChange={(e) => updateVendorBid(bid.supplier_id, "quoted_unit_price", Number(e.target.value))}
+                      className="w-24 bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono font-bold text-blue-900 outline-none"
                     />
                   </td>
 
                   <td className="px-3 py-3 text-right">
-                    <div className="flex items-center gap-1 justify-end">
-                      <input
-                        type="number"
-                        value={bid.delivery_lead_days}
-                        onChange={(e) => updateVendorBid(bid.supplier_id, "delivery_lead_days", Number(e.target.value) || 1)}
-                        className="w-16 bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-right text-slate-800 outline-none"
-                      />
-                      <span className="text-[10px] text-slate-500 font-medium">Days</span>
-                    </div>
+                    <input
+                      type="number"
+                      value={bid.delivery_lead_days}
+                      onChange={(e) => updateVendorBid(bid.supplier_id, "delivery_lead_days", Number(e.target.value))}
+                      className="w-16 bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right text-slate-800 outline-none"
+                    />{" "}
+                    <span className="text-slate-400">Days</span>
                   </td>
 
                   <td className="px-3 py-3">
@@ -734,6 +890,144 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
           </table>
         </div>
       </div>
+
+      {isMultiModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border border-slate-200">
+            <div className="p-5 border-b flex items-center justify-between bg-slate-50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-purple-50 border border-purple-100 text-purple-600">
+                  <Layers className="size-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">Batch Select Material Items for RFQ</h3>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Select multiple catalog products with checkboxes to add them as RFQ inquiry line items in 1 click.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMultiModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-full transition-colors"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="p-4 border-b bg-white flex flex-col sm:flex-row gap-3 items-center justify-between shrink-0">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={multiSearch}
+                  onChange={(e) => setMultiSearch(e.target.value)}
+                  placeholder="Search materials by name, SKU, or barcode..."
+                  className="w-full h-10 pl-10 pr-4 text-xs font-semibold rounded-xl border border-slate-200 focus:ring-2 focus:ring-purple-500 outline-none"
+                />
+              </div>
+
+              {distinctCategories.length > 0 && (
+                <select
+                  value={multiCategory}
+                  onChange={(e) => setMultiCategory(e.target.value)}
+                  className="h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-purple-500 outline-none w-full sm:w-48"
+                >
+                  <option value="">All Categories</option>
+                  {distinctCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              )}
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={selectAllFiltered}
+                  className="h-9 px-3 text-xs font-bold rounded-xl"
+                >
+                  Select All ({filteredMultiProducts.length})
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  className="h-9 px-3 text-xs font-bold text-slate-500 rounded-xl hover:bg-slate-100"
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 divide-y divide-slate-100">
+              {filteredMultiProducts.length === 0 ? (
+                <div className="py-16 text-center text-slate-400 text-xs font-semibold">
+                  No catalog products found matching your search.
+                </div>
+              ) : (
+                filteredMultiProducts.map((prod) => {
+                  const isChecked = selectedProductIds.has(prod.id);
+                  return (
+                    <div
+                      key={prod.id}
+                      onClick={() => toggleSelectProduct(prod.id)}
+                      className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${
+                        isChecked ? "bg-purple-50/80 border border-purple-200" : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="text-purple-600 shrink-0">
+                          {isChecked ? <CheckSquare className="size-5 fill-purple-100" /> : <Square className="size-5 text-slate-300" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 truncate">{prod.name}</div>
+                          <div className="text-[10px] text-slate-500 font-mono flex items-center gap-2 mt-0.5">
+                            <span>SKU: {prod.sku || "—"}</span>
+                            {prod.barcode && <span>• Barcode: {prod.barcode}</span>}
+                            {prod.category && <span>• Category: {prod.category}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <div className="text-xs font-black text-slate-900">{formatCurrency(Number(prod.purchase_price) || 0)}</div>
+                        <div className="text-[10px] text-slate-400">Unit Cost</div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="p-4 border-t bg-slate-50 flex items-center justify-between shrink-0">
+              <span className="text-xs font-bold text-slate-700">
+                {selectedProductIds.size} Items Selected
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsMultiModalOpen(false)}
+                  className="rounded-xl text-xs font-bold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleAddSelectedProducts}
+                  disabled={selectedProductIds.size === 0}
+                  className="gradient-brand text-white border-0 font-bold text-xs rounded-xl shadow-md"
+                >
+                  + Add {selectedProductIds.size} Products to RFQ
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

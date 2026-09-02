@@ -6,7 +6,7 @@ import {
   PhoneCall, CheckCircle2, Clock, Loader2, Target, Megaphone, Layers, Briefcase,
   ClipboardList, FileText, PhoneOff, PhoneForwarded, Download, Upload,
   UserCheck, Users, LayoutGrid, Table as TableIcon, CheckSquare, Square,
-  Filter, ArrowUpDown, ChevronRight, UserPlus
+  Filter, ArrowUpDown, ChevronRight, UserPlus, Star
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -45,6 +45,7 @@ export function Leads() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [assignedFilter, setAssignedFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("all");
+  const [scheduleFilter, setScheduleFilter] = useState<"all" | "overdue" | "today" | "tomorrow" | "this_week" | "unscheduled">("all");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
 
@@ -99,6 +100,48 @@ export function Leads() {
     }
     return { createdAfter: undefined, createdBefore: undefined };
   }, [dateFilter, customStartDate, customEndDate]);
+
+  // Day-by-Day / Scheduled follow-ups filtering
+  const scheduleCounts = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const tomorrowStart = new Date(todayStart.getTime() + 86400000);
+    const tomorrowEnd = new Date(todayEnd.getTime() + 86400000);
+    const weekEnd = new Date(todayStart.getTime() + 7 * 86400000);
+
+    let overdue = 0, today = 0, tomorrow = 0, thisWeek = 0;
+    leads.forEach((l) => {
+      if (l.next_follow_up_at) {
+        const d = new Date(l.next_follow_up_at);
+        if (d < todayStart) overdue++;
+        else if (d >= todayStart && d <= todayEnd) today++;
+        else if (d >= tomorrowStart && d <= tomorrowEnd) tomorrow++;
+        if (d >= todayStart && d <= weekEnd) thisWeek++;
+      }
+    });
+    return { all: leads.length, overdue, today, tomorrow, thisWeek };
+  }, [leads]);
+
+  const leadsToDisplay = useMemo(() => {
+    if (scheduleFilter === "all") return leads;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const tomorrowStart = new Date(todayStart.getTime() + 86400000);
+    const tomorrowEnd = new Date(todayEnd.getTime() + 86400000);
+    const weekEnd = new Date(todayStart.getTime() + 7 * 86400000);
+
+    return leads.filter((l) => {
+      if (!l.next_follow_up_at) return scheduleFilter === "unscheduled";
+      const fDate = new Date(l.next_follow_up_at);
+      if (scheduleFilter === "overdue") return fDate < todayStart;
+      if (scheduleFilter === "today") return fDate >= todayStart && fDate <= todayEnd;
+      if (scheduleFilter === "tomorrow") return fDate >= tomorrowStart && fDate <= tomorrowEnd;
+      if (scheduleFilter === "this_week") return fDate >= todayStart && fDate <= weekEnd;
+      return true;
+    });
+  }, [leads, scheduleFilter]);
 
   const load = async () => {
     setLoading(true);
@@ -297,6 +340,19 @@ export function Leads() {
     }
   };
 
+  const shareGoogleReview = (lead: CrmLead) => {
+    const reviewLink = "https://search.google.com/local/writereview";
+    const msg = `Hi ${lead.name}, thank you for choosing us! We'd love your feedback—please take 10 seconds to leave us a quick 5-star Google review here: ${reviewLink}`;
+    if (lead.phone) {
+      const cleanPhone = lead.phone.replace(/[^0-9]/g, "");
+      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, "_blank");
+      toast.success("Opening WhatsApp with Google Review request!");
+    } else {
+      navigator.clipboard.writeText(reviewLink);
+      toast.success("Google Review link copied to clipboard!");
+    }
+  };
+
   return (
     <div className="p-4 min-h-[calc(100vh-6rem)] flex flex-col space-y-4">
       {/* Top Header & Actions */}
@@ -406,6 +462,82 @@ export function Leads() {
             <Plus className="size-3.5" /> Add Lead
           </button>
         </div>
+      </div>
+
+      {/* Day-by-Day Scheduled Follow-ups Bar */}
+      <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-2xl bg-card border border-border shadow-xs">
+        <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground px-2 flex items-center gap-1.5">
+          <Calendar className="size-3.5 text-primary" /> Follow-up Schedule:
+        </span>
+        <button
+          onClick={() => setScheduleFilter("all")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+            scheduleFilter === "all"
+              ? "bg-primary text-primary-foreground shadow-xs"
+              : "bg-muted/60 text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span>All Leads</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-background/20 font-mono">
+            {scheduleCounts.all}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setScheduleFilter("overdue")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+            scheduleFilter === "overdue"
+              ? "bg-rose-600 text-white shadow-xs"
+              : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100"
+          }`}
+        >
+          <span>🚨 Overdue</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono">
+            {scheduleCounts.overdue}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setScheduleFilter("today")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+            scheduleFilter === "today"
+              ? "bg-blue-600 text-white shadow-xs"
+              : "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100"
+          }`}
+        >
+          <span>📅 Due Today</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono">
+            {scheduleCounts.today}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setScheduleFilter("tomorrow")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+            scheduleFilter === "tomorrow"
+              ? "bg-emerald-600 text-white shadow-xs"
+              : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100"
+          }`}
+        >
+          <span>🌅 Tomorrow</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono">
+            {scheduleCounts.tomorrow}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setScheduleFilter("this_week")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+            scheduleFilter === "this_week"
+              ? "bg-purple-600 text-white shadow-xs"
+              : "bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 hover:bg-purple-100"
+          }`}
+        >
+          <span>📆 Next 7 Days</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-mono">
+            {scheduleCounts.thisWeek}
+          </span>
+        </button>
       </div>
 
       {/* Advanced Filters & Date Selector Bar */}
@@ -577,7 +709,7 @@ export function Leads() {
                       onClick={handleSelectAll}
                       className="text-muted-foreground hover:text-foreground"
                     >
-                      {selectedLeadIds.length === leads.length && leads.length > 0 ? (
+                      {selectedLeadIds.length === leadsToDisplay.length && leadsToDisplay.length > 0 ? (
                         <CheckSquare className="size-4 text-primary" />
                       ) : (
                         <Square className="size-4" />
@@ -587,25 +719,25 @@ export function Leads() {
                   <th className="p-3">Lead & Company</th>
                   <th className="p-3">Contact Details</th>
                   <th className="p-3">Assigned Sales Executive</th>
-                  <th className="p-3">Calls Done & Status</th>
+                  <th className="p-3">Calls Done & Follow-up</th>
                   <th className="p-3">Estimated Value</th>
                   <th className="p-3">Stage</th>
                   <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {leads.length === 0 ? (
+                {leadsToDisplay.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="p-12 text-center text-muted-foreground">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <AlertCircle className="size-8 opacity-30" />
-                        <p className="text-sm font-semibold">No leads found matching current filters</p>
-                        <p className="text-xs opacity-70">Try adjusting your search or date criteria.</p>
+                        <p className="text-sm font-semibold">No leads found matching current schedule & filters</p>
+                        <p className="text-xs opacity-70">Try selecting "All Leads" or adjusting your search criteria.</p>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  leads.map((lead) => {
+                  leadsToDisplay.map((lead) => {
                     const isSelected = selectedLeadIds.includes(lead.id);
                     return (
                       <tr
@@ -645,29 +777,24 @@ export function Leads() {
                                         : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
                                     }`}
                                   >
-                                    {lead.ai_score}% AI
+                                    AI: {lead.ai_score}%
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] text-muted-foreground">{lead.company_name || "Individual"}</p>
-                              {lead.source && (
-                                <span className="text-[10px] text-muted-foreground/80 font-mono">
-                                  Source: {lead.source}
-                                </span>
-                              )}
+                              <p className="text-muted-foreground text-[11px]">
+                                {lead.company_name || "Individual"}
+                              </p>
                             </div>
                           </div>
                         </td>
 
-                        {/* Contact details */}
-                        <td className="p-3 space-y-0.5 text-[11px]">
-                          {lead.phone ? (
-                            <p className="flex items-center gap-1.5 text-foreground font-mono">
+                        {/* Contact Details */}
+                        <td className="p-3 space-y-1">
+                          {lead.phone && (
+                            <p className="flex items-center gap-1.5 text-foreground font-mono font-medium">
                               <Phone className="size-3 text-muted-foreground" />
                               {lead.phone}
                             </p>
-                          ) : (
-                            <p className="text-muted-foreground/60 italic">No phone</p>
                           )}
                           {lead.email && (
                             <p className="flex items-center gap-1.5 text-muted-foreground">
@@ -695,9 +822,9 @@ export function Leads() {
                           </div>
                         </td>
 
-                        {/* Calls Done & Status */}
-                        <td className="p-3 space-y-1">
-                          <div className="flex items-center gap-1.5">
+                        {/* Calls Done & Scheduled Follow-up */}
+                        <td className="p-3 space-y-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-bold text-[10px] border border-indigo-200 dark:border-indigo-800">
                               <PhoneCall className="size-3" />
                               {lead.calls_count || 0} call{lead.calls_count !== 1 ? "s" : ""}
@@ -715,7 +842,19 @@ export function Leads() {
                               </span>
                             )}
                           </div>
-                          {lead.last_contact_at && (
+
+                          {lead.next_follow_up_at && (
+                            <button
+                              type="button"
+                              onClick={() => setNotesTargetLead(lead)}
+                              className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 transition-colors text-left"
+                              title="Click to reschedule follow-up or log disposition"
+                            >
+                              <Clock className="size-3 text-purple-600 shrink-0" />
+                              <span>Due: {new Date(lead.next_follow_up_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                            </button>
+                          )}
+                          {lead.last_contact_at && !lead.next_follow_up_at && (
                             <p className="text-[10px] text-muted-foreground">
                               Last contact: {new Date(lead.last_contact_at).toLocaleDateString()}
                             </p>
@@ -744,7 +883,13 @@ export function Leads() {
 
                         {/* Actions */}
                         <td className="p-3 text-right space-x-1">
-                          {/* Quick Call */}
+                          <button
+                            onClick={() => shareGoogleReview(lead)}
+                            className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors"
+                            title="Request 5-Star Google Review via WhatsApp / SMS"
+                          >
+                            <Star className="size-3.5 fill-amber-500 text-amber-500" />
+                          </button>
                           <button
                             onClick={() => openCallModal(lead)}
                             disabled={!lead.phone}
@@ -753,8 +898,6 @@ export function Leads() {
                           >
                             <PhoneCall className="size-3.5" />
                           </button>
-
-                          {/* Notes */}
                           <button
                             onClick={() => setNotesTargetLead(lead)}
                             className="p-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground transition-colors"
@@ -762,8 +905,6 @@ export function Leads() {
                           >
                             <ClipboardList className="size-3.5" />
                           </button>
-
-                          {/* Convert to Deal */}
                           <button
                             onClick={() => setConvertTargetLead(lead)}
                             className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 transition-colors"
@@ -784,7 +925,7 @@ export function Leads() {
         /* ── KANBAN VIEW ── */
         <div className="flex-1 flex gap-5 overflow-x-auto pb-4 items-start">
           {stages.map((stage) => {
-            const stageLeads = leads.filter((lead) => lead.status === stage);
+            const stageLeads = leadsToDisplay.filter((lead) => lead.status === stage);
             return (
               <section
                 key={stage}
@@ -830,6 +971,19 @@ export function Leads() {
                         )}
                       </div>
 
+                      {/* Scheduled Follow-up Badge */}
+                      {lead.next_follow_up_at && (
+                        <button
+                          type="button"
+                          onClick={() => setNotesTargetLead(lead)}
+                          className="w-full flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 transition-colors text-left"
+                          title="Click to reschedule or log outcome"
+                        >
+                          <Clock className="size-3 text-purple-600 shrink-0" />
+                          <span className="truncate">Due: {new Date(lead.next_follow_up_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        </button>
+                      )}
+
                       {/* Owner Rep */}
                       <div className="pt-2 border-t flex items-center justify-between text-[11px]">
                         <span className="text-muted-foreground font-medium">
@@ -840,18 +994,25 @@ export function Leads() {
                         </span>
                       </div>
 
-                      {/* Quick Call & Convert actions */}
-                      <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      {/* Quick Actions */}
+                      <div className="grid grid-cols-3 gap-1 pt-1">
+                        <button
+                          onClick={() => shareGoogleReview(lead)}
+                          className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold transition-colors"
+                          title="Request 5-Star Google Review"
+                        >
+                          <Star className="size-3 fill-amber-500 text-amber-500" /> Review
+                        </button>
                         <button
                           onClick={() => openCallModal(lead)}
                           disabled={!lead.phone}
-                          className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold transition-colors disabled:opacity-40"
+                          className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold transition-colors disabled:opacity-40"
                         >
                           <PhoneCall className="size-3" /> Call
                         </button>
                         <button
                           onClick={() => setConvertTargetLead(lead)}
-                          className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold transition-colors"
+                          className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold transition-colors"
                         >
                           <Sparkles className="size-3" /> Convert
                         </button>

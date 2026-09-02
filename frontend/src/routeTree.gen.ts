@@ -44,6 +44,7 @@ import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppCrmRouteImport } from './routes/_app.crm'
 import { Route as AppCopilotRouteImport } from './routes/_app.copilot'
 import { Route as AppAccountingRouteImport } from './routes/_app.accounting'
+import { Route as VaultOffersFilenameRouteImport } from './routes/vault.offers.$filename'
 import { Route as StoreProductIdRouteImport } from './routes/store.product.$id'
 
 const StoreRoute = StoreRouteImport.update({
@@ -220,6 +221,11 @@ const AppAccountingRoute = AppAccountingRouteImport.update({
   path: '/accounting',
   getParentRoute: () => AppRoute,
 } as any)
+const VaultOffersFilenameRoute = VaultOffersFilenameRouteImport.update({
+  id: '/vault/offers/$filename',
+  path: '/vault/offers/$filename',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StoreProductIdRoute = StoreProductIdRouteImport.update({
   id: '/product/$id',
   path: '/product/$id',
@@ -262,6 +268,7 @@ export interface FileRoutesByFullPath {
   '/store/wishlist': typeof StoreWishlistRoute
   '/store/': typeof StoreIndexRoute
   '/store/product/$id': typeof StoreProductIdRoute
+  '/vault/offers/$filename': typeof VaultOffersFilenameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -298,6 +305,7 @@ export interface FileRoutesByTo {
   '/store/wishlist': typeof StoreWishlistRoute
   '/store': typeof StoreIndexRoute
   '/store/product/$id': typeof StoreProductIdRoute
+  '/vault/offers/$filename': typeof VaultOffersFilenameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -337,6 +345,7 @@ export interface FileRoutesById {
   '/store/wishlist': typeof StoreWishlistRoute
   '/store/': typeof StoreIndexRoute
   '/store/product/$id': typeof StoreProductIdRoute
+  '/vault/offers/$filename': typeof VaultOffersFilenameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -376,6 +385,7 @@ export interface FileRouteTypes {
     | '/store/wishlist'
     | '/store/'
     | '/store/product/$id'
+    | '/vault/offers/$filename'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -412,6 +422,7 @@ export interface FileRouteTypes {
     | '/store/wishlist'
     | '/store'
     | '/store/product/$id'
+    | '/vault/offers/$filename'
   id:
     | '__root__'
     | '/'
@@ -450,6 +461,7 @@ export interface FileRouteTypes {
     | '/store/wishlist'
     | '/store/'
     | '/store/product/$id'
+    | '/vault/offers/$filename'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -459,6 +471,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   RoleSelectRoute: typeof RoleSelectRoute
   StoreRoute: typeof StoreRouteWithChildren
+  VaultOffersFilenameRoute: typeof VaultOffersFilenameRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -708,6 +721,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountingRouteImport
       parentRoute: typeof AppRoute
     }
+    '/vault/offers/$filename': {
+      id: '/vault/offers/$filename'
+      path: '/vault/offers/$filename'
+      fullPath: '/vault/offers/$filename'
+      preLoaderRoute: typeof VaultOffersFilenameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/store/product/$id': {
       id: '/store/product/$id'
       path: '/product/$id'
@@ -801,6 +821,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   RoleSelectRoute: RoleSelectRoute,
   StoreRoute: StoreRouteWithChildren,
+  VaultOffersFilenameRoute: VaultOffersFilenameRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

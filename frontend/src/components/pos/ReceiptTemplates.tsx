@@ -256,6 +256,7 @@ export function ReceiptTemplates() {
                 { key: 'showLoyaltyPoints', label: 'Show Loyalty Points Earned' },
                 { key: 'showPaymentMode', label: 'Show Payment Mode (Cash/UPI/Card)' },
                 { key: 'showQrCode', label: 'Print QR Code (e-Invoice / UPI)' },
+                { key: 'showGoogleReviewQR', label: '⭐ Print Google Review QR Code' },
                 { key: 'showDeclaration', label: 'Show Statutory Declaration' },
                 { key: 'showFooterNote', label: 'Show Custom Footer Message' }
               ].map(({ key, label }) => (
@@ -270,6 +271,19 @@ export function ReceiptTemplates() {
                 </label>
               ))}
             </div>
+
+            {template.showGoogleReviewQR && (
+              <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
+                <label className="text-xs font-bold text-foreground block">Google Review URL / Short Link</label>
+                <input
+                  type="text"
+                  placeholder="e.g. https://g.page/r/.../review or https://search.google.com/local/writereview"
+                  value={template.googleReviewUrl || ''}
+                  onChange={(e) => setTemplate({ ...template, googleReviewUrl: e.target.value })}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            )}
           </div>
 
           {/* Declaration & Footer Notes */}
@@ -438,6 +452,16 @@ export function ReceiptTemplates() {
                 <div className="flex flex-col items-center my-2 pt-1 border-t border-slate-300">
                   <span className="text-[9px] font-bold mb-0.5">Scan to Verify e-Invoice / UPI Payment</span>
                   <QrCode className="w-16 h-16 text-black" strokeWidth={1.5} />
+                </div>
+              )}
+
+              {template.showGoogleReviewQR && (
+                <div className="flex flex-col items-center my-2 pt-1 border-t border-dashed border-slate-400">
+                  <span className="text-[9px] font-black tracking-wider text-black">★ ★ ★ ★ ★ RATE US ON GOOGLE</span>
+                  <div className="p-1 bg-white border border-slate-800 rounded mt-0.5">
+                    <QrCode className="w-14 h-14 text-indigo-700" strokeWidth={1.5} />
+                  </div>
+                  <span className="text-[8px] font-bold text-slate-600 mt-0.5">Scan to leave a Google Review!</span>
                 </div>
               )}
 

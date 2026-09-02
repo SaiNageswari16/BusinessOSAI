@@ -293,8 +293,11 @@ class PurchaseOrderCreate(BaseModel):
 class PurchaseOrderUpdate(BaseModel):
     po_number: Optional[str] = None
     supplier_id: Optional[uuid.UUID] = None
+    purchase_request_id: Optional[uuid.UUID] = None
     delivery_date: Optional[datetime] = None
+    total_amount: Optional[float] = None
     status: Optional[str] = None
+    items: Optional[List[PurchaseOrderItemCreate]] = None
 
 
 class PurchaseOrderResponse(PurchaseOrderBase):
@@ -411,6 +414,7 @@ class PurchaseReturnResponse(PurchaseReturnBase):
 class VendorBillBase(BaseModel):
     bill_number: str = Field(..., max_length=100)
     purchase_order_id: uuid.UUID
+    grn_id: Optional[uuid.UUID] = None  # 3-way match: link to GRN that confirmed receipt
     bill_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     total_amount: Optional[float] = 0.0
@@ -421,6 +425,7 @@ class VendorBillBase(BaseModel):
 class VendorBillCreate(BaseModel):
     bill_number: str
     purchase_order_id: uuid.UUID
+    grn_id: Optional[uuid.UUID] = None  # 3-way match: link bill to GRN
     due_date: Optional[datetime] = None
     total_amount: float
     paid_amount: Optional[float] = 0.0
@@ -430,7 +435,11 @@ class VendorBillCreate(BaseModel):
 class VendorBillResponse(VendorBillBase):
     id: uuid.UUID
     po_number: Optional[str] = None
+    grn_number: Optional[str] = None       # resolved from grn_id for display
+    grn_status: Optional[str] = None       # Verified / Draft — shows QC state
+    supplier_id: Optional[uuid.UUID] = None
     supplier_name: Optional[str] = None
+    items: Optional[List[PurchaseOrderItemResponse]] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

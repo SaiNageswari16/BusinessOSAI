@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import React from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Plus, Boxes, Loader2, Eye, Printer, FileText } from "lucide-react";
+import { Plus, Boxes, Loader2, Eye, Printer, FileText, Receipt } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { GoodsReceivedNoteForm } from "./GoodsReceivedNoteForm";
@@ -130,7 +130,18 @@ export function GoodsReceivedNotes() {
                         {grn.status || "Received"}
                       </span>
                     </td>
-                    <td className="py-4 px-6 text-right">
+                    <td className="py-4 px-6 text-right space-x-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          window.location.href = `/procurement?tab=vendor_bills&po_id=${grn.purchase_order_id}&grn_id=${grn.id}`;
+                        }}
+                        className="h-8 gap-1 font-bold rounded-lg text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100"
+                        title="Create 3-Way Matched Vendor Bill from this GRN"
+                      >
+                        <Receipt className="size-3.5 mr-1" /> Log Bill
+                      </Button>
                       <Button 
                         variant="outline" 
                         size="sm" 

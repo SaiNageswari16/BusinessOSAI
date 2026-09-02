@@ -221,5 +221,37 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to 'employees': {e}")
 
+    # ── 3-Way Match: Add grn_id FK to erp_vendor_bills ──────────────────────
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text(
+                "ALTER TABLE erp_vendor_bills ADD COLUMN grn_id UUID REFERENCES erp_goods_received_notes(id) ON DELETE SET NULL"
+            ))
+            logger.info("Successfully added 'grn_id' FK column to 'erp_vendor_bills' for 3-way match.")
+        except Exception as e:
+            if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                logger.info("'grn_id' column already exists in 'erp_vendor_bills'.")
+            else:
+                logger.error(f"Error adding 'grn_id' to 'erp_vendor_bills': {e}")
+
+    # ── HRMS: Offer Letters & Manual Applicants Schema Updates ──────────────
+    recruitment_statements = [
+        "ALTER TABLE recruitment_offer_letters ALTER COLUMN applicant_id DROP NOT NULL",
+        "ALTER TABLE recruitment_offer_letters ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id) ON DELETE CASCADE",
+        "ALTER TABLE recruitment_offer_letters ADD COLUMN IF NOT EXISTS candidate_email VARCHAR(150)",
+        "ALTER TABLE recruitment_applicants ALTER COLUMN job_id DROP NOT NULL",
+        "ALTER TABLE recruitment_applicants ADD COLUMN IF NOT EXISTS phone VARCHAR(30)",
+        "ALTER TABLE recruitment_applicants ADD COLUMN IF NOT EXISTS notice_period_days INTEGER DEFAULT 30"
+    ]
+
+    for stmt in recruitment_statements:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info(f"Successfully executed schema update: {stmt}")
+            except Exception as e:
+                logger.info(f"Migration note for '{stmt}': {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())
+

@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle, CheckCircle2, Gift, Pause, Play, Bot, FileSpreadsheet, HelpCircle } from "lucide-react";
+import { Search, Filter, Plus, Package, Edit2, Archive, X, Sparkles, Globe, Loader2, Sliders, ShoppingCart, Store, Copy, Upload, Download, Barcode, Zap, ChevronLeft, ChevronRight, ArrowUpDown, Printer, Tag, CheckSquare, Square, LayoutGrid, Rows3, Box, Truck, Lightbulb, FileText, UploadCloud, DollarSign, Layers, Trash2, CheckCircle, CheckCircle2, Gift, Pause, Play, Bot, FileSpreadsheet, HelpCircle, Receipt, Eye } from "lucide-react";
 
-import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl } from "../../lib/api-client";
+import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, resolveImageUrl, invoicesApi } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { useTenant } from "../../contexts/tenant-context";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1230,8 +1230,46 @@ export function Products() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentForm, setCurrentForm] = useState(defaultFormData());
   const [isManualHsn, setIsManualHsn] = useState(false);
+  const [productInvoices, setProductInvoices] = useState<any[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState<boolean>(false);
+  const [selectedImagePreview, setSelectedImagePreview] = useState<{ url: string; name: string; sku?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formData = useMemo(() => defaultFormData(), []);
+
+  // Fetch Billed Invoices for Product
+  useEffect(() => {
+    if (isModalOpen && editingProductId && activeModalTab === "billed_invoices") {
+      setLoadingInvoices(true);
+      invoicesApi.listInvoices({ page_size: 200 })
+        .then((res: any) => {
+          const invList = res.items || res || [];
+          const matching: any[] = [];
+          invList.forEach((inv: any) => {
+            (inv.items || []).forEach((it: any) => {
+              if (
+                it.product_id === editingProductId ||
+                (it.product_name && currentForm.name && it.product_name.toLowerCase().trim() === currentForm.name.toLowerCase().trim())
+              ) {
+                matching.push({
+                  invoice_id: inv.id,
+                  invoice_number: inv.invoice_number,
+                  invoice_date: inv.invoice_date || inv.created_at,
+                  customer_name: inv.customer_name || inv.customer?.first_name ? `${inv.customer?.first_name || ''} ${inv.customer?.last_name || ''}`.trim() : "Walk-in Customer",
+                  customer_phone: inv.customer_phone || inv.customer?.phone || "—",
+                  quantity: Number(it.quantity) || 1,
+                  unit_price: Number(it.unit_price) || 0,
+                  total: Number(it.total || (it.quantity * it.unit_price)) || 0,
+                  status: inv.status || "Completed",
+                });
+              }
+            });
+          });
+          setProductInvoices(matching);
+        })
+        .catch(() => setProductInvoices([]))
+        .finally(() => setLoadingInvoices(false));
+    }
+  }, [isModalOpen, editingProductId, activeModalTab, currentForm.name]);
 
   // ── Barcode Print Drawer state ───────────────────────────────────
   const [isBarcodeDrawerOpen, setIsBarcodeDrawerOpen] = useState(false);
@@ -2703,6 +2741,7 @@ export function Products() {
       { id: "inventory", label: "Stock & Batches", icon: Box },
       { id: "operations", label: "Flags & Operations", icon: Zap },
       { id: "other", label: "Descriptions & Specs", icon: FileText },
+      ...(editingProductId ? [{ id: "billed_invoices", label: `Billed Invoices (${productInvoices.length})`, icon: Receipt }] : []),
     ];
 
     // Live tax computations for preview
@@ -3068,11 +3107,19 @@ export function Products() {
                         <select
                           name="category_id"
                           value={currentForm.category_id}
-                          onChange={handleFormChange}
+                          onChange={(e) => {
+                            const cId = e.target.value;
+                            const cat = categories.find(c => c.id === cId);
+                            setCurrentForm(prev => ({
+                              ...prev,
+                              category_id: cId,
+                              category: cat ? cat.name : "",
+                            }));
+                          }}
                           className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                         >
                           <option value="">Select Category</option>
-                          {categories.map((c) => (
+                          {categories.filter(c => !c.parent_id).map((c) => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
                         </select>
@@ -3082,33 +3129,63 @@ export function Products() {
                           variant="outline"
                           onClick={() => setCatPopoverOpen(!catPopoverOpen)}
                           className="h-10 w-10 shrink-0 rounded-xl"
+                          title="Add New Category"
                         >
                           <Plus className="size-4" />
                         </Button>
                       </div>
                       {catPopoverOpen && (
-                        <div className="absolute top-full mt-2 left-0 w-64 bg-white border border-slate-200 rounded-xl shadow-xl p-3 z-30">
-                          <span className="text-xs font-bold text-slate-700 block mb-2">New Category</span>
+                        <div className="absolute top-full mt-2 left-0 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-3 z-30">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-slate-800">New Main Category</span>
+                            <button type="button" onClick={() => setCatPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
                           <input
                             type="text"
-                            placeholder="Category Name"
+                            placeholder="Category Name (e.g. Paint, Beverages)"
                             id="new_cat_input"
-                            className="w-full h-8 px-2 text-xs border rounded-lg mb-2"
+                            className="w-full h-8 px-2.5 text-xs border border-slate-300 rounded-lg mb-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                             onKeyDown={async (e) => {
                               if (e.key === "Enter") {
                                 const val = (e.target as HTMLInputElement).value.trim();
                                 if (val) {
                                   try {
                                     const res = await inventoryApi.createCategory({ name: val });
-                                    setCategories(prev => [...prev, res.category]);
-                                    setCurrentForm(prev => ({ ...prev, category_id: res.category.id }));
+                                    const newCat = res.category || res;
+                                    setCategories(prev => [...prev, newCat]);
+                                    setCurrentForm(prev => ({ ...prev, category_id: newCat.id, category: newCat.name }));
                                     setCatPopoverOpen(false);
-                                    toast.success("Category created!");
-                                  } catch (err) { toast.error("Failed to create category"); }
+                                    toast.success(`Category "${val}" created!`);
+                                  } catch (err: any) { toast.error(err.message || "Failed to create category"); }
                                 }
                               }
                             }}
                           />
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={async () => {
+                                const input = document.getElementById("new_cat_input") as HTMLInputElement;
+                                const val = input?.value?.trim();
+                                if (val) {
+                                  try {
+                                    const res = await inventoryApi.createCategory({ name: val });
+                                    const newCat = res.category || res;
+                                    setCategories(prev => [...prev, newCat]);
+                                    setCurrentForm(prev => ({ ...prev, category_id: newCat.id, category: newCat.name }));
+                                    setCatPopoverOpen(false);
+                                    toast.success(`Category "${val}" created!`);
+                                  } catch (err: any) { toast.error(err.message || "Failed to create category"); }
+                                }
+                              }}
+                              className="h-7 px-3 text-[11px] font-bold gradient-brand text-white rounded-lg border-0"
+                            >
+                              Add Category
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -3118,14 +3195,102 @@ export function Products() {
                       <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
                         Sub Category
                       </label>
-                      <input
-                        type="text"
-                        name="sub_category"
-                        value={currentForm.sub_category}
-                        onChange={handleFormChange}
-                        placeholder="e.g. Interior Emulsion, Primers"
-                        className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <select
+                            name="sub_category"
+                            value={currentForm.sub_category || ""}
+                            onChange={handleFormChange}
+                            className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                          >
+                            <option value="">-- Select Sub Category --</option>
+                            {categories
+                              .filter(c => Boolean(c.parent_id) && (!currentForm.category_id || c.parent_id === currentForm.category_id))
+                              .map((sc) => (
+                                <option key={sc.id} value={sc.name}>
+                                  {sc.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          onClick={() => setSubCatPopoverOpen(!subCatPopoverOpen)}
+                          className="h-10 w-10 shrink-0 rounded-xl"
+                          title="Add New Sub-Category"
+                        >
+                          <Plus className="size-4" />
+                        </Button>
+                      </div>
+
+                      {subCatPopoverOpen && (
+                        <div className="absolute top-full mt-2 left-0 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-3 z-30">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-slate-800">
+                              New Sub-Category {currentForm.category ? `for ${currentForm.category}` : ""}
+                            </span>
+                            <button type="button" onClick={() => setSubCatPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Sub-Category Name (e.g. Interior Primers)"
+                            id="new_sub_cat_input"
+                            className="w-full h-8 px-2.5 text-xs border border-slate-300 rounded-lg mb-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            onKeyDown={async (e) => {
+                              if (e.key === "Enter") {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                if (val) {
+                                  try {
+                                    const res = await inventoryApi.createCategory({
+                                      name: val,
+                                      parent_id: currentForm.category_id || undefined,
+                                    });
+                                    const newSub = res.category || res;
+                                    setCategories(prev => [...prev, newSub]);
+                                    setCurrentForm(prev => ({ ...prev, sub_category: val }));
+                                    setSubCatPopoverOpen(false);
+                                    toast.success(`Sub-Category "${val}" created!`);
+                                  } catch (err: any) {
+                                    toast.error(err.message || "Failed to create sub-category");
+                                  }
+                                }
+                              }
+                            }}
+                          />
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={async () => {
+                                const input = document.getElementById("new_sub_cat_input") as HTMLInputElement;
+                                const val = input?.value?.trim();
+                                if (val) {
+                                  try {
+                                    const res = await inventoryApi.createCategory({
+                                      name: val,
+                                      parent_id: currentForm.category_id || undefined,
+                                    });
+                                    const newSub = res.category || res;
+                                    setCategories(prev => [...prev, newSub]);
+                                    setCurrentForm(prev => ({ ...prev, sub_category: val }));
+                                    setSubCatPopoverOpen(false);
+                                    toast.success(`Sub-Category "${val}" created!`);
+                                  } catch (err: any) {
+                                    toast.error(err.message || "Failed to create sub-category");
+                                  }
+                                }
+                              }}
+                              className="h-7 px-3 text-[11px] font-bold gradient-brand text-white rounded-lg border-0"
+                            >
+                              Add Sub-Category
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Brand */}
@@ -4179,6 +4344,125 @@ export function Products() {
                 </div>
               )}
 
+              {/* TAB 7: BILLED INVOICES HISTORY */}
+              {activeModalTab === "billed_invoices" && (
+                <div className="space-y-6">
+                  {/* Summary Metric Cards */}
+                  {(() => {
+                    const totalQty = productInvoices.reduce((sum, inv) => sum + inv.quantity, 0);
+                    const totalRevenue = productInvoices.reduce((sum, inv) => sum + inv.total, 0);
+                    const avgRate = totalQty > 0 ? totalRevenue / totalQty : 0;
+
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                        <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100 shadow-sm">
+                          <span className="text-[10px] font-extrabold uppercase text-indigo-600 tracking-wider block mb-1">
+                            Total Invoices Billed
+                          </span>
+                          <span className="text-2xl font-black text-slate-900">{productInvoices.length}</span>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100 shadow-sm">
+                          <span className="text-[10px] font-extrabold uppercase text-emerald-600 tracking-wider block mb-1">
+                            Total Units Invoiced
+                          </span>
+                          <span className="text-2xl font-black text-emerald-800">{totalQty.toLocaleString()} {currentForm.uom_id || 'Units'}</span>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-100 shadow-sm">
+                          <span className="text-[10px] font-extrabold uppercase text-blue-600 tracking-wider block mb-1">
+                            Total Billed Revenue
+                          </span>
+                          <span className="text-2xl font-black text-blue-900">{formatCurrency(totalRevenue)}</span>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-100 shadow-sm">
+                          <span className="text-[10px] font-extrabold uppercase text-amber-700 tracking-wider block mb-1">
+                            Avg Selling Rate
+                          </span>
+                          <span className="text-2xl font-black text-amber-900">{formatCurrency(avgRate)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Table of Billed Invoices */}
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="p-4 border-b bg-slate-50 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Receipt className="size-4 text-indigo-600" />
+                        <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                          Sales Invoices Billed with "{currentForm.name || 'this Product'}"
+                        </h4>
+                      </div>
+                      <span className="text-xs font-bold text-slate-500">
+                        {productInvoices.length} Record{productInvoices.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+
+                    {loadingInvoices ? (
+                      <div className="p-12 text-center text-slate-400 text-xs font-semibold flex items-center justify-center gap-2">
+                        <Loader2 className="size-4 animate-spin text-indigo-600" /> Fetching billed invoice history...
+                      </div>
+                    ) : productInvoices.length === 0 ? (
+                      <div className="p-12 text-center text-slate-400 text-xs font-semibold">
+                        No sales invoices have been billed for this product yet.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto max-h-[380px] overflow-y-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b sticky top-0 z-10">
+                            <tr>
+                              <th className="px-4 py-3">Invoice Number</th>
+                              <th className="px-4 py-3">Date & Time</th>
+                              <th className="px-4 py-3">Customer</th>
+                              <th className="px-4 py-3 text-right">Billed Qty</th>
+                              <th className="px-4 py-3 text-right">Unit Price</th>
+                              <th className="px-4 py-3 text-right">Total Amount</th>
+                              <th className="px-4 py-3 text-center">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {productInvoices.map((inv, i) => (
+                              <tr key={i} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="px-4 py-3 font-mono font-bold text-indigo-600">
+                                  {inv.invoice_number || `INV-${inv.invoice_id?.slice(0, 8)}`}
+                                </td>
+                                <td className="px-4 py-3 text-slate-600">
+                                  {inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : '—'}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="font-bold text-slate-800">{inv.customer_name}</div>
+                                  <div className="text-[10px] text-slate-400">{inv.customer_phone}</div>
+                                </td>
+                                <td className="px-4 py-3 text-right font-black text-slate-900">
+                                  {inv.quantity} {currentForm.uom_id || 'Pcs'}
+                                </td>
+                                <td className="px-4 py-3 text-right font-mono font-semibold text-slate-700">
+                                  {formatCurrency(inv.unit_price)}
+                                </td>
+                                <td className="px-4 py-3 text-right font-mono font-black text-emerald-600">
+                                  {formatCurrency(inv.total)}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    inv.status === 'Paid' || inv.status === 'Completed'
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : 'bg-blue-100 text-blue-700'
+                                  }`}>
+                                    {inv.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
             </div>
 
             {/* Footer */}
@@ -4225,7 +4509,21 @@ export function Products() {
             case "image":
               return (
                 <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
-                  <div className="size-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden">
+                  <div
+                    onClick={() => {
+                      if (product.image_url) {
+                        setSelectedImagePreview({
+                          url: resolveImageUrl(product.image_url),
+                          name: product.name,
+                          sku: product.sku
+                        });
+                      }
+                    }}
+                    className={`size-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden transition-all ${
+                      product.image_url ? "cursor-pointer hover:ring-2 hover:ring-indigo-500 hover:scale-110 shadow-sm" : ""
+                    }`}
+                    title={product.image_url ? "Click to view full image" : "No image available"}
+                  >
                     {product.image_url ? (
                       <img src={resolveImageUrl(product.image_url)} alt={product.name} className="size-full object-cover" />
                     ) : (
@@ -5490,6 +5788,55 @@ export function Products() {
                       Start Import ({pendingImportData.items.length.toLocaleString()})
                     </>
                   )}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Product Image Fullscreen Popup Modal */}
+        {selectedImagePreview && (
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setSelectedImagePreview(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden max-w-lg w-full border border-slate-200 dark:border-slate-800 flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b flex items-center justify-between bg-slate-50 dark:bg-slate-800/60">
+                <div className="min-w-0 pr-2">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">{selectedImagePreview.name}</h3>
+                  {selectedImagePreview.sku && (
+                    <p className="text-xs text-slate-500 font-mono">SKU: {selectedImagePreview.sku}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedImagePreview(null)}
+                  className="p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+              <div className="p-6 bg-slate-100/50 dark:bg-slate-950 flex items-center justify-center min-h-[300px] max-h-[70vh] overflow-hidden">
+                <img
+                  src={selectedImagePreview.url}
+                  alt={selectedImagePreview.name}
+                  className="max-h-[60vh] max-w-full object-contain rounded-2xl shadow-md border bg-white dark:bg-slate-900"
+                />
+              </div>
+              <div className="p-3 border-t bg-slate-50 dark:bg-slate-800/60 flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedImagePreview(null)}
+                  className="font-bold text-xs rounded-xl"
+                >
+                  Close Preview
                 </Button>
               </div>
             </motion.div>

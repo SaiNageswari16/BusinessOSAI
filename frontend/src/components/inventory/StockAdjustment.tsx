@@ -2,9 +2,11 @@ import React from "react";
 import { useState, useEffect } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { 
-  Search, Plus, FileDown, Trash2, Loader2, Package, ArrowLeft, 
-  CheckCircle2, Building2, Calendar, FileText, ShoppingBag, PlusCircle, MinusCircle, ScanLine, Tag, Sliders, AlertTriangle, Eye, ChevronDown, ChevronUp, Printer
+import {
+  Search, Plus, FileDown, Trash2, Loader2, Package, ArrowLeft,
+  CheckCircle2, Calendar, ShoppingBag, ScanLine, Tag, Sliders,
+  Eye, ChevronDown, ChevronUp, TrendingDown, TrendingUp, AlertTriangle,
+  BarChart3, ArrowRightLeft, Info
 } from "lucide-react";
 import { inventoryApi, StockAdjustment as StockAdjustmentType, Warehouse, InventoryProduct } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
@@ -15,6 +17,7 @@ interface AdjustmentItemInput {
   product_id: string;
   product_name?: string;
   sku?: string;
+  current_stock?: number;
   adjustment_type: string;
   quantity_changed: number;
   unit_price: number;
@@ -22,7 +25,7 @@ interface AdjustmentItemInput {
 }
 
 export function StockAdjustment() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [adjustments, setAdjustments] = useState<StockAdjustmentType[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -31,6 +34,7 @@ export function StockAdjustment() {
   const [search, setSearch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<string>("all");
 
   const [form, setForm] = useState({
     adjustment_number: "",
@@ -48,7 +52,7 @@ export function StockAdjustment() {
       const [res, whs, prods] = await Promise.all([
         inventoryApi.getStockAdjustments(),
         inventoryApi.getWarehouses().catch(() => []),
-        inventoryApi.getProducts({ page: 1, page_size: 200 }).then(r => r.items).catch(() => [])
+        inventoryApi.getProducts({ page: 1, page_size: 500 }).then(r => r.items).catch(() => [])
       ]);
       setAdjustments(res);
       setWarehouses(whs);
@@ -81,12 +85,18 @@ export function StockAdjustment() {
     if (productId) {
       initialProd = productsList.find(p => p.id === productId);
     }
+    // Prevent duplicates
+    if (productId && items.some(i => i.product_id === productId)) {
+      toast.info("Product already added. Update the quantity in the existing row.");
+      return;
+    }
     setItems(prev => [
       ...prev,
       {
         product_id: productId || "",
         product_name: initialProd?.name || "",
         sku: initialProd?.sku || "",
+        current_stock: Number(initialProd?.initial_stock || 0),
         adjustment_type: form.adjustment_type || "Write-Off",
         quantity_changed: -1,
         unit_price: Number(initialProd?.purchase_price || initialProd?.mrp) || 0,
@@ -96,6 +106,10 @@ export function StockAdjustment() {
   };
 
   const handleProductSelect = (idx: number, productId: string) => {
+    if (items.some((item, i) => i !== idx && item.product_id === productId)) {
+      toast.info("Product already in list. Update the existing row.");
+      return;
+    }
     const selected = productsList.find(p => p.id === productId);
     setItems(prev => prev.map((item, i) => {
       if (i !== idx) return item;
@@ -104,6 +118,7 @@ export function StockAdjustment() {
         product_id: productId,
         product_name: selected?.name || item.product_name,
         sku: selected?.sku || item.sku,
+        current_stock: Number(selected?.initial_stock || 0),
         unit_price: Number(selected?.purchase_price || selected?.mrp) || item.unit_price,
       };
     }));
@@ -123,6 +138,8 @@ export function StockAdjustment() {
 
   const totalQuantityImpact = items.reduce((sum, item) => sum + (Number(item.quantity_changed) || 0), 0);
   const totalValuationImpact = items.reduce((sum, item) => sum + calculateSubtotal(item), 0);
+  const writeOffCount = items.filter(i => i.quantity_changed < 0).length;
+  const surplusCount = items.filter(i => i.quantity_changed > 0).length;
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -132,18 +149,21 @@ export function StockAdjustment() {
 
     setIsSubmitting(true);
     try {
-      // Post line by line for full backward compatibility with backend adjustment endpoints
-      for (const item of items) {
-        await inventoryApi.createStockAdjustment({
-          adjustment_number: form.adjustment_number,
+      // Use the batch endpoint for atomic multi-product adjustment
+      await inventoryApi.createStockAdjustmentBatch({
+        adjustment_number: form.adjustment_number,
+        warehouse: form.warehouse,
+        adjustment_type: form.adjustment_type,
+        reason: form.reason || undefined,
+        items: items.map(item => ({
           product_id: item.product_id,
           adjustment_type: item.adjustment_type || form.adjustment_type,
           quantity_changed: Number(item.quantity_changed) || 0,
           reason: item.reason || form.reason || undefined,
-          status: "Completed",
-        });
-      }
-      toast.success("Stock Adjustment voucher successfully posted!");
+          unit_price: item.unit_price || 0,
+        })),
+      });
+      toast.success(`✅ Stock Adjustment ${form.adjustment_number} posted! ${items.length} product(s) updated.`);
       setViewMode("list");
       fetchAll();
     } catch (error: any) {
@@ -164,24 +184,38 @@ export function StockAdjustment() {
     }
   };
 
-  const filtered = adjustments.filter((a) =>
-    !search || a.adjustment_number.toLowerCase().includes(search.toLowerCase()) || a.adjustment_type.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = adjustments.filter((a) => {
+    const matchSearch = !search ||
+      a.adjustment_number?.toLowerCase().includes(search.toLowerCase()) ||
+      a.adjustment_type?.toLowerCase().includes(search.toLowerCase()) ||
+      (a.product_name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (a.sku || "").toLowerCase().includes(search.toLowerCase());
+    const matchType = filterType === "all" || a.adjustment_type === filterType;
+    return matchSearch && matchType;
+  });
 
-  const qtyColor = (q: number) => q < 0 ? "text-rose-600 bg-rose-50" : "text-emerald-600 bg-emerald-50";
-  const qtyPrefix = (q: number) => q < 0 ? "" : "+";
+  const totalWriteOffs = adjustments.filter(a => a.quantity_changed < 0).length;
+  const totalSurplus = adjustments.filter(a => a.quantity_changed > 0).length;
+  const totalNetQty = adjustments.reduce((sum, a) => sum + (a.quantity_changed || 0), 0);
+
+  const typeColor = (type: string) => {
+    if (type === "Write-Off") return "bg-rose-50 text-rose-700 border-rose-200";
+    if (type === "Found") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    if (type === "Expiry") return "bg-amber-50 text-amber-700 border-amber-200";
+    if (type === "Correction") return "bg-blue-50 text-blue-700 border-blue-200";
+    return "bg-slate-50 text-slate-700 border-slate-200";
+  };
 
   return (
     <div className="space-y-6 pb-12">
       {viewMode === "list" ? (
         <>
           {/* List Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Stock Adjustment & Audit Vouchers
-              </h2>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Stock Adjustment & Audit Vouchers</h2>
               <p className="text-sm text-slate-500 mt-1">
-                Reconcile physical stock counts, log inventory write-offs, damages, and audit variances.
+                Reconcile physical counts, log write-offs, damages, and audit variances. Every adjustment syncs live to product stock.
               </p>
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
@@ -192,12 +226,64 @@ export function StockAdjustment() {
             </div>
           </div>
 
-          {/* Search bar */}
-          <div className="relative max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border bg-white shadow-sm focus:ring-2 focus:ring-purple-500 outline-none"
-              placeholder="Search by Ref #, Adjustment Type, or Reason..." />
+          {/* KPI Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="p-4 rounded-2xl border-slate-200 bg-white flex items-center justify-between shadow-sm">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Adjustments</div>
+                <div className="text-2xl font-black text-slate-900 mt-1">{adjustments.length}</div>
+              </div>
+              <div className="size-11 rounded-xl bg-purple-50 text-purple-700 grid place-items-center">
+                <BarChart3 className="size-5" />
+              </div>
+            </Card>
+            <Card className="p-4 rounded-2xl border-slate-200 bg-white flex items-center justify-between shadow-sm">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Write-Offs</div>
+                <div className="text-2xl font-black text-rose-600 mt-1">{totalWriteOffs}</div>
+              </div>
+              <div className="size-11 rounded-xl bg-rose-50 text-rose-600 grid place-items-center">
+                <TrendingDown className="size-5" />
+              </div>
+            </Card>
+            <Card className="p-4 rounded-2xl border-slate-200 bg-white flex items-center justify-between shadow-sm">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Surplus Found</div>
+                <div className="text-2xl font-black text-emerald-600 mt-1">{totalSurplus}</div>
+              </div>
+              <div className="size-11 rounded-xl bg-emerald-50 text-emerald-600 grid place-items-center">
+                <TrendingUp className="size-5" />
+              </div>
+            </Card>
+            <Card className="p-4 rounded-2xl border-slate-200 bg-white flex items-center justify-between shadow-sm">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Net Qty Impact</div>
+                <div className={`text-2xl font-black mt-1 ${totalNetQty < 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                  {totalNetQty > 0 ? `+${totalNetQty}` : totalNetQty}
+                </div>
+              </div>
+              <div className="size-11 rounded-xl bg-amber-50 text-amber-600 grid place-items-center">
+                <ArrowRightLeft className="size-5" />
+              </div>
+            </Card>
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
+                className="w-full h-11 pl-10 pr-4 text-sm rounded-xl border bg-white shadow-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                placeholder="Search by Ref #, Product, SKU, or Type..." />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {["all", "Write-Off", "Found", "Expiry", "Correction"].map(t => (
+                <button key={t} onClick={() => setFilterType(t)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${filterType === t ? "bg-purple-700 text-white border-purple-700" : "bg-white text-slate-600 border-slate-200 hover:border-purple-300"}`}>
+                  {t === "all" ? "All Types" : t}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Table */}
@@ -211,118 +297,114 @@ export function StockAdjustment() {
               <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
                   <tr>
-                    <th className="px-6 py-4">Ref Number</th>
-                    <th className="px-6 py-4">Type</th>
-                    <th className="px-6 py-4">Qty Variance</th>
-                    <th className="px-6 py-4">Reason / Remarks</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                    <th className="px-5 py-4">Ref / Voucher #</th>
+                    <th className="px-5 py-4">Product</th>
+                    <th className="px-5 py-4">Type</th>
+                    <th className="px-5 py-4 text-center">Qty Change</th>
+                    <th className="px-5 py-4 text-center">Stock After</th>
+                    <th className="px-5 py-4">Reason</th>
+                    <th className="px-5 py-4">Status</th>
+                    <th className="px-5 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {filtered.length === 0 && !loading && (
-                    <tr><td colSpan={6} className="px-6 py-16 text-center text-slate-400">No Stock Adjustments found. Click "New Stock Adjustment" to record stock audit variances.</td></tr>
+                    <tr><td colSpan={8} className="px-6 py-16 text-center text-slate-400">
+                      No Stock Adjustments found. Click "New Stock Adjustment" to record stock audit variances.
+                    </td></tr>
                   )}
                   {filtered.map((adj) => {
                     const isExpanded = expandedId === adj.id;
-                    const prodObj = productsList.find(p => p.id === adj.product_id);
+                    const qtyChanged = adj.quantity_changed || 0;
+                    const isNeg = qtyChanged < 0;
                     return (
                       <React.Fragment key={adj.id}>
-                        <tr className={`hover:bg-amber-50/30 transition-colors ${isExpanded ? "bg-amber-50/50" : ""}`}>
-                          <td className="px-6 py-4 font-mono font-bold text-slate-900">{adj.adjustment_number}</td>
-                          <td className="px-6 py-4">
-                            <span className="bg-slate-100 px-2.5 py-1 rounded-md text-xs font-bold text-slate-700">{adj.adjustment_type}</span>
+                        <tr className={`hover:bg-slate-50/50 transition-colors ${isExpanded ? "bg-purple-50/30" : ""}`}>
+                          <td className="px-5 py-4 font-mono font-bold text-purple-900 text-xs">{adj.adjustment_number}</td>
+                          <td className="px-5 py-4">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-slate-800 text-sm">{adj.product_name || "Unknown Product"}</span>
+                              {adj.sku && <span className="text-xs text-slate-400 font-mono">SKU: {adj.sku}</span>}
+                            </div>
                           </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md font-mono text-xs font-bold ${qtyColor(adj.quantity_changed)}`}>
-                              {qtyPrefix(adj.quantity_changed)}{adj.quantity_changed} Units
+                          <td className="px-5 py-4">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold border ${typeColor(adj.adjustment_type)}`}>
+                              {isNeg ? <TrendingDown className="size-3" /> : <TrendingUp className="size-3" />}
+                              {adj.adjustment_type}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-xs text-slate-500 max-w-[200px] truncate">{adj.reason || "Audit adjustment"}</td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
-                              adj.status === "Completed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
-                            }`}>
+                          <td className="px-5 py-4 text-center">
+                            <span className={`font-black font-mono text-sm ${isNeg ? "text-rose-600" : "text-emerald-600"}`}>
+                              {qtyChanged > 0 ? `+${qtyChanged}` : qtyChanged}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-center">
+                            {adj.current_stock !== undefined ? (
+                              <span className="bg-slate-100 text-slate-700 font-bold text-xs px-2 py-1 rounded-lg">
+                                {adj.current_stock} units
+                              </span>
+                            ) : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="px-5 py-4 text-xs text-slate-500 max-w-[160px] truncate">{adj.reason || "—"}</td>
+                          <td className="px-5 py-4">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <CheckCircle2 className="size-3.5" /> {adj.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-right space-x-1">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => {
-                                setForm({
-                                  adjustment_number: adj.adjustment_number,
-                                  warehouse: (adj as any).warehouse_id || "",
-                                  adjustment_type: adj.adjustment_type || "Write-Off",
-                                  reason: adj.reason || "",
-                                  adjustment_date: (adj as any).created_at ? (adj as any).created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
-                                });
-                                if ((adj as any).items && (adj as any).items.length > 0) {
-                                  setItems((adj as any).items.map((it: any) => ({
-                                    product_id: it.product_id,
-                                    product_name: it.product_name,
-                                    adjustment_type: adj.adjustment_type || "Write-Off",
-                                    quantity_changed: Number(it.quantity_changed) || 1,
-                                    unit_price: Number(it.unit_price) || 0,
-                                    reason: adj.reason || ""
-                                  })));
-                                }
-                                setViewMode("create");
-                              }}
-                              className="h-8 gap-1.5 font-bold rounded-lg hover:bg-amber-50"
-                            >
-                              <Eye className="size-4" /> View / Edit Page
+                          <td className="px-5 py-4 text-right space-x-1">
+                            <Button variant="outline" size="sm"
+                              onClick={() => setExpandedId(prev => prev === adj.id ? null : adj.id)}
+                              className={`h-8 gap-1 font-bold rounded-lg ${isExpanded ? "bg-purple-600 text-white border-purple-600" : "hover:bg-purple-50"}`}>
+                              <Eye className="size-4" />
+                              {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
                             </Button>
                             <Button variant="ghost" size="icon" onClick={() => handleDelete(adj.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
                               <Trash2 className="size-4" />
                             </Button>
                           </td>
                         </tr>
-
                         {isExpanded && (
                           <tr className="bg-slate-50/80">
-                            <td colSpan={6} className="p-6 border-b border-amber-100">
-                              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-                                <div className="flex flex-wrap justify-between items-center gap-3 border-b pb-3">
-                                  <div>
-                                    <div className="text-xs font-bold text-amber-600 uppercase tracking-wider">Adjustment Voucher Audit Details</div>
-                                    <div className="text-lg font-black text-slate-900 mt-0.5">{adj.adjustment_number}</div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-slate-500 font-mono">Adjustment Type: {adj.adjustment_type}</span>
-                                    <Button size="sm" variant="outline" onClick={() => window.print()} className="h-8 text-xs font-bold rounded-lg">
-                                      <Printer className="size-3.5 mr-1" /> Print Adjustment Voucher
-                                    </Button>
+                            <td colSpan={8} className="px-6 py-5 border-b border-purple-100">
+                              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <div className="text-xs text-slate-400 uppercase font-bold mb-1">Voucher #</div>
+                                  <div className="font-mono font-bold text-purple-800">{adj.adjustment_number}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-slate-400 uppercase font-bold mb-1">Product</div>
+                                  <div className="font-semibold text-slate-800">{adj.product_name || adj.product_id}</div>
+                                  {adj.sku && <div className="text-xs text-slate-400 font-mono">SKU: {adj.sku}</div>}
+                                </div>
+                                <div>
+                                  <div className="text-xs text-slate-400 uppercase font-bold mb-1">Adjustment Type</div>
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold border ${typeColor(adj.adjustment_type)}`}>
+                                    {adj.adjustment_type}
+                                  </span>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-slate-400 uppercase font-bold mb-1">Qty Change</div>
+                                  <div className={`font-black text-lg ${isNeg ? "text-rose-600" : "text-emerald-600"}`}>
+                                    {qtyChanged > 0 ? `+${qtyChanged}` : qtyChanged} units
                                   </div>
                                 </div>
-
                                 <div>
-                                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                    <FileText className="size-3.5 text-amber-500" /> Adjusted Line Items & Variance Breakdown
-                                  </h4>
-                                  <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                    <table className="w-full text-sm text-left">
-                                      <thead className="bg-slate-100 text-slate-600 text-xs uppercase font-bold">
-                                        <tr>
-                                          <th className="px-4 py-2.5">Product ID / Name</th>
-                                          <th className="px-4 py-2.5">Adjustment Type</th>
-                                          <th className="px-4 py-2.5 text-center">Qty Variance</th>
-                                          <th className="px-4 py-2.5">Audit Reason</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-slate-100 bg-white">
-                                        <tr className="hover:bg-slate-50">
-                                          <td className="px-4 py-2.5 font-semibold text-slate-800">{prodObj?.name || adj.product_id}</td>
-                                          <td className="px-4 py-2.5 font-bold text-slate-700">{adj.adjustment_type}</td>
-                                          <td className={`px-4 py-2.5 text-center font-bold font-mono ${adj.quantity_changed < 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                                            {adj.quantity_changed > 0 ? `+${adj.quantity_changed}` : adj.quantity_changed} Units
-                                          </td>
-                                          <td className="px-4 py-2.5 text-xs text-slate-600">{adj.reason || "Physical count audit variance"}</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
+                                  <div className="text-xs text-slate-400 uppercase font-bold mb-1">Current Stock After</div>
+                                  <div className="font-bold text-slate-800">{adj.current_stock ?? "—"} units</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-slate-400 uppercase font-bold mb-1">Reason / Remarks</div>
+                                  <div className="text-slate-600">{adj.reason || "Physical count audit variance"}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-slate-400 uppercase font-bold mb-1">Status</div>
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <CheckCircle2 className="size-3.5" /> {adj.status}
+                                  </span>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-slate-400 uppercase font-bold mb-1">Date</div>
+                                  <div className="text-slate-600">{adj.created_at ? new Date(adj.created_at).toLocaleDateString("en-IN") : "—"}</div>
                                 </div>
                               </div>
                             </td>
@@ -338,11 +420,11 @@ export function StockAdjustment() {
         </>
       ) : (
         /* ══════════════════════════════════════════════════════════════════════ */
-        /*  DEDICATED SALES-STYLE STOCK ADJUSTMENT DOCUMENT CREATOR              */
+        /*  STOCK ADJUSTMENT VOUCHER CREATOR — Multi-product Batch Mode         */
         /* ══════════════════════════════════════════════════════════════════════ */
-        <div className="space-y-6">
-          {/* Top Navigation & Status Banner */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 lg:p-6 rounded-2xl border shadow-sm">
+        <div className="space-y-5">
+          {/* Top Bar */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 lg:p-5 rounded-2xl border shadow-sm">
             <div className="flex items-center gap-3">
               <Button variant="outline" size="icon" onClick={() => setViewMode("list")} className="rounded-xl h-10 w-10">
                 <ArrowLeft className="size-5 text-slate-600" />
@@ -359,7 +441,6 @@ export function StockAdjustment() {
                 </h2>
               </div>
             </div>
-
             <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
               <Button variant="outline" onClick={() => setViewMode("list")} className="rounded-xl">Cancel</Button>
               <Button onClick={() => handleSubmit()} disabled={isSubmitting} className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-md shadow-purple-500/20 rounded-xl px-6 font-bold">
@@ -368,8 +449,8 @@ export function StockAdjustment() {
             </div>
           </div>
 
-          {/* Document Header Metadata Form */}
-          <Card className="p-6 rounded-2xl border-slate-200 shadow-sm bg-white">
+          {/* Voucher Metadata */}
+          <Card className="p-5 rounded-2xl border-slate-200 shadow-sm bg-white">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -394,7 +475,7 @@ export function StockAdjustment() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Calendar className="size-3.5 text-amber-500" /> Audit Location
+                  <Package className="size-3.5 text-amber-500" /> Audit Location
                 </label>
                 <select value={form.warehouse} onChange={(e) => setForm({ ...form, warehouse: e.target.value })}
                   className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-amber-500 bg-white">
@@ -418,34 +499,45 @@ export function StockAdjustment() {
             <div className="mt-4 pt-4 border-t border-slate-100">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Overall Audit Reason / Explanation</label>
               <input type="text" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500" placeholder="e.g. Monthly physical stock audit count discrepancies..." />
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                placeholder="e.g. Monthly physical stock audit count discrepancies..." />
             </div>
           </Card>
 
+          {/* Info banner */}
+          <div className="flex items-start gap-2.5 p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800">
+            <Info className="size-4 shrink-0 text-blue-500 mt-0.5" />
+            <div>
+              <span className="font-bold">Live Stock Sync: </span>
+              Posting this adjustment will instantly update each product's current stock level in the system and log an entry in the Stock Movement ledger for full audit traceability.
+              Use <span className="font-bold">negative values</span> for write-offs/damage/expiry, and <span className="font-bold">positive values</span> for surplus/found stock.
+            </div>
+          </div>
+
           {/* Line-Items Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {/* Left Column: Product Table */}
             <div className="lg:col-span-2 space-y-4">
-              <Card className="p-6 rounded-2xl border-slate-200 shadow-sm bg-white space-y-4">
+              <Card className="p-5 rounded-2xl border-slate-200 shadow-sm bg-white space-y-4">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                   <div>
                     <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                       <ShoppingBag className="size-4 text-amber-600" /> Adjusted Product Items
                     </h3>
-                    <p className="text-xs text-slate-500">Add products to adjust. Use negative values for reductions and positive values for surplus additions.</p>
+                    <p className="text-xs text-slate-500">Add products. Negative = reduction, Positive = surplus addition.</p>
                   </div>
                   <Button type="button" onClick={() => addItemRow()} className="bg-amber-50 text-amber-600 hover:bg-amber-100 border-0 font-bold text-xs rounded-xl">
                     + Add Product Line
                   </Button>
                 </div>
 
-                {/* Scannable Barcode Product Search */}
+                {/* Barcode / Search */}
                 <div className="relative">
                   <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-amber-500" />
-                  <ProductPicker 
-                    value="" 
-                    onChange={(productId) => addItemRow(productId)} 
-                    placeholder="Scan product barcode or search by name to adjust..." 
+                  <ProductPicker
+                    value=""
+                    onChange={(productId) => addItemRow(productId)}
+                    placeholder="Scan barcode or search product to add..."
                   />
                 </div>
 
@@ -454,54 +546,75 @@ export function StockAdjustment() {
                   <table className="w-full text-sm text-left">
                     <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-bold">
                       <tr>
-                        <th className="px-4 py-3">#</th>
-                        <th className="px-4 py-3">Product Item</th>
-                        <th className="px-4 py-3">Adjustment Type</th>
-                        <th className="px-4 py-3 text-center">Qty Variance</th>
-                        <th className="px-4 py-3 text-right">Valuation Impact ({currency.symbol})</th>
-                        <th className="px-3 py-3 text-center"></th>
+                        <th className="px-3 py-3">#</th>
+                        <th className="px-3 py-3">Product</th>
+                        <th className="px-3 py-3 text-center">Current Stock</th>
+                        <th className="px-3 py-3">Type</th>
+                        <th className="px-3 py-3 text-center">Qty Variance</th>
+                        <th className="px-3 py-3 text-center">Stock After</th>
+                        <th className="px-3 py-3 text-right">Value Impact</th>
+                        <th className="px-3 py-3"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {items.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                            No product line items added yet. Use the barcode search above or click "+ Add Product Line".
+                          <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                            No product lines added yet. Use the barcode scanner above or click "+ Add Product Line".
                           </td>
                         </tr>
                       ) : (
                         items.map((item, idx) => {
                           const subtotal = calculateSubtotal(item);
+                          const stockAfter = (item.current_stock || 0) + (Number(item.quantity_changed) || 0);
+                          const isNeg = item.quantity_changed < 0;
+                          const stockAfterColor = stockAfter < 0 ? "text-rose-600 font-black" : stockAfter === 0 ? "text-amber-600 font-bold" : "text-emerald-700 font-bold";
                           return (
                             <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-4 py-3 text-xs font-mono font-bold text-slate-400">{idx + 1}</td>
-                              <td className="px-4 py-3 min-w-[180px]">
-                                <ProductPicker 
-                                  value={item.product_id} 
-                                  onChange={(id) => handleProductSelect(idx, id)} 
-                                  placeholder="Select product..." 
+                              <td className="px-3 py-2.5 text-xs font-mono font-bold text-slate-400">{idx + 1}</td>
+                              <td className="px-3 py-2.5 min-w-[180px]">
+                                <ProductPicker
+                                  value={item.product_id}
+                                  onChange={(id) => handleProductSelect(idx, id)}
+                                  placeholder="Select product..."
                                 />
+                                {item.sku && <div className="text-xs text-slate-400 font-mono mt-0.5">SKU: {item.sku}</div>}
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-2.5 text-center">
+                                <span className="bg-slate-100 text-slate-700 font-bold text-xs px-2 py-1 rounded-lg">
+                                  {item.current_stock ?? "—"}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5">
                                 <select value={item.adjustment_type} onChange={(e) => updateItem(idx, "adjustment_type", e.target.value)}
-                                  className="w-full border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold outline-none focus:ring-2 focus:ring-amber-500 bg-white">
+                                  className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-amber-500 bg-white">
                                   <option value="Write-Off">Write-Off</option>
                                   <option value="Found">Found</option>
                                   <option value="Expiry">Expiry</option>
                                   <option value="Correction">Correction</option>
                                 </select>
                               </td>
-                              <td className="px-4 py-3">
-                                <div className="flex items-center justify-center gap-1.5">
+                              <td className="px-3 py-2.5">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button type="button"
+                                    onClick={() => updateItem(idx, "quantity_changed", (item.quantity_changed || 0) - 1)}
+                                    className="size-7 rounded-lg border border-slate-200 bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold flex items-center justify-center">−</button>
                                   <input type="number" value={item.quantity_changed}
                                     onChange={(e) => updateItem(idx, "quantity_changed", parseInt(e.target.value) || 0)}
-                                    className="w-20 text-center font-bold border border-slate-200 rounded-lg py-1 text-sm outline-none focus:ring-2 focus:ring-amber-500" />
+                                    className={`w-16 text-center font-black border border-slate-200 rounded-lg py-1 text-sm outline-none focus:ring-2 focus:ring-amber-500 ${isNeg ? "text-rose-600" : "text-emerald-600"}`} />
+                                  <button type="button"
+                                    onClick={() => updateItem(idx, "quantity_changed", (item.quantity_changed || 0) + 1)}
+                                    className="size-7 rounded-lg border border-slate-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-bold flex items-center justify-center">+</button>
                                 </div>
                               </td>
-                              <td className={`px-4 py-3 text-right font-bold ${subtotal < 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                              <td className="px-3 py-2.5 text-center">
+                                <span className={`text-sm ${stockAfterColor}`}>{stockAfter}</span>
+                                {stockAfter < 0 && <div className="text-xs text-rose-500 mt-0.5">⚠ Below zero</div>}
+                              </td>
+                              <td className={`px-3 py-2.5 text-right font-bold text-sm ${subtotal < 0 ? "text-rose-600" : "text-emerald-600"}`}>
                                 {formatCurrency(subtotal)}
                               </td>
-                              <td className="px-3 py-3 text-center">
+                              <td className="px-3 py-2.5 text-center">
                                 <button type="button" onClick={() => removeItem(idx)} className="p-1 text-slate-400 hover:text-rose-600 rounded-lg">
                                   <Trash2 className="size-4" />
                                 </button>
@@ -516,15 +629,23 @@ export function StockAdjustment() {
               </Card>
             </div>
 
-            {/* Right Column: Audit Summary Card */}
+            {/* Right Column: Audit Summary */}
             <div className="space-y-4">
-              <Card className="p-6 rounded-2xl border-slate-200 shadow-md bg-white space-y-5 sticky top-20">
+              <Card className="p-5 rounded-2xl border-slate-200 shadow-md bg-white space-y-4 sticky top-20">
                 <h3 className="text-base font-bold text-slate-900 border-b pb-3">Audit Impact Summary</h3>
 
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between text-slate-600">
                     <span>Adjusted Line Items</span>
                     <span className="font-bold text-slate-900">{items.length}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span className="flex items-center gap-1"><TrendingDown className="size-3.5 text-rose-500" /> Write-Offs</span>
+                    <span className="font-bold text-rose-600">{writeOffCount}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span className="flex items-center gap-1"><TrendingUp className="size-3.5 text-emerald-500" /> Surplus Added</span>
+                    <span className="font-bold text-emerald-600">{surplusCount}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Net Qty Variance</span>
@@ -534,7 +655,7 @@ export function StockAdjustment() {
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Audit Warehouse</span>
-                    <span className="font-semibold text-slate-800">{form.warehouse}</span>
+                    <span className="font-semibold text-slate-800 text-xs">{form.warehouse || "—"}</span>
                   </div>
 
                   <div className="border-t pt-3 flex justify-between items-baseline">
@@ -545,7 +666,22 @@ export function StockAdjustment() {
                   </div>
                 </div>
 
-                <div className="pt-2 space-y-2">
+                {/* Products preview */}
+                {items.length > 0 && (
+                  <div className="border-t pt-3 space-y-1.5">
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Products Being Adjusted</div>
+                    {items.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <span className="text-slate-700 font-medium truncate max-w-[120px]">{item.product_name || "Select product"}</span>
+                        <span className={`font-black ${item.quantity_changed < 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                          {item.quantity_changed > 0 ? `+${item.quantity_changed}` : item.quantity_changed}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="pt-1 space-y-2">
                   <Button type="button" onClick={() => handleSubmit()} disabled={isSubmitting || items.length === 0}
                     className="w-full h-12 bg-purple-700 hover:bg-purple-800 text-white border-0 font-bold shadow-md shadow-purple-500/20 rounded-xl text-base">
                     {isSubmitting ? <><Loader2 className="size-5 mr-2 animate-spin" /> Processing...</> : "Post Stock Adjustment"}

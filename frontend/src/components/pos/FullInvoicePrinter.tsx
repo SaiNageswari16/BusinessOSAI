@@ -4,6 +4,7 @@ import { Printer, X } from 'lucide-react';
 import { getActiveInvoicePrintTemplate, getActiveBillingGst, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { companiesApi } from "@/lib/api-client";
 
 export interface FullInvoiceData {
   invoice_number?: string;
@@ -82,9 +83,10 @@ export function FullInvoicePrinter({
 
   const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [fetchedReviewUrl, setFetchedReviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && isOpen) {
       try {
         const storageKey = getTenantTemplatesKey(tenant?.id);
         const saved = localStorage.getItem(storageKey);
@@ -95,6 +97,27 @@ export function FullInvoicePrinter({
             setAvailableTemplates(invTpls);
           }
         }
+
+        // 1. Try resolving Google Review URL immediately from localStorage
+        const activeCompRaw = localStorage.getItem('bos_active_company') || 
+                              localStorage.getItem(`bos_active_company_${tenant?.id}`) ||
+                              localStorage.getItem('bos_active_company_default');
+        if (activeCompRaw) {
+          const parsed = JSON.parse(activeCompRaw);
+          if (parsed?.google_review_url) {
+            setFetchedReviewUrl(parsed.google_review_url);
+          }
+        }
+
+        // 2. Fetch fresh organization company data from API to guarantee Google Review URL is populated
+        companiesApi.list(1, 10).then((res) => {
+          if (res?.items && res.items.length > 0) {
+            const active = res.items.find((c: any) => c.is_active) || res.items[0];
+            if (active?.google_review_url) {
+              setFetchedReviewUrl(active.google_review_url);
+            }
+          }
+        }).catch(() => {});
       } catch {}
     }
   }, [isOpen, tenant?.id]);
@@ -286,6 +309,9 @@ export function FullInvoicePrinter({
   })();
 
   const hasRealBank = Boolean(f.showBankDetails && dynamicBank && dynamicBank.length > 5);
+
+  const googleReviewUrl = fetchedReviewUrl || activeBillingGst?.google_review_url || tenantRaw?.google_review_url || tenantSettings?.google_review_url || template?.googleReviewUrl || null;
+  const showGoogleReview = Boolean(googleReviewUrl);
 
   // 1. Group / aggregate identical items
   const rawItems = invoice.items || [];
@@ -650,6 +676,29 @@ export function FullInvoicePrinter({
                       {template.termsText || '1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.'}
                     </p>
                   </div>
+
+                  {showGoogleReview && googleReviewUrl && (
+                    <div className="flex items-center gap-3 p-2.5 bg-amber-50/70 border border-amber-200/90 rounded-xl print:border-slate-300">
+                      <div className="p-1 bg-white border border-amber-200 rounded-lg shrink-0 shadow-2xs">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=0&data=${encodeURIComponent(googleReviewUrl)}`}
+                          alt="Google Review QR"
+                          className="size-14 object-contain"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-0.5 text-amber-500 text-[10.5px] font-black tracking-widest">
+                          ★★★★★
+                        </div>
+                        <span className="text-[10px] font-black text-slate-800 uppercase tracking-tight block">
+                          Loved our service? Rate us on Google!
+                        </span>
+                        <span className="text-[8.5px] text-slate-600 block leading-tight">
+                          Scan with your phone camera to share your 5-star review.
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="md:col-span-5 bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-2 text-xs text-slate-700">

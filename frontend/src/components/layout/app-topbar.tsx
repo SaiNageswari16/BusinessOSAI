@@ -78,7 +78,7 @@ const moduleDisplayList = [
     group: "POS", 
     label: "POS", 
     icon: Terminal, 
-    defaultTo: "/pos?tab=dashboard", 
+    defaultTo: "/pos?tab=sales_history", 
     permission: "view:pos",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",

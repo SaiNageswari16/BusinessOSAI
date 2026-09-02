@@ -6,10 +6,21 @@ import io
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from datetime import datetime, date, timedelta
 from typing import Annotated
+from pathlib import Path
 
 import pypdf
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
+
 from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, status
 from fastapi.responses import Response, HTMLResponse
 from pydantic import BaseModel
@@ -57,26 +68,306 @@ class _SettingsProxy:
 
 settings = _SettingsProxy()
 
+# ─── PDF Offer Letter Generation Engine ───────────────────────────────────────
+
+def _escape_pdf_text(t: str) -> str:
+    return t.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+
+def _generate_pure_python_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None) -> bytes:
+    """Zero-dependency pure Python PDF 1.4 generator for official Offer Letters."""
+    ctc = float(offer.ctc or 0)
+    b_m, b_a = (ctc * 0.5) / 12, ctc * 0.5
+    h_m, h_a = (ctc * 0.2) / 12, ctc * 0.2
+    s_m, s_a = (ctc * 0.2) / 12, ctc * 0.2
+    p_m, p_a = (ctc * 0.1) / 12, ctc * 0.1
+    tot_m, tot_a = ctc / 12, ctc
+
+    offer_date_str = str(offer.offer_date or date.today())
+    expiry_date_str = str(offer.expiry_date or "7 Days from Issuance")
+    joining_date_str = str(offer.joining_date or "Mutually Agreed")
+    signer_name = offer.signer_name or "Authorized HR Signatory"
+    candidate_name = offer.candidate or "Candidate"
+    role_name = offer.role or "Team Member"
+    ref_id = f"OFR-{offer.id.hex[:8].upper()}" if hasattr(offer.id, 'hex') else f"OFR-{str(offer.id)[:8].upper()}"
+
+    lines = [
+        ('F2', 18, 50, 780, company_name),
+        ('F2', 8.5, 50, 762, 'TALENT ACQUISITION & PEOPLE OPERATIONS - FORMAL APPOINTMENT LETTER'),
+        ('LINE', 0, 50, 752, 545, 752),
+        ('F2', 9.5, 50, 730, f'Candidate: {candidate_name}'),
+        ('F1', 9.5, 50, 715, f'Position: {role_name}'),
+        ('F1', 9.5, 50, 700, f'Target Joining Date: {joining_date_str}'),
+        ('F2', 9.5, 360, 730, f'Date: {offer_date_str}'),
+        ('F1', 9.5, 360, 715, f'Valid Until: {expiry_date_str}'),
+        ('F1', 9.5, 360, 700, f'Ref No: {ref_id}'),
+        ('LINE', 0, 50, 688, 545, 688),
+        ('F2', 11, 50, 668, f'Subject: Formal Offer of Employment - {role_name}'),
+        ('F1', 9.5, 50, 648, f'Dear {candidate_name},'),
+        ('F1', 9.5, 50, 632, f'On behalf of {company_name}, we are pleased to offer you the position of {role_name}.'),
+        ('F1', 9.5, 50, 616, 'Our leadership team believes your dedication and expertise will be a vital asset to our growth.'),
+        ('F2', 10.5, 50, 585, 'Annexure A: Annual Compensation Breakdown (INR)'),
+        ('LINE', 0, 50, 575, 545, 575),
+        ('F2', 9, 55, 560, 'Component'),
+        ('F2', 9, 260, 560, 'Monthly (INR)'),
+        ('F2', 9, 390, 560, 'Annual (INR)'),
+        ('F2', 9, 490, 560, 'Split'),
+        ('LINE', 0, 50, 552, 545, 552),
+        ('F1', 9, 55, 538, 'Basic Salary (50%)'),
+        ('F1', 9, 260, 538, f'INR {b_m:,.2f}'),
+        ('F1', 9, 390, 538, f'INR {b_a:,.2f}'),
+        ('F1', 9, 490, 538, '50%'),
+        ('F1', 9, 55, 522, 'House Rent Allowance - HRA (20%)'),
+        ('F1', 9, 260, 522, f'INR {h_m:,.2f}'),
+        ('F1', 9, 390, 522, f'INR {h_a:,.2f}'),
+        ('F1', 9, 490, 522, '20%'),
+        ('F1', 9, 55, 506, 'Special / Personal Allowance (20%)'),
+        ('F1', 9, 260, 506, f'INR {s_m:,.2f}'),
+        ('F1', 9, 390, 506, f'INR {s_a:,.2f}'),
+        ('F1', 9, 490, 506, '20%'),
+        ('F1', 9, 55, 490, 'Employer Provident Fund (10%)'),
+        ('F1', 9, 260, 490, f'INR {p_m:,.2f}'),
+        ('F1', 9, 390, 490, f'INR {p_a:,.2f}'),
+        ('F1', 9, 490, 490, '10%'),
+        ('LINE', 0, 50, 480, 545, 480),
+        ('F2', 9.5, 55, 466, 'Total Gross Cost to Company (Annual CTC)'),
+        ('F2', 9.5, 260, 466, f'INR {tot_m:,.2f}'),
+        ('F2', 9.5, 390, 466, f'INR {tot_a:,.2f}'),
+        ('F2', 9.5, 490, 466, '100%'),
+        ('LINE', 0, 50, 456, 545, 456),
+        ('F2', 10, 50, 430, 'Key Terms & Conditions:'),
+        ('F1', 8.5, 50, 414, '1. Probation: You will be on probation for 3 months from the date of joining.'),
+        ('F1', 8.5, 50, 400, '2. Notice Period: 30 days during probation, and 60 days post-confirmation in writing.'),
+        ('F1', 8.5, 50, 386, '3. Confidentiality: You shall maintain complete confidentiality of proprietary information.'),
+        ('F1', 8.5, 50, 372, '4. Intellectual Property: Any invention or work created during employment belongs to the Company.'),
+        ('LINE', 0, 50, 340, 545, 340),
+        ('F2', 9, 50, 320, f'For {company_name}:'),
+        ('F1', 9, 50, 280, f'{signer_name}'),
+        ('F1', 8, 50, 268, 'Head of Talent & People Operations'),
+        ('F1', 8, 50, 256, '[Digitally Authorized Signature]'),
+        ('F2', 9, 340, 320, 'Accepted & Acknowledged:'),
+        ('LINE', 0, 340, 280, 520, 280),
+        ('F1', 8, 340, 268, f'{candidate_name} (Signature)'),
+        ('F1', 8, 340, 256, 'Date: ________________________'),
+        ('F1', 7.5, 120, 50, f'Official Appointment Record - Generated securely via {company_name} Compliance Vault'),
+    ]
+
+    stream_parts = []
+    for item in lines:
+        if item[0] == 'LINE':
+            _, _, x1, y1, x2, y2 = item
+            stream_parts.append(f'0.5 w\n{x1} {y1} m\n{x2} {y2} l\nS\n')
+        else:
+            font_id, size, x, y, text = item
+            clean_text = _escape_pdf_text(str(text))
+            stream_parts.append(f'BT\n/{font_id} {size} Tf\n{x} {y} Td\n({clean_text}) Tj\nET\n')
+
+    stream_bytes = ''.join(stream_parts).encode('latin-1', errors='replace')
+
+    objects = [
+        b'1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+        b'2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+        b'3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n',
+        f'4 0 obj\n<< /Length {len(stream_bytes)} >>\nstream\n'.encode('latin-1') + stream_bytes + b'\nendstream\nendobj\n',
+        b'5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+        b'6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
+    ]
+
+    output = b'%PDF-1.4\n'
+    offsets = [len(output)]
+    for obj in objects:
+        output += obj
+        offsets.append(len(output))
+
+    xref_pos = len(output)
+    output += f'xref\n0 {len(objects) + 1}\n0000000000 65535 f \n'.encode('latin-1')
+    for off in offsets[:-1]:
+        output += f'{off:010d} 00000 n \n'.encode('latin-1')
+    output += f'trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n'.encode('latin-1')
+    return output
+
+
+def _generate_reportlab_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None) -> bytes:
+    """Generates an official, high-resolution A4 PDF Offer Letter with salary annexure, legal clauses & signing block via ReportLab."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36,
+    )
+    styles = getSampleStyleSheet()
+
+    header_title = ParagraphStyle('H1', fontName='Helvetica-Bold', fontSize=16, leading=20, textColor=colors.HexColor('#0f172a'))
+    header_sub = ParagraphStyle('HSub', fontName='Helvetica-Bold', fontSize=8, leading=11, textColor=colors.HexColor('#64748b'))
+    meta_label = ParagraphStyle('MetaL', fontName='Helvetica-Bold', fontSize=8.5, leading=12, textColor=colors.HexColor('#475569'))
+    meta_val = ParagraphStyle('MetaV', fontName='Helvetica', fontSize=8.5, leading=12, textColor=colors.HexColor('#0f172a'))
+    body_p = ParagraphStyle('BodyP', fontName='Helvetica', fontSize=9, leading=14, textColor=colors.HexColor('#334155'))
+    clause_title = ParagraphStyle('CTitle', fontName='Helvetica-Bold', fontSize=9.5, leading=13, textColor=colors.HexColor('#0f172a'))
+    clause_p = ParagraphStyle('CP', fontName='Helvetica', fontSize=8.5, leading=12, textColor=colors.HexColor('#475569'))
+
+    story = []
+
+    # Company Header Banner
+    story.append(Paragraph(company_name, header_title))
+    story.append(Paragraph('TALENT ACQUISITION &amp; PEOPLE OPERATIONS • OFFICIAL APPOINTMENT', header_sub))
+    story.append(Spacer(1, 8))
+    story.append(HRFlowable(width='100%', thickness=1.5, color=colors.HexColor('#1e1b4b'), spaceAfter=12))
+
+    # Reference Metadata Table
+    ref_id = f"OFR-{offer.id.hex[:8].upper()}" if hasattr(offer.id, 'hex') else f"OFR-{str(offer.id)[:8].upper()}"
+    meta_data = [
+        [Paragraph('<b>To:</b>', meta_label), Paragraph(offer.candidate or 'Candidate', meta_val),
+         Paragraph('<b>Offer Date:</b>', meta_label), Paragraph(str(offer.offer_date or date.today()), meta_val)],
+        [Paragraph('<b>Email:</b>', meta_label), Paragraph(offer.candidate_email or 'N/A', meta_val),
+         Paragraph('<b>Valid Until:</b>', meta_label), Paragraph(str(offer.expiry_date or '7 Days'), meta_val)],
+        [Paragraph('<b>Role:</b>', meta_label), Paragraph(offer.role or 'Team Member', meta_val),
+         Paragraph('<b>Ref No:</b>', meta_label), Paragraph(ref_id, meta_val)],
+    ]
+    meta_table = Table(meta_data, colWidths=[50, 210, 70, 190])
+    meta_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    story.append(meta_table)
+    story.append(Spacer(1, 14))
+
+    # Subject & Formal Opening
+    story.append(Paragraph(f'<b>Subject: Formal Employment Offer — {offer.role}</b>', clause_title))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        f'Dear <b>{offer.candidate}</b>,<br/><br/>'
+        f'On behalf of <b>{company_name}</b>, we are very pleased to extend this formal offer of employment for the position of <b>{offer.role}</b>. '
+        f'Following our comprehensive evaluations, our leadership team is confident that your talent, dedication, and expertise will make a significant impact on our organization.<br/><br/>'
+        f'Target Date of Joining: <b>{offer.joining_date or "Mutually Agreed"}</b>.',
+        body_p
+    ))
+    story.append(Spacer(1, 10))
+
+    # Compensation Breakdown (Annexure A)
+    ctc = float(offer.ctc or 0)
+    b_m, b_a = (ctc * 0.5) / 12, ctc * 0.5
+    h_m, h_a = (ctc * 0.2) / 12, ctc * 0.2
+    s_m, s_a = (ctc * 0.2) / 12, ctc * 0.2
+    p_m, p_a = (ctc * 0.1) / 12, ctc * 0.1
+    tot_m, tot_a = ctc / 12, ctc
+
+    story.append(Paragraph('<b>Annexure A: Annual Compensation Breakdown</b>', clause_title))
+    story.append(Spacer(1, 4))
+    sal_data = [
+        ['Component', 'Monthly (INR)', 'Annual (INR)', 'Split %'],
+        ['Basic Salary', f'{b_m:,.2f}', f'{b_a:,.2f}', '50%'],
+        ['House Rent Allowance (HRA)', f'{h_m:,.2f}', f'{h_a:,.2f}', '20%'],
+        ['Special / Personal Allowance', f'{s_m:,.2f}', f'{s_a:,.2f}', '20%'],
+        ['Provident Fund (Employer PF)', f'{p_m:,.2f}', f'{p_a:,.2f}', '10%'],
+        ['Total Gross Cost to Company (CTC)', f'{tot_m:,.2f}', f'{tot_a:,.2f}', '100%'],
+    ]
+    sal_table = Table(sal_data, colWidths=[200, 110, 130, 80])
+    sal_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0f172a')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+        ('BACKGROUND', (0, 1), (-1, -2), colors.HexColor('#f8fafc')),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f1f5f9')),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(sal_table)
+    story.append(Spacer(1, 10))
+
+    # Terms & Conditions
+    story.append(Paragraph('<b>Terms &amp; Conditions</b>', clause_title))
+    story.append(Spacer(1, 4))
+    if offer.custom_template:
+        for line in offer.custom_template.split('\n'):
+            clean_l = line.strip()
+            if clean_l:
+                story.append(Paragraph(clean_l, clause_p))
+    else:
+        story.append(Paragraph('1. <b>Probation &amp; Confirmation:</b> You will serve a probation period of three (3) months from your date of joining. Confirmation will be subject to satisfactory performance.', clause_p))
+        story.append(Paragraph('2. <b>Notice Period:</b> Either party may terminate with 30 days notice during probation, and 60 days notice post-confirmation.', clause_p))
+        story.append(Paragraph('3. <b>Confidentiality &amp; IP:</b> You agree to protect all company proprietary information and assign intellectual property created during employment to the Company.', clause_p))
+    story.append(Spacer(1, 16))
+
+    # Signatures Block
+    signer = offer.signer_name or 'Authorized Signatory'
+    sig_data = [
+        [Paragraph(f'<b>For {company_name}:</b>', meta_label), Paragraph('<b>Accepted &amp; Acknowledged:</b>', meta_label)],
+        [Spacer(1, 16), Spacer(1, 16)],
+        [Paragraph(f'<b>{signer}</b><br/>Head of Talent &amp; People Operations<br/><i>Digitally Authorized Document</i>', meta_val),
+         Paragraph(f'<b>{offer.candidate}</b><br/>Signature &amp; Date<br/>Date: ________________________', meta_val)]
+    ]
+    sig_table = Table(sig_data, colWidths=[260, 260])
+    sig_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    story.append(sig_table)
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def generate_offer_letter_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None) -> bytes:
+    """Generates an official Offer Letter PDF using ReportLab when available, with resilient pure-Python fallback."""
+    if HAS_REPORTLAB:
+        try:
+            return _generate_reportlab_offer_pdf(offer, company_name, tenant)
+        except Exception as err:
+            print(f"[REPORTLAB RENDERING NOTICE, USING PURE-PYTHON ENGINE]: {err}")
+    return _generate_pure_python_offer_pdf(offer, company_name, tenant)
+
+
 # ─── SMTP Live Email Dispatch Utility ───────────────────────────────────────────
 
-async def send_recruitment_email(to_email: str, subject: str, body_text: str, html_body: str | None = None) -> bool:
+async def send_recruitment_email(
+    to_email: str,
+    subject: str,
+    body_text: str,
+    html_body: str | None = None,
+    attachment_bytes: bytes | None = None,
+    attachment_filename: str | None = None,
+) -> bool:
     if not settings.mail_server:
         # Log to server console if SMTP credentials are not yet configured in .env
         print(f"\n=================== REALTIME SMTP DISPATCH LOG ===================")
         print(f"TO: {to_email}")
         print(f"SUBJECT: {subject}")
+        if attachment_filename:
+            print(f"ATTACHED PDF: {attachment_filename} ({len(attachment_bytes or b'')} bytes)")
         print(f"BODY:\n{body_text}")
         print(f"==================================================================\n")
         return False
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["From"] = settings.mail_from or "recruitment@businessos.ai"
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body_text, "plain"))
-        if html_body:
-            msg.attach(MIMEText(html_body, "html"))
+        if attachment_bytes and attachment_filename:
+            msg = MIMEMultipart("mixed")
+            msg["From"] = settings.mail_from or "recruitment@businessos.ai"
+            msg["To"] = to_email
+            msg["Subject"] = subject
+
+            alt_part = MIMEMultipart("alternative")
+            alt_part.attach(MIMEText(body_text, "plain"))
+            if html_body:
+                alt_part.attach(MIMEText(html_body, "html"))
+            msg.attach(alt_part)
+
+            pdf_part = MIMEApplication(attachment_bytes, _subtype="pdf")
+            pdf_part.add_header("Content-Disposition", "attachment", filename=attachment_filename)
+            msg.attach(pdf_part)
+        else:
+            msg = MIMEMultipart("alternative")
+            msg["From"] = settings.mail_from or "recruitment@businessos.ai"
+            msg["To"] = to_email
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body_text, "plain"))
+            if html_body:
+                msg.attach(MIMEText(html_body, "html"))
 
         # Connect and authenticate
         server = smtplib.SMTP(settings.mail_server, settings.mail_port or 587)
@@ -86,7 +377,7 @@ async def send_recruitment_email(to_email: str, subject: str, body_text: str, ht
 
         server.send_message(msg)
         server.quit()
-        print(f"[SMTP SUCCESS] Successfully sent real email to {to_email}")
+        print(f"[SMTP SUCCESS] Successfully delivered email with PDF attachment to {to_email}")
         return True
     except Exception as e:
         print(f"[SMTP ERROR] Failed to deliver email to {to_email}: {e}")
@@ -982,6 +1273,67 @@ async def list_applicants(
     return paginate(result.scalars().all(), total or 0, page, page_size)
 
 
+@router.post("/applicants", response_model=ApplicantResponse, status_code=status.HTTP_201_CREATED)
+async def create_manual_applicant(
+    payload: ApplicantCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    target_job_title = payload.job_title or "General Applicant"
+    match_score = 75
+
+    if payload.job_id:
+        job = await db.get(JobOpening, payload.job_id)
+        if job and job.tenant_id == ctx.tenant_id:
+            target_job_title = job.title
+            match_score = calculate_match_score(payload.resume_text, job.criteria)
+            job.applicants_count += 1
+
+    new_applicant = Applicant(
+        tenant_id=ctx.tenant_id,
+        name=payload.name,
+        email=payload.email,
+        phone=payload.phone,
+        job_id=payload.job_id,
+        job_title=target_job_title,
+        experience=payload.experience or "Fresher / Entry",
+        rating=0,
+        stage=payload.stage or "Applied",
+        source=payload.source or "Manual Entry",
+        match_score=match_score,
+        resume_text=payload.resume_text,
+        expected_salary=payload.expected_salary,
+        proposed_salary=payload.proposed_salary,
+        notice_period_days=payload.notice_period_days or 30,
+    )
+
+    db.add(new_applicant)
+    await db.flush()
+
+    await add_system_notification(
+        db,
+        ctx.tenant_id,
+        f"Manual Candidate Registered: {new_applicant.name}",
+        f"Candidate '{new_applicant.name}' registered manually for '{new_applicant.job_title}' in stage '{new_applicant.stage}'.",
+        "hrms"
+    )
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="hrms_recruitment",
+        action="create_manual_applicant",
+        entity_type="Applicant",
+        entity_id=new_applicant.id,
+        new_values={"name": new_applicant.name, "email": new_applicant.email, "role": new_applicant.job_title},
+    )
+
+    await db.commit()
+    await db.refresh(new_applicant)
+    return new_applicant
+
+
 @router.post("/jobs/{job_id}/apply", response_model=ApplicantResponse, status_code=status.HTTP_201_CREATED)
 async def submit_application(
     job_id: uuid.UUID,
@@ -1265,21 +1617,85 @@ async def list_offers(
     return paginate(result.scalars().all(), total or 0, page, page_size)
 
 
+@router.get("/offers/{id}", response_model=OfferLetterResponse)
+async def get_offer(
+    id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid offer ID format")
+    offer = await db.get(OfferLetter, u_id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+    return offer
+
+
+@router.get("/public/offers/{id}", response_model=OfferLetterResponse)
+async def get_public_offer(
+    id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid offer ID format")
+    offer = await db.get(OfferLetter, u_id)
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+    return offer
+
+
 @router.post("/offers", response_model=OfferLetterResponse, status_code=status.HTTP_201_CREATED)
 async def create_offer(
     payload: OfferLetterCreate,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    applicant = await db.get(Applicant, payload.applicant_id)
-    if not applicant or applicant.tenant_id != ctx.tenant_id:
-        raise HTTPException(status_code=404, detail="Applicant profile not found")
+    candidate_name = payload.candidate
+    candidate_role = payload.role or "Team Member"
+    candidate_email = payload.candidate_email
+
+    applicant = None
+    employee = None
+
+    if payload.employee_id:
+        employee = await db.get(Employee, payload.employee_id)
+        if not employee or employee.tenant_id != ctx.tenant_id:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        candidate_name = payload.candidate or employee.full_name
+        candidate_email = payload.candidate_email or employee.email
+        if employee.designation_id:
+            from src.models import Designation
+            desig = await db.get(Designation, employee.designation_id)
+            if desig:
+                candidate_role = desig.name
+        elif hasattr(employee, "position") and employee.position:
+            candidate_role = employee.position
+    elif payload.applicant_id:
+        applicant = await db.get(Applicant, payload.applicant_id)
+        if not applicant or applicant.tenant_id != ctx.tenant_id:
+            raise HTTPException(status_code=404, detail="Applicant profile not found")
+        candidate_name = applicant.name
+        candidate_email = applicant.email
+        candidate_role = applicant.job_title
+        # Advance applicant stage
+        applicant.stage = "Offer"
+    else:
+        if not candidate_name:
+            raise HTTPException(status_code=400, detail="Must provide either applicant_id, employee_id, or candidate name")
 
     new_offer = OfferLetter(
         tenant_id=ctx.tenant_id,
         applicant_id=payload.applicant_id,
-        candidate=applicant.name,
-        role=applicant.job_title,
+        employee_id=payload.employee_id,
+        candidate=candidate_name or "Candidate",
+        candidate_email=candidate_email,
+        role=candidate_role,
         ctc=payload.ctc,
         offer_date=date.today(),
         expiry_date=payload.expiry_date,
@@ -1289,8 +1705,20 @@ async def create_offer(
         custom_template=payload.custom_template,
     )
     db.add(new_offer)
-    await db.commit()
-    await db.refresh(new_offer)
+    await db.flush()
+
+    # If this is for an existing employee, automatically store a record in EmployeeDocument (Document Vault)
+    if employee:
+        doc_entry = EmployeeDocument(
+            tenant_id=ctx.tenant_id,
+            employee_id=employee.id,
+            document_name=f"Offer Letter - {candidate_role} ({new_offer.joining_date.strftime('%b %Y') if new_offer.joining_date else date.today().strftime('%b %Y')})",
+            document_type="Contract",
+            file_path=f"/vault/offers/{new_offer.id}.pdf",
+            upload_date=date.today(),
+            status="Valid",
+        )
+        db.add(doc_entry)
 
     await write_audit_log(
         db,
@@ -1300,9 +1728,16 @@ async def create_offer(
         action="create_offer_letter",
         entity_type="OfferLetter",
         entity_id=new_offer.id,
-        new_values={"candidate": applicant.name, "role": applicant.job_title, "ctc": payload.ctc},
+        new_values={
+            "candidate": candidate_name,
+            "role": candidate_role,
+            "ctc": payload.ctc,
+            "employee_id": str(payload.employee_id) if payload.employee_id else None,
+            "applicant_id": str(payload.applicant_id) if payload.applicant_id else None,
+        },
     )
     await db.commit()
+    await db.refresh(new_offer)
     return new_offer
 
 
@@ -1317,9 +1752,18 @@ async def send_offer_email(
         raise HTTPException(status_code=404, detail="Offer letter not found")
 
     # Fetch candidate email
-    applicant = await db.get(Applicant, offer.applicant_id)
-    if not applicant:
-         raise HTTPException(status_code=404, detail="Candidate applicant not found")
+    target_email = offer.candidate_email
+    if not target_email and offer.applicant_id:
+        applicant = await db.get(Applicant, offer.applicant_id)
+        if applicant:
+            target_email = applicant.email
+    if not target_email and offer.employee_id:
+        employee = await db.get(Employee, offer.employee_id)
+        if employee:
+            target_email = employee.email
+
+    if not target_email:
+        raise HTTPException(status_code=400, detail="Candidate email address could not be resolved")
 
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     company_name = tenant.name if tenant else "LazyMonkeyAI"
@@ -1328,8 +1772,8 @@ async def send_offer_email(
     if server_base.endswith("/"):
         server_base = server_base[:-1]
 
-    accept_url = f"{server_base}/api/v1/hrms/public/offers/respond?id={offer.id}&action=accept&email={applicant.email}"
-    decline_url = f"{server_base}/api/v1/hrms/public/offers/respond?id={offer.id}&action=decline&email={applicant.email}"
+    accept_url = f"{server_base}/api/v1/hrms/public/offers/respond?id={offer.id}&action=accept&email={target_email}"
+    decline_url = f"{server_base}/api/v1/hrms/public/offers/respond?id={offer.id}&action=decline&email={target_email}"
 
     # Plain text fallback
     plain_body = (
@@ -1421,6 +1865,12 @@ async def send_offer_email(
             <a href="{decline_url}" class="btn-decline">❌ Decline Offer</a>
           </div>
 
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin: 20px 0; text-align: center;">
+            <p style="margin: 0; font-size: 12px; color: #475569; font-weight: 600;">
+              📎 <strong>Official Offer Letter PDF Attached:</strong> A formal, digitally authorized PDF copy of this offer letter is attached to this email for your review and records.
+            </p>
+          </div>
+
           <div class="signature-block">
             Warm regards,<br>
             <span class="signature-name">{offer.signer_name}</span><br>
@@ -1430,18 +1880,32 @@ async def send_offer_email(
         </div>
         <div class="email-footer">
           &copy; {datetime.now().year} {company_name}. Powered by LazyMonkeyAI BusinessOS.<br>
-          This is an official automated communication intended solely for {applicant.email}.
+          This is an official automated communication intended solely for {target_email}.
         </div>
       </div>
     </body>
     </html>
     """
 
+    # Generate official high-resolution PDF document attachment
+    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant)
+    pdf_filename = f"Official_Offer_Letter_{(offer.candidate or 'Candidate').replace(' ', '_')}.pdf"
+
+    # Persist copy to static vault directory for direct file serving
+    try:
+        vault_dir = Path("static/vault/offers")
+        vault_dir.mkdir(parents=True, exist_ok=True)
+        (vault_dir / f"{offer.id}.pdf").write_bytes(pdf_bytes)
+    except Exception as e:
+        print(f"[VAULT PDF WRITE NOTICE]: {e}")
+
     await send_recruitment_email(
-        to_email=applicant.email,
+        to_email=target_email,
         subject=f"Employment Offer: {offer.role} - {company_name}",
         body_text=plain_body,
         html_body=html_body,
+        attachment_bytes=pdf_bytes,
+        attachment_filename=pdf_filename,
     )
 
     offer.email_sent = True
@@ -1455,10 +1919,59 @@ async def send_offer_email(
         action="send_offer_email",
         entity_type="OfferLetter",
         entity_id=id,
-        new_values={"recipient_candidate": offer.candidate, "signer": offer.signer_name},
+        new_values={"recipient_candidate": offer.candidate, "signer": offer.signer_name, "pdf_attached": pdf_filename},
     )
     await db.commit()
-    return {"status": "ok", "message": f"Official offer email successfully sent to '{offer.candidate}'."}
+    return {"status": "ok", "message": f"Official offer email with PDF attachment successfully sent to '{offer.candidate}'."}
+
+
+@router.get("/offers/{id}/download-pdf")
+async def download_offer_letter_pdf(
+    id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid offer ID format")
+    offer = await db.get(OfferLetter, u_id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == offer.tenant_id))
+    company_name = tenant.name if tenant else "BusinessOS Enterprise"
+    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant)
+    filename = f"Official_Offer_Letter_{(offer.candidate or 'Candidate').replace(' ', '_')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/public/offers/{id}/download-pdf")
+async def download_public_offer_letter_pdf(
+    id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid offer ID format")
+    offer = await db.get(OfferLetter, u_id)
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == offer.tenant_id))
+    company_name = tenant.name if tenant else "BusinessOS Enterprise"
+    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant)
+    filename = f"Official_Offer_Letter_{(offer.candidate or 'Candidate').replace(' ', '_')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/public/offers/respond", response_class=HTMLResponse)

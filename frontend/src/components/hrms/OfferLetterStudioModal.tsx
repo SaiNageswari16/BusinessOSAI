@@ -9,7 +9,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
-import { Applicant, Offer } from "../../lib/api-client";
+import { Applicant, Offer, employeesApi } from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
@@ -38,6 +38,8 @@ interface OfferLetterStudioModalProps {
   onClose: () => void;
   applicants: Applicant[];
   selectedApplicantId?: string;
+  employees?: any[];
+  selectedEmployeeId?: string;
   onOfferSent: () => void;
   showNotification: (msg: string) => void;
   handleSaveOfferDocument: (applicantId: string) => void;
@@ -49,6 +51,8 @@ export function OfferLetterStudioModal({
   onClose,
   applicants,
   selectedApplicantId = "",
+  employees = [],
+  selectedEmployeeId = "",
   onOfferSent,
   showNotification,
   handleSaveOfferDocument,
@@ -130,6 +134,31 @@ export function OfferLetterStudioModal({
 
   const [savingSending, setSavingSending] = useState(false);
 
+  // Recipient Mode: Applicant vs Existing Employee
+  const [recipientType, setRecipientType] = useState<"applicant" | "employee">(
+    selectedEmployeeId ? "employee" : "applicant"
+  );
+  const [selectedEmpId, setSelectedEmpId] = useState<string>(selectedEmployeeId || "");
+  const [employeeList, setEmployeeList] = useState<any[]>(employees || []);
+
+  useEffect(() => {
+    if (selectedEmployeeId) {
+      setRecipientType("employee");
+      setSelectedEmpId(selectedEmployeeId);
+    }
+  }, [selectedEmployeeId]);
+
+  useEffect(() => {
+    if ((!employees || employees.length === 0) && open) {
+      employeesApi.list(1, 100).then((res: any) => {
+        const list = res.items || (Array.isArray(res) ? res : []);
+        setEmployeeList(list);
+      }).catch(console.error);
+    } else if (employees && employees.length > 0) {
+      setEmployeeList(employees);
+    }
+  }, [employees, open]);
+
   // Sync applicant selection
   useEffect(() => {
     if (selectedApplicantId) {
@@ -141,6 +170,18 @@ export function OfferLetterStudioModal({
       }));
     }
   }, [selectedApplicantId, applicants]);
+
+  const handleSelectEmployee = (empId: string) => {
+    setSelectedEmpId(empId);
+    const emp = employeeList.find(e => e.id === empId);
+    if (emp) {
+      const annualSalary = emp.basic_salary ? (Number(emp.basic_salary) * 12) : 1200000;
+      setOfferForm(prev => ({
+        ...prev,
+        ctc: annualSalary > 0 ? annualSalary : prev.ctc
+      }));
+    }
+  };
 
   const allTemplates = [...PREDEFINED_OFFER_TEMPLATES, ...customTemplates];
 
@@ -216,9 +257,19 @@ export function OfferLetterStudioModal({
 
   // Selected candidate info
   const selectedApplicant = applicants.find(a => a.id === offerForm.applicantId);
-  const candidateName = selectedApplicant?.name || "[Candidate Full Name]";
-  const candidateEmail = selectedApplicant?.email || "[Candidate Email]";
-  const candidateRole = selectedApplicant?.job_title || "[Role Designation]";
+  const selectedEmployee = employeeList.find(e => e.id === selectedEmpId);
+
+  const candidateName = recipientType === "employee"
+    ? (selectedEmployee?.full_name || selectedEmployee?.name || "[Employee Full Name]")
+    : (selectedApplicant?.name || "[Candidate Full Name]");
+
+  const candidateEmail = recipientType === "employee"
+    ? (selectedEmployee?.email || "[Employee Email]")
+    : (selectedApplicant?.email || "[Candidate Email]");
+
+  const candidateRole = recipientType === "employee"
+    ? (selectedEmployee?.designation?.name || selectedEmployee?.designation_name || selectedEmployee?.position || selectedEmployee?.role || "Staff")
+    : (selectedApplicant?.job_title || "[Role Designation]");
 
   // Calculations
   const ctcVal = Number(offerForm.ctc || 0);
@@ -565,14 +616,22 @@ export function OfferLetterStudioModal({
   };
 
   const handleSendOffer = async () => {
-    if (!offerForm.applicantId) {
+    if (recipientType === "applicant" && !offerForm.applicantId) {
       showNotification("Please select a candidate first.");
+      return;
+    }
+    if (recipientType === "employee" && !selectedEmpId) {
+      showNotification("Please select an existing employee first.");
       return;
     }
     setSavingSending(true);
     try {
       await handleSendOfferApi({
-        applicant_id: offerForm.applicantId,
+        applicant_id: recipientType === "applicant" ? offerForm.applicantId : undefined,
+        employee_id: recipientType === "employee" ? selectedEmpId : undefined,
+        candidate: candidateName,
+        candidate_email: candidateEmail,
+        role: candidateRole,
         ctc: offerForm.ctc,
         basic_pct: salarySplit.basicPct,
         hra_pct: salarySplit.hraPct,
@@ -672,25 +731,60 @@ export function OfferLetterStudioModal({
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase">Candidate:</span>
-            <select
-              value={offerForm.applicantId}
-              onChange={(e) => {
-                const appId = e.target.value;
-                const app = applicants.find(a => a.id === appId);
-                setOfferForm({
-                  ...offerForm,
-                  applicantId: appId,
-                  ctc: app?.expected_salary ? Number(app.expected_salary) : offerForm.ctc,
-                });
-              }}
-              className="h-8 px-2.5 text-xs rounded-md border border-input bg-background font-semibold max-w-[220px]"
-            >
-              <option value="">-- Choose Candidate --</option>
-              {applicants.map(a => (
-                <option key={a.id} value={a.id}>{a.name} ({a.job_title})</option>
-              ))}
-            </select>
+            <div className="flex bg-muted/60 p-0.5 rounded-lg border border-border/50 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setRecipientType("applicant")}
+                className={`px-2 py-1 rounded-md transition-all ${
+                  recipientType === "applicant" ? "bg-background text-primary shadow-xs font-black" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Candidate / Applicant
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecipientType("employee")}
+                className={`px-2 py-1 rounded-md transition-all ${
+                  recipientType === "employee" ? "bg-background text-indigo-600 shadow-xs font-black" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Existing Employee
+              </button>
+            </div>
+
+            {recipientType === "applicant" ? (
+              <select
+                value={offerForm.applicantId}
+                onChange={(e) => {
+                  const appId = e.target.value;
+                  const app = applicants.find(a => a.id === appId);
+                  setOfferForm({
+                    ...offerForm,
+                    applicantId: appId,
+                    ctc: app?.expected_salary ? Number(app.expected_salary) : offerForm.ctc,
+                  });
+                }}
+                className="h-8 px-2.5 text-xs rounded-md border border-input bg-background font-semibold max-w-[220px]"
+              >
+                <option value="">-- Choose Candidate --</option>
+                {applicants.map(a => (
+                  <option key={a.id} value={a.id}>{a.name} ({a.job_title})</option>
+                ))}
+              </select>
+            ) : (
+              <select
+                value={selectedEmpId}
+                onChange={(e) => handleSelectEmployee(e.target.value)}
+                className="h-8 px-2.5 text-xs rounded-md border border-indigo-300 bg-indigo-50/50 text-indigo-950 font-bold max-w-[260px] outline-none"
+              >
+                <option value="">-- Choose Existing Employee --</option>
+                {employeeList.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.full_name || e.name} ({e.designation?.name || e.employee_code || "Staff"})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
@@ -729,12 +823,12 @@ export function OfferLetterStudioModal({
                       <div>
                         <div className="flex justify-between items-center mb-2">
                           <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                            tpl.isCustom ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-primary/10 text-primary"
+                            (tpl as any).isCustom ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-primary/10 text-primary"
                           }`}>
                             {tpl.badge}
                           </span>
                           <div className="flex items-center gap-1.5">
-                            {tpl.isCustom && (
+                            {(tpl as any).isCustom && (
                               <button
                                 onClick={(e) => handleDeleteCustomTemplate(tpl.id, e)}
                                 className="p-1 rounded-md hover:bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1300,13 +1394,21 @@ export function OfferLetterStudioModal({
               variant="outline"
               className="h-8 text-xs font-bold gap-1.5"
               onClick={() => {
-                if (!offerForm.applicantId) {
-                  showNotification("Select a candidate to save document.");
-                  return;
+                if (recipientType === "applicant") {
+                  if (!offerForm.applicantId) {
+                    showNotification("Select a candidate to save document.");
+                    return;
+                  }
+                  handleSaveOfferDocument(offerForm.applicantId);
+                } else {
+                  if (!selectedEmpId) {
+                    showNotification("Select an existing employee first.");
+                    return;
+                  }
+                  handleSendOffer();
                 }
-                handleSaveOfferDocument(offerForm.applicantId);
               }}
-              disabled={!offerForm.applicantId}
+              disabled={recipientType === "applicant" ? !offerForm.applicantId : !selectedEmpId}
             >
               <FileCheck className="size-3.5" /> Save to Vault
             </Button>
@@ -1318,10 +1420,10 @@ export function OfferLetterStudioModal({
             </Button>
             <Button
               onClick={handleSendOffer}
-              disabled={!offerForm.applicantId || !offerForm.joiningDate || !offerForm.expiryDate || savingSending}
+              disabled={(recipientType === "applicant" ? !offerForm.applicantId : !selectedEmpId) || !offerForm.joiningDate || !offerForm.expiryDate || savingSending}
               className="h-8 text-xs font-bold gradient-brand text-white shadow-md gap-1.5"
             >
-              <Send className="size-3.5" /> {savingSending ? "Issuing..." : "Save & Email Offer to Candidate"}
+              <Send className="size-3.5" /> {savingSending ? "Releasing..." : (recipientType === "employee" ? "Release & Save Offer Letter" : "Save & Email Offer to Candidate")}
             </Button>
           </div>
         </div>

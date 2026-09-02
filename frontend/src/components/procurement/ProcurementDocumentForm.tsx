@@ -202,8 +202,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [linkedPrId, setLinkedPrId] = useState<string>("");
   const [linkedRfqId, setLinkedRfqId] = useState<string>("");
-  // For PINV: linked PO selection
+  // For PINV: linked PO selection & 3-way match GRN
   const [linkedPoId, setLinkedPoId] = useState<string>("");
+  const [grns, setGrns] = useState<any[]>([]);
+  const [linkedGrnId, setLinkedGrnId] = useState<string>("");
   // OCR upload state
   const [ocrFile, setOcrFile] = useState<File | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -288,13 +290,69 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         const pos = await inventoryApi.getPurchaseOrders().catch(() => []);
         setPurchaseOrders(pos || []);
 
+        const grnList = await inventoryApi.getGoodsReceivedNotes().catch(() => []);
+        setGrns(grnList || []);
+
         if (initialData) {
           setDocNumber(initialData.order_number || initialData.po_number || initialData.bill_number || initialData.id || "DOC-2026-0001");
           if (initialData.supplier_id) setSelectedSupplierId(initialData.supplier_id);
+          if (initialData.purchase_order_id) setLinkedPoId(initialData.purchase_order_id);
+          if (initialData.grn_id) setLinkedGrnId(initialData.grn_id);
           if (initialData.notes) setNotes(initialData.notes);
           if (initialData.status) setCurrentPoStatus(initialData.status);
           if (initialData.delivery_date) setDueDate(new Date(initialData.delivery_date).toISOString().slice(0, 10));
           if (initialData.paid_amount !== undefined) setAmountPaid(Number(initialData.paid_amount) || 0);
+
+          // If opened via shortcut with PO/GRN but without pre-rendered items, auto-sync from PO/GRN
+          if (initialData.purchase_order_id && (!initialData.items || initialData.items.length === 0)) {
+            const po = pos.find((p: any) => p.id === initialData.purchase_order_id);
+            if (po) {
+              if (po.supplier_id) setSelectedSupplierId(po.supplier_id);
+              if (po.items && po.items.length > 0) {
+                setItems(
+                  po.items.map((it: any) => {
+                    const prod = loadedProds.find((p: any) => p.id === it.product_id);
+                    return {
+                      id: Math.random().toString(36).substring(2, 9),
+                      product_id: it.product_id,
+                      product_name: it.product_name || prod?.name || "Material Item",
+                      hsn_code: prod?.hsn_code || "2202",
+                      mrp: prod?.mrp || prod?.selling_price || 0,
+                      quantity: Number(it.quantity) || 1,
+                      unit_price: Number(it.unit_price) || prod?.cost_price || 0,
+                      discount_value: 0,
+                      discount_type: "percent",
+                      tax_rate: Number(it.tax_percent) || prod?.gst || 18,
+                    };
+                  })
+                );
+              }
+            }
+          }
+
+          if (initialData.grn_id && (!initialData.items || initialData.items.length === 0)) {
+            const grn = grnList.find((g: any) => g.id === initialData.grn_id);
+            if (grn && grn.items && grn.items.length > 0) {
+              setItems(
+                grn.items.map((it: any) => {
+                  const prod = loadedProds.find((p: any) => p.id === it.product_id);
+                  const acceptedQty = Number(it.quantity_accepted) || Number(it.quantity_received) || 1;
+                  return {
+                    id: Math.random().toString(36).substring(2, 9),
+                    product_id: it.product_id,
+                    product_name: it.product_name || prod?.name || "Material Item",
+                    hsn_code: prod?.hsn_code || "2202",
+                    mrp: prod?.mrp || prod?.selling_price || 0,
+                    quantity: acceptedQty,
+                    unit_price: prod?.cost_price || prod?.purchase_price || 0,
+                    discount_value: 0,
+                    discount_type: "percent",
+                    tax_rate: prod?.gst || 18,
+                  };
+                })
+              );
+            }
+          }
           if (initialData.items && initialData.items.length > 0) {
             setItems(initialData.items.map((it: any, idx: number) => {
               const pName = it.product_name || it.name || "";
@@ -387,6 +445,76 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           })
         );
         toast.success(`Synced ${rfq.items.length} line items from Awarded RFQ ${rfq.quotation_number}!`);
+      }
+    }
+  };
+
+  const handleSelectPOLink = (poId: string) => {
+    setLinkedPoId(poId);
+    const po = purchaseOrders.find((p) => p.id === poId);
+    if (po) {
+      if (po.supplier_id) setSelectedSupplierId(po.supplier_id);
+      if (po.items && po.items.length > 0) {
+        setItems(
+          po.items.map((it: any) => {
+            const prod = products.find((p) => p.id === it.product_id);
+            return {
+              id: Math.random().toString(36).substring(2, 9),
+              product_id: it.product_id,
+              product_name: it.product_name || prod?.name || "Material Item",
+              hsn_code: prod?.hsn_code || "2202",
+              mrp: prod?.mrp || prod?.selling_price || 0,
+              quantity: Number(it.quantity) || 1,
+              unit_price: Number(it.unit_price) || prod?.cost_price || 0,
+              discount_value: 0,
+              discount_type: "percent",
+              tax_rate: Number(it.tax_percent) || prod?.gst || 18,
+            };
+          })
+        );
+      }
+      // Auto-find matching Verified GRN for this PO
+      const matchingGrn = grns.find((g) => g.purchase_order_id === poId && g.status === "Verified") 
+        || grns.find((g) => g.purchase_order_id === poId);
+      if (matchingGrn) {
+        setLinkedGrnId(matchingGrn.id);
+        toast.success(`Synced from PO ${po.po_number || poId.slice(0, 8)} & 3-way matched to GRN ${matchingGrn.grn_number}!`);
+      } else {
+        setLinkedGrnId("");
+        toast.info(`Synced PO ${po.po_number || poId.slice(0, 8)}. No verified GRN found yet for this PO.`);
+      }
+    }
+  };
+
+  const handleSelectGRNLink = (grnId: string) => {
+    setLinkedGrnId(grnId);
+    const grn = grns.find((g) => g.id === grnId);
+    if (grn) {
+      if (grn.purchase_order_id && !linkedPoId) {
+        setLinkedPoId(grn.purchase_order_id);
+        const po = purchaseOrders.find((p) => p.id === grn.purchase_order_id);
+        if (po && po.supplier_id) setSelectedSupplierId(po.supplier_id);
+      }
+      if (grn.items && grn.items.length > 0) {
+        setItems(
+          grn.items.map((it: any) => {
+            const prod = products.find((p) => p.id === it.product_id);
+            const acceptedQty = Number(it.quantity_accepted) || Number(it.quantity_received) || 1;
+            return {
+              id: Math.random().toString(36).substring(2, 9),
+              product_id: it.product_id,
+              product_name: it.product_name || prod?.name || "Material Item",
+              hsn_code: prod?.hsn_code || "2202",
+              mrp: prod?.mrp || prod?.selling_price || 0,
+              quantity: acceptedQty,
+              unit_price: prod?.cost_price || prod?.purchase_price || 0,
+              discount_value: 0,
+              discount_type: "percent",
+              tax_rate: prod?.gst || 18,
+            };
+          })
+        );
+        toast.success(`Loaded verified quantities from GRN ${grn.grn_number}!`);
       }
     }
   };
@@ -787,6 +915,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         await inventoryApi.createVendorBill({
           bill_number: docNumber,
           purchase_order_id: poIdToUse,
+          grn_id: linkedGrnId || undefined,
           total_amount: roundedTotal,
           paid_amount: finalPaidAmount,
           status: billStatus,
@@ -1048,8 +1177,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         </div>
       </div>
 
-      {/* Linked Sourcing Sync Card for PO and Purchase Invoices */}
-      {(docType === "PO" || docType === "PINV") && (
+      {/* Linked Sourcing Sync Card for PO */}
+      {docType === "PO" && (
         <div className="bg-blue-50/70 rounded-2xl border border-blue-200 shadow-sm p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-600 text-white rounded-xl shadow-sm">
@@ -1102,6 +1231,85 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               </select>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 3-Way Match Sourcing Sync Card for PINV (Purchase Invoices / Vendor Bills) */}
+      {docType === "PINV" && (
+        <div className="bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-blue-50/80 rounded-2xl border border-indigo-200 shadow-sm p-4 space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md shadow-indigo-600/20">
+                <Boxes className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-indigo-950 uppercase tracking-wider">
+                    3-Way Match: PO ↔ GRN ↔ Vendor Bill
+                  </span>
+                  {linkedPoId && linkedGrnId ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-300">
+                      ✓ 3-Way Matched
+                    </span>
+                  ) : linkedPoId ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full border border-amber-300">
+                      ⚠ Awaiting Verified GRN
+                    </span>
+                  ) : null}
+                </div>
+                <div className="text-[11px] text-indigo-800 font-medium">
+                  Link to an approved Purchase Order and verified Goods Received Note to ensure you only pay for received goods.
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-900 block mb-0.5">
+                  1. Linked Purchase Order (PO) *
+                </label>
+                <select
+                  value={linkedPoId}
+                  onChange={(e) => handleSelectPOLink(e.target.value)}
+                  className="w-full md:w-64 h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                >
+                  <option value="">-- Select Linked PO --</option>
+                  {purchaseOrders.map((po) => (
+                    <option key={po.id} value={po.id}>
+                      {po.po_number || po.id.slice(0, 8)} ({po.supplier?.name || "Vendor PO"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-900 block mb-0.5">
+                  2. Linked GRN (Stock Receipt) *
+                </label>
+                <select
+                  value={linkedGrnId}
+                  onChange={(e) => handleSelectGRNLink(e.target.value)}
+                  className="w-full md:w-64 h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                >
+                  <option value="">-- Select Inward GRN --</option>
+                  {(linkedPoId ? grns.filter((g) => g.purchase_order_id === linkedPoId) : grns).map((grn) => (
+                    <option key={grn.id} value={grn.id}>
+                      {grn.grn_number} [{grn.status || "Received"}]
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {linkedPoId && !linkedGrnId && (
+            <div className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+              <span>⚠</span>
+              <span>
+                No Verified GRN is linked yet. In industry 3-way matching, payments are released only after goods are received and inspected.
+              </span>
+            </div>
+          )}
         </div>
       )}
 

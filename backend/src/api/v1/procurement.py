@@ -677,6 +677,121 @@ async def create_purchase_quotation(
     )
 
 
+@router.put("/purchase-quotations/{id}", response_model=PurchaseQuotationResponse)
+@router.patch("/purchase-quotations/{id}", response_model=PurchaseQuotationResponse)
+async def update_purchase_quotation(
+    id: uuid.UUID,
+    payload: PurchaseQuotationCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    q = await db.get(PurchaseQuotation, id)
+    if not q or q.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Purchase Quotation not found.")
+
+    if payload.quotation_number:
+        q.quotation_number = payload.quotation_number
+    if payload.purchase_request_id:
+        q.purchase_request_id = payload.purchase_request_id
+    if payload.supplier_id:
+        q.supplier_id = payload.supplier_id
+    if payload.date_received:
+        q.date_received = payload.date_received.replace(tzinfo=None)
+    if payload.valid_until:
+        q.valid_until = payload.valid_until.replace(tzinfo=None)
+    if payload.status:
+        q.status = payload.status
+
+    # Delete existing items and insert updated ones if provided
+    if payload.items is not None:
+        await db.execute(
+            delete(PurchaseQuotationItem).where(PurchaseQuotationItem.purchase_quotation_id == q.id)
+        )
+        total = sum(x.quantity * x.unit_price for x in payload.items)
+        q.total_amount = total
+
+        created_items = []
+        for it in payload.items:
+            item = PurchaseQuotationItem(
+                purchase_quotation_id=q.id,
+                product_id=it.product_id,
+                quantity=it.quantity,
+                unit_price=it.unit_price
+            )
+            db.add(item)
+            await db.flush()
+
+            prod = await db.get(Product, it.product_id)
+            from src.schemas.procurement import PurchaseQuotationItemResponse
+            created_items.append(
+                PurchaseQuotationItemResponse(
+                    id=item.id,
+                    product_id=item.product_id,
+                    product_name=prod.name if prod else "Unknown",
+                    quantity=float(item.quantity),
+                    unit_price=float(item.unit_price)
+                )
+            )
+    else:
+        # Fetch current items
+        items_res = await db.execute(
+            select(PurchaseQuotationItem).where(PurchaseQuotationItem.purchase_quotation_id == q.id)
+        )
+        items = items_res.scalars().all()
+        created_items = []
+        for it in items:
+            prod = await db.get(Product, it.product_id)
+            from src.schemas.procurement import PurchaseQuotationItemResponse
+            created_items.append(
+                PurchaseQuotationItemResponse(
+                    id=it.id,
+                    product_id=it.product_id,
+                    product_name=prod.name if prod else "Unknown",
+                    quantity=float(it.quantity),
+                    unit_price=float(it.unit_price)
+                )
+            )
+
+    q.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(q)
+
+    supp = await db.get(Supplier, q.supplier_id)
+
+    return PurchaseQuotationResponse(
+        id=q.id,
+        quotation_number=q.quotation_number,
+        purchase_request_id=q.purchase_request_id,
+        supplier_id=q.supplier_id,
+        supplier_name=supp.name if supp else "Unknown",
+        date_received=q.date_received,
+        valid_until=q.valid_until,
+        total_amount=float(q.total_amount),
+        status=q.status,
+        items=created_items,
+        created_at=q.created_at,
+        updated_at=q.updated_at
+    )
+
+
+@router.delete("/purchase-quotations/{id}")
+async def delete_purchase_quotation(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    q = await db.get(PurchaseQuotation, id)
+    if not q or q.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Purchase Quotation not found.")
+
+    await db.execute(
+        delete(PurchaseQuotationItem).where(PurchaseQuotationItem.purchase_quotation_id == q.id)
+    )
+    await db.delete(q)
+    await db.commit()
+    return {"message": "Purchase Quotation deleted successfully"}
+
+
 # ─── Purchase Orders CRUD ──────────────────────────────────────────
 
 @router.get("/purchase-orders", response_model=List[PurchaseOrderResponse])
@@ -814,8 +929,29 @@ async def update_purchase_order(
         raise HTTPException(status_code=404, detail="Purchase order not found.")
 
     update_data = payload.model_dump(exclude_unset=True)
+    items_data = update_data.pop("items", None)
+
     for k, v in update_data.items():
+        if isinstance(v, datetime) and v.tzinfo is not None:
+            v = v.replace(tzinfo=None)
         setattr(po, k, v)
+
+    if items_data is not None:
+        await db.execute(
+            delete(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
+        )
+        total = 0.0
+        for it in items_data:
+            item = PurchaseOrderItem(
+                purchase_order_id=po.id,
+                product_id=it["product_id"],
+                quantity=it["quantity"],
+                unit_price=it["unit_price"],
+                tax_percent=it.get("tax_percent", 0.0)
+            )
+            db.add(item)
+            total += float(it["quantity"]) * float(it["unit_price"]) * (1.0 + float(it.get("tax_percent", 0.0) or 0.0) / 100.0)
+        po.total_amount = total
 
     po.updated_at = datetime.utcnow()
     await db.commit()
@@ -1114,21 +1250,72 @@ async def list_vendor_bills(
     responses = []
     for bill in bills:
         po_number = None
+        supplier_id = None
         supplier_name = "Unknown Vendor"
+        po_items = []
+        grn_number = None
+        grn_status = None
+        
         po = await db.get(PurchaseOrder, bill.purchase_order_id)
         if po:
             po_number = po.po_number
+            supplier_id = po.supplier_id
             supp = await db.get(Supplier, po.supplier_id)
             if supp:
                 supplier_name = supp.name
+            
+            items_res = await db.execute(
+                select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
+            )
+            items = items_res.scalars().all()
+            for it in items:
+                prod = await db.get(Product, it.product_id)
+                from src.schemas.procurement import PurchaseOrderItemResponse
+                po_items.append(
+                    PurchaseOrderItemResponse(
+                        id=it.id,
+                        product_id=it.product_id,
+                        product_name=prod.name if prod else "Unknown Product",
+                        quantity=float(it.quantity),
+                        unit_price=float(it.unit_price),
+                        tax_percent=float(it.tax_percent)
+                    )
+                )
+        
+        # Resolve GRN details for 3-way match display
+        if bill.grn_id:
+            grn = await db.get(GoodsReceivedNote, bill.grn_id)
+            if grn:
+                grn_number = grn.grn_number
+                grn_status = grn.status
+        else:
+            # Try to find a verified GRN for this PO automatically
+            grn_res = await db.execute(
+                select(GoodsReceivedNote)
+                .where(
+                    GoodsReceivedNote.purchase_order_id == bill.purchase_order_id,
+                    GoodsReceivedNote.status == "Verified"
+                )
+                .order_by(GoodsReceivedNote.created_at.desc())
+                .limit(1)
+            )
+            auto_grn = grn_res.scalars().first()
+            if auto_grn:
+                grn_number = auto_grn.grn_number
+                grn_status = auto_grn.status
                 
         responses.append(
             VendorBillResponse(
                 id=bill.id,
                 bill_number=bill.bill_number,
                 purchase_order_id=bill.purchase_order_id,
+                grn_id=bill.grn_id,
+                grn_number=grn_number,
+                grn_status=grn_status,
                 po_number=po_number,
+                supplier_id=supplier_id,
                 supplier_name=supplier_name,
+                items=po_items,
                 bill_date=bill.bill_date,
                 due_date=bill.due_date,
                 total_amount=float(bill.total_amount),
@@ -1152,10 +1339,46 @@ async def create_vendor_bill(
     if paid_amt > 0 and paid_amt < payload.total_amount and bill_status != "Paid":
         bill_status = "Partial"
 
+    # ── 3-Way Match Validation ──────────────────────────────────────────────
+    # Resolve GRN: use explicitly provided grn_id, or find the latest Verified GRN for the PO.
+    resolved_grn_id = payload.grn_id
+    grn_number = None
+    grn_status_val = None
+
+    if resolved_grn_id:
+        grn_obj = await db.get(GoodsReceivedNote, resolved_grn_id)
+        if not grn_obj or grn_obj.purchase_order_id != payload.purchase_order_id:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail="The specified GRN does not belong to the selected Purchase Order."
+            )
+        grn_number = grn_obj.grn_number
+        grn_status_val = grn_obj.status
+    else:
+        # Auto-link to the most recent Verified GRN for this PO
+        grn_res = await db.execute(
+            select(GoodsReceivedNote)
+            .where(
+                GoodsReceivedNote.purchase_order_id == payload.purchase_order_id,
+                GoodsReceivedNote.status == "Verified"
+            )
+            .order_by(GoodsReceivedNote.created_at.desc())
+            .limit(1)
+        )
+        auto_grn = grn_res.scalars().first()
+        if auto_grn:
+            resolved_grn_id = auto_grn.id
+            grn_number = auto_grn.grn_number
+            grn_status_val = auto_grn.status
+        # If no GRN found, bill is allowed but marked unverified (soft check, not hard block)
+    # ────────────────────────────────────────────────────────────────────────
+
     bill = VendorBill(
         tenant_id=ctx.tenant_id,
         bill_number=payload.bill_number,
         purchase_order_id=payload.purchase_order_id,
+        grn_id=resolved_grn_id,
         due_date=payload.due_date.replace(tzinfo=None) if payload.due_date else None,
         total_amount=payload.total_amount,
         paid_amount=paid_amt,
@@ -1177,14 +1400,34 @@ async def create_vendor_bill(
     
     # Update PO status to Billed
     po = await db.get(PurchaseOrder, payload.purchase_order_id)
+    po_items = []
     if po:
         po.status = "Billed"
+        items_res = await db.execute(
+            select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
+        )
+        items = items_res.scalars().all()
+        for it in items:
+            prod = await db.get(Product, it.product_id)
+            from src.schemas.procurement import PurchaseOrderItemResponse
+            po_items.append(
+                PurchaseOrderItemResponse(
+                    id=it.id,
+                    product_id=it.product_id,
+                    product_name=prod.name if prod else "Unknown Product",
+                    quantity=float(it.quantity),
+                    unit_price=float(it.unit_price),
+                    tax_percent=float(it.tax_percent)
+                )
+            )
         
     await db.commit()
     await db.refresh(bill)
     
     supplier_name = "Unknown Vendor"
+    supplier_id = None
     if po:
+        supplier_id = po.supplier_id
         supp = await db.get(Supplier, po.supplier_id)
         if supp:
             supplier_name = supp.name
@@ -1193,8 +1436,13 @@ async def create_vendor_bill(
         id=bill.id,
         bill_number=bill.bill_number,
         purchase_order_id=bill.purchase_order_id,
+        grn_id=resolved_grn_id,
+        grn_number=grn_number,
+        grn_status=grn_status_val,
         po_number=po.po_number if po else None,
+        supplier_id=supplier_id,
         supplier_name=supplier_name,
+        items=po_items,
         bill_date=bill.bill_date,
         due_date=bill.due_date,
         total_amount=float(bill.total_amount),

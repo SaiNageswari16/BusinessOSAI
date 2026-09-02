@@ -393,8 +393,10 @@ class InvoiceReturnLine(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class DeliveryChallan(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "delivery_challans"
 
-    invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("ar_invoices.id", ondelete="SET NULL"))
-    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="SET NULL"))
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    recipient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     challan_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     challan_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="draft") # draft, dispatched, delivered, returned

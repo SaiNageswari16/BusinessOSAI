@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles } from "lucide-react";
+import { Plus, Search, Filter, Mail, Phone, MapPin, Users, User, Briefcase, Target, Edit2, Trash2, Loader2, Star, Upload, FileText, CheckCircle, AlertTriangle, ArrowRight, ShieldAlert, Key, Clipboard, Check, QrCode, Download, Share2, Printer, ExternalLink, Building, Sparkles, Eye } from "lucide-react";
 import {
   employeesApi,
   departmentsApi,
@@ -8,6 +8,7 @@ import {
   teamsApi,
   companiesApi,
   branchesApi,
+  recruitmentApi,
   Employee,
   Department,
   Designation,
@@ -17,6 +18,7 @@ import {
   EmployeeDocument,
   EmployeeVCard
 } from "../../lib/api-client";
+import { OfferLetterStudioModal } from "./OfferLetterStudioModal";
 import { Card } from "../ui/card";
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "N/A";
@@ -76,6 +78,10 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const [vCardData, setVCardData] = useState<EmployeeVCard | null>(null);
   const [loadingVCard, setLoadingVCard] = useState(false);
   const [vcardCopied, setVcardCopied] = useState(false);
+
+  // Offer Letter Studio for Existing Employees
+  const [offerStudioOpen, setOfferStudioOpen] = useState(false);
+  const [selectedEmpForOffer, setSelectedEmpForOffer] = useState<Employee | null>(null);
 
   // Document management
   const [selectedEmpIdForDocs, setSelectedEmpIdForDocs] = useState<string>("");
@@ -1033,18 +1039,46 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                   <p className="text-sm text-muted-foreground italic py-4">No documents uploaded for this employee yet.</p>
                 ) : (
                   <div className="space-y-3">
-                    {employeeDocuments.map(doc => (
-                      <div key={doc.id} className="flex justify-between items-center p-3 bg-muted/40 rounded-lg border">
-                        <div className="flex items-center gap-3">
-                          <FileText className="size-5 text-primary" />
-                          <div>
-                            <p className="text-sm font-semibold">{doc.document_name}</p>
-                            <p className="text-[10px] text-muted-foreground font-mono">Type: {doc.document_type} • Uploaded: {formatDate(doc.upload_date)}</p>
+                    {employeeDocuments.map(doc => {
+                      const normalizedPath = doc.file_path.startsWith("http") || doc.file_path.startsWith("/")
+                        ? doc.file_path
+                        : `/${doc.file_path}`;
+                      const isOfferLetter = doc.document_type === "Offer Letter" || doc.file_path.toLowerCase().includes("offer");
+
+                      return (
+                        <div key={doc.id} className="flex justify-between items-center p-3 bg-muted/40 hover:bg-muted/60 transition-colors rounded-lg border">
+                          <div className="flex items-center gap-3">
+                            <FileText className="size-5 text-primary" />
+                            <div>
+                              <p className="text-sm font-semibold">{doc.document_name}</p>
+                              <p className="text-[10px] text-muted-foreground font-mono">
+                                Type: {doc.document_type} • Uploaded: {formatDate(doc.upload_date)}
+                              </p>
+                            </div>
                           </div>
+
+                          {isOfferLetter ? (
+                            <a
+                              href={normalizedPath}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold gradient-brand text-white shadow hover:opacity-90 transition-all"
+                            >
+                              <Eye className="size-3.5" /> View & Print Offer
+                            </a>
+                          ) : (
+                            <a
+                              href={normalizedPath}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary font-bold hover:underline flex items-center gap-1"
+                            >
+                              View <ExternalLink className="size-3" />
+                            </a>
+                          )}
                         </div>
-                        <a href={doc.file_path} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline">View</a>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </Card>
@@ -1259,6 +1293,18 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800"
+                              onClick={() => {
+                                setSelectedEmpForOffer(emp);
+                                setOfferStudioOpen(true);
+                              }}
+                              title="Release / Re-issue Offer Letter"
+                            >
+                              <FileText className="size-3.5" />
+                            </Button>
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-700 hover:bg-purple-50" onClick={() => handleOpenVCard(emp)} title="vCard & QR">
                               <QrCode className="size-3.5" />
                             </Button>
@@ -1619,6 +1665,51 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {/* Offer Letter Studio Modal for Existing Employees */}
+      {offerStudioOpen && (
+        <OfferLetterStudioModal
+          open={offerStudioOpen}
+          onClose={() => {
+            setOfferStudioOpen(false);
+            setSelectedEmpForOffer(null);
+          }}
+          applicants={[]}
+          employees={employees}
+          selectedEmployeeId={selectedEmpForOffer?.id}
+          onOfferSent={() => {
+            toast.success("Offer letter generated and saved to employee's document vault!");
+            setOfferStudioOpen(false);
+            setSelectedEmpForOffer(null);
+          }}
+          showNotification={(msg) => toast(msg)}
+          handleSaveOfferDocument={async () => {
+            toast.success("Document saved to employee vault.");
+          }}
+          handleSendOfferApi={async (payload) => {
+            await recruitmentApi.createOffer({
+              employee_id: payload.employee_id,
+              applicant_id: payload.applicant_id,
+              candidate: payload.candidate,
+              candidate_email: payload.candidate_email,
+              role: payload.role,
+              ctc: payload.ctc,
+              expiry_date: payload.expiry_date,
+              joining_date: payload.joining_date,
+              signer_name: `${payload.signing_authority} (${payload.signing_title})`,
+              custom_template: `Template: ${payload.template_name}
+CTC: ₹${payload.ctc} (Basic: ${payload.basic_pct}%, HRA: ${payload.hra_pct}%, Special: ${payload.special_pct}%, PF: ${payload.pf_pct}%)
+Probation: ${payload.probation_months} Months | Notice: ${payload.notice_days} Days
+
+Terms & Clauses:
+${payload.clauses}`
+            });
+            toast.success(`Offer letter released and saved to ${payload.candidate}'s Document Vault!`);
+            setOfferStudioOpen(false);
+            setSelectedEmpForOffer(null);
+          }}
+        />
       )}
     </div>
   );

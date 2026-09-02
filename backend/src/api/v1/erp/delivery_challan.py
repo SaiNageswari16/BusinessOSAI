@@ -5,7 +5,7 @@ import string
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -35,6 +35,8 @@ async def create_delivery_challan(
         tenant_id=ctx.tenant_id,
         invoice_id=payload.invoice_id,
         customer_id=payload.customer_id,
+        reference_number=payload.reference_number,
+        recipient_name=payload.recipient_name,
         challan_number=generate_challan_number(),
         challan_date=payload.challan_date,
         status="draft",
@@ -127,6 +129,7 @@ async def dispatch_delivery_challan(
     
     result = await db.execute(stmt)
     challan = result.scalar_one_or_none()
+    
     if not challan:
         raise HTTPException(status_code=404, detail="Delivery Challan not found")
         
@@ -168,3 +171,78 @@ async def dispatch_delivery_challan(
     await db.refresh(challan)
     
     return challan
+
+
+@router.put("/{challan_id}", response_model=DeliveryChallanResponse)
+@router.patch("/{challan_id}", response_model=DeliveryChallanResponse)
+async def update_delivery_challan(
+    challan_id: uuid.UUID,
+    payload: DeliveryChallanCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    stmt = select(DeliveryChallan).options(selectinload(DeliveryChallan.items)).where(
+        DeliveryChallan.id == challan_id,
+        DeliveryChallan.tenant_id == ctx.tenant_id,
+    ).with_for_update()
+
+    result = await db.execute(stmt)
+    challan = result.scalar_one_or_none()
+    if not challan:
+        raise HTTPException(status_code=404, detail="Delivery Challan not found")
+
+    challan.invoice_id = payload.invoice_id
+    challan.customer_id = payload.customer_id
+    challan.reference_number = payload.reference_number
+    challan.recipient_name = payload.recipient_name
+    challan.challan_date = payload.challan_date
+    challan.transporter_name = payload.transporter_name
+    challan.vehicle_number = payload.vehicle_number
+    challan.waybill_number = payload.waybill_number
+    challan.notes = payload.notes
+
+    # Delete existing items and insert updated ones
+    await db.execute(
+        delete(DeliveryChallanItem).where(DeliveryChallanItem.challan_id == challan.id)
+    )
+
+    for item in payload.items:
+        challan_item = DeliveryChallanItem(
+            challan_id=challan.id,
+            product_id=item.product_id,
+            product_name=item.product_name,
+            quantity=item.quantity,
+            uom=item.uom,
+        )
+        db.add(challan_item)
+
+    await db.commit()
+    await db.refresh(challan)
+
+    stmt = select(DeliveryChallan).options(selectinload(DeliveryChallan.items)).where(DeliveryChallan.id == challan.id)
+    result = await db.execute(stmt)
+    return result.scalar_one()
+
+
+@router.delete("/{challan_id}")
+async def delete_delivery_challan(
+    challan_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    stmt = select(DeliveryChallan).where(
+        DeliveryChallan.id == challan_id,
+        DeliveryChallan.tenant_id == ctx.tenant_id,
+    )
+    result = await db.execute(stmt)
+    challan = result.scalar_one_or_none()
+    if not challan:
+        raise HTTPException(status_code=404, detail="Delivery Challan not found")
+
+    await db.execute(
+        delete(DeliveryChallanItem).where(DeliveryChallanItem.challan_id == challan.id)
+    )
+    await db.delete(challan)
+    await db.commit()
+    return {"message": "Delivery Challan deleted successfully"}
+

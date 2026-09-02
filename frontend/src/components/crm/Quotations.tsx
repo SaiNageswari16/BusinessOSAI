@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Plus, Search, Filter, FileCheck, FileText, Send, Building, Calendar, ExternalLink, PhoneCall } from "lucide-react";
 import { crmQuotationsApi, type CrmQuotation } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
+import { getActiveBillingGst } from "@/lib/receipt-template-store";
 import {
   Dialog,
   DialogContent,
@@ -74,12 +75,15 @@ export function Quotations() {
       return;
     }
 
-    const orgName = tenant?.name || "BusinessOS AI Global";
-    const orgLogo = tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
-    const orgAddress = (tenant as any)?.settings?.address || "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh - 516360";
-    const orgPhone = (tenant as any)?.settings?.phone || "+91 98493 44919";
-    const orgEmail = (tenant as any)?.settings?.email || "sales@businessos.ai";
-    const orgGstin = (tenant as any)?.settings?.gstin || (tenant as any)?.settings?.tax_id || "37AABCCH694G1Z4";
+    const activeBillingGst = getActiveBillingGst(tenant?.id);
+    const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS AI Global";
+    const orgLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const orgAddress = activeBillingGst?.address || (tenant as any)?.settings?.address || "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh - 516360";
+    const orgPhone = activeBillingGst?.phone || (tenant as any)?.settings?.phone || "+91 98493 44919";
+    const orgEmail = activeBillingGst?.email || (tenant as any)?.settings?.email || "sales@businessos.ai";
+    const orgGstin = activeBillingGst?.gstin || (tenant as any)?.settings?.gstin || (tenant as any)?.settings?.tax_id || "37AABCCH694G1Z4";
+    const googleReviewUrl = activeBillingGst?.google_review_url || (tenant as any)?.raw?.google_review_url || null;
+    const showReviewQR = activeBillingGst?.google_review_enabled !== false && Boolean(googleReviewUrl);
 
     const items = (quote.items as any)?.items || [];
     const subtotal = Number(quote.total || 0);
@@ -110,7 +114,8 @@ export function Quotations() {
             .total-card { width: 260px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
             .total-row { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 600; margin-bottom: 6px; }
             .grand-total { border-top: 1.5px solid #0f172a; padding-top: 6px; margin-top: 6px; font-size: 11pt; font-weight: 900; color: #2563eb; }
-            .terms { background: #f8fafc; border-left: 3px solid #2563eb; padding: 10px 14px; font-size: 8pt; color: #475569; margin-bottom: 24px; }
+            .terms { background: #f8fafc; border-left: 3px solid #2563eb; padding: 10px 14px; font-size: 8pt; color: #475569; margin-bottom: 20px; }
+            .review-box { display: flex; align-items: center; gap: 14px; padding: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; margin-bottom: 20px; }
             .footer { text-align: center; font-size: 7.5pt; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
             @media print { body { padding: 0; } }
           </style>
@@ -195,6 +200,17 @@ export function Quotations() {
               <p>1. Quotation prices are valid for 30 calendar days from the issue date.</p>
               <p>2. Goods and services will be scheduled upon receipt of purchase order or advance payment confirmation.</p>
             </div>
+
+            ${showReviewQR && googleReviewUrl ? `
+            <div class="review-box">
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=0&data=${encodeURIComponent(googleReviewUrl)}" alt="Google Review QR" style="width: 60px; height: 60px; object-fit: contain; background: #fff; padding: 3px; border: 1px solid #f59e0b; border-radius: 6px;" />
+              <div>
+                <div style="color: #f59e0b; font-size: 11px; font-weight: 900; letter-spacing: 2px;">★ ★ ★ ★ ★</div>
+                <div style="font-size: 11px; font-weight: 800; color: #78350f; text-transform: uppercase;">Rate our solutions on Google!</div>
+                <div style="font-size: 9.5px; color: #92400e;">Scan with your phone camera to share your 5-star experience with our team.</div>
+              </div>
+            </div>
+            ` : ''}
 
             <div class="footer">
               <p>This is a computer-generated quotation statement issued by ${orgName}.</p>

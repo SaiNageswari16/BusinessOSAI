@@ -152,6 +152,9 @@ export interface Company {
   established_date: string | null;
   gst_registrations?: GstRegistration[];
   gsp_credentials?: GspCredentials;
+  google_review_url?: string | null;
+  google_place_id?: string | null;
+  google_review_enabled?: boolean;
   status: string;
   created_at: string;
   updated_at: string;
@@ -1219,7 +1222,8 @@ export interface Applicant {
   tenant_id: string;
   name: string;
   email: string;
-  job_id: string;
+  phone?: string | null;
+  job_id?: string | null;
   job_title: string;
   applied_date: string;
   experience: string;
@@ -1230,6 +1234,7 @@ export interface Applicant {
   resume_text: string | null;
   expected_salary?: number;
   proposed_salary?: number;
+  notice_period_days?: number;
   notes_json?: { author: string; date: string; text: string }[];
   created_at: string;
   updated_at: string;
@@ -1257,8 +1262,10 @@ export interface Interview {
 export interface Offer {
   id: string;
   tenant_id: string;
-  applicant_id: string;
+  applicant_id?: string | null;
+  employee_id?: string | null;
   candidate: string;
+  candidate_email?: string | null;
   role: string;
   ctc: number;
   offer_date: string;
@@ -1315,6 +1322,8 @@ export const recruitmentApi = {
     request<PaginatedResponse<Applicant>>("GET", "/hrms/recruitment/applicants", undefined, {
       job_id: jobId, stage, source, search, page, page_size: pageSize
     }),
+  createApplicant: (data: Record<string, unknown>) =>
+    request<Applicant>("POST", "/hrms/recruitment/applicants", data),
   applyJob: (jobId: string, data: Record<string, unknown>) =>
     request<Applicant>("POST", `/hrms/recruitment/jobs/${jobId}/apply`, data),
   updateApplicant: (id: string, data: Record<string, unknown>) =>
@@ -1344,6 +1353,10 @@ export const recruitmentApi = {
     request<PaginatedResponse<Offer>>("GET", "/hrms/recruitment/offers", undefined, {
       page, page_size: pageSize
     }),
+  getOffer: (id: string) =>
+    request<Offer>("GET", `/hrms/recruitment/offers/${id}`),
+  getPublicOffer: (id: string) =>
+    request<Offer>("GET", `/hrms/recruitment/public/offers/${id}`),
   createOffer: (data: Record<string, unknown>) =>
     request<Offer>("POST", "/hrms/recruitment/offers", data),
   sendOfferEmail: (id: string) =>
@@ -3634,21 +3647,30 @@ export interface StockMovement {
   id: string;
   movement_number: string;
   product_id: string;
+  product_name?: string;
+  sku?: string;
   source_location: string;
   destination_location: string;
   quantity: number;
   notes: string | null;
   status: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface StockAdjustment {
   id: string;
   adjustment_number: string;
   product_id: string;
+  product_name?: string;
+  sku?: string;
+  current_stock?: number;
   adjustment_type: string;
   quantity_changed: number;
   reason: string | null;
   status: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CycleCount {
@@ -4013,6 +4035,7 @@ export const inventoryApi = {
   // Operations - GRN
   getGoodsReceipts: () => request<GoodsReceipt[]>("GET", "/inventory/grn"),
   createGoodsReceipt: (data: Record<string, unknown>) => request<GoodsReceipt>("POST", "/inventory/grn", data),
+  updateGoodsReceipt: (id: string, data: Record<string, unknown>) => request<GoodsReceipt>("PUT", `/inventory/grn/${id}`, data),
   deleteGoodsReceipt: (id: string) => request<void>("DELETE", `/inventory/grn/${id}`),
 
   // Operations - Goods Issue
@@ -4028,6 +4051,19 @@ export const inventoryApi = {
   // Operations - Stock Adjustment
   getStockAdjustments: () => request<StockAdjustment[]>("GET", "/inventory/adjustments"),
   createStockAdjustment: (data: Record<string, unknown>) => request<StockAdjustment>("POST", "/inventory/adjustments", data),
+  createStockAdjustmentBatch: (data: {
+    adjustment_number: string;
+    warehouse?: string;
+    adjustment_type?: string;
+    reason?: string;
+    items: Array<{
+      product_id: string;
+      adjustment_type?: string;
+      quantity_changed: number;
+      reason?: string;
+      unit_price?: number;
+    }>;
+  }) => request<StockAdjustment[]>("POST", "/inventory/adjustments/batch", data as unknown as Record<string, unknown>),
   deleteStockAdjustment: (id: string) => request<void>("DELETE", `/inventory/adjustments/${id}`),
 
   // Operations - Cycle Counting
@@ -4151,6 +4187,8 @@ export const inventoryApi = {
 
   getPurchaseQuotations: () => request<any[]>("GET", "/inventory/procurement/purchase-quotations"),
   createPurchaseQuotation: (data: any) => request<any>("POST", "/inventory/procurement/purchase-quotations", data),
+  updatePurchaseQuotation: (id: string, data: any) => request<any>("PUT", `/inventory/procurement/purchase-quotations/${id}`, data),
+  deletePurchaseQuotation: (id: string) => request<void>("DELETE", `/inventory/procurement/purchase-quotations/${id}`),
 
   getPurchaseOrders: () => request<any[]>("GET", "/inventory/procurement/purchase-orders"),
   createPurchaseOrder: (data: any) => request<any>("POST", "/inventory/procurement/purchase-orders", data),
@@ -4632,6 +4670,8 @@ export const deliveryChallanApi = {
   getChallans: (page = 1, pageSize = 50, filters?: any) => request<any>("GET", "/erp/delivery-challans", undefined, { page, page_size: pageSize, ...filters }),
   getChallan: (id: string) => request<any>("GET", `/erp/delivery-challans/${id}`),
   createChallan: (data: any) => request<any>("POST", "/erp/delivery-challans", data),
+  updateChallan: (id: string, data: any) => request<any>("PUT", `/erp/delivery-challans/${id}`, data),
+  deleteChallan: (id: string) => request<void>("DELETE", `/erp/delivery-challans/${id}`),
   dispatchChallan: (id: string) => request<any>("POST", `/erp/delivery-challans/${id}/dispatch`),
 };
 

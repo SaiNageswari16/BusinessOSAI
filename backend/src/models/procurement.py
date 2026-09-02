@@ -231,6 +231,11 @@ class VendorBill(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
     purchase_order: Mapped[PurchaseOrder] = relationship()
     
+    # 3-Way Match: GRN → Bill link. Optional so legacy bills without GRN are not broken.
+    # Best practice: always link a bill to the GRN that confirmed goods were received.
+    grn_id = mapped_column(ForeignKey("erp_goods_received_notes.id", ondelete="SET NULL"), nullable=True)
+    grn: Mapped["GoodsReceivedNote | None"] = relationship()
+    
     bill_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     due_date: Mapped[datetime | None] = mapped_column(DateTime)
     total_amount: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)

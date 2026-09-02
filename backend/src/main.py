@@ -167,6 +167,36 @@ async def serve_image_fallback(file_path: str):
     # Graceful fallback: return clean SVG placeholder instead of 404
     return Response(content=DEFAULT_PLACEHOLDER_SVG, media_type="image/svg+xml")
 
+@app.get("/vault/{file_path:path}")
+async def serve_vault_fallback(file_path: str):
+    vault_p = STATIC_DIR / "vault" / file_path
+    if vault_p.is_file():
+        return FileResponse(str(vault_p), media_type="application/pdf" if file_path.endswith(".pdf") else None)
+    
+    # On-the-fly generation for offer letters if file not yet cached on disk
+    if "offers" in file_path and file_path.endswith(".pdf"):
+        offer_id_raw = os.path.basename(file_path).replace(".pdf", "").strip()
+        try:
+            import uuid
+            from src.models import OfferLetter, Tenant
+            from src.database.session import get_db
+            from src.api.v1.hrms.recruitment import generate_offer_letter_pdf
+            
+            offer_uuid = uuid.UUID(offer_id_raw)
+            async for db in get_db():
+                offer = await db.get(OfferLetter, offer_uuid)
+                if offer:
+                    tenant = await db.scalar(Tenant.__table__.select().where(Tenant.id == offer.tenant_id)) if hasattr(Tenant, '__table__') else None
+                    comp_name = "BusinessOS Enterprise"
+                    pdf_bytes = generate_offer_letter_pdf(offer, comp_name)
+                    vault_p.parent.mkdir(parents=True, exist_ok=True)
+                    vault_p.write_bytes(pdf_bytes)
+                    return Response(content=pdf_bytes, media_type="application/pdf")
+        except Exception as e:
+            logger.warning(f"On-the-fly PDF generation skipped for {file_path}: {e}")
+
+    raise HTTPException(status_code=404, detail="File not found in compliance vault")
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/privacy-policy", response_class=FileResponse)

@@ -26,6 +26,8 @@ export interface ReceiptTemplate {
   showLoyaltyPoints: boolean;
   showPaymentMode: boolean;
   showQrCode: boolean;
+  showGoogleReviewQR?: boolean;
+  googleReviewUrl?: string;
   showDeclaration: boolean;
   showFooterNote: boolean;
 
@@ -61,6 +63,8 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
   showLoyaltyPoints: true,
   showPaymentMode: true,
   showQrCode: true,
+  showGoogleReviewQR: true,
+  googleReviewUrl: 'https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4',
   showDeclaration: true,
   showFooterNote: true,
 
@@ -97,6 +101,9 @@ export interface ActiveGstDetails {
   cin?: string;
   pan?: string;
   logo_url?: string;
+  google_review_url?: string | null;
+  google_place_id?: string | null;
+  google_review_enabled?: boolean;
 }
 
 export function getTenantIdFromStorage(): string {
@@ -120,7 +127,7 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
     const storedGstRaw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`);
     if (storedGstRaw) {
       const parsed = JSON.parse(storedGstRaw);
-      if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url)) return parsed;
+      if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url || parsed.google_review_url)) return parsed;
     }
 
     // 2. Scoped Active Company in localStorage for this specific tenant
@@ -143,6 +150,9 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
           cin: comp.registration_number || '',
           pan: comp.pan_number || '',
           logo_url: comp.logo_url || null,
+          google_review_url: comp.google_review_url || null,
+          google_place_id: comp.google_place_id || null,
+          google_review_enabled: comp.google_review_enabled !== false,
         };
       }
     }
@@ -169,6 +179,9 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
           cin: raw.cin || raw.registration_number || settings.cin || '',
           pan: raw.pan || raw.pan_number || settings.pan || '',
           logo_url: tenant.logo_url || raw.logo_url || null,
+          google_review_url: raw.google_review_url || settings.google_review_url || null,
+          google_place_id: raw.google_place_id || settings.google_place_id || null,
+          google_review_enabled: raw.google_review_enabled !== false && settings.google_review_enabled !== false,
         };
       }
     }
@@ -268,6 +281,8 @@ export function getActiveReceiptTemplate(): ReceiptTemplate {
       gstin: activeGst.gstin || active.gstin,
       cin: activeGst.cin || active.cin,
       logoUrl: activeGst.logo_url || active.logoUrl || '',
+      googleReviewUrl: activeGst.google_review_url || active.googleReviewUrl || 'https://search.google.com/local/writereview',
+      showGoogleReviewQR: activeGst.google_review_enabled !== false,
     };
   }
 

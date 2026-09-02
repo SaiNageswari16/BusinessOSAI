@@ -1180,8 +1180,8 @@ function PosModule() {
   if (!hasPermission("view:pos")) return <Unauthorized />;
 
   const params = new URLSearchParams(searchStr);
-  const activeTab = params.get("tab") || "sales";
-  const ActiveComponent = componentMap[activeTab] || PosSalesInvoice;
+  const activeTab = params.get("tab") || "sales_history";
+  const ActiveComponent = componentMap[activeTab] || PosInvoicesHistory;
   const isFullBleed = activeTab === "terminal" || activeTab === "sales";
 
   return (

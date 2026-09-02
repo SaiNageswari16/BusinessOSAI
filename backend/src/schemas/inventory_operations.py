@@ -106,6 +106,8 @@ class StockMovementUpdate(StockMovementBase):
 class StockMovementResponse(StockMovementBase, TimestampSchema):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    product_name: Optional[str] = None
+    sku: Optional[str] = None
     class Config:
         from_attributes = True
 
@@ -124,6 +126,20 @@ class StockAdjustmentBase(BaseModel):
 class StockAdjustmentCreate(StockAdjustmentBase):
     pass
 
+class StockAdjustmentItemInput(BaseModel):
+    product_id: uuid.UUID
+    adjustment_type: Optional[str] = "Write-Off"
+    quantity_changed: int
+    reason: Optional[str] = None
+    unit_price: Optional[float] = 0.0
+
+class StockAdjustmentBatchCreate(BaseModel):
+    adjustment_number: str = Field(..., max_length=100)
+    warehouse: Optional[str] = "Main Warehouse"
+    adjustment_type: Optional[str] = "Write-Off"
+    reason: Optional[str] = None
+    items: List[StockAdjustmentItemInput]
+
 class StockAdjustmentUpdate(StockAdjustmentBase):
     adjustment_number: Optional[str] = Field(None, max_length=100)
     product_id: Optional[uuid.UUID] = None
@@ -133,6 +149,9 @@ class StockAdjustmentUpdate(StockAdjustmentBase):
 class StockAdjustmentResponse(StockAdjustmentBase, TimestampSchema):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    product_name: Optional[str] = None
+    sku: Optional[str] = None
+    current_stock: Optional[int] = None
     class Config:
         from_attributes = True
 

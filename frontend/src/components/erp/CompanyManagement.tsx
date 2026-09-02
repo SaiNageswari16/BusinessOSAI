@@ -6,7 +6,7 @@ import {
   ExternalLink, Edit2, ShieldCheck, CreditCard, ChevronRight, LayoutGrid, List,
   Users, Sparkles, X, Save, Loader2, Trash2, AlertCircle, Globe, FileText, CheckCircle,
   Truck, Receipt, KeyRound, Server, Activity, ArrowRight, ShieldAlert, CheckCircle2,
-  Copy, RefreshCw, Layers, Shield, Upload, Smartphone, Lock, Clock, Zap
+  Copy, RefreshCw, Layers, Shield, Upload, Smartphone, Lock, Clock, Zap, Star, QrCode, Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -51,15 +51,16 @@ function CompanyFormModal({
   onSaved,
 }: {
   company: Company | null;
-  initialTab?: "general" | "gst" | "gsp";
+  initialTab?: "general" | "gst" | "gsp" | "reviews";
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isEdit = !!company;
-  const [activeModalTab, setActiveModalTab] = useState<"general" | "gst" | "gsp">(initialTab);
+  const [activeModalTab, setActiveModalTab] = useState<"general" | "gst" | "gsp" | "reviews">(initialTab);
   const [saving, setSaving] = useState(false);
   const [testingModule, setTestingModule] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string; token_preview?: string }>>({});
+  const [copiedReviewLink, setCopiedReviewLink] = useState(false);
 
   // ── GST Portal Mobile OTP & Session State ──────────────────────────────
   const [gstSession, setGstSession] = useState<{ is_active: boolean; remaining_minutes: number; expires_at: string | null } | null>(null);
@@ -89,6 +90,9 @@ function CompanyFormModal({
     default_currency_code: company?.default_currency_code ?? "INR",
     timezone: company?.timezone ?? "Asia/Kolkata",
     language: company?.language ?? "en",
+    google_review_url: company?.google_review_url ?? "https://search.google.com/local/writereview",
+    google_place_id: company?.google_place_id ?? "",
+    google_review_enabled: company?.google_review_enabled ?? true,
     status: company?.status ?? "active",
   });
 
@@ -354,6 +358,9 @@ function CompanyFormModal({
         default_currency_code: form.default_currency_code || "INR",
         timezone: form.timezone || "Asia/Kolkata",
         language: form.language || "en",
+        google_review_url: sanitize(form.google_review_url),
+        google_place_id: sanitize(form.google_place_id),
+        google_review_enabled: form.google_review_enabled,
         status: form.status || "active",
         gst_registrations: gstRegistrations,
         gsp_credentials: gspCreds,
@@ -381,6 +388,9 @@ function CompanyFormModal({
           cin: form.registration_number || "",
           pan: form.pan_number || "",
           logo_url: form.logo_url || "",
+          google_review_url: form.google_review_url || "",
+          google_place_id: form.google_place_id || "",
+          google_review_enabled: form.google_review_enabled,
         }, tenant?.id);
       }
 
@@ -425,6 +435,7 @@ function CompanyFormModal({
             { id: "general", label: "General Profile", icon: Building2 },
             { id: "gst", label: `GST Registrations (${gstRegistrations.length})`, icon: Layers },
             { id: "gsp", label: "GSP & Govt Gateway (Whitebooks)", icon: KeyRound },
+            { id: "reviews", label: "⭐ Google Reviews & QR", icon: Star },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -1120,10 +1131,182 @@ function CompanyFormModal({
             </div>
           )}
 
+          {activeModalTab === "reviews" && (
+            <div className="space-y-5">
+              <div className="p-4 rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/40 via-card to-purple-50/40 dark:from-amber-950/20 dark:to-purple-950/20 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500">
+                      <Star className="size-4 fill-amber-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground">Google Business Reviews & QR Automation</h3>
+                      <p className="text-[11px] text-muted-foreground">Automate 5-star customer ratings across Thermal POS Receipts & CRM</p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.google_review_enabled}
+                      onChange={(e) => setForm({ ...form, google_review_enabled: e.target.checked })}
+                      className="rounded text-primary focus:ring-primary size-4"
+                    />
+                    <span>Enable Review QR</span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold text-foreground block mb-1">
+                        Google Review Direct Link / Place URL *
+                      </label>
+                      <input
+                        type="text"
+                        value={form.google_review_url}
+                        onChange={(e) => setForm({ ...form, google_review_url: e.target.value })}
+                        placeholder="https://g.page/r/.../review or https://search.google.com/local/writereview..."
+                        className="w-full px-3 py-2 text-xs rounded-xl border bg-background font-medium focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Found in your Google Business Profile → "Ask for reviews" → Copy link.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-foreground block mb-1">
+                        Google Place ID (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={form.google_place_id}
+                        onChange={(e) => setForm({ ...form, google_place_id: e.target.value })}
+                        placeholder="e.g. ChIJN1t_tDeuEmsRUsoyG83frY4"
+                        className="w-full px-3 py-2 text-xs rounded-xl border bg-background font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (form.google_review_url) {
+                              navigator.clipboard.writeText(form.google_review_url);
+                              setCopiedReviewLink(true);
+                              toast.success("Google Review Link copied to clipboard!");
+                              setTimeout(() => setCopiedReviewLink(false), 2000);
+                            }
+                          }}
+                          className="flex-1 h-8 text-xs font-bold gap-1.5"
+                        >
+                          {copiedReviewLink ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                          <span>{copiedReviewLink ? "Copied" : "Copy Link"}</span>
+                        </Button>
+
+                        <a
+                          href={form.google_review_url || "#"}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1"
+                        >
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full h-8 text-xs font-bold gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                          >
+                            <ExternalLink className="size-3.5" /> Test Link
+                          </Button>
+                        </a>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const reviewUrl = form.google_review_url || "https://search.google.com/local/writereview";
+                          const win = window.open("", "_blank");
+                          if (!win) {
+                            toast.error("Please allow popups to print the counter stand card");
+                            return;
+                          }
+                          win.document.write(`
+                            <!DOCTYPE html>
+                            <html>
+                              <head>
+                                <title>Google Review Counter Stand - ${form.name}</title>
+                                <style>
+                                  @page { size: A5 portrait; margin: 10mm; }
+                                  body { font-family: system-ui, -apple-system, sans-serif; text-align: center; margin: 0; padding: 24px; background: #f8fafc; }
+                                  .card { border: 3px solid #6366f1; border-radius: 28px; padding: 40px 24px; max-width: 420px; margin: 0 auto; background: #ffffff; }
+                                  .logo-badge { background: #eef2ff; color: #4f46e5; display: inline-block; padding: 6px 18px; border-radius: 999px; font-weight: 800; font-size: 13px; text-transform: uppercase; margin-bottom: 14px; }
+                                  h1 { font-size: 26px; font-weight: 900; margin: 0 0 6px 0; color: #0f172a; }
+                                  .stars { color: #f59e0b; font-size: 28px; letter-spacing: 6px; margin-bottom: 20px; }
+                                  .qr-box { background: #ffffff; border: 2px dashed #cbd5e1; border-radius: 24px; padding: 20px; display: inline-block; margin-bottom: 20px; }
+                                  .qr-box img { width: 200px; height: 200px; display: block; }
+                                  .scan-inst { font-size: 16px; font-weight: 900; color: #0f172a; text-transform: uppercase; margin: 0 0 6px 0; }
+                                </style>
+                              </head>
+                              <body>
+                                <div class="card">
+                                  <div class="logo-badge">Official Store Review</div>
+                                  <h1>${form.name}</h1>
+                                  <p style="color:#64748b;font-size:14px;margin-bottom:16px;">Loved your experience with us today?</p>
+                                  <div class="stars">★★★★★</div>
+                                  <div class="qr-box">
+                                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=0&data=${encodeURIComponent(reviewUrl)}" alt="QR" />
+                                  </div>
+                                  <div class="scan-inst">Scan to Rate on Google</div>
+                                  <p style="color:#64748b;font-size:12px;">Scan the QR code with your phone camera to share your review.</p>
+                                </div>
+                                <script>setTimeout(function() { window.print(); }, 500);<\/script>
+                              </body>
+                            </html>
+                          `);
+                          win.document.close();
+                        }}
+                        className="w-full h-8 text-xs font-bold gap-1.5 gradient-brand text-white border-0 shadow-xs"
+                      >
+                        <QrCode className="size-3.5" /> Print Counter Tent Card (A5)
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Live QR Preview Box */}
+                  <div className="p-4 rounded-xl bg-card border border-border flex flex-col items-center justify-center text-center space-y-2 shadow-xs">
+                    <div className="flex items-center gap-1 text-amber-500 text-xs font-black">
+                      <Star className="size-3.5 fill-amber-500" />
+                      <Star className="size-3.5 fill-amber-500" />
+                      <Star className="size-3.5 fill-amber-500" />
+                      <Star className="size-3.5 fill-amber-500" />
+                      <Star className="size-3.5 fill-amber-500" />
+                    </div>
+                    <div className="p-2 bg-white rounded-xl border border-slate-200 shadow-sm">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent(
+                          form.google_review_url || "https://search.google.com/local/writereview"
+                        )}`}
+                        alt="Google Review QR Code"
+                        className="size-28 object-contain"
+                      />
+                    </div>
+                    <span className="text-xs font-bold text-foreground">Live POS Bill & Table Tent QR</span>
+                    <span className="text-[10px] text-muted-foreground">Auto-printed at bottom of thermal invoices</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-4 border-t sticky bottom-0 bg-card">
             <div className="text-[11px] text-muted-foreground">
               {activeModalTab === "gst" && `${gstRegistrations.length} GST registrations configured`}
               {activeModalTab === "gsp" && `Environment: ${gspCreds.environment === "production" ? "Live Production" : "Sandbox"}`}
+              {activeModalTab === "reviews" && (form.google_review_enabled ? "Google Review QR Enabled" : "Review QR Disabled")}
             </div>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose} className="h-9 px-4 text-xs font-semibold">
@@ -1253,6 +1436,10 @@ export function CompanyManagement() {
           email: activeCompany.email || "",
           cin: activeCompany.registration_number || "",
           pan: activeCompany.pan_number || "",
+          logo_url: activeCompany.logo_url || null,
+          google_review_url: activeCompany.google_review_url || null,
+          google_place_id: activeCompany.google_place_id || null,
+          google_review_enabled: activeCompany.google_review_enabled !== false,
         };
         localStorage.setItem("bos_active_company", JSON.stringify(activeCompany));
         const current = getActiveBillingGst();
@@ -1291,6 +1478,10 @@ export function CompanyManagement() {
         email: activeCompany.email || "",
         cin: activeCompany.registration_number || "",
         pan: activeCompany.pan_number || "",
+        logo_url: activeCompany.logo_url || null,
+        google_review_url: activeCompany.google_review_url || null,
+        google_place_id: activeCompany.google_place_id || null,
+        google_review_enabled: activeCompany.google_review_enabled !== false,
       };
 
       setActiveBillingGst(details);
@@ -1581,6 +1772,18 @@ export function CompanyManagement() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-8 gap-1.5 font-semibold text-xs px-2.5 text-amber-600 border-amber-200 hover:bg-amber-50"
+                  onClick={() => {
+                    setEditCompany(activeCompany);
+                    setFormInitialTab("reviews");
+                    setShowForm(true);
+                  }}
+                >
+                  <Star className="size-3.5 fill-amber-500 text-amber-500" /> Google Reviews & QR
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="h-8 gap-1.5 font-semibold text-xs px-2.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
                   onClick={() => {
                     setEditCompany(activeCompany);
@@ -1651,6 +1854,7 @@ export function CompanyManagement() {
                   "Overview",
                   "GST Registrations",
                   "GSP & Govt Gateway",
+                  "Google Reviews & QR",
                   "Branches",
                   "Tax & Finance",
                   "Documents"
@@ -1674,6 +1878,11 @@ export function CompanyManagement() {
                     {tab === "Branches" && companyBranches.length > 0 && (
                       <span className="ml-1.5 bg-muted text-muted-foreground text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
                         {companyBranches.length}
+                      </span>
+                    )}
+                    {tab === "Google Reviews & QR" && (
+                      <span className="ml-1.5 bg-amber-500/10 text-amber-600 border border-amber-500/20 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
+                        ★ Live
                       </span>
                     )}
                   </button>
@@ -1783,6 +1992,51 @@ export function CompanyManagement() {
                             </div>
                           </Card>
                         </div>
+
+                        {/* ── Overview Google Review Quick Card ── */}
+                        <Card className="p-4 bg-gradient-to-br from-amber-500/5 via-card to-purple-500/5 border border-amber-200/60 dark:border-amber-900/40">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="size-10 rounded-xl bg-amber-500 text-white grid place-items-center font-bold shadow-xs shrink-0">
+                                <Star className="size-5 fill-white" />
+                              </div>
+                              <div>
+                                <div className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                                  <span>Google Business Review QR Automation</span>
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 font-extrabold text-amber-800 dark:text-amber-300">
+                                    POS & CRM
+                                  </span>
+                                </div>
+                                <div className="text-xs font-bold text-foreground mt-0.5 flex items-center gap-2">
+                                  <span className="font-mono truncate max-w-md">
+                                    {activeCompany.google_review_url || "https://search.google.com/local/writereview"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setActiveTab("Google Reviews & QR")}
+                                className="h-8 text-xs font-bold gap-1 text-amber-700 border-amber-300 hover:bg-amber-50"
+                              >
+                                <QrCode className="size-3.5" /> View Live QR & Tent Card
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setEditCompany(activeCompany);
+                                  setFormInitialTab("reviews");
+                                  setShowForm(true);
+                                }}
+                                className="gradient-brand text-white border-0 h-8 px-3 text-xs font-bold gap-1 shadow-xs"
+                              >
+                                <Edit2 className="size-3" /> Edit Link
+                              </Button>
+                            </div>
+                          </div>
+                        </Card>
                       </div>
                     )}
 
@@ -2020,6 +2274,194 @@ export function CompanyManagement() {
                                   {gstSessionStatus?.is_active ? "Re-auth" : "Authorize OTP"}
                                 </Button>
                               </div>
+                            </div>
+                          </Card>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ════ TAB: GOOGLE REVIEWS & QR CODE ════ */}
+                    {activeTab === "Google Reviews & QR" && (
+                      <div className="space-y-4">
+                        <div className="p-5 bg-gradient-to-br from-amber-500/10 via-card to-purple-500/10 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                          <div className="flex items-center gap-3.5">
+                            <div className="size-12 rounded-2xl bg-amber-500 text-white grid place-items-center font-bold shadow-md shrink-0">
+                              <Star className="size-6 fill-white" />
+                            </div>
+                            <div>
+                              <div className="text-[10px] uppercase font-black tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                                <span>Official Google Business Review Automation</span>
+                                <span className="bg-amber-500/20 text-amber-800 dark:text-amber-300 px-2 py-0.2 rounded-full font-extrabold text-[9px]">
+                                  POS Bills & CRM Leads
+                                </span>
+                              </div>
+                              <div className="text-base font-black text-foreground mt-0.5">
+                                {activeCompany.google_review_url ? "Active Review Link Configured" : "Review Link Not Set"}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
+                                QR code is automatically stamped at the bottom of thermal receipts and shared with customers through WhatsApp CRM after completed orders.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setEditCompany(activeCompany);
+                                setFormInitialTab("reviews");
+                                setShowForm(true);
+                              }}
+                              className="gradient-brand text-white border-0 h-9 px-4 text-xs font-bold gap-1.5 shadow-xs"
+                            >
+                              <Edit2 className="size-3.5" /> Edit Review Settings
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Left 2 Cols: Details & Integration status */}
+                          <div className="md:col-span-2 space-y-4">
+                            <Card className="p-5 space-y-4">
+                              <div className="flex items-center justify-between border-b pb-3">
+                                <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+                                  <QrCode className="size-4 text-primary" />
+                                  <span>Review URL & Configuration</span>
+                                </h4>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                  activeCompany.google_review_enabled !== false
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-rose-50 text-rose-700 border-rose-200"
+                                }`}>
+                                  {activeCompany.google_review_enabled !== false ? "Enabled" : "Disabled"}
+                                </span>
+                              </div>
+
+                              <div className="space-y-3 text-xs">
+                                <div>
+                                  <span className="text-[10px] text-muted-foreground font-semibold block mb-0.5">
+                                    Google Review Direct URL:
+                                  </span>
+                                  <div className="p-2.5 rounded-xl bg-muted/40 border font-mono text-xs break-all flex items-center justify-between gap-2">
+                                    <span className="truncate">
+                                      {activeCompany.google_review_url || "https://search.google.com/local/writereview"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <span className="text-[10px] text-muted-foreground font-semibold block mb-0.5">
+                                    Google Place ID:
+                                  </span>
+                                  <div className="p-2 rounded-xl bg-muted/40 border font-mono text-xs">
+                                    {activeCompany.google_place_id || "Not configured (Optional)"}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="pt-2 border-t flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const link = activeCompany.google_review_url || "https://search.google.com/local/writereview";
+                                    navigator.clipboard.writeText(link);
+                                    toast.success("Google Review Link copied to clipboard!");
+                                  }}
+                                  className="h-8 text-xs font-bold gap-1.5"
+                                >
+                                  <Copy className="size-3.5" /> Copy Review Link
+                                </Button>
+
+                                <a
+                                  href={activeCompany.google_review_url || "https://search.google.com/local/writereview"}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs font-bold gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                  >
+                                    <ExternalLink className="size-3.5" /> Open Review Page
+                                  </Button>
+                                </a>
+
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => {
+                                    const reviewUrl = activeCompany.google_review_url || "https://search.google.com/local/writereview";
+                                    const win = window.open("", "_blank");
+                                    if (!win) {
+                                      toast.error("Please allow popups to print the counter stand card");
+                                      return;
+                                    }
+                                    win.document.write(`
+                                      <!DOCTYPE html>
+                                      <html>
+                                        <head>
+                                          <title>Google Review Counter Stand - ${activeCompany.name}</title>
+                                          <style>
+                                            @page { size: A5 portrait; margin: 10mm; }
+                                            body { font-family: system-ui, -apple-system, sans-serif; text-align: center; margin: 0; padding: 24px; background: #f8fafc; }
+                                            .card { border: 3px solid #6366f1; border-radius: 28px; padding: 40px 24px; max-width: 420px; margin: 0 auto; background: #ffffff; }
+                                            .logo-badge { background: #eef2ff; color: #4f46e5; display: inline-block; padding: 6px 18px; border-radius: 999px; font-weight: 800; font-size: 13px; text-transform: uppercase; margin-bottom: 14px; }
+                                            h1 { font-size: 26px; font-weight: 900; margin: 0 0 6px 0; color: #0f172a; }
+                                            .stars { color: #f59e0b; font-size: 28px; letter-spacing: 6px; margin-bottom: 20px; }
+                                            .qr-box { background: #ffffff; border: 2px dashed #cbd5e1; border-radius: 24px; padding: 20px; display: inline-block; margin-bottom: 20px; }
+                                            .qr-box img { width: 200px; height: 200px; display: block; }
+                                            .scan-inst { font-size: 16px; font-weight: 900; color: #0f172a; text-transform: uppercase; margin: 0 0 6px 0; }
+                                          </style>
+                                        </head>
+                                        <body>
+                                          <div class="card">
+                                            <div class="logo-badge">Official Store Review</div>
+                                            <h1>${activeCompany.name}</h1>
+                                            <p style="color:#64748b;font-size:14px;margin-bottom:16px;">Loved your experience with us today?</p>
+                                            <div class="stars">★★★★★</div>
+                                            <div class="qr-box">
+                                              <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=0&data=${encodeURIComponent(reviewUrl)}" alt="QR" />
+                                            </div>
+                                            <div class="scan-inst">Scan to Rate on Google</div>
+                                            <p style="color:#64748b;font-size:12px;">Scan the QR code with your phone camera to share your review.</p>
+                                          </div>
+                                          <script>setTimeout(function() { window.print(); }, 500);<\/script>
+                                        </body>
+                                      </html>
+                                    `);
+                                    win.document.close();
+                                  }}
+                                  className="h-8 text-xs font-bold gap-1.5 gradient-brand text-white border-0 shadow-xs"
+                                >
+                                  <QrCode className="size-3.5" /> Print Table Tent Card (A5)
+                                </Button>
+                              </div>
+                            </Card>
+                          </div>
+
+                          {/* Right Col: Live Interactive QR Card */}
+                          <Card className="p-5 flex flex-col items-center justify-center text-center space-y-3 bg-gradient-to-b from-card to-amber-500/[0.04] border">
+                            <div className="flex items-center gap-1 text-amber-500 text-sm font-black">
+                              <Star className="size-4 fill-amber-500" />
+                              <Star className="size-4 fill-amber-500" />
+                              <Star className="size-4 fill-amber-500" />
+                              <Star className="size-4 fill-amber-500" />
+                              <Star className="size-4 fill-amber-500" />
+                            </div>
+                            <div className="p-3 bg-white rounded-2xl border-2 border-dashed border-amber-200 shadow-sm">
+                              <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=${encodeURIComponent(
+                                  activeCompany.google_review_url || "https://search.google.com/local/writereview"
+                                )}`}
+                                alt="Google Review QR"
+                                className="size-36 object-contain"
+                              />
+                            </div>
+                            <div>
+                              <div className="text-xs font-black text-foreground">Scan with Phone Camera</div>
+                              <div className="text-[10px] text-muted-foreground mt-0.5">Direct link to 5-star Google review prompt</div>
                             </div>
                           </Card>
                         </div>

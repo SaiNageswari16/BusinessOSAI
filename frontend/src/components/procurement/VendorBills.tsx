@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import React from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { Plus, Receipt, Loader2, Eye, Printer, FileText } from "lucide-react";
+import { Plus, Receipt, Loader2, Eye, Printer, FileText, Boxes, CheckCircle2 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ProcurementDocumentForm } from "./ProcurementDocumentForm";
@@ -29,6 +29,16 @@ export function VendorBills() {
 
   useEffect(() => {
     fetchData();
+    const params = new URLSearchParams(window.location.search);
+    const poId = params.get("po_id");
+    const grnId = params.get("grn_id");
+    if (poId || grnId) {
+      setSelectedDoc({
+        purchase_order_id: poId || undefined,
+        grn_id: grnId || undefined,
+      });
+      setIsCreateMode(true);
+    }
   }, []);
 
   if (isCreateMode || selectedDoc) {
@@ -55,7 +65,7 @@ export function VendorBills() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Purchase Invoices & Vendor Bills
           </h2>
-          <p className="text-sm text-muted-foreground">Manage supplier purchase invoices linked to POs and GRNs.</p>
+          <p className="text-sm text-muted-foreground">Manage supplier purchase invoices linked to POs and GRNs with 3-way matching.</p>
         </div>
         <Button onClick={() => setIsCreateMode(true)} className="gradient-brand text-white border-0 font-semibold rounded-lg shadow-sm">
           <Plus className="size-4 mr-2" /> Log Purchase Invoice
@@ -69,6 +79,7 @@ export function VendorBills() {
               <tr>
                 <th className="py-4 px-6">Bill / Invoice Number</th>
                 <th className="py-4 px-6">Linked PO Reference</th>
+                <th className="py-4 px-6">3-Way Match (GRN)</th>
                 <th className="py-4 px-6 text-right font-bold">Invoiced Amount</th>
                 <th className="py-4 px-6 text-right">Paid Amount</th>
                 <th className="py-4 px-6">Due Date</th>
@@ -79,14 +90,14 @@ export function VendorBills() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-primary" />
                     Loading purchase invoices...
                   </td>
                 </tr>
               ) : bills.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
                     No vendor purchase bills logged yet. Click "+ Log Purchase Invoice" above to create one.
                   </td>
                 </tr>
@@ -94,7 +105,25 @@ export function VendorBills() {
                 bills.map((b: any) => (
                   <tr key={b.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-6 font-mono font-bold text-primary">{b.bill_number || b.id.slice(0, 8)}</td>
-                    <td className="py-4 px-6 font-medium text-foreground">{b.purchase_order_id ? `PO-${b.purchase_order_id.slice(0, 6)}` : "Direct Invoice"}</td>
+                    <td className="py-4 px-6 font-medium text-foreground">{b.po_number || (b.purchase_order_id ? `PO-${b.purchase_order_id.slice(0, 6)}` : "Direct Invoice")}</td>
+                    <td className="py-4 px-6">
+                      {b.grn_number ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="inline-flex items-center gap-1 font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            <Boxes className="size-3 text-indigo-600" />
+                            {b.grn_number}
+                          </span>
+                          <span className="text-[10px] text-emerald-600 font-bold">
+                            ✓ 3-Way Matched
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs text-slate-400 italic">No GRN linked</span>
+                          <span className="text-[10px] text-amber-600 font-medium">Pending Receipt</span>
+                        </div>
+                      )}
+                    </td>
                     <td className="py-4 px-6 text-right font-bold text-foreground">
                       {currency.symbol}{b.total_amount?.toLocaleString("en-IN") || 0}
                     </td>

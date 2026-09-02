@@ -88,6 +88,53 @@ async def create_goods_receipt(
     return res.scalar_one()
 
 
+@router.put("/{receipt_id}", response_model=GoodsReceiptResponse)
+async def update_goods_receipt(
+    receipt_id: uuid.UUID,
+    data: GoodsReceiptCreate,
+    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext = Depends(require_permission("manage:erp"))
+):
+    stmt = select(GoodsReceipt).where(
+        GoodsReceipt.id == receipt_id,
+        GoodsReceipt.tenant_id == ctx.tenant_id
+    ).options(selectinload(GoodsReceipt.items))
+    res = await db.execute(stmt)
+    receipt = res.scalar_one_or_none()
+    
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Goods Receipt not found")
+        
+    receipt.receipt_number = data.receipt_number or receipt.receipt_number
+    receipt.supplier = data.supplier
+    receipt.reference_number = data.reference_number
+    receipt.notes = data.notes
+    receipt.status = data.status or receipt.status
+    
+    # Clean existing items and re-add
+    for item in list(receipt.items):
+        await db.delete(item)
+    receipt.items.clear()
+    
+    if data.items:
+        for item in data.items:
+            new_item = GoodsReceiptItem(
+                tenant_id=ctx.tenant_id,
+                product_id=item.product_id,
+                quantity_received=item.quantity_received,
+                unit_price=item.unit_price
+            )
+            receipt.items.append(new_item)
+            
+    await db.commit()
+    await db.refresh(receipt)
+    
+    # Reload with items
+    stmt = select(GoodsReceipt).where(GoodsReceipt.id == receipt.id).options(selectinload(GoodsReceipt.items))
+    res = await db.execute(stmt)
+    return res.scalar_one()
+
+
 @router.delete("/{receipt_id}")
 async def delete_goods_receipt(
     receipt_id: uuid.UUID,

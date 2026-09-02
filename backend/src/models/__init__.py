@@ -243,6 +243,9 @@ class Company(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     established_date: Mapped[date | None] = mapped_column(Date)
     gst_registrations: Mapped[list | None] = mapped_column(JSONB, default=list)
     gsp_credentials: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    google_review_url: Mapped[str | None] = mapped_column(String(500))
+    google_place_id: Mapped[str | None] = mapped_column(String(255))
+    google_review_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[EntityStatus] = mapped_column(
         Enum(EntityStatus, name="entity_status", create_constraint=False),
         default=EntityStatus.ACTIVE,
@@ -1204,7 +1207,8 @@ class Applicant(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     email: Mapped[str] = mapped_column(String(150), nullable=False)
-    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="CASCADE"), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="SET NULL"), nullable=True)
     job_title: Mapped[str] = mapped_column(String(150), nullable=False)
     applied_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
     experience: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -1216,13 +1220,14 @@ class Applicant(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     
     expected_salary: Mapped[float | None] = mapped_column(Numeric(12, 2))
     proposed_salary: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    notice_period_days: Mapped[int | None] = mapped_column(Integer, default=30)
     notes_json: Mapped[list[dict]] = mapped_column(JSONB, default=list)
 
     # Sync tracking columns
     provider_candidate_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     sync_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    job: Mapped["JobOpening"] = relationship(back_populates="applicants")
+    job: Mapped["JobOpening | None"] = relationship(back_populates="applicants")
 
 
 class Interview(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
@@ -1251,8 +1256,10 @@ class Interview(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class OfferLetter(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "recruitment_offer_letters"
 
-    applicant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("recruitment_applicants.id", ondelete="CASCADE"), nullable=False)
+    applicant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("recruitment_applicants.id", ondelete="CASCADE"), nullable=True)
+    employee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=True)
     candidate: Mapped[str] = mapped_column(String(150), nullable=False)
+    candidate_email: Mapped[str | None] = mapped_column(String(150), nullable=True)
     role: Mapped[str] = mapped_column(String(150), nullable=False)
     ctc: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     offer_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
@@ -1263,7 +1270,8 @@ class OfferLetter(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     email_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     custom_template: Mapped[str | None] = mapped_column(Text)
 
-    applicant: Mapped["Applicant"] = relationship()
+    applicant: Mapped["Applicant | None"] = relationship()
+    employee: Mapped["Employee | None"] = relationship()
 
 
 class OnboardingRecord(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
