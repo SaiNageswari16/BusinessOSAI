@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
 
+import { BiometricPasskeySettings } from "./BiometricPasskeySettings";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
 interface Role {
@@ -294,6 +296,11 @@ export function MfaPolicies() {
           ))}
         </div>
       )}
+
+      {/* Native WebAuthn FIDO2 Biometrics & Passkeys Management */}
+      <div className="pt-6 border-t border-border/50">
+        <BiometricPasskeySettings />
+      </div>
 
       <AnimatePresence>
         {showModal && <MfaPolicyModal policy={editPolicy} roles={roles} onClose={() => setShowModal(false)} onSaved={load} />}

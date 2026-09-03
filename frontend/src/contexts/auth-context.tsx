@@ -80,6 +80,7 @@ interface AuthCtx {
   selectRole: (roleId: string) => Promise<{ user: AppUser; token: TokenResponse }>;
   changePassword: (payload: ChangePasswordPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
   applySession: (user: AppUser, accessToken: string, refreshToken: string) => void;
+  loginWithToken: (tokenData: TokenResponse) => Promise<{ user: AppUser; token: TokenResponse }>;
   logout: () => void;
 }
 
@@ -364,6 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         selectRole,
         changePassword,
         applySession,
+        loginWithToken: hydrateFromTokens,
         logout,
       }}
     >

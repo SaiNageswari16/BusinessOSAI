@@ -5110,4 +5110,43 @@ export const pushNotificationsApi = {
     request<{ message: string }>("POST", "/system/notifications/devices/unregister", data),
 };
 
+// ── WebAuthn / FIDO2 Biometric Passkeys ──────────────────────────────────────
+
+export interface UserPasskey {
+  id: string;
+  credential_id: string;
+  device_name: string;
+  is_active: boolean;
+  created_at: string;
+  last_used_at?: string | null;
+}
+
+export const passkeysApi = {
+  getRegisterOptions: (deviceName?: string) =>
+    request<any>("POST", "/auth/passkeys/register-options", { device_name: deviceName }),
+  verifyRegister: (data: {
+    device_name?: string;
+    credential_id: string;
+    raw_id: string;
+    client_data_json: string;
+    attestation_object?: string | null;
+    transports?: string[];
+  }) => request<{ message: string; passkey_id: string; device_name: string }>("POST", "/auth/passkeys/register-verify", data),
+
+  getLoginOptions: (email: string, tenantSlug?: string) =>
+    request<any>("POST", "/auth/passkeys/login-options", { email, tenant_slug: tenantSlug }),
+  verifyLogin: (data: {
+    email: string;
+    credential_id: string;
+    client_data_json: string;
+    authenticator_data: string;
+    signature: string;
+    tenant_slug?: string;
+  }) => request<TokenResponse>("POST", "/auth/passkeys/login-verify", data),
+
+  list: () => request<UserPasskey[]>("GET", "/auth/passkeys"),
+  delete: (passkeyId: string) => request<{ message: string }>("DELETE", `/auth/passkeys/${passkeyId}`),
+};
+
+
 

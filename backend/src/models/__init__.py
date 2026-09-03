@@ -1888,6 +1888,26 @@ class UserDeviceToken(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class UserPasskey(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """WebAuthn / FIDO2 Passkey Biometric Credentials (Touch ID, Face ID, Windows Hello)."""
+    __tablename__ = "user_passkeys"
+    __table_args__ = (
+        UniqueConstraint("credential_id", name="uq_passkey_credential_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    credential_id: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    public_key: Mapped[str] = mapped_column(Text, nullable=False)
+    sign_count: Mapped[int] = mapped_column(Integer, default=0)
+    device_name: Mapped[str] = mapped_column(String(150), default="Biometric Authenticator")
+    aaguid: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    transports: Mapped[list | None] = mapped_column(JSONB, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped["User"] = relationship()
+
+
 
 from .erp import *
 from .inventory import *

@@ -427,6 +427,37 @@ async def migrate():
             except Exception as e:
                 logger.info(f"Migration note for push notification update: {e}")
 
+    passkey_statements = [
+        """
+        CREATE TABLE IF NOT EXISTS user_passkeys (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            credential_id VARCHAR(500) NOT NULL UNIQUE,
+            public_key TEXT NOT NULL,
+            sign_count INTEGER DEFAULT 0,
+            device_name VARCHAR(150) DEFAULT 'Biometric Authenticator',
+            aaguid VARCHAR(100),
+            transports JSONB DEFAULT '[]'::jsonb,
+            is_active BOOLEAN DEFAULT TRUE,
+            last_used_at TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_user_passkeys_user ON user_passkeys(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_user_passkeys_tenant ON user_passkeys(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_user_passkeys_cred ON user_passkeys(credential_id)",
+    ]
+
+    for stmt in passkey_statements:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info("Successfully executed passkey biometric schema update.")
+            except Exception as e:
+                logger.info(f"Migration note for passkey update: {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())
 

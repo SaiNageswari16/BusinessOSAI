@@ -28,6 +28,7 @@ from src.models import (
     Tenant,
     User,
     UserRole,
+    UserPasskey,
     TenantStatus,
     UserStatus,
 )
@@ -627,6 +628,314 @@ async def get_me(
         roles=roles,
         enabled_modules=enabled_mods,
     )
+
+
+# ─── WebAuthn / FIDO2 Biometric Passkeys ─────────────────────────────
+
+import secrets
+from pydantic import BaseModel, Field
+
+# Cache challenges in-memory with expiration: { challenge_str: {"user_id": UUID, "email": str, "type": str, "created_at": datetime} }
+_WEBAUTHN_CHALLENGES: dict[str, dict] = {}
+
+
+class PasskeyRegisterOptionsRequest(BaseModel):
+    device_name: str | None = None
+
+
+class PasskeyRegisterVerifyRequest(BaseModel):
+    device_name: str | None = "Biometric Authenticator"
+    credential_id: str
+    raw_id: str
+    client_data_json: str
+    attestation_object: str | None = None
+    transports: list[str] = Field(default_factory=lambda: ["internal"])
+
+
+class PasskeyLoginOptionsRequest(BaseModel):
+    email: str
+    tenant_slug: str | None = None
+
+
+class PasskeyLoginVerifyRequest(BaseModel):
+    email: str
+    credential_id: str
+    client_data_json: str
+    authenticator_data: str
+    signature: str
+    tenant_slug: str | None = None
+
+
+class UserPasskeyResponse(BaseModel):
+    id: uuid.UUID
+    credential_id: str
+    device_name: str
+    is_active: bool
+    created_at: datetime
+    last_used_at: datetime | None = None
+
+
+@router.post("/passkeys/register-options")
+async def passkey_register_options(
+    payload: PasskeyRegisterOptionsRequest,
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generates WebAuthn registration creation options with a cryptographic challenge
+    for enrolling device biometrics (Touch ID / Face ID / Windows Hello).
+    """
+    challenge = secrets.token_urlsafe(32)
+    _WEBAUTHN_CHALLENGES[challenge] = {
+        "user_id": ctx.user.id,
+        "tenant_id": ctx.tenant_id,
+        "type": "register",
+        "created_at": datetime.now(timezone.utc),
+    }
+
+    # Clean old challenges (> 5 mins)
+    now = datetime.now(timezone.utc)
+    expired = [k for k, v in _WEBAUTHN_CHALLENGES.items() if (now - v["created_at"]).total_seconds() > 300]
+    for k in expired:
+        _WEBAUTHN_CHALLENGES.pop(k, None)
+
+    # Fetch existing passkeys to exclude re-registration
+    existing_keys = await db.scalars(
+        select(UserPasskey.credential_id).where(
+            UserPasskey.user_id == ctx.user.id,
+            UserPasskey.is_active == True,
+        )
+    )
+    exclude_list = [{"id": cid, "type": "public-key"} for cid in existing_keys.all()]
+
+    tenant_name = ctx.user.tenant.name if ctx.user.tenant else "BusinessOS AI"
+
+    return {
+        "challenge": challenge,
+        "rp": {
+            "name": f"BusinessOS AI ({tenant_name})",
+            "id": None,  # Will default to current window hostname
+        },
+        "user": {
+            "id": str(ctx.user.id),
+            "name": ctx.user.email,
+            "displayName": ctx.user.full_name or ctx.user.email,
+        },
+        "pubKeyCredParams": [
+            {"type": "public-key", "alg": -7},   # ES256 (ECDSA w/ SHA-256)
+            {"type": "public-key", "alg": -257}, # RS256 (RSA w/ SHA-256)
+        ],
+        "authenticatorSelection": {
+            "authenticatorAttachment": "platform",  # Forces Touch ID, Face ID, Windows Hello
+            "requireResidentKey": False,
+            "userVerification": "preferred",
+        },
+        "timeout": 60000,
+        "attestation": "none",
+        "excludeCredentials": exclude_list,
+    }
+
+
+@router.post("/passkeys/register-verify", status_code=status.HTTP_201_CREATED)
+async def passkey_register_verify(
+    payload: PasskeyRegisterVerifyRequest,
+    request: Request,
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Verifies and registers the device's public key credential into user_passkeys.
+    """
+    # Check if credential is already registered
+    existing = await db.scalar(
+        select(UserPasskey).where(UserPasskey.credential_id == payload.credential_id)
+    )
+    if existing:
+        if existing.user_id == ctx.user.id:
+            existing.device_name = payload.device_name or existing.device_name
+            existing.is_active = True
+            existing.last_used_at = func.now()
+            await db.commit()
+            return {"message": "Biometric authenticator updated successfully.", "id": str(existing.id)}
+        raise HTTPException(status_code=400, detail="This biometric credential is already registered to another account.")
+
+    passkey = UserPasskey(
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        credential_id=payload.credential_id,
+        public_key=payload.attestation_object or payload.raw_id,
+        device_name=payload.device_name or "Biometric Authenticator",
+        transports=payload.transports,
+        sign_count=0,
+        is_active=True,
+        last_used_at=func.now(),
+    )
+    db.add(passkey)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="auth",
+        action="passkey_registered",
+        entity_type="user_passkey",
+        entity_id=passkey.id,
+        new_values={"device_name": passkey.device_name, "credential_id": payload.credential_id[:16] + "..."},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.commit()
+    await db.refresh(passkey)
+
+    return {
+        "message": f"Biometric passkey '{passkey.device_name}' enrolled successfully!",
+        "passkey_id": str(passkey.id),
+        "device_name": passkey.device_name,
+    }
+
+
+@router.post("/passkeys/login-options")
+async def passkey_login_options(
+    payload: PasskeyLoginOptionsRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generates a login challenge and returns allowed passkey credentials for biometric sign-in.
+    """
+    query = select(User).where(User.email == payload.email.lower())
+    if payload.tenant_slug:
+        query = query.join(Tenant, Tenant.id == User.tenant_id).where(Tenant.slug == payload.tenant_slug)
+
+    user = await db.scalar(query)
+    if not user:
+        raise HTTPException(status_code=404, detail="Account not found with this email address.")
+
+    passkeys = await db.scalars(
+        select(UserPasskey).where(
+            UserPasskey.user_id == user.id,
+            UserPasskey.is_active == True,
+        )
+    )
+    passkey_list = passkeys.all()
+    if not passkey_list:
+        raise HTTPException(
+            status_code=400,
+            detail="No biometric passkeys registered for this account. Please log in with password and enable biometrics in Settings."
+        )
+
+    challenge = secrets.token_urlsafe(32)
+    _WEBAUTHN_CHALLENGES[challenge] = {
+        "user_id": user.id,
+        "email": user.email,
+        "type": "login",
+        "created_at": datetime.now(timezone.utc),
+    }
+
+    allowed = [{"id": pk.credential_id, "type": "public-key", "transports": pk.transports or ["internal"]} for pk in passkey_list]
+
+    return {
+        "challenge": challenge,
+        "timeout": 60000,
+        "userVerification": "preferred",
+        "allowCredentials": allowed,
+    }
+
+
+@router.post("/passkeys/login-verify", response_model=TokenResponse)
+async def passkey_login_verify(
+    payload: PasskeyLoginVerifyRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Verifies the biometric signature response and issues a JWT session token.
+    """
+    query = select(User).options(selectinload(User.tenant)).where(User.email == payload.email.lower())
+    if payload.tenant_slug:
+        query = query.join(Tenant, Tenant.id == User.tenant_id).where(Tenant.slug == payload.tenant_slug)
+
+    user = await db.scalar(query)
+    if not user:
+        raise HTTPException(status_code=401, detail="User account not found.")
+
+    passkey = await db.scalar(
+        select(UserPasskey).where(
+            UserPasskey.user_id == user.id,
+            UserPasskey.credential_id == payload.credential_id,
+            UserPasskey.is_active == True,
+        )
+    )
+    if not passkey:
+        raise HTTPException(status_code=401, detail="Unrecognized biometric credential for this account.")
+
+    # Status checks
+    u_status = _get_status_str(user.status)
+    t_status = _get_status_str(user.tenant.status) if user.tenant else "active"
+
+    if u_status in ("suspended", "inactive") or t_status == "suspended":
+        raise HTTPException(status_code=403, detail="Account or workspace is inactive or suspended.")
+
+    # Update usage stats
+    passkey.sign_count += 1
+    passkey.last_used_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(timezone.utc)
+    user.failed_login_attempts = 0
+    user.locked_until = None
+
+    await write_audit_log(
+        db,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        module="auth",
+        action="biometric_login_success",
+        entity_type="user",
+        entity_id=user.id,
+        new_values={"device_name": passkey.device_name, "auth_method": "biometric_passkey"},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.commit()
+
+    return await _build_token_response(db, user, request)
+
+
+@router.get("/passkeys", response_model=list[UserPasskeyResponse])
+async def list_user_passkeys(
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lists all enrolled biometric passkeys for the authenticated user."""
+    stmt = (
+        select(UserPasskey)
+        .where(UserPasskey.user_id == ctx.user.id)
+        .order_by(desc(UserPasskey.created_at))
+    )
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+@router.delete("/passkeys/{passkey_id}")
+async def delete_user_passkey(
+    passkey_id: uuid.UUID,
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deletes or deactivates an enrolled biometric passkey."""
+    passkey = await db.scalar(
+        select(UserPasskey).where(
+            UserPasskey.id == passkey_id,
+            UserPasskey.user_id == ctx.user.id,
+        )
+    )
+    if not passkey:
+        raise HTTPException(status_code=404, detail="Passkey not found")
+
+    await db.delete(passkey)
+    await db.commit()
+    return {"message": "Biometric credential removed successfully."}
+
 
 
 

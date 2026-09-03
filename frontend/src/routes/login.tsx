@@ -1,12 +1,14 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Sparkles, ShieldCheck, Zap, BarChart3, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, Sparkles, ShieldCheck, Zap, BarChart3, ArrowLeft, Fingerprint, ScanFace } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth, resolvePostAuthRoute } from "@/contexts/auth-context";
+import { passkeysApi } from "@/lib/api-client";
+import { isBiometricsSupported, getBiometricAssertion } from "@/lib/webauthn";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -17,7 +19,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { login, register, isAuthed, user } = useAuth();
+  const { login, register, loginWithToken, isAuthed, user } = useAuth();
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as { mode?: string };
   const initialRedirectTriedRef = useRef(false);
@@ -33,6 +35,11 @@ function LoginPage() {
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleOAuthEnabled, setGoogleOAuthEnabled] = useState(false);
+  const [biometricsAvailable, setBiometricsAvailable] = useState(true);
+
+  useEffect(() => {
+    isBiometricsSupported().then(setBiometricsAvailable);
+  }, []);
 
   useEffect(() => {
     if (!initialRedirectTriedRef.current && isAuthed && user) {
@@ -100,6 +107,36 @@ function LoginPage() {
     }
   };
 
+
+  const handleBiometricLogin = async () => {
+    if (!email) {
+      toast.error("Please enter your work email to initiate biometric login.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const options = await passkeysApi.getLoginOptions(email, tenantSlug || undefined);
+      toast.info("Please scan your fingerprint or Face ID on your device sensor...");
+      const assertion = await getBiometricAssertion(options);
+      const token = await passkeysApi.verifyLogin({
+        email,
+        credential_id: assertion.credential_id,
+        client_data_json: assertion.client_data_json,
+        authenticator_data: assertion.authenticator_data,
+        signature: assertion.signature,
+        tenant_slug: tenantSlug || undefined,
+      });
+      toast.success("Biometric verification successful! Logging you in...");
+      const result = await loginWithToken(token);
+      navigate({ to: resolvePostAuthRoute(result.user, result.token) });
+    } catch (error: any) {
+      console.error("Biometric login error:", error);
+      const message = error?.message || "Biometric authentication was cancelled or failed.";
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleOAuthLogin = () => {
     if (!googleOAuthEnabled) {
@@ -307,11 +344,24 @@ function LoginPage() {
                   Please wait...
                 </div>
               ) : mode === "login" ? (
-                "Sign in"
+                "Sign in with Password"
               ) : (
                 "Submit Registration for Approval"
               )}
             </Button>
+
+            {mode === "login" && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleBiometricLogin}
+                disabled={loading}
+                className="w-full h-11 text-sm font-semibold border-purple-300/80 bg-purple-50/70 hover:bg-purple-100 text-purple-900 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Fingerprint className="size-5 text-purple-700 animate-pulse" />
+                Sign in with Touch ID / Face ID / Windows Hello
+              </Button>
+            )}
           </form>
 
           <div className="relative my-8">

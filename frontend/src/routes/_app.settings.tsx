@@ -35,6 +35,7 @@ import { TaxConfiguration } from "@/components/erp/TaxConfiguration";
 import { CurrencyManagement } from "@/components/erp/CurrencyManagement";
 import { PaymentGateways } from "@/components/erp/PaymentGateways";
 import { WhitebooksSettings } from "@/components/settings/WhitebooksSettings";
+import { BiometricPasskeySettings } from "@/components/erp/BiometricPasskeySettings";
 import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/_app/settings")({
@@ -83,6 +84,8 @@ const componentMap: Record<string, React.ElementType> = {
   notifications: SystemNotificationsTab,
   password_policies: PasswordPolicies,
   mfa: MfaPolicies,
+  biometrics: BiometricPasskeySettings,
+  passkeys: BiometricPasskeySettings,
   session_policies: SessionPolicies,
   device_policies: DevicePolicies,
   login_history: ActivityLogs,
