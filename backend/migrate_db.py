@@ -208,14 +208,17 @@ async def migrate():
     alter_job_cols = [
         ("criteria",   "ALTER TABLE job_openings ALTER COLUMN criteria TYPE TEXT"),
         ("department", "ALTER TABLE job_openings ALTER COLUMN department TYPE VARCHAR(200)"),
+        ("erp_products.image_url", "ALTER TABLE erp_products ALTER COLUMN image_url TYPE TEXT"),
+        ("erp_master_catalog.image_url", "ALTER TABLE erp_master_catalog ALTER COLUMN image_url TYPE TEXT"),
+        ("erp_brands.image_url", "ALTER TABLE erp_brands ALTER COLUMN image_url TYPE TEXT"),
     ]
     for col_name, alter_sql in alter_job_cols:
         async with engine.begin() as conn:
             try:
                 await conn.execute(text(alter_sql))
-                logger.info(f"Successfully widened 'job_openings.{col_name}' column.")
+                logger.info(f"Successfully executed schema alteration for '{col_name}'.")
             except Exception as e:
-                logger.info(f"'job_openings.{col_name}' alter skipped or already widened: {e}")
+                logger.info(f"'{col_name}' alter note: {e}")
 
     # Add is_tax_inclusive column to erp_products and erp_master_catalog
     tax_mode_cols = [
@@ -372,8 +375,16 @@ async def migrate():
         )
         """,
         "CREATE INDEX IF NOT EXISTS ix_hrms_payslip_templates_tenant_id ON hrms_payslip_templates(tenant_id)",
-        "ALTER TABLE payslips ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES hrms_payslip_templates(id) ON DELETE SET NULL"
+        "ALTER TABLE payslips ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES hrms_payslip_templates(id) ON DELETE SET NULL",
     ]
+
+    for stmt in payslip_template_statements:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info("Successfully executed payslip template schema update.")
+            except Exception as e:
+                logger.info(f"Migration note for payslip template update: {e}")
 
     # ── HRMS: Loans, Advances, Bonuses, Commissions Tables ───────────────
     payroll_addon_statements = [
