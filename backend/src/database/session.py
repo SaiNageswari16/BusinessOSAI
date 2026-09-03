@@ -12,8 +12,10 @@ engine = create_async_engine(
     # Keep engine echo disabled in every environment; application errors still log.
     echo=False,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_recycle=1800,
+    pool_size=20,
+    max_overflow=30,
+    pool_timeout=30,
 )
 
 AsyncSessionLocal = async_sessionmaker(
