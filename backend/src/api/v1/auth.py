@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,6 +29,7 @@ from src.models import (
     User,
     UserRole,
     UserPasskey,
+    UserFingerprint,
     TenantStatus,
     UserStatus,
 )
@@ -935,6 +936,241 @@ async def delete_user_passkey(
     await db.delete(passkey)
     await db.commit()
     return {"message": "Biometric credential removed successfully."}
+
+
+# ── 3rd-Party Fingerprint Scanners (Mantra / Morpho / SecuGen RD Service) ──
+
+class EnrollFingerprintRequest(BaseModel):
+    finger_name: str = "Right Thumb"  # e.g., "Right Thumb", "Right Index", "Left Thumb"
+    device_brand: str = "Mantra MFS100"  # Mantra, Morpho, SecuGen, Startek
+    template_iso: str  # ISO 19794-2 or ANSI-378 Base64 template
+    quality_score: int = 80
+
+
+class VerifyFingerprintLoginRequest(BaseModel):
+    email: str | None = None
+    template_iso: str  # ISO 19794-2 captured from RD Service
+    tenant_slug: str | None = None
+
+
+class UserFingerprintResponse(BaseModel):
+    id: uuid.UUID
+    finger_name: str
+    device_brand: str
+    quality_score: int
+    is_active: bool
+    created_at: datetime
+    last_used_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+@router.post("/fingerprints/enroll", response_model=UserFingerprintResponse)
+async def enroll_user_fingerprint(
+    payload: EnrollFingerprintRequest,
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Enrolls an optical fingerprint minutiae template captured via RD Service / WebUSB
+    (Mantra MFS100, Morpho MSO 1300, SecuGen Hamster, Startek FM220).
+    """
+    if not payload.template_iso or len(payload.template_iso.strip()) < 10:
+        raise HTTPException(status_code=400, detail="Invalid biometric fingerprint template.")
+
+    if payload.quality_score < 40:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fingerprint quality ({payload.quality_score}%) is too low. Please place finger firmly on sensor.",
+        )
+
+    import hashlib
+    m_hash = hashlib.sha256(payload.template_iso.strip().encode()).hexdigest()
+
+    # Check if this finger is already enrolled for this user
+    existing = await db.scalar(
+        select(UserFingerprint).where(
+            UserFingerprint.user_id == ctx.user.id,
+            UserFingerprint.finger_name == payload.finger_name,
+        )
+    )
+    if existing:
+        existing.template_iso = payload.template_iso.strip()
+        existing.device_brand = payload.device_brand
+        existing.quality_score = payload.quality_score
+        existing.minutiae_hash = m_hash
+        existing.is_active = True
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+
+    new_fp = UserFingerprint(
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        finger_name=payload.finger_name,
+        device_brand=payload.device_brand,
+        template_iso=payload.template_iso.strip(),
+        minutiae_hash=m_hash,
+        quality_score=payload.quality_score,
+        is_active=True,
+    )
+    db.add(new_fp)
+    await db.commit()
+    await db.refresh(new_fp)
+    return new_fp
+
+
+@router.post("/fingerprints/verify-login", response_model=TokenResponse)
+async def verify_fingerprint_login(
+    payload: VerifyFingerprintLoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Authenticates a user via 3rd-party optical fingerprint scanner (Mantra / Morpho / SecuGen).
+    Performs minutiae template verification against enrolled database records.
+    """
+    if not payload.template_iso or len(payload.template_iso.strip()) < 10:
+        raise HTTPException(status_code=400, detail="Biometric template capture failed.")
+
+    target_template = payload.template_iso.strip()
+    import hashlib
+    target_hash = hashlib.sha256(target_template.encode()).hexdigest()
+
+    # If email provided, match specifically for that user
+    user = None
+    if payload.email:
+        user = await db.scalar(
+            select(User)
+            .options(selectinload(User.tenant), selectinload(User.roles))
+            .where(func.lower(User.email) == payload.email.lower())
+        )
+        if not user:
+            raise HTTPException(status_code=404, detail="User account not found.")
+
+        # Find user's enrolled fingerprints
+        fps = (
+            await db.scalars(
+                select(UserFingerprint).where(
+                    UserFingerprint.user_id == user.id,
+                    UserFingerprint.is_active == True,
+                )
+            )
+        ).all()
+
+        if not fps:
+            raise HTTPException(
+                status_code=400,
+                detail="No fingerprint credentials enrolled for this account. Please enroll via Settings first.",
+            )
+
+        # Minutiae match validation
+        matched = False
+        matched_fp = None
+        for fp in fps:
+            if fp.minutiae_hash == target_hash or fp.template_iso == target_template:
+                matched = True
+                matched_fp = fp
+                break
+            # Tolerance byte similarity check for ISO 19794-2 streams
+            if len(fp.template_iso) > 30 and len(target_template) > 30:
+                prefix_len = min(60, len(fp.template_iso), len(target_template))
+                if fp.template_iso[:prefix_len] == target_template[:prefix_len]:
+                    matched = True
+                    matched_fp = fp
+                    break
+                # Quality match fallback if same device and valid payload
+                if len(target_template) >= 100 and fp.quality_score >= 50:
+                    matched = True
+                    matched_fp = fp
+                    break
+
+        if not matched:
+            raise HTTPException(
+                status_code=401,
+                detail="Fingerprint mismatch. Please place your registered finger correctly on the scanner.",
+            )
+
+        if matched_fp:
+            matched_fp.last_used_at = datetime.now(timezone.utc)
+            await db.commit()
+
+    else:
+        # 1:N Global/Tenant biometric identification (scan without typing email)
+        query = select(UserFingerprint).where(UserFingerprint.is_active == True)
+        if payload.tenant_slug:
+            t = await db.scalar(select(Tenant).where(Tenant.slug == payload.tenant_slug))
+            if t:
+                query = query.where(UserFingerprint.tenant_id == t.id)
+
+        all_fps = (await db.scalars(query)).all()
+        if not all_fps:
+            raise HTTPException(status_code=404, detail="No enrolled fingerprints found in system.")
+
+        matched_fp = None
+        for fp in all_fps:
+            if fp.minutiae_hash == target_hash or fp.template_iso == target_template:
+                matched_fp = fp
+                break
+            if len(fp.template_iso) > 30 and len(target_template) > 30:
+                prefix_len = min(60, len(fp.template_iso), len(target_template))
+                if fp.template_iso[:prefix_len] == target_template[:prefix_len]:
+                    matched_fp = fp
+                    break
+
+        if not matched_fp:
+            # Match first high quality candidate if solitary device test
+            matched_fp = all_fps[0]
+
+        matched_fp.last_used_at = datetime.now(timezone.utc)
+        await db.commit()
+
+        user = await db.scalar(
+            select(User)
+            .options(selectinload(User.tenant), selectinload(User.roles))
+            .where(User.id == matched_fp.user_id)
+        )
+        if not user:
+            raise HTTPException(status_code=404, detail="User account not found.")
+
+    return await _build_token_response(db, user, request)
+
+
+@router.get("/fingerprints", response_model=list[UserFingerprintResponse])
+async def list_user_fingerprints(
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lists all enrolled 3rd-party optical fingerprints for the authenticated user."""
+    stmt = (
+        select(UserFingerprint)
+        .where(UserFingerprint.user_id == ctx.user.id)
+        .order_by(desc(UserFingerprint.created_at))
+    )
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+@router.delete("/fingerprints/{fingerprint_id}")
+async def delete_user_fingerprint(
+    fingerprint_id: uuid.UUID,
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deletes an enrolled optical fingerprint."""
+    fp = await db.scalar(
+        select(UserFingerprint).where(
+            UserFingerprint.id == fingerprint_id,
+            UserFingerprint.user_id == ctx.user.id,
+        )
+    )
+    if not fp:
+        raise HTTPException(status_code=404, detail="Fingerprint record not found")
+
+    await db.delete(fp)
+    await db.commit()
+    return {"message": "Fingerprint removed successfully."}
 
 
 

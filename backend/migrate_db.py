@@ -204,11 +204,14 @@ async def migrate():
                 else:
                     logger.error(f"Error adding '{name}' column to '{table_name}': {e}")
 
-    # Add punch_method, biometric_pin, nfc_card_number to employees
+    # Add punch_method, biometric_pin, nfc_card_number, user_id, basic_salary, sales_points to employees
     employee_cols = [
         ("punch_method", "VARCHAR(50) DEFAULT 'GPS'"),
         ("biometric_pin", "VARCHAR(50)"),
         ("nfc_card_number", "VARCHAR(50)"),
+        ("basic_salary", "NUMERIC(12, 2)"),
+        ("sales_points", "NUMERIC(12, 2) DEFAULT 0.0"),
+        ("user_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
     ]
     for name, col_type in employee_cols:
         async with engine.begin() as conn:
@@ -220,6 +223,52 @@ async def migrate():
                     logger.info(f"'{name}' column already exists in 'employees'.")
                 else:
                     logger.error(f"Error adding '{name}' column to 'employees': {e}")
+
+    # Add columns to attendance_records
+    attendance_cols = [
+        ("ip_address", "VARCHAR(50)"),
+        ("check_in_selfie_url", "TEXT"),
+        ("check_out_selfie_url", "TEXT"),
+        ("is_face_verified", "BOOLEAN DEFAULT FALSE"),
+        ("is_geofence_verified", "BOOLEAN DEFAULT FALSE"),
+        ("is_wfh", "BOOLEAN DEFAULT FALSE"),
+    ]
+    for name, col_type in attendance_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE attendance_records ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'attendance_records' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in 'attendance_records'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to 'attendance_records': {e}")
+
+    # Add columns to crm_leads and crm_opportunities
+    crm_cols = [
+        ("crm_leads", "notes", "TEXT"),
+        ("crm_leads", "last_contacted_at", "TIMESTAMPTZ"),
+        ("crm_leads", "call_disposition", "VARCHAR(100)"),
+        ("crm_leads", "call_duration_minutes", "INTEGER DEFAULT 0"),
+        ("crm_leads", "next_followup_date", "TIMESTAMPTZ"),
+        ("crm_leads", "customer_response", "TEXT"),
+        ("crm_opportunities", "notes", "TEXT"),
+        ("crm_opportunities", "last_contacted_at", "TIMESTAMPTZ"),
+        ("crm_opportunities", "call_disposition", "VARCHAR(100)"),
+        ("crm_opportunities", "call_duration_minutes", "INTEGER DEFAULT 0"),
+        ("crm_opportunities", "next_followup_date", "TIMESTAMPTZ"),
+        ("crm_opportunities", "customer_response", "TEXT"),
+    ]
+    for table_name, name, col_type in crm_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to '{table_name}' table.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                    logger.info(f"'{name}' column already exists in '{table_name}'.")
+                else:
+                    logger.error(f"Error adding '{name}' column to '{table_name}': {e}")
 
     # ── 3-Way Match: Add grn_id FK to erp_vendor_bills ──────────────────────
     async with engine.begin() as conn:
@@ -457,6 +506,36 @@ async def migrate():
                 logger.info("Successfully executed passkey biometric schema update.")
             except Exception as e:
                 logger.info(f"Migration note for passkey update: {e}")
+
+    fingerprint_statements = [
+        """
+        CREATE TABLE IF NOT EXISTS user_fingerprints (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            finger_name VARCHAR(50) DEFAULT 'Right Thumb',
+            device_brand VARCHAR(80) DEFAULT 'Mantra MFS100',
+            template_iso TEXT NOT NULL,
+            minutiae_hash VARCHAR(128),
+            quality_score INTEGER DEFAULT 80,
+            is_active BOOLEAN DEFAULT TRUE,
+            last_used_at TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_user_fingerprints_user ON user_fingerprints(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_user_fingerprints_tenant ON user_fingerprints(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_user_fingerprints_hash ON user_fingerprints(minutiae_hash)",
+    ]
+
+    for stmt in fingerprint_statements:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info("Successfully executed optical fingerprint schema update.")
+            except Exception as e:
+                logger.info(f"Migration note for optical fingerprint update: {e}")
 
 if __name__ == "__main__":
     asyncio.run(migrate())

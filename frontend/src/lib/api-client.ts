@@ -1299,6 +1299,22 @@ export const payrollApi = {
     request<{ message: string; id: string }>("POST", "/hrms/payroll/commissions", data),
   updateCommissionStatus: (id: string, status: string) =>
     request<{ message: string; status: string }>("PATCH", `/hrms/payroll/commissions/${id}/status`, { status }),
+
+  getAttendanceSheet: (month = 7, year = 2026) =>
+    request<{ month: number; year: number; days_in_month: number; total_employees: number; records: any[] }>(
+      "GET",
+      "/hrms/payroll/attendance-sheet",
+      undefined,
+      { month, year }
+    ),
+  syncAttendanceSheet: (data: { month: number; year: number; records: any[] }) =>
+    request<{ message: string; month: number; year: number; records_synced: number }>(
+      "POST",
+      "/hrms/payroll/sync-attendance-sheet",
+      data
+    ),
+  processBatchPayroll: (data: { month: number; year: number; status?: string }) =>
+    request<Payslip[]>("POST", "/hrms/payslips/process-batch", data),
 };
 
 // â”€â”€â”€ Workflow Engine Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -5146,6 +5162,36 @@ export const passkeysApi = {
 
   list: () => request<UserPasskey[]>("GET", "/auth/passkeys"),
   delete: (passkeyId: string) => request<{ message: string }>("DELETE", `/auth/passkeys/${passkeyId}`),
+};
+
+// ── 3rd-Party Optical Fingerprint Scanners (Mantra / Morpho / SecuGen) ───────
+
+export interface UserFingerprint {
+  id: string;
+  finger_name: string;
+  device_brand: string;
+  quality_score: number;
+  is_active: boolean;
+  created_at: string;
+  last_used_at?: string | null;
+}
+
+export const fingerprintsApi = {
+  enroll: (data: {
+    finger_name: string;
+    device_brand: string;
+    template_iso: string;
+    quality_score: number;
+  }) => request<UserFingerprint>("POST", "/auth/fingerprints/enroll", data),
+
+  verifyLogin: (data: {
+    email?: string;
+    template_iso: string;
+    tenant_slug?: string;
+  }) => request<TokenResponse>("POST", "/auth/fingerprints/verify-login", data),
+
+  list: () => request<UserFingerprint[]>("GET", "/auth/fingerprints"),
+  delete: (id: string) => request<{ message: string }>("DELETE", `/auth/fingerprints/${id}`),
 };
 
 

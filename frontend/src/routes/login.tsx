@@ -1,14 +1,15 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Sparkles, ShieldCheck, Zap, BarChart3, ArrowLeft, Fingerprint, ScanFace } from "lucide-react";
+import { Eye, EyeOff, Sparkles, ShieldCheck, Zap, BarChart3, ArrowLeft, Fingerprint, ScanFace, Usb, Scan } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth, resolvePostAuthRoute } from "@/contexts/auth-context";
-import { passkeysApi } from "@/lib/api-client";
+import { passkeysApi, fingerprintsApi } from "@/lib/api-client";
 import { isBiometricsSupported, getBiometricAssertion } from "@/lib/webauthn";
+import { discoverRDService, captureFingerprint } from "@/lib/rd-service";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -133,6 +134,38 @@ function LoginPage() {
       console.error("Biometric login error:", error);
       const message = error?.message || "Biometric authentication was cancelled or failed.";
       toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpticalFingerprintLogin = async () => {
+    setLoading(true);
+    try {
+      toast.info("Discovering connected USB Fingerprint Scanner (Mantra / Morpho / SecuGen)...");
+      const device = await discoverRDService();
+
+      toast.info(`Please place your registered finger firmly on the ${device.model} scanner glass...`);
+      const capture = await captureFingerprint(device);
+
+      if (!capture.success) {
+        toast.error(capture.error || "Fingerprint capture failed. Please try again.");
+        return;
+      }
+
+      toast.info(`Fingerprint captured (${capture.quality}% match quality). Authenticating...`);
+      const token = await fingerprintsApi.verifyLogin({
+        email: email ? email.trim() : undefined,
+        template_iso: capture.templateIso,
+        tenant_slug: tenantSlug ? tenantSlug.trim() : undefined,
+      });
+
+      toast.success("Fingerprint verified! Logging into your workspace...");
+      const result = await loginWithToken(token);
+      navigate({ to: resolvePostAuthRoute(result.user, result.token) });
+    } catch (error: any) {
+      console.error("Optical fingerprint login error:", error);
+      toast.error(error?.message || "Fingerprint verification failed. Please check scanner connection.");
     } finally {
       setLoading(false);
     }
@@ -351,16 +384,29 @@ function LoginPage() {
             </Button>
 
             {mode === "login" && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleBiometricLogin}
-                disabled={loading}
-                className="w-full h-11 text-sm font-semibold border-purple-300/80 bg-purple-50/70 hover:bg-purple-100 text-purple-900 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                <Fingerprint className="size-5 text-purple-700 animate-pulse" />
-                Sign in with Touch ID / Face ID / Windows Hello
-              </Button>
+              <div className="space-y-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleBiometricLogin}
+                  disabled={loading}
+                  className="w-full h-10 text-xs font-semibold border-purple-300/80 bg-purple-50/70 hover:bg-purple-100 text-purple-900 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Fingerprint className="size-4 text-purple-700 animate-pulse" />
+                  Sign in with Touch ID / Face ID / Windows Hello
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleOpticalFingerprintLogin}
+                  disabled={loading}
+                  className="w-full h-10 text-xs font-semibold border-emerald-300/80 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Usb className="size-4 text-emerald-600 animate-bounce" />
+                  Login with USB Scanner (Mantra / Morpho / SecuGen)
+                </Button>
+              </div>
             )}
           </form>
 

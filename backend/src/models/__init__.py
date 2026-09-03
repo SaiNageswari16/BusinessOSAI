@@ -1908,6 +1908,24 @@ class UserPasskey(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     user: Mapped["User"] = relationship()
 
 
+class UserFingerprint(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """
+    Stores enrolled optical/capacitive fingerprint minutiae templates
+    from 3rd party USB devices (Mantra MFS100/110, Morpho MSO 1300, SecuGen Hamster, Startek FM220).
+    """
+    __tablename__ = "user_fingerprints"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    finger_name: Mapped[str] = mapped_column(String(50), default="Right Thumb")  # Right Thumb, Right Index, etc.
+    device_brand: Mapped[str] = mapped_column(String(80), default="Mantra MFS100")
+    template_iso: Mapped[str] = mapped_column(Text, nullable=False)  # ISO 19794-2 / ANSI-378 / Minutiae Base64
+    minutiae_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    quality_score: Mapped[int] = mapped_column(Integer, default=80)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped["User"] = relationship()
+
 
 from .erp import *
 from .inventory import *
