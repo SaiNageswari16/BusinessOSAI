@@ -1531,11 +1531,92 @@ class SalaryStructureResponse(ORMModel):
     updated_at: datetime
 
 
+class PayslipTemplateBase(BaseModel):
+    name: str
+    description: str | None = None
+    template_type: str = "custom"  # "predefined" | "custom"
+    is_default: bool = False
+    theme_config: dict = Field(default_factory=dict)
+    header_config: dict = Field(default_factory=dict)
+    fields_config: dict = Field(default_factory=dict)
+    notes_config: dict = Field(default_factory=dict)
+    # Direct styling & layout fields for Payslip Studio
+    primary_color: str | None = None
+    secondary_color: str | None = None
+    accent_color: str | None = None
+    background_color: str | None = None
+    text_color: str | None = None
+    font_family: str | None = None
+    header_layout: str | None = None
+    paper_size: str | None = None
+    show_company_logo: bool | None = None
+    show_company_address: bool | None = None
+    show_bank_details: bool | None = None
+    show_pan_aadhaar: bool | None = None
+    show_leave_summary: bool | None = None
+    show_signatures: bool | None = None
+    show_watermark: bool | None = None
+    watermark_text: str | None = None
+    footer_notes: str | None = None
+    left_signatory_title: str | None = None
+    right_signatory_title: str | None = None
+
+
+class PayslipTemplateCreate(PayslipTemplateBase):
+    pass
+
+
+class PayslipTemplateUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    is_default: bool | None = None
+    theme_config: dict | None = None
+    header_config: dict | None = None
+    fields_config: dict | None = None
+    notes_config: dict | None = None
+    # Direct styling & layout fields for Payslip Studio
+    primary_color: str | None = None
+    secondary_color: str | None = None
+    accent_color: str | None = None
+    background_color: str | None = None
+    text_color: str | None = None
+    font_family: str | None = None
+    header_layout: str | None = None
+    paper_size: str | None = None
+    show_company_logo: bool | None = None
+    show_company_address: bool | None = None
+    show_bank_details: bool | None = None
+    show_pan_aadhaar: bool | None = None
+    show_leave_summary: bool | None = None
+    show_signatures: bool | None = None
+    show_watermark: bool | None = None
+    watermark_text: str | None = None
+    footer_notes: str | None = None
+    left_signatory_title: str | None = None
+    right_signatory_title: str | None = None
+
+
+class PayslipTemplateResponse(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    description: str | None = None
+    template_type: str
+    is_default: bool
+    theme_config: dict
+    header_config: dict
+    fields_config: dict
+    notes_config: dict
+    created_at: datetime
+    updated_at: datetime
+
+
 class PayslipCreate(BaseModel):
     employee_id: uuid.UUID
     month: int
     year: int
     status: str = "Processing"
+    template_id: uuid.UUID | None = None
 
 
 class PayslipResponse(ORMModel):
@@ -1557,6 +1638,7 @@ class PayslipResponse(ORMModel):
     net_salary: float
     status: str
     pdf_url: str | None
+    template_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

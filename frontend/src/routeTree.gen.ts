@@ -44,6 +44,7 @@ import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppCrmRouteImport } from './routes/_app.crm'
 import { Route as AppCopilotRouteImport } from './routes/_app.copilot'
 import { Route as AppAccountingRouteImport } from './routes/_app.accounting'
+import { Route as VaultPayslipsFilenameRouteImport } from './routes/vault.payslips.$filename'
 import { Route as VaultOffersFilenameRouteImport } from './routes/vault.offers.$filename'
 import { Route as StoreProductIdRouteImport } from './routes/store.product.$id'
 
@@ -221,6 +222,11 @@ const AppAccountingRoute = AppAccountingRouteImport.update({
   path: '/accounting',
   getParentRoute: () => AppRoute,
 } as any)
+const VaultPayslipsFilenameRoute = VaultPayslipsFilenameRouteImport.update({
+  id: '/vault/payslips/$filename',
+  path: '/vault/payslips/$filename',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VaultOffersFilenameRoute = VaultOffersFilenameRouteImport.update({
   id: '/vault/offers/$filename',
   path: '/vault/offers/$filename',
@@ -269,6 +275,7 @@ export interface FileRoutesByFullPath {
   '/store/': typeof StoreIndexRoute
   '/store/product/$id': typeof StoreProductIdRoute
   '/vault/offers/$filename': typeof VaultOffersFilenameRoute
+  '/vault/payslips/$filename': typeof VaultPayslipsFilenameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -306,6 +313,7 @@ export interface FileRoutesByTo {
   '/store': typeof StoreIndexRoute
   '/store/product/$id': typeof StoreProductIdRoute
   '/vault/offers/$filename': typeof VaultOffersFilenameRoute
+  '/vault/payslips/$filename': typeof VaultPayslipsFilenameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -346,6 +354,7 @@ export interface FileRoutesById {
   '/store/': typeof StoreIndexRoute
   '/store/product/$id': typeof StoreProductIdRoute
   '/vault/offers/$filename': typeof VaultOffersFilenameRoute
+  '/vault/payslips/$filename': typeof VaultPayslipsFilenameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -386,6 +395,7 @@ export interface FileRouteTypes {
     | '/store/'
     | '/store/product/$id'
     | '/vault/offers/$filename'
+    | '/vault/payslips/$filename'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -423,6 +433,7 @@ export interface FileRouteTypes {
     | '/store'
     | '/store/product/$id'
     | '/vault/offers/$filename'
+    | '/vault/payslips/$filename'
   id:
     | '__root__'
     | '/'
@@ -462,6 +473,7 @@ export interface FileRouteTypes {
     | '/store/'
     | '/store/product/$id'
     | '/vault/offers/$filename'
+    | '/vault/payslips/$filename'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -472,6 +484,7 @@ export interface RootRouteChildren {
   RoleSelectRoute: typeof RoleSelectRoute
   StoreRoute: typeof StoreRouteWithChildren
   VaultOffersFilenameRoute: typeof VaultOffersFilenameRoute
+  VaultPayslipsFilenameRoute: typeof VaultPayslipsFilenameRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -721,6 +734,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountingRouteImport
       parentRoute: typeof AppRoute
     }
+    '/vault/payslips/$filename': {
+      id: '/vault/payslips/$filename'
+      path: '/vault/payslips/$filename'
+      fullPath: '/vault/payslips/$filename'
+      preLoaderRoute: typeof VaultPayslipsFilenameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/vault/offers/$filename': {
       id: '/vault/offers/$filename'
       path: '/vault/offers/$filename'
@@ -822,6 +842,7 @@ const rootRouteChildren: RootRouteChildren = {
   RoleSelectRoute: RoleSelectRoute,
   StoreRoute: StoreRouteWithChildren,
   VaultOffersFilenameRoute: VaultOffersFilenameRoute,
+  VaultPayslipsFilenameRoute: VaultPayslipsFilenameRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,6 +1,8 @@
 import React from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRbac } from "@/contexts/rbac-context";
+import { Unauthorized } from "@/components/unauthorized";
 import { ComingSoon } from "@/components/coming-soon";
 
 export const Route = createFileRoute("/_app/iot")({
@@ -12,9 +14,14 @@ const componentMap: Record<string, React.ElementType> = {
 };
 
 function IotModule() {
+  const { hasPermission } = useRbac();
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
   
+  if (!hasPermission("view:iot")) {
+    return <Unauthorized />;
+  }
+
   let activeTab = "connected_devices";
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);

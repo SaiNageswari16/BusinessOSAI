@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { useI18n } from "@/contexts/i18n-context";
+import { useRbac } from "@/contexts/rbac-context";
+import { Unauthorized } from "@/components/unauthorized";
 import { useQuery } from "@tanstack/react-query";
 import { workspaceApi } from "@/lib/workspace-api";
 import { inventoryApi, crmApi, employeesApi, invoicesApi } from "@/lib/api-client";
@@ -32,14 +34,14 @@ export const Route = createFileRoute("/_app/dashboard")({
 });
 
 const WORKSPACE_TABS = [
-  { id: "overview", label: "Executive Overview", icon: LayoutDashboard },
-  { id: "inventory", label: "Inventory", icon: Package },
-  { id: "operations", label: "Operations", icon: Truck },
-  { id: "pos", label: "POS", icon: CreditCard },
-  { id: "sales_crm", label: "Sales & CRM", icon: TrendingUp },
-  { id: "marketplace", label: "Marketplace", icon: Store },
-  { id: "accounting", label: "Accounting", icon: DollarSign },
-  { id: "hrm", label: "HRMS", icon: Users },
+  { id: "overview", label: "Executive Overview", icon: LayoutDashboard, permission: "view:dashboard" },
+  { id: "inventory", label: "Inventory", icon: Package, permission: "view:inventory" },
+  { id: "operations", label: "Operations", icon: Truck, permission: "view:procurement" },
+  { id: "pos", label: "POS", icon: CreditCard, permission: "view:pos" },
+  { id: "sales_crm", label: "Sales & CRM", icon: TrendingUp, permission: "view:crm" },
+  { id: "marketplace", label: "Marketplace", icon: Store, permission: "view:marketplace" },
+  { id: "accounting", label: "Accounting", icon: DollarSign, permission: "view:accounting" },
+  { id: "hrm", label: "HRMS", icon: Users, permission: "view:hrms" },
 ];
 
 const tooltipStyle: React.CSSProperties = {
@@ -75,8 +77,14 @@ const ICON_MAP: Record<string, any> = {
 function Dashboard() {
   const routerState = useRouterState();
   const navigate = useNavigate();
+  const { hasPermission } = useRbac();
   const searchParams = new URLSearchParams(routerState.location.searchStr);
-  const activeTab = searchParams.get("tab") || "overview";
+
+  const visibleTabs = useMemo(() => {
+    return WORKSPACE_TABS.filter((tab) => !tab.permission || hasPermission(tab.permission));
+  }, [hasPermission]);
+
+  const activeTab = searchParams.get("tab") || visibleTabs[0]?.id || "overview";
 
   if (activeTab === "lazymonkey_ai" || activeTab === "copilot" || activeTab === "ai") {
     return <LazyMonkeyAiWorkspace />;
@@ -647,7 +655,7 @@ function Dashboard() {
 
       {/* ── Multi-Module Workspace Dashboard Tabs (Light Purple Pill Styling) ── */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-border/40 scrollbar-hide">
-        {WORKSPACE_TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (

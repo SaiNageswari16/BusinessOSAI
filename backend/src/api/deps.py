@@ -137,11 +137,18 @@ async def get_current_user_context(
         )
 
 
-    # Module Entitlement Gating for client workspaces
-    if user.tenant and user.tenant.slug not in ("system", "nimbus-retail") and not user.is_tenant_owner:
+    is_platform_admin_user = bool(
+        getattr(user, "is_platform_admin", False)
+        or user.email == "venaticfungus@gmail.com"
+    )
+
+    # Module Entitlement Gating for client workspaces (Platform Admin bypasses this)
+    if user.tenant and user.tenant.slug not in ("system", "nimbus-retail") and not is_platform_admin_user:
         tenant_settings = user.tenant.settings or {}
         enabled_modules = tenant_settings.get("enabled_modules")
-        if enabled_modules is not None and len(enabled_modules) > 0:
+        if not enabled_modules:
+            enabled_modules = tenant_settings.get("requested_modules") or []
+        if enabled_modules and len(enabled_modules) > 0:
             req_path = request.url.path.lower()
             target_module = None
             if "/inventory" in req_path or "/products" in req_path or "/master-catalog" in req_path:
@@ -154,29 +161,33 @@ async def get_current_user_context(
                 target_module = "crm"
             elif "/procurement" in req_path or "/purchase" in req_path or "/grn" in req_path:
                 target_module = "procurement"
-            elif "/hrms" in req_path or "/employees" in req_path or "/leaves" in req_path:
+            elif "/hrms" in req_path or "/employees" in req_path or "/leaves" in req_path or "/payroll" in req_path:
                 target_module = "hrms"
             elif "/iot" in req_path or "/telemetry" in req_path:
                 target_module = "iot"
+            elif "/marketplace" in req_path:
+                target_module = "marketplace"
+            elif "/reports" in req_path or "/analytics" in req_path:
+                target_module = "reports"
             elif "/copilot" in req_path:
                 target_module = "copilot"
 
-            if target_module and target_module not in enabled_modules:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Access denied. Module '{target_module.upper()}' is not enabled for your workspace subscription."
+            if target_module:
+                is_allowed = (
+                    target_module in enabled_modules
+                    or (target_module == "procurement" and ("operations" in enabled_modules or "procurement" in enabled_modules))
+                    or (target_module == "reports" and ("analytics" in enabled_modules or "reports" in enabled_modules))
                 )
-
+                if not is_allowed:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Access denied. Module '{target_module.upper()}' is not enabled for your workspace subscription."
+                    )
 
     # Check if Platform Admin is impersonating a buyer tenant
     resolved_tenant_id = actual_tenant_uuid
     impersonate_header = request.headers.get("X-Impersonate-Tenant")
     tenant_slug = user.tenant.slug if user.tenant else ""
-
-    is_platform_admin_user = bool(
-        getattr(user, "is_platform_admin", False)
-        or user.email == "venaticfungus@gmail.com"
-    )
 
 
 

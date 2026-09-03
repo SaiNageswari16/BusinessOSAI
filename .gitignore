@@ -44,6 +44,7 @@ frontend/.env.production
 *.sw?
 # Generated files
 backend/static/invoices/
+backend/static/vault/
 image.png
 backend/src/images/
 # Local environment

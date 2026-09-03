@@ -245,13 +245,35 @@ async def migrate():
         "ALTER TABLE companies ADD COLUMN IF NOT EXISTS email_settings JSONB DEFAULT '{}'::jsonb"
     ]
 
-    for stmt in recruitment_statements:
+    # ── HRMS: Payslip Templates Schema Updates ──────────────────────────
+    payslip_template_statements = [
+        """
+        CREATE TABLE IF NOT EXISTS hrms_payslip_templates (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            description VARCHAR(255),
+            template_type VARCHAR(50) DEFAULT 'custom',
+            is_default BOOLEAN DEFAULT FALSE,
+            theme_config JSONB DEFAULT '{}'::jsonb,
+            header_config JSONB DEFAULT '{}'::jsonb,
+            fields_config JSONB DEFAULT '{}'::jsonb,
+            notes_config JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_hrms_payslip_templates_tenant_id ON hrms_payslip_templates(tenant_id)",
+        "ALTER TABLE payslips ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES hrms_payslip_templates(id) ON DELETE SET NULL"
+    ]
+
+    for stmt in payslip_template_statements:
         async with engine.begin() as conn:
             try:
                 await conn.execute(text(stmt))
-                logger.info(f"Successfully executed schema update: {stmt}")
+                logger.info("Successfully executed payslip template schema update.")
             except Exception as e:
-                logger.info(f"Migration note for '{stmt}': {e}")
+                logger.info(f"Migration note for payslip template update: {e}")
 
 if __name__ == "__main__":
     asyncio.run(migrate())

@@ -1038,6 +1038,19 @@ class SalaryStructure(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     employee: Mapped["Employee"] = relationship()
 
 
+class PayslipTemplate(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "hrms_payslip_templates"
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(255))
+    template_type: Mapped[str] = mapped_column(String(50), default="custom")  # "predefined" | "custom"
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    theme_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    header_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    fields_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    notes_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
 class Payslip(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "payslips"
     __table_args__ = (
@@ -1058,8 +1071,10 @@ class Payslip(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     net_salary: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="Processing")  # Processing|Paid
     pdf_url: Mapped[str | None] = mapped_column(String(500))
+    template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("hrms_payslip_templates.id", ondelete="SET NULL"), nullable=True)
 
     employee: Mapped["Employee"] = relationship()
+    template: Mapped["PayslipTemplate | None"] = relationship()
 
 class LeavePolicy(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "leave_policies"

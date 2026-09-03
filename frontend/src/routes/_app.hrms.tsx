@@ -15,6 +15,7 @@ import { LearningManagement } from "@/components/hrms/LearningManagement";
 import { EmployeeSelfService } from "@/components/hrms/EmployeeSelfService";
 import { ExitManagement } from "@/components/hrms/ExitManagement";
 import { HRIntelligence } from "@/components/hrms/HRIntelligence";
+import { PayslipTemplateStudio } from "@/components/hrms/PayslipTemplateStudio";
 
 export const Route = createFileRoute("/_app/hrms")({
   component: HrmsModule,
@@ -52,6 +53,7 @@ const componentMap: Record<string, React.ElementType> = {
   esi:                PayrollManagement,
   tds:                PayrollManagement,
   payslips:           PayrollManagement,
+  payslip_templates:  PayslipTemplateStudio,
   loans:              PayrollManagement,
   advances:           PayrollManagement,
   bonuses:            PayrollManagement,
@@ -134,6 +136,7 @@ const tabPermissions: Record<string, string> = {
   esi:                "view:hrms_pf_esi",
   tds:                "view:hrms_tds",
   payslips:           "view:hrms_payslips",
+  payslip_templates:  "view:hrms_payslips",
   loans:              "view:hrms_loans_advances",
   advances:           "view:hrms_loans_advances",
   bonuses:            "view:hrms_bonuses_commissions",

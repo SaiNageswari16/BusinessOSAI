@@ -297,7 +297,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
         try {
           const payslipsRes = await payrollApi.listPayslips(meRes.id);
-          setMyPayslips(payslipsRes.items || []);
+          setMyPayslips(Array.isArray(payslipsRes) ? payslipsRes : (payslipsRes as any)?.items || []);
         } catch (err) {
           console.error("Payslips fetch error:", err);
         }

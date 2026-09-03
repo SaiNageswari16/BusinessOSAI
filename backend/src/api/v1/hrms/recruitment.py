@@ -1970,8 +1970,19 @@ async def public_offer_response(
     if not offer:
         return HTMLResponse(content="<h2>Offer letter not found or expired.</h2>", status_code=404)
 
-    applicant = await db.get(Applicant, offer.applicant_id)
-    if not applicant or applicant.email.strip().lower() != email.strip().lower():
+    expected_email = offer.candidate_email
+    applicant = None
+    if offer.applicant_id:
+        applicant = await db.get(Applicant, offer.applicant_id)
+        if applicant and not expected_email:
+            expected_email = applicant.email
+    if offer.employee_id:
+        from src.models import Employee
+        employee = await db.get(Employee, offer.employee_id)
+        if employee and not expected_email:
+            expected_email = employee.email
+
+    if not expected_email or expected_email.strip().lower() != email.strip().lower():
         return HTMLResponse(content="<h2>Invalid candidate authorization credentials.</h2>", status_code=403)
 
     tenant = await db.scalar(select(Tenant).where(Tenant.id == offer.tenant_id))
@@ -1979,7 +1990,8 @@ async def public_offer_response(
 
     if action.lower() == "accept":
         offer.status = "Accepted"
-        applicant.stage = "Hired"
+        if applicant:
+            applicant.stage = "Hired"
         await db.commit()
 
         return HTMLResponse(content=f"""

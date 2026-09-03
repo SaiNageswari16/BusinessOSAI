@@ -1,21 +1,186 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, date
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, select
+from fastapi.responses import Response
+from sqlalchemy import func, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import Employee, SalaryStructure, Payslip, Designation, Department
+from src.models import (
+    Employee,
+    SalaryStructure,
+    Payslip,
+    PayslipTemplate,
+    Designation,
+    Department,
+    EmployeeDocument,
+    Tenant,
+)
 from src.schemas.erp import (
     SalaryStructureCreate,
     SalaryStructureResponse,
     PayslipCreate,
     PayslipResponse,
+    PayslipTemplateCreate,
+    PayslipTemplateUpdate,
+    PayslipTemplateResponse,
 )
+
+def _escape_pdf_text(text: str) -> str:
+    return str(text).replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+
+def generate_payslip_pdf(
+    slip: Payslip,
+    emp: Employee,
+    company_name: str = "BusinessOS AI Global",
+    desig_name: str = "Team Member",
+    dept_name: str = "General",
+    template_config: dict | None = None,
+) -> bytes:
+    """Zero-dependency pure Python PDF 1.4 generator for official Salary Slips / Payslips with template support."""
+    month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    month_str = month_names[slip.month - 1] if 1 <= slip.month <= 12 else f"Month {slip.month}"
+    
+    cfg = template_config or {}
+    hdr = cfg.get("header_config") or {}
+    notes = cfg.get("notes_config") or {}
+    
+    title_text = hdr.get("title_text") or "OFFICIAL SALARY SLIP"
+    subtitle_text = hdr.get("subtitle_text") or "CONFIDENTIAL PAYROLL OPERATIONS"
+    compliance_notes = notes.get("compliance_notes") or f"Official HRMS Document - Generated securely via {company_name} Compliance Vault"
+    signatory_label = notes.get("signatory_label") or "Authorized Finance / Payroll Manager"
+    stamp_text = notes.get("stamp_text") or "[Digitally Signed & System Generated Document]"
+    
+    basic = float(slip.basic_salary or 0)
+    hra = float(slip.hra or 0)
+    allow = float(slip.other_allowances or 0)
+    gross = float(slip.gross_salary or (basic + hra + allow))
+    
+    pf = float(slip.pf_deduction or 0)
+    esi = float(slip.esi_deduction or 0)
+    tds = float(slip.tds_deduction or 0)
+    other_ded = float(slip.other_deductions or 0)
+    total_ded = pf + esi + tds + other_ded
+    net = float(slip.net_salary or (gross - total_ded))
+    
+    emp_name = emp.full_name or "Employee"
+    emp_code = emp.employee_code or "EMP-001"
+    status_str = (slip.status or "PAID").upper()
+    slip_ref = f"SLIP-{str(slip.id)[:8].upper()}" if slip.id else "SLIP-001"
+    
+    lines = [
+        ('F2', 18, 50, 790, company_name),
+        ('F2', 8.5, 50, 774, f'{title_text} - {subtitle_text}'),
+        ('LINE', 0, 50, 764, 545, 764),
+        
+        ('F2', 9.5, 50, 742, f'Employee Name: {emp_name}'),
+        ('F1', 9, 50, 726, f'Employee Code: {emp_code}'),
+        ('F1', 9, 50, 710, f'Designation: {desig_name}'),
+        ('F1', 9, 50, 694, f'Department: {dept_name}'),
+        
+        ('F2', 9.5, 360, 742, f'Pay Period: {month_str} {slip.year}'),
+        ('F1', 9, 360, 726, f'Slip Ref No: {slip_ref}'),
+        ('F1', 9, 360, 710, f'Disbursement Status: {status_str}'),
+        ('F1', 9, 360, 694, f'Generated On: {date.today().strftime("%d %b %Y")}'),
+        
+        ('LINE', 0, 50, 680, 545, 680),
+        ('F2', 11, 50, 660, f'Salary Statement for {month_str} {slip.year}'),
+        
+        # Table Header
+        ('LINE', 0, 50, 645, 545, 645),
+        ('F2', 9, 55, 632, 'Earnings Component'),
+        ('F2', 9, 210, 632, 'Amount (INR)'),
+        ('F2', 9, 320, 632, 'Deductions Component'),
+        ('F2', 9, 470, 632, 'Amount (INR)'),
+        ('LINE', 0, 50, 622, 545, 622),
+        
+        # Row 1
+        ('F1', 8.5, 55, 608, 'Basic Salary'),
+        ('F1', 8.5, 210, 608, f'INR {basic:,.2f}'),
+        ('F1', 8.5, 320, 608, 'Provident Fund (PF)'),
+        ('F1', 8.5, 470, 608, f'INR {pf:,.2f}'),
+        
+        # Row 2
+        ('F1', 8.5, 55, 592, 'House Rent Allowance (HRA)'),
+        ('F1', 8.5, 210, 592, f'INR {hra:,.2f}'),
+        ('F1', 8.5, 320, 592, 'ESI Contribution'),
+        ('F1', 8.5, 470, 592, f'INR {esi:,.2f}'),
+        
+        # Row 3
+        ('F1', 8.5, 55, 576, 'Other Special Allowances'),
+        ('F1', 8.5, 210, 576, f'INR {allow:,.2f}'),
+        ('F1', 8.5, 320, 576, 'Tax Deducted at Source (TDS)'),
+        ('F1', 8.5, 470, 576, f'INR {tds:,.2f}'),
+        
+        # Row 4
+        ('F1', 8.5, 55, 560, '-'),
+        ('F1', 8.5, 210, 560, '-'),
+        ('F1', 8.5, 320, 560, 'Other Statutory Deductions'),
+        ('F1', 8.5, 470, 560, f'INR {other_ded:,.2f}'),
+        
+        # Totals Row
+        ('LINE', 0, 50, 548, 545, 548),
+        ('F2', 9, 55, 534, 'Gross Earnings'),
+        ('F2', 9, 210, 534, f'INR {gross:,.2f}'),
+        ('F2', 9, 320, 534, 'Total Deductions'),
+        ('F2', 9, 470, 534, f'INR {total_ded:,.2f}'),
+        ('LINE', 0, 50, 522, 545, 522),
+        
+        # Net Pay Box
+        ('LINE', 0, 50, 500, 545, 500),
+        ('F2', 12, 55, 480, f'NET SALARY DISBURSED: INR {net:,.2f}'),
+        ('F1', 8.5, 55, 464, f'Status: {status_str} (Direct Bank Transfer / Account Credit)'),
+        ('LINE', 0, 50, 450, 545, 450),
+        
+        # Signatures
+        ('F2', 8.5, 50, 360, f'For {company_name}:'),
+        ('F1', 8, 50, 310, signatory_label),
+        ('F1', 7.5, 50, 298, stamp_text),
+        
+        ('F2', 8.5, 360, 360, 'Employee Acknowledgement:'),
+        ('LINE', 0, 360, 310, 520, 310),
+        ('F1', 8, 360, 298, f'{emp_name} (Signature / Acknowledged)'),
+        
+        ('F1', 7.5, 50, 50, compliance_notes),
+    ]
+    
+    stream_parts = []
+    for item in lines:
+        if item[0] == 'LINE':
+            _, _, x1, y1, x2, y2 = item
+            stream_parts.append(f'0.5 w\n{x1} {y1} m\n{x2} {y2} l\nS\n')
+        else:
+            font_id, size, x, y, text = item
+            clean_text = _escape_pdf_text(str(text))
+            stream_parts.append(f'BT\n/{font_id} {size} Tf\n{x} {y} Td\n({clean_text}) Tj\nET\n')
+
+    stream_bytes = ''.join(stream_parts).encode('latin-1', errors='replace')
+    objects = [
+        b'1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+        b'2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+        b'3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n',
+        f'4 0 obj\n<< /Length {len(stream_bytes)} >>\nstream\n'.encode('latin-1') + stream_bytes + b'\nendstream\nendobj\n',
+        b'5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+        b'6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
+    ]
+
+    output = b'%PDF-1.4\n'
+    offsets = [len(output)]
+    for obj in objects:
+        output += obj
+        offsets.append(len(output))
+
+    xref_pos = len(output)
+    output += f'xref\n0 {len(objects) + 1}\n0000000000 65535 f \n'.encode('latin-1')
+    for off in offsets[:-1]:
+        output += f'{off:010d} 00000 n \n'.encode('latin-1')
+    output += f'trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n'.encode('latin-1')
+    return output
 
 router = APIRouter(prefix="/hrms", tags=["HRMS - Payroll"])
 
@@ -165,6 +330,586 @@ async def create_salary_structure(
     )
     await db.commit()
     return sal
+
+
+PREDEFINED_PAYSLIP_TEMPLATES = [
+    {
+        "id": "tpl-modern-corporate",
+        "name": "Modern Corporate (Slate & Blue)",
+        "description": "Clean slate & blue contemporary layout with high-contrast net pay hero card and structured earnings & deductions.",
+        "template_type": "predefined",
+        "is_default": True,
+        "theme_config": {
+            "primary_color": "#0f172a",
+            "accent_color": "#3b82f6",
+            "background_color": "#ffffff",
+            "header_style": "banner",
+            "border_style": "rounded",
+            "font_family": "Inter, sans-serif"
+        },
+        "header_config": {
+            "title_text": "OFFICIAL SALARY SLIP",
+            "subtitle_text": "Confidential Payroll Operations",
+            "show_logo": True,
+            "show_gstin": True,
+            "show_cin": True,
+            "show_address": True,
+            "show_contact": True
+        },
+        "fields_config": {
+            "show_employee_code": True,
+            "show_department": True,
+            "show_designation": True,
+            "show_bank_details": True,
+            "show_pan": True,
+            "show_uan": True,
+            "show_worked_days": True
+        },
+        "notes_config": {
+            "compliance_notes": "This is a computer-generated salary slip and requires no physical signature.",
+            "disclaimer_text": "Strictly confidential document intended solely for the recipient employee.",
+            "signatory_label": "Authorized Finance & Payroll Authority",
+            "stamp_text": "Digitally Verified & Approved"
+        }
+    },
+    {
+        "id": "tpl-classic-executive",
+        "name": "Classic Executive (Royal Navy & Gold)",
+        "description": "Traditional executive layout featuring deep navy borders, bronze badge, and formal statutory declarations.",
+        "template_type": "predefined",
+        "is_default": False,
+        "theme_config": {
+            "primary_color": "#1e3a8a",
+            "accent_color": "#b45309",
+            "background_color": "#fafafa",
+            "header_style": "bordered",
+            "border_style": "classic",
+            "font_family": "Georgia, serif"
+        },
+        "header_config": {
+            "title_text": "EXECUTIVE COMPENSATION STATEMENT",
+            "subtitle_text": "Corporate Compensation & Benefits Division",
+            "show_logo": True,
+            "show_gstin": True,
+            "show_cin": True,
+            "show_address": True,
+            "show_contact": True
+        },
+        "fields_config": {
+            "show_employee_code": True,
+            "show_department": True,
+            "show_designation": True,
+            "show_bank_details": True,
+            "show_pan": True,
+            "show_uan": True,
+            "show_worked_days": True
+        },
+        "notes_config": {
+            "compliance_notes": "Preserved under enterprise governance and labor audit compliance standards.",
+            "disclaimer_text": "All remuneration figures are strictly private and subject to executive non-disclosure policies.",
+            "signatory_label": "Director of Human Capital & Payroll",
+            "stamp_text": "Executive Board Verified"
+        }
+    },
+    {
+        "id": "tpl-minimalist-clean",
+        "name": "Minimalist Clean (Monochrome)",
+        "description": "High-density monochrome layout with micro dividers and monospace accounting tables for ultra-clean printing.",
+        "template_type": "predefined",
+        "is_default": False,
+        "theme_config": {
+            "primary_color": "#18181b",
+            "accent_color": "#71717a",
+            "background_color": "#ffffff",
+            "header_style": "minimal",
+            "border_style": "sharp",
+            "font_family": "system-ui, sans-serif"
+        },
+        "header_config": {
+            "title_text": "PAYSLIP STATEMENT",
+            "subtitle_text": "Monthly Earnings & Deductions Breakdown",
+            "show_logo": True,
+            "show_gstin": True,
+            "show_cin": False,
+            "show_address": True,
+            "show_contact": False
+        },
+        "fields_config": {
+            "show_employee_code": True,
+            "show_department": True,
+            "show_designation": True,
+            "show_bank_details": True,
+            "show_pan": False,
+            "show_uan": False,
+            "show_worked_days": True
+        },
+        "notes_config": {
+            "compliance_notes": "Generated by BusinessOS Payroll Cloud.",
+            "disclaimer_text": "For personal tax and record keeping purposes only.",
+            "signatory_label": "Finance Department",
+            "stamp_text": "System Certified"
+        }
+    },
+    {
+        "id": "tpl-tech-startup",
+        "name": "Tech Startup (Indigo & Emerald)",
+        "description": "Modern tech aesthetic with gradient accents, badge pill status, and energetic visual hierarchy.",
+        "template_type": "predefined",
+        "is_default": False,
+        "theme_config": {
+            "primary_color": "#4f46e5",
+            "accent_color": "#10b981",
+            "background_color": "#ffffff",
+            "header_style": "gradient",
+            "border_style": "pill",
+            "font_family": "Inter, sans-serif"
+        },
+        "header_config": {
+            "title_text": "CREW REWARD & PAY VOUCHER",
+            "subtitle_text": "People & Talent Ecosystem",
+            "show_logo": True,
+            "show_gstin": True,
+            "show_cin": True,
+            "show_address": True,
+            "show_contact": True
+        },
+        "fields_config": {
+            "show_employee_code": True,
+            "show_department": True,
+            "show_designation": True,
+            "show_bank_details": True,
+            "show_pan": True,
+            "show_uan": True,
+            "show_worked_days": True
+        },
+        "notes_config": {
+            "compliance_notes": "Thank you for building remarkable products with us every single day.",
+            "disclaimer_text": "Transferred directly via automated clearing house (ACH / NEFT).",
+            "signatory_label": "Head of People Operations",
+            "stamp_text": "Talent Operations Verified"
+        }
+    },
+    {
+        "id": "tpl-enterprise-statutory",
+        "name": "Enterprise Statutory Compliance",
+        "description": "Exhaustive statutory format with detailed PF UAN, ESI IP, Section 192 TDS, and statutory deduction audits.",
+        "template_type": "predefined",
+        "is_default": False,
+        "theme_config": {
+            "primary_color": "#064e3b",
+            "accent_color": "#0284c7",
+            "background_color": "#f8fafc",
+            "header_style": "double-border",
+            "border_style": "standard",
+            "font_family": "Inter, sans-serif"
+        },
+        "header_config": {
+            "title_text": "STATUTORY SALARY & TAX DEDUCTION SLIP",
+            "subtitle_text": "Form 16 / Rule 26 Compliant Remuneration Advice",
+            "show_logo": True,
+            "show_gstin": True,
+            "show_cin": True,
+            "show_address": True,
+            "show_contact": True
+        },
+        "fields_config": {
+            "show_employee_code": True,
+            "show_department": True,
+            "show_designation": True,
+            "show_bank_details": True,
+            "show_pan": True,
+            "show_uan": True,
+            "show_worked_days": True
+        },
+        "notes_config": {
+            "compliance_notes": "Compliant with Payment of Wages Act, Employees Provident Funds & Miscellaneous Provisions Act.",
+            "disclaimer_text": "Please preserve this document for personal tax assessment and IT filing.",
+            "signatory_label": "Statutory Compliance & Payroll Officer",
+            "stamp_text": "Statutory Compliance Audit Passed"
+        }
+    }
+]
+
+
+# ─── Payslip Template Endpoints ──────────────────────────────────────────────
+
+def _format_payslip_template(ct: Any, is_default_override: bool | None = None) -> dict:
+    """Standardize payslip template dictionary with both nested configs and flat styling attributes."""
+    if isinstance(ct, dict):
+        res = dict(ct)
+        theme = res.get("theme_config") or {}
+        header = res.get("header_config") or {}
+        fields = res.get("fields_config") or {}
+        notes = res.get("notes_config") or {}
+
+        res.setdefault("primary_color", theme.get("primary_color", "#1e1b4b"))
+        res.setdefault("secondary_color", theme.get("secondary_color", "#312e81"))
+        res.setdefault("accent_color", theme.get("accent_color", "#15803d"))
+        res.setdefault("background_color", theme.get("background_color", "#ffffff"))
+        res.setdefault("text_color", theme.get("text_color", "#0f172a"))
+        res.setdefault("font_family", theme.get("font_family", "Inter, sans-serif"))
+        res.setdefault("header_layout", theme.get("header_layout", "modern_split"))
+        res.setdefault("paper_size", theme.get("paper_size", "A4"))
+        res.setdefault("show_company_logo", header.get("show_logo", True))
+        res.setdefault("show_company_address", header.get("show_address", True))
+        res.setdefault("show_bank_details", fields.get("show_bank_details", True))
+        res.setdefault("show_pan_aadhaar", fields.get("show_pan", True))
+        res.setdefault("show_leave_summary", fields.get("show_leave_summary", False))
+        res.setdefault("show_signatures", notes.get("show_signatures", True))
+        res.setdefault("show_watermark", theme.get("show_watermark", False))
+        res.setdefault("watermark_text", theme.get("watermark_text", "CONFIDENTIAL"))
+        res.setdefault("footer_notes", notes.get("compliance_notes") or notes.get("footer_notes", "System Generated Electronic Salary Certificate • Valid without physical signature"))
+        res.setdefault("left_signatory_title", notes.get("left_signatory_title") or "Employee Acknowledgment")
+        res.setdefault("right_signatory_title", notes.get("signatory_label") or notes.get("right_signatory_title") or "Authorized Finance Signatory")
+        if is_default_override is not None:
+            res["is_default"] = is_default_override
+        return res
+
+    theme = ct.theme_config or {}
+    header = ct.header_config or {}
+    fields = ct.fields_config or {}
+    notes = ct.notes_config or {}
+    is_def = is_default_override if is_default_override is not None else ct.is_default
+
+    return {
+        "id": str(ct.id),
+        "name": ct.name,
+        "description": ct.description,
+        "template_type": ct.template_type,
+        "is_default": is_def,
+        "theme_config": theme,
+        "header_config": header,
+        "fields_config": fields,
+        "notes_config": notes,
+        # Flat convenience attributes:
+        "primary_color": theme.get("primary_color", "#1e1b4b"),
+        "secondary_color": theme.get("secondary_color", "#312e81"),
+        "accent_color": theme.get("accent_color", "#15803d"),
+        "background_color": theme.get("background_color", "#ffffff"),
+        "text_color": theme.get("text_color", "#0f172a"),
+        "font_family": theme.get("font_family", "Inter, sans-serif"),
+        "header_layout": theme.get("header_layout", "modern_split"),
+        "paper_size": theme.get("paper_size", "A4"),
+        "show_company_logo": header.get("show_logo", True),
+        "show_company_address": header.get("show_address", True),
+        "show_bank_details": fields.get("show_bank_details", True),
+        "show_pan_aadhaar": fields.get("show_pan", True),
+        "show_leave_summary": fields.get("show_leave_summary", False),
+        "show_signatures": notes.get("show_signatures", True),
+        "show_watermark": theme.get("show_watermark", False),
+        "watermark_text": theme.get("watermark_text", "CONFIDENTIAL"),
+        "footer_notes": notes.get("compliance_notes") or notes.get("footer_notes", "System Generated Electronic Salary Certificate • Valid without physical signature"),
+        "left_signatory_title": notes.get("left_signatory_title") or "Employee Acknowledgment",
+        "right_signatory_title": notes.get("signatory_label") or notes.get("right_signatory_title") or "Authorized Finance Signatory",
+        "created_at": ct.created_at.isoformat() if hasattr(ct, "created_at") and ct.created_at else None,
+    }
+
+
+@router.get("/templates")
+async def list_payslip_templates(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """List all predefined and custom payslip templates with active default marked."""
+    custom_records = (
+        await db.scalars(
+            select(PayslipTemplate)
+            .where(PayslipTemplate.tenant_id == ctx.tenant_id)
+            .order_by(PayslipTemplate.created_at.desc())
+        )
+    ).all()
+
+    # Determine which template is default
+    default_custom = next((t for t in custom_records if t.is_default), None)
+    active_predefined_id = None
+    if default_custom and default_custom.template_type == "predefined":
+        active_predefined_id = default_custom.description or default_custom.name
+
+    result = []
+    # Add predefined
+    for pt in PREDEFINED_PAYSLIP_TEMPLATES:
+        is_def = False
+        if not default_custom:
+            is_def = pt.get("is_default", False)
+        elif default_custom.template_type == "predefined":
+            is_def = (pt["id"] == active_predefined_id or pt["name"] == default_custom.name)
+        
+        result.append(_format_payslip_template(pt, is_default_override=is_def))
+
+    # Add custom
+    for ct in custom_records:
+        if ct.template_type != "predefined":
+            result.append(_format_payslip_template(ct))
+
+    return result
+
+
+@router.post("/templates")
+async def create_payslip_template(
+    payload: PayslipTemplateCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Create a new custom payslip template."""
+    if payload.is_default:
+        await db.execute(
+            update(PayslipTemplate)
+            .where(PayslipTemplate.tenant_id == ctx.tenant_id)
+            .values(is_default=False)
+        )
+
+    # Merge flat fields into configs if provided
+    theme_cfg = payload.theme_config.copy() if payload.theme_config else {}
+    if payload.primary_color: theme_cfg["primary_color"] = payload.primary_color
+    if payload.secondary_color: theme_cfg["secondary_color"] = payload.secondary_color
+    if payload.accent_color: theme_cfg["accent_color"] = payload.accent_color
+    if payload.background_color: theme_cfg["background_color"] = payload.background_color
+    if payload.text_color: theme_cfg["text_color"] = payload.text_color
+    if payload.font_family: theme_cfg["font_family"] = payload.font_family
+    if payload.header_layout: theme_cfg["header_layout"] = payload.header_layout
+    if payload.paper_size: theme_cfg["paper_size"] = payload.paper_size
+    if payload.show_watermark is not None: theme_cfg["show_watermark"] = payload.show_watermark
+    if payload.watermark_text: theme_cfg["watermark_text"] = payload.watermark_text
+
+    header_cfg = payload.header_config.copy() if payload.header_config else {}
+    if payload.show_company_logo is not None: header_cfg["show_logo"] = payload.show_company_logo
+    if payload.show_company_address is not None: header_cfg["show_address"] = payload.show_company_address
+
+    fields_cfg = payload.fields_config.copy() if payload.fields_config else {}
+    if payload.show_bank_details is not None: fields_cfg["show_bank_details"] = payload.show_bank_details
+    if payload.show_pan_aadhaar is not None: fields_cfg["show_pan"] = payload.show_pan_aadhaar
+    if payload.show_leave_summary is not None: fields_cfg["show_leave_summary"] = payload.show_leave_summary
+
+    notes_cfg = payload.notes_config.copy() if payload.notes_config else {}
+    if payload.footer_notes:
+        notes_cfg["compliance_notes"] = payload.footer_notes
+        notes_cfg["footer_notes"] = payload.footer_notes
+    if payload.left_signatory_title: notes_cfg["left_signatory_title"] = payload.left_signatory_title
+    if payload.right_signatory_title:
+        notes_cfg["signatory_label"] = payload.right_signatory_title
+        notes_cfg["right_signatory_title"] = payload.right_signatory_title
+    if payload.show_signatures is not None: notes_cfg["show_signatures"] = payload.show_signatures
+
+    tpl = PayslipTemplate(
+        tenant_id=ctx.tenant_id,
+        name=payload.name,
+        description=payload.description,
+        template_type="custom",
+        is_default=payload.is_default,
+        theme_config=theme_cfg,
+        header_config=header_cfg,
+        fields_config=fields_cfg,
+        notes_config=notes_cfg,
+    )
+    db.add(tpl)
+    await db.commit()
+    await db.refresh(tpl)
+    return _format_payslip_template(tpl)
+
+
+@router.get("/templates/active")
+async def get_active_payslip_template(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Fetch the company's active default payslip template."""
+    custom_default = await db.scalar(
+        select(PayslipTemplate)
+        .where(PayslipTemplate.tenant_id == ctx.tenant_id, PayslipTemplate.is_default == True)
+    )
+    if custom_default:
+        if custom_default.template_type == "predefined":
+            match = next((p for p in PREDEFINED_PAYSLIP_TEMPLATES if p["id"] == custom_default.description or p["name"] == custom_default.name), None)
+            if match:
+                return _format_payslip_template(match, is_default_override=True)
+        return _format_payslip_template(custom_default, is_default_override=True)
+    
+    # Fallback to default predefined
+    def_pre = next((p for p in PREDEFINED_PAYSLIP_TEMPLATES if p.get("is_default")), PREDEFINED_PAYSLIP_TEMPLATES[0])
+    return _format_payslip_template(def_pre, is_default_override=True)
+
+
+@router.get("/public/templates/active")
+async def get_public_active_payslip_template(
+    tenant_id: str | None = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    """Public endpoint to fetch active template for rendering/downloading."""
+    if tenant_id:
+        try:
+            t_uuid = uuid.UUID(tenant_id)
+            custom_default = await db.scalar(
+                select(PayslipTemplate)
+                .where(PayslipTemplate.tenant_id == t_uuid, PayslipTemplate.is_default == True)
+            )
+            if custom_default:
+                if custom_default.template_type == "predefined":
+                    match = next((p for p in PREDEFINED_PAYSLIP_TEMPLATES if p["id"] == custom_default.description or p["name"] == custom_default.name), None)
+                    if match:
+                        return _format_payslip_template(match, is_default_override=True)
+                return _format_payslip_template(custom_default, is_default_override=True)
+        except Exception:
+            pass
+
+    return _format_payslip_template(PREDEFINED_PAYSLIP_TEMPLATES[0], is_default_override=True)
+
+
+@router.post("/templates/{template_id}/set-default")
+async def set_default_payslip_template(
+    template_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Set a template (predefined or custom) as the active company default."""
+    # Reset existing defaults for this tenant
+    await db.execute(
+        update(PayslipTemplate)
+        .where(PayslipTemplate.tenant_id == ctx.tenant_id)
+        .values(is_default=False)
+    )
+
+    if template_id.startswith("tpl-"):
+        # Predefined template
+        predefined = next((p for p in PREDEFINED_PAYSLIP_TEMPLATES if p["id"] == template_id), None)
+        if not predefined:
+            raise HTTPException(status_code=404, detail="Predefined template not found")
+        
+        # Check if record already exists
+        rec = await db.scalar(
+            select(PayslipTemplate).where(
+                PayslipTemplate.tenant_id == ctx.tenant_id,
+                PayslipTemplate.template_type == "predefined",
+                PayslipTemplate.description == template_id
+            )
+        )
+        if rec:
+            rec.is_default = True
+        else:
+            rec = PayslipTemplate(
+                tenant_id=ctx.tenant_id,
+                name=predefined["name"],
+                description=template_id,
+                template_type="predefined",
+                is_default=True,
+                theme_config=predefined["theme_config"],
+                header_config=predefined["header_config"],
+                fields_config=predefined["fields_config"],
+                notes_config=predefined["notes_config"],
+            )
+            db.add(rec)
+    else:
+        # Custom template by UUID
+        try:
+            t_uuid = uuid.UUID(template_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid template ID format")
+        
+        rec = await db.get(PayslipTemplate, t_uuid)
+        if not rec or rec.tenant_id != ctx.tenant_id:
+            raise HTTPException(status_code=404, detail="Custom template not found")
+        rec.is_default = True
+
+    await db.commit()
+    return {"message": "Default payslip template updated successfully", "template_id": template_id}
+
+
+@router.put("/templates/{template_id}")
+async def update_payslip_template(
+    template_id: str,
+    payload: PayslipTemplateUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Update custom payslip template."""
+    try:
+        t_uuid = uuid.UUID(template_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid template ID format")
+    
+    rec = await db.get(PayslipTemplate, t_uuid)
+    if not rec or rec.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if payload.is_default is True:
+        await db.execute(
+            update(PayslipTemplate)
+            .where(PayslipTemplate.tenant_id == ctx.tenant_id)
+            .values(is_default=False)
+        )
+        rec.is_default = True
+
+    if payload.name is not None:
+        rec.name = payload.name
+    if payload.description is not None:
+        rec.description = payload.description
+
+    theme_cfg = dict(rec.theme_config) if rec.theme_config else {}
+    if payload.theme_config is not None:
+        theme_cfg.update(payload.theme_config)
+    if payload.primary_color: theme_cfg["primary_color"] = payload.primary_color
+    if payload.secondary_color: theme_cfg["secondary_color"] = payload.secondary_color
+    if payload.accent_color: theme_cfg["accent_color"] = payload.accent_color
+    if payload.background_color: theme_cfg["background_color"] = payload.background_color
+    if payload.text_color: theme_cfg["text_color"] = payload.text_color
+    if payload.font_family: theme_cfg["font_family"] = payload.font_family
+    if payload.header_layout: theme_cfg["header_layout"] = payload.header_layout
+    if payload.paper_size: theme_cfg["paper_size"] = payload.paper_size
+    if payload.show_watermark is not None: theme_cfg["show_watermark"] = payload.show_watermark
+    if payload.watermark_text: theme_cfg["watermark_text"] = payload.watermark_text
+    rec.theme_config = theme_cfg
+
+    header_cfg = dict(rec.header_config) if rec.header_config else {}
+    if payload.header_config is not None:
+        header_cfg.update(payload.header_config)
+    if payload.show_company_logo is not None: header_cfg["show_logo"] = payload.show_company_logo
+    if payload.show_company_address is not None: header_cfg["show_address"] = payload.show_company_address
+    rec.header_config = header_cfg
+
+    fields_cfg = dict(rec.fields_config) if rec.fields_config else {}
+    if payload.fields_config is not None:
+        fields_cfg.update(payload.fields_config)
+    if payload.show_bank_details is not None: fields_cfg["show_bank_details"] = payload.show_bank_details
+    if payload.show_pan_aadhaar is not None: fields_cfg["show_pan"] = payload.show_pan_aadhaar
+    if payload.show_leave_summary is not None: fields_cfg["show_leave_summary"] = payload.show_leave_summary
+    rec.fields_config = fields_cfg
+
+    notes_cfg = dict(rec.notes_config) if rec.notes_config else {}
+    if payload.notes_config is not None:
+        notes_cfg.update(payload.notes_config)
+    if payload.footer_notes:
+        notes_cfg["compliance_notes"] = payload.footer_notes
+        notes_cfg["footer_notes"] = payload.footer_notes
+    if payload.left_signatory_title: notes_cfg["left_signatory_title"] = payload.left_signatory_title
+    if payload.right_signatory_title:
+        notes_cfg["signatory_label"] = payload.right_signatory_title
+        notes_cfg["right_signatory_title"] = payload.right_signatory_title
+    if payload.show_signatures is not None: notes_cfg["show_signatures"] = payload.show_signatures
+    rec.notes_config = notes_cfg
+
+    await db.commit()
+    await db.refresh(rec)
+    return _format_payslip_template(rec)
+
+
+@router.delete("/templates/{template_id}")
+async def delete_payslip_template(
+    template_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Delete a custom payslip template."""
+    try:
+        t_uuid = uuid.UUID(template_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid template ID format")
+    
+    rec = await db.get(PayslipTemplate, t_uuid)
+    if not rec or rec.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    await db.delete(rec)
+    await db.commit()
+    return {"message": "Template deleted successfully"}
 
 
 @router.get("/payslips", response_model=list[PayslipResponse])
@@ -333,6 +1078,58 @@ async def process_payroll(
     db.add(slip)
     await db.flush()
 
+    emp = await db.get(Employee, payload.employee_id)
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    comp_name = tenant.name if tenant else "BusinessOS AI Global"
+    desig_name = "Team Member"
+    if emp and emp.designation_id:
+        desig = await db.get(Designation, emp.designation_id)
+        if desig:
+            desig_name = desig.name
+    dept_name = "General"
+    if emp and emp.department_id:
+        dept = await db.get(Department, emp.department_id)
+        if dept:
+            dept_name = dept.name
+
+    if emp:
+        pdf_bytes = generate_payslip_pdf(slip, emp, comp_name, desig_name, dept_name)
+        try:
+            vault_dir = Path("static/vault/payslips")
+            vault_dir.mkdir(parents=True, exist_ok=True)
+            (vault_dir / f"{slip.id}.pdf").write_bytes(pdf_bytes)
+        except Exception as e:
+            print(f"[PAYSLIP VAULT PDF NOTICE]: {e}")
+
+        slip.pdf_url = f"/vault/payslips/{slip.id}.pdf"
+
+        # Auto-archive to EmployeeDocument (Document Vault)
+        month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        m_title = month_names[payload.month - 1] if 1 <= payload.month <= 12 else f"Month {payload.month}"
+        doc_title = f"Salary Slip - {m_title} {payload.year}"
+
+        old_doc = await db.scalar(
+            select(EmployeeDocument).where(
+                EmployeeDocument.tenant_id == ctx.tenant_id,
+                EmployeeDocument.employee_id == payload.employee_id,
+                EmployeeDocument.document_name == doc_title
+            )
+        )
+        if old_doc:
+            await db.delete(old_doc)
+            await db.flush()
+
+        doc_entry = EmployeeDocument(
+            tenant_id=ctx.tenant_id,
+            employee_id=payload.employee_id,
+            document_name=doc_title,
+            document_type="Payslip",
+            file_path=f"/vault/payslips/{slip.id}.pdf",
+            upload_date=date.today(),
+            status="Valid",
+        )
+        db.add(doc_entry)
+
     await write_audit_log(
         db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
         action="processed", entity_type="payroll", entity_id=slip.id,
@@ -377,6 +1174,217 @@ async def process_payroll(
             )
         )
     return payslips
+
+
+@router.get("/payslips/{id}", response_model=PayslipResponse)
+async def get_payslip(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    slip = await db.get(Payslip, id)
+    if not slip or slip.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Payslip not found")
+    emp = await db.get(Employee, slip.employee_id)
+    return PayslipResponse(
+        id=slip.id,
+        tenant_id=slip.tenant_id,
+        employee_id=slip.employee_id,
+        employee_name=emp.full_name if emp else "Employee",
+        employee_code=emp.employee_code if emp else "EMP-001",
+        month=slip.month,
+        year=slip.year,
+        basic_salary=float(slip.basic_salary),
+        hra=float(slip.hra),
+        other_allowances=float(slip.other_allowances),
+        pf_deduction=float(slip.pf_deduction),
+        esi_deduction=float(slip.esi_deduction),
+        tds_deduction=float(slip.tds_deduction),
+        other_deductions=float(slip.other_deductions),
+        gross_salary=float(slip.gross_salary),
+        net_salary=float(slip.net_salary),
+        status=slip.status,
+        pdf_url=slip.pdf_url,
+        created_at=slip.created_at,
+        updated_at=slip.updated_at,
+    )
+
+
+@router.get("/public/payslips/{id}", response_model=PayslipResponse)
+async def get_public_payslip(
+    id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payslip ID format")
+    slip = await db.get(Payslip, u_id)
+    if not slip:
+        raise HTTPException(status_code=404, detail="Payslip not found")
+    emp = await db.get(Employee, slip.employee_id)
+    return PayslipResponse(
+        id=slip.id,
+        tenant_id=slip.tenant_id,
+        employee_id=slip.employee_id,
+        employee_name=emp.full_name if emp else "Employee",
+        employee_code=emp.employee_code if emp else "EMP-001",
+        month=slip.month,
+        year=slip.year,
+        basic_salary=float(slip.basic_salary),
+        hra=float(slip.hra),
+        other_allowances=float(slip.other_allowances),
+        pf_deduction=float(slip.pf_deduction),
+        esi_deduction=float(slip.esi_deduction),
+        tds_deduction=float(slip.tds_deduction),
+        other_deductions=float(slip.other_deductions),
+        gross_salary=float(slip.gross_salary),
+        net_salary=float(slip.net_salary),
+        status=slip.status,
+        pdf_url=slip.pdf_url,
+        created_at=slip.created_at,
+        updated_at=slip.updated_at,
+    )
+
+
+@router.get("/payslips/{id}/download-pdf")
+async def download_payslip_pdf(
+    id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    template_id: str | None = None,
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payslip ID format")
+    slip = await db.get(Payslip, u_id)
+    if not slip or slip.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Payslip not found")
+    emp = await db.get(Employee, slip.employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    comp_name = tenant.name if tenant else "BusinessOS Enterprise"
+    desig = await db.get(Designation, emp.designation_id) if emp.designation_id else None
+    dept = await db.get(Department, emp.department_id) if emp.department_id else None
+
+    # Resolve template configuration
+    tpl_cfg = None
+    target_tpl_id = template_id or (str(slip.template_id) if slip.template_id else None)
+    if target_tpl_id:
+        if target_tpl_id.startswith("tpl-"):
+            tpl_cfg = next((p for p in PREDEFINED_PAYSLIP_TEMPLATES if p["id"] == target_tpl_id), None)
+        else:
+            try:
+                t_obj = await db.get(PayslipTemplate, uuid.UUID(target_tpl_id))
+                if t_obj:
+                    tpl_cfg = {
+                        "theme_config": t_obj.theme_config,
+                        "header_config": t_obj.header_config,
+                        "fields_config": t_obj.fields_config,
+                        "notes_config": t_obj.notes_config,
+                    }
+            except Exception:
+                pass
+
+    if not tpl_cfg:
+        def_t = await db.scalar(
+            select(PayslipTemplate).where(PayslipTemplate.tenant_id == ctx.tenant_id, PayslipTemplate.is_default == True)
+        )
+        if def_t:
+            tpl_cfg = {
+                "theme_config": def_t.theme_config,
+                "header_config": def_t.header_config,
+                "fields_config": def_t.fields_config,
+                "notes_config": def_t.notes_config,
+            }
+
+    pdf_bytes = generate_payslip_pdf(
+        slip, emp, comp_name, desig.name if desig else "Team Member", dept.name if dept else "General",
+        template_config=tpl_cfg
+    )
+
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    m_str = month_names[slip.month - 1] if 1 <= slip.month <= 12 else str(slip.month)
+    filename = f"Payslip_{(emp.employee_code or 'EMP')}_{m_str}_{slip.year}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/public/payslips/{id}/download-pdf")
+async def download_public_payslip_pdf(
+    id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    template_id: str | None = None,
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payslip ID format")
+    slip = await db.get(Payslip, u_id)
+    if not slip:
+        raise HTTPException(status_code=404, detail="Payslip not found")
+    emp = await db.get(Employee, slip.employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == slip.tenant_id))
+    comp_name = tenant.name if tenant else "BusinessOS Enterprise"
+    desig = await db.get(Designation, emp.designation_id) if emp.designation_id else None
+    dept = await db.get(Department, emp.department_id) if emp.department_id else None
+
+    # Resolve template configuration
+    tpl_cfg = None
+    target_tpl_id = template_id or (str(slip.template_id) if slip.template_id else None)
+    if target_tpl_id:
+        if target_tpl_id.startswith("tpl-"):
+            tpl_cfg = next((p for p in PREDEFINED_PAYSLIP_TEMPLATES if p["id"] == target_tpl_id), None)
+        else:
+            try:
+                t_obj = await db.get(PayslipTemplate, uuid.UUID(target_tpl_id))
+                if t_obj:
+                    tpl_cfg = {
+                        "theme_config": t_obj.theme_config,
+                        "header_config": t_obj.header_config,
+                        "fields_config": t_obj.fields_config,
+                        "notes_config": t_obj.notes_config,
+                    }
+            except Exception:
+                pass
+
+    if not tpl_cfg:
+        def_t = await db.scalar(
+            select(PayslipTemplate).where(PayslipTemplate.tenant_id == slip.tenant_id, PayslipTemplate.is_default == True)
+        )
+        if def_t:
+            tpl_cfg = {
+                "theme_config": def_t.theme_config,
+                "header_config": def_t.header_config,
+                "fields_config": def_t.fields_config,
+                "notes_config": def_t.notes_config,
+            }
+
+    pdf_bytes = generate_payslip_pdf(
+        slip, emp, comp_name, desig.name if desig else "Team Member", dept.name if dept else "General",
+        template_config=tpl_cfg
+    )
+
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    m_str = month_names[slip.month - 1] if 1 <= slip.month <= 12 else str(slip.month)
+    filename = f"Payslip_{(emp.employee_code or 'EMP')}_{m_str}_{slip.year}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 # ─── Pay Grade Structure Templates ──────────────────────────────────
 

@@ -1044,6 +1044,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                         ? doc.file_path
                         : `/${doc.file_path}`;
                       const isOfferLetter = doc.document_type === "Offer Letter" || doc.file_path.toLowerCase().includes("offer");
+                      const isPayslip = doc.document_type === "Payslip" || doc.file_path.toLowerCase().includes("payslip");
 
                       return (
                         <div key={doc.id} className="flex justify-between items-center p-3 bg-muted/40 hover:bg-muted/60 transition-colors rounded-lg border">
@@ -1065,6 +1066,15 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold gradient-brand text-white shadow hover:opacity-90 transition-all"
                             >
                               <Eye className="size-3.5" /> View & Print Offer
+                            </a>
+                          ) : isPayslip ? (
+                            <a
+                              href={normalizedPath}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-indigo-600 text-white shadow hover:bg-indigo-700 transition-all"
+                            >
+                              <Eye className="size-3.5" /> View & Print Payslip
                             </a>
                           ) : (
                             <a

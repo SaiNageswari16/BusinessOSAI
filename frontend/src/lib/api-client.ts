@@ -682,6 +682,47 @@ export interface LeaveRequest {
   updated_at: string;
 }
 
+export interface PayslipTemplate {
+  id: string;
+  name: string;
+  description?: string | null;
+  template_type: "predefined" | "custom";
+  is_default: boolean;
+  theme_config?: {
+    primary_color?: string;
+    accent_color?: string;
+    background_color?: string;
+    header_style?: string;
+    border_style?: string;
+    font_family?: string;
+  };
+  header_config?: {
+    title_text?: string;
+    subtitle_text?: string;
+    show_logo?: boolean;
+    show_gstin?: boolean;
+    show_cin?: boolean;
+    show_address?: boolean;
+    show_contact?: boolean;
+  };
+  fields_config?: {
+    show_employee_code?: boolean;
+    show_department?: boolean;
+    show_designation?: boolean;
+    show_bank_details?: boolean;
+    show_pan?: boolean;
+    show_uan?: boolean;
+    show_worked_days?: boolean;
+  };
+  notes_config?: {
+    compliance_notes?: string;
+    disclaimer_text?: string;
+    signatory_label?: string;
+    stamp_text?: string;
+  };
+  created_at?: string;
+}
+
 export interface Payslip {
   id: string;
   tenant_id: string;
@@ -701,6 +742,7 @@ export interface Payslip {
   net_salary: number;
   status: string;
   pdf_url?: string | null;
+  template_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1208,6 +1250,24 @@ export const payrollApi = {
     request<PayGrade>("POST", "/hrms/payroll/grades", data),
   generatePayslip: (data: Record<string, unknown>) =>
     request<Payslip[]>("POST", "/hrms/payslips/process", data),
+  getPayslip: (id: string) =>
+    request<Payslip>("GET", `/hrms/payslips/${id}`),
+  getPublicPayslip: (id: string) =>
+    request<Payslip>("GET", `/hrms/public/payslips/${id}`),
+  listTemplates: () =>
+    request<PayslipTemplate[]>("GET", "/hrms/payroll/templates"),
+  getActiveTemplate: () =>
+    request<PayslipTemplate>("GET", "/hrms/payroll/templates/active"),
+  getPublicActiveTemplate: (tenantId?: string) =>
+    request<PayslipTemplate>("GET", "/hrms/payroll/public/templates/active", undefined, tenantId ? { tenant_id: tenantId } : undefined),
+  createTemplate: (data: Partial<PayslipTemplate>) =>
+    request<PayslipTemplate>("POST", "/hrms/payroll/templates", data),
+  updateTemplate: (id: string, data: Partial<PayslipTemplate>) =>
+    request<PayslipTemplate>("PUT", `/hrms/payroll/templates/${id}`, data),
+  deleteTemplate: (id: string) =>
+    request<{ message: string }>("DELETE", `/hrms/payroll/templates/${id}`),
+  setDefaultTemplate: (id: string) =>
+    request<{ message: string; template_id: string }>("POST", `/hrms/payroll/templates/${id}/set-default`),
 };
 
 // â”€â”€â”€ Workflow Engine Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -62,44 +62,44 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       return true;
     }
 
+    const getModuleForPermission = (perm: string): string | null => {
+      if (perm === "view:dashboard" || perm.startsWith("view:workspace")) return "dashboard";
+      if (perm.startsWith("view:erp") || perm.startsWith("manage:erp") || perm.includes("company") || perm.includes("branch") || perm.includes("role") || perm.includes("user") || perm.includes("workflow")) return "erp";
+      if (perm.includes("inventory") || perm.includes("product") || perm.includes("catalog") || perm.includes("warehouse") || perm.includes("stock") || perm.includes("batch")) return "inventory";
+      if (perm.includes("pos") || perm.includes("terminal") || perm.includes("cashier")) return "pos";
+      if (perm.includes("procurement") || perm.includes("purchase") || perm.includes("supplier") || perm.includes("vendor") || perm.includes("grn")) return "procurement";
+      if (perm.includes("accounting") || perm.includes("finance") || perm.includes("invoice") || perm.includes("journal") || perm.includes("bank") || perm.includes("voucher") || perm.includes("tax") || perm.includes("chart_of_accounts") || perm.includes("fixed_asset") || perm.includes("expense_claim") || perm.includes("budget")) return "accounting";
+      if (perm.includes("crm") || perm.includes("lead") || perm.includes("deal") || perm.includes("quotation") || perm.includes("ticket") || perm.includes("customer")) return "crm";
+      if (perm.includes("hrms") || perm.includes("employee") || perm.includes("payroll") || perm.includes("attendance") || perm.includes("leave") || perm.includes("ess") || perm.includes("recruitment") || perm.includes("payslip")) return "hrms";
+      if (perm.includes("marketplace") || perm.includes("appstore")) return "marketplace";
+      if (perm.includes("iot") || perm.includes("telemetry") || perm.includes("device") || perm.includes("sensor")) return "iot";
+      if (perm.includes("report") || perm.includes("analytics") || perm.includes("intelligence")) return "reports";
+      if (perm.startsWith("view:settings") || perm.startsWith("manage:settings")) return "settings";
+      return null;
+    };
+
     // Module-level entitlement check for client workspaces (Platform Admin bypasses this)
-    if (!user.isPlatformAdmin && user.enabledModules && user.enabledModules.length > 0) {
-      const isPermInModule = (mod: string, perm: string): boolean => {
-        if (mod === "inventory") return perm.includes("inventory") || perm.includes("product") || perm.includes("catalog") || perm.includes("warehouse");
-        if (mod === "pos") return perm.includes("pos") || perm.includes("terminal") || perm.includes("cashier");
-        if (mod === "accounting") return perm.includes("accounting") || perm.includes("finance") || perm.includes("invoice") || perm.includes("journal") || perm.includes("bank") || perm.includes("voucher") || perm.includes("tax");
-        if (mod === "crm") return perm.includes("crm") || perm.includes("lead") || perm.includes("deal") || perm.includes("quotation") || perm.includes("ticket");
-        if (mod === "procurement") return perm.includes("procurement") || perm.includes("purchase") || perm.includes("vendor") || perm.includes("grn");
-        if (mod === "hrms") return perm.includes("hrms") || perm.includes("employee") || perm.includes("payroll") || perm.includes("attendance") || perm.includes("leave") || perm.includes("ess");
-        if (mod === "iot") return perm.includes("iot") || perm.includes("telemetry") || perm.includes("device");
-        if (mod === "marketplace") return perm.includes("marketplace") || perm.includes("appstore");
-        if (mod === "core" || mod === "erp") return perm.includes("erp") || perm.includes("company") || perm.includes("branch") || perm.includes("role") || perm.includes("user");
-        return true;
-      };
-
-      // If checking a known module root permission, ensure module is enabled
-      const moduleMap: Record<string, string> = {
-        "view:hrms": "hrms",
-        "view:crm": "crm",
-        "view:pos": "pos",
-        "view:inventory": "inventory",
-        "view:procurement": "procurement",
-        "view:accounting": "accounting",
-        "view:iot": "iot",
-        "view:marketplace": "marketplace",
-      };
-
-      const requiredMod = moduleMap[permission];
-      if (requiredMod && !user.enabledModules.includes(requiredMod)) {
-        return false;
+    if (user.enabledModules && user.enabledModules.length > 0) {
+      const targetMod = getModuleForPermission(permission);
+      // Core ERP, workspace dashboard, and general settings are standard tenant administration
+      if (targetMod && targetMod !== "erp" && targetMod !== "dashboard" && targetMod !== "settings") {
+        const isEnabled = user.enabledModules.some((m) => {
+          if (m === targetMod) return true;
+          if (targetMod === "procurement" && (m === "operations" || m === "procurement")) return true;
+          if (targetMod === "reports" && (m === "analytics" || m === "reports")) return true;
+          return false;
+        });
+        if (!isEnabled) {
+          return false;
+        }
       }
     }
 
-    // Tenant owners see everything permitted in their own subscribed workspace modules
+    // Tenant owners (admins of the organization) have full access to all enabled modules & Core ERP
     if (user.isTenantOwner) return true;
+
     // Direct match
     if (user.permissions.includes(permission)) return true;
-
 
     // Module-group virtual permissions — only expand to the specific module's permissions
     if (permission === "view:hrms") {
@@ -122,16 +122,16 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       );
     }
     if (permission === "view:crm") {
-      return user.permissions.some(p => p.startsWith("view:crm_") || p.startsWith("manage:crm_"));
+      return user.permissions.some(p => p.startsWith("view:crm_") || p.startsWith("manage:crm_") || p.includes("lead") || p.includes("deal") || p.includes("customer"));
     }
     if (permission === "view:pos") {
-      return user.permissions.some(p => p.startsWith("view:pos_") || p.startsWith("manage:pos_"));
+      return user.permissions.some(p => p.startsWith("view:pos_") || p.startsWith("manage:pos_") || p.includes("terminal") || p.includes("cashier"));
     }
     if (permission === "view:inventory") {
-      return user.permissions.some(p => p.startsWith("view:inventory_") || p.startsWith("manage:inventory_"));
+      return user.permissions.some(p => p.startsWith("view:inventory_") || p.startsWith("manage:inventory_") || p.includes("product") || p.includes("stock") || p.includes("warehouse"));
     }
     if (permission === "view:procurement") {
-      return user.permissions.some(p => p.startsWith("view:procurement_") || p.startsWith("manage:procurement_"));
+      return user.permissions.some(p => p.startsWith("view:procurement_") || p.startsWith("manage:procurement_") || p.includes("purchase") || p.includes("supplier") || p.includes("vendor"));
     }
     if (permission === "view:settings") {
       return user.permissions.some(p => p.startsWith("view:settings_") || p.startsWith("manage:settings_"));

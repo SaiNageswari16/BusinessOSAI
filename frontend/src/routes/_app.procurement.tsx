@@ -1,5 +1,7 @@
 import { createFileRoute, useRouterState } from '@tanstack/react-router';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useRbac } from "@/contexts/rbac-context";
+import { Unauthorized } from "@/components/unauthorized";
 
 // Phase 1
 import { Suppliers } from '../components/procurement/Suppliers';
@@ -72,9 +74,14 @@ const componentMap: Record<string, React.ElementType> = {
 };
 
 function ProcurementModule() {
+  const { hasPermission } = useRbac();
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
   
+  if (!hasPermission("view:procurement")) {
+    return <Unauthorized />;
+  }
+
   let activeTab = "suppliers";
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);

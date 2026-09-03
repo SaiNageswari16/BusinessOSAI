@@ -1,6 +1,8 @@
 import React from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRbac } from "@/contexts/rbac-context";
+import { Unauthorized } from "@/components/unauthorized";
 import { MockScreen } from "@/components/mock-screen";
 import { RecruitmentIntegrations } from "@/components/recruitment-integrations";
 import { NotificationSettings } from "@/components/NotificationSettings";
@@ -124,9 +126,14 @@ const componentMap: Record<string, React.ElementType> = {
 };
 
 function SettingsModule() {
+  const { hasPermission } = useRbac();
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
   
+  if (!hasPermission("manage:system_admin") && !hasPermission("view:settings")) {
+    return <Unauthorized />;
+  }
+
   let activeTab = "company_profile";
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);

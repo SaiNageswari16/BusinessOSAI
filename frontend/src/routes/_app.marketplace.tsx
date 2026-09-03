@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRbac } from "@/contexts/rbac-context";
+import { Unauthorized } from "@/components/unauthorized";
 import {
   Store, Package, ShoppingCart, Truck, Tags, Activity,
   Search, Filter, Plus, ShieldCheck, FileCheck, CreditCard,
@@ -158,6 +160,7 @@ function SubTabTableView({
 }
 
 function MarketplaceModule() {
+  const { hasPermission } = useRbac();
   const routerState = useRouterState();
   const queryClient = useQueryClient();
   const searchStr = routerState.location.searchStr;
@@ -167,6 +170,10 @@ function MarketplaceModule() {
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isAddCouponOpen, setIsAddCouponOpen] = useState(false);
   const [isCreatePayoutOpen, setIsCreatePayoutOpen] = useState(false);
+
+  if (!hasPermission("view:marketplace")) {
+    return <Unauthorized />;
+  }
 
   let activeTab = "vendors";
   if (searchStr.includes("tab=")) {

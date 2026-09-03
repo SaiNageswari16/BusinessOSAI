@@ -169,11 +169,16 @@ export function AppTopbar() {
     setTenant: setCompany,
     companiesList,
   } = useTenant();
-  const { activeRole, availableRoles, setActiveRole } = useRbac();
+  const { activeRole, availableRoles, setActiveRole, hasPermission } = useRbac();
   const navigate = useNavigate();
   const location = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [activeCurrency, setActiveCurrencyState] = useState(getActiveCurrency());
+
+  // Filter modules to only those the current user has permission to access
+  const visibleModules = useMemo(() => {
+    return moduleDisplayList.filter((mod) => !mod.permission || hasPermission(mod.permission));
+  }, [hasPermission]);
 
   const handleCurrencySelect = (code: string) => {
     setActiveCurrency(code);
@@ -271,8 +276,8 @@ export function AppTopbar() {
         }
       }
     }
-    return "Core ERP";
-  }, [currentPath, currentPathWithSearch]);
+    return visibleModules[0]?.group || "Core ERP";
+  }, [currentPath, currentPathWithSearch, visibleModules]);
 
   const handleNavigateModule = (defaultTo: string) => {
     const [path, searchStr] = defaultTo.split("?");
@@ -290,7 +295,10 @@ export function AppTopbar() {
     <header className="sticky top-0 z-50 flex h-[58px] shrink-0 items-center justify-between border-b border-slate-200/90 bg-white px-2 lg:px-3.5 shadow-xs select-none no-print w-full overflow-hidden">
       {/* ── Left: LazyMonkeyAI Brand Logo ── */}
       <div 
-        onClick={() => handleNavigateModule("/erp?tab=companies")}
+        onClick={() => {
+          const firstAllowed = visibleModules[0]?.defaultTo || "/dashboard";
+          handleNavigateModule(firstAllowed);
+        }}
         className="flex items-center gap-2 cursor-pointer group shrink-0 mr-1 xl:mr-2"
       >
         <div className="size-8.5 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 overflow-hidden shrink-0">
@@ -309,9 +317,9 @@ export function AppTopbar() {
         </div>
       </div>
 
-      {/* ── Center: Top Modules Navigation Ribbon (Zero scroll, perfectly flex-fitted) ── */}
+      {/* ── Center: Top Modules Navigation Ribbon (Zero scroll, perfectly flex-fitted, filtered by permission) ── */}
       <div className="hidden lg:flex items-center justify-center flex-1 h-full px-0.5 min-w-0 overflow-hidden">
-        {moduleDisplayList.map((mod) => {
+        {visibleModules.map((mod) => {
           const isActive = currentActiveGroup === mod.group;
           const Icon = mod.icon;
           return (

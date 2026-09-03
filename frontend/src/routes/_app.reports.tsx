@@ -1,6 +1,8 @@
 import React from "react";
 import { createFileRoute, useRouterState, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRbac } from "@/contexts/rbac-context";
+import { Unauthorized } from "@/components/unauthorized";
 import {
   TrendingUp, LineChart as LucideLineChart, Building2, ShoppingCart, Boxes, ArrowRightLeft,
   Warehouse, PieChart, ShoppingBag, Truck, FileCheck, Calculator,
@@ -59,8 +61,13 @@ const componentMap: Record<string, React.ElementType> = {
 };
 
 function ReportsModule() {
+  const { hasPermission } = useRbac();
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
+
+  if (!hasPermission("view:reports")) {
+    return <Unauthorized />;
+  }
 
   let activeTab = "sales_reports";
   if (searchStr.includes("tab=")) {

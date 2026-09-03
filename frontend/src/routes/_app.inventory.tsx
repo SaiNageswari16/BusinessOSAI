@@ -1,5 +1,7 @@
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRbac } from "@/contexts/rbac-context";
+import { Unauthorized } from "@/components/unauthorized";
 
 // Product Master
 import { Products } from "../components/inventory/Products";
@@ -117,9 +119,14 @@ const componentMap: Record<string, React.ElementType> = {
 };
 
 function InventoryModule() {
+  const { hasPermission } = useRbac();
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
   
+  if (!hasPermission("view:inventory")) {
+    return <Unauthorized />;
+  }
+
   let activeTab = "products";
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
