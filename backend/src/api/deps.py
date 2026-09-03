@@ -49,12 +49,15 @@ class CurrentUserContext:
         # 5. ERP / General Management matching
         if permission in ("view:erp", "manage:erp"):
             return any(
-                p.startswith("manage:")
-                or p.startswith("create:")
-                or p.startswith("update:")
-                or p.startswith("delete:")
-                or p.startswith("view:")
-                or p in ("manage:erp", "create:inventory", "manage:inventory", "view:inventory", "inventory", "all")
+                p.startswith("manage:erp")
+                or p.startswith("view:erp")
+                or p.startswith("manage:users")
+                or p.startswith("manage:roles")
+                or p.startswith("manage:company")
+                or p.startswith("view:users")
+                or p.startswith("view:roles")
+                or p.startswith("view:company")
+                or p in ("manage:erp", "view:erp", "manage:all", "all", "super_admin")
                 for p in self.permissions
             )
 

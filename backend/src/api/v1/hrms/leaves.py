@@ -37,6 +37,10 @@ async def list_leave_requests(
         .where(LeaveRequest.tenant_id == ctx.tenant_id)
     )
 
+    # If the user does not have company-wide leave viewing permissions, strictly isolate to their own leave requests
+    if not (ctx.has_permission("view:hrms_leaves") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
+        query = query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
+
     if employee_id:
         query = query.where(LeaveRequest.employee_id == employee_id)
     if status_filter:

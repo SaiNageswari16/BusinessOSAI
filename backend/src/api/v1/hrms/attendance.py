@@ -94,6 +94,11 @@ async def list_attendance(
         .join(Employee, AttendanceRecord.employee_id == Employee.id)
         .where(AttendanceRecord.tenant_id == ctx.tenant_id)
     )
+
+    # If the user does not have company-wide attendance permission, strictly isolate to their own records
+    if not (ctx.has_permission("view:hrms_attendance") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
+        query = query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
+
     if date_from:
         query = query.where(AttendanceRecord.date >= date_from)
     if date_to:

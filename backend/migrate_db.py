@@ -245,6 +245,14 @@ async def migrate():
         "ALTER TABLE companies ADD COLUMN IF NOT EXISTS email_settings JSONB DEFAULT '{}'::jsonb"
     ]
 
+    for stmt in recruitment_statements:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info("Successfully executed recruitment schema update.")
+            except Exception as e:
+                logger.info(f"Migration note for recruitment update: {e}")
+
     # ── HRMS: Payslip Templates Schema Updates ──────────────────────────
     payslip_template_statements = [
         """
@@ -267,13 +275,92 @@ async def migrate():
         "ALTER TABLE payslips ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES hrms_payslip_templates(id) ON DELETE SET NULL"
     ]
 
-    for stmt in payslip_template_statements:
+    # ── HRMS: Loans, Advances, Bonuses, Commissions Tables ───────────────
+    payroll_addon_statements = [
+        """
+        CREATE TABLE IF NOT EXISTS hrms_employee_loans (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+            loan_type VARCHAR(50) DEFAULT 'Personal',
+            principal_amount NUMERIC(12, 2) NOT NULL,
+            interest_rate NUMERIC(5, 2) DEFAULT 0.0,
+            tenure_months INTEGER NOT NULL DEFAULT 12,
+            monthly_emi NUMERIC(12, 2) NOT NULL,
+            total_repayable NUMERIC(12, 2) NOT NULL,
+            amount_repaid NUMERIC(12, 2) DEFAULT 0.0,
+            remaining_balance NUMERIC(12, 2) NOT NULL,
+            start_month INTEGER DEFAULT 7,
+            start_year INTEGER DEFAULT 2026,
+            status VARCHAR(30) DEFAULT 'Approved',
+            reason VARCHAR(255),
+            approved_by VARCHAR(100),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_hrms_employee_loans_tenant ON hrms_employee_loans(tenant_id)",
+        """
+        CREATE TABLE IF NOT EXISTS hrms_salary_advances (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+            amount NUMERIC(12, 2) NOT NULL,
+            reason VARCHAR(255) NOT NULL,
+            request_date DATE DEFAULT CURRENT_DATE,
+            recovery_month INTEGER DEFAULT 7,
+            recovery_year INTEGER DEFAULT 2026,
+            status VARCHAR(30) DEFAULT 'Approved',
+            approved_by VARCHAR(100),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_hrms_salary_advances_tenant ON hrms_salary_advances(tenant_id)",
+        """
+        CREATE TABLE IF NOT EXISTS hrms_employee_bonuses (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
+            bonus_title VARCHAR(100) NOT NULL,
+            bonus_type VARCHAR(50) DEFAULT 'Festive',
+            amount NUMERIC(12, 2) NOT NULL,
+            distribution_month INTEGER DEFAULT 7,
+            distribution_year INTEGER DEFAULT 2026,
+            status VARCHAR(30) DEFAULT 'Disbursed',
+            remarks VARCHAR(255),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_hrms_employee_bonuses_tenant ON hrms_employee_bonuses(tenant_id)",
+        """
+        CREATE TABLE IF NOT EXISTS hrms_sales_commissions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+            period_month INTEGER DEFAULT 7,
+            period_year INTEGER DEFAULT 2026,
+            target_amount NUMERIC(14, 2) DEFAULT 0.0,
+            achieved_amount NUMERIC(14, 2) DEFAULT 0.0,
+            commission_rate NUMERIC(5, 2) DEFAULT 5.0,
+            commission_amount NUMERIC(12, 2) NOT NULL,
+            status VARCHAR(30) DEFAULT 'Approved',
+            notes VARCHAR(255),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_hrms_sales_commissions_tenant ON hrms_sales_commissions(tenant_id)",
+    ]
+
+    for stmt in payroll_addon_statements:
         async with engine.begin() as conn:
             try:
                 await conn.execute(text(stmt))
-                logger.info("Successfully executed payslip template schema update.")
+                logger.info("Successfully executed payroll addon schema update.")
             except Exception as e:
-                logger.info(f"Migration note for payslip template update: {e}")
+                logger.info(f"Migration note for payroll addon update: {e}")
 
 if __name__ == "__main__":
     asyncio.run(migrate())

@@ -1102,6 +1102,73 @@ class PayGrade(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     designation: Mapped["Designation"] = relationship()
 
 
+class EmployeeLoan(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "hrms_employee_loans"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    loan_type: Mapped[str] = mapped_column(String(50), default="Personal")  # Personal | Emergency | Vehicle | Home | Education
+    principal_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    interest_rate: Mapped[float] = mapped_column(Numeric(5, 2), default=0.0)
+    tenure_months: Mapped[int] = mapped_column(Integer, nullable=False, default=12)
+    monthly_emi: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    total_repayable: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    amount_repaid: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    remaining_balance: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    start_month: Mapped[int] = mapped_column(Integer, default=7)
+    start_year: Mapped[int] = mapped_column(Integer, default=2026)
+    status: Mapped[str] = mapped_column(String(30), default="Approved")  # Pending | Approved | Active | Completed | Rejected
+    reason: Mapped[str | None] = mapped_column(String(255))
+    approved_by: Mapped[str | None] = mapped_column(String(100))
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class SalaryAdvance(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "hrms_salary_advances"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    request_date: Mapped[date] = mapped_column(Date, default=date.today)
+    recovery_month: Mapped[int] = mapped_column(Integer, default=7)
+    recovery_year: Mapped[int] = mapped_column(Integer, default=2026)
+    status: Mapped[str] = mapped_column(String(30), default="Approved")  # Pending | Approved | Recovered | Rejected
+    approved_by: Mapped[str | None] = mapped_column(String(100))
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class EmployeeBonus(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "hrms_employee_bonuses"
+
+    employee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=True)
+    bonus_title: Mapped[str] = mapped_column(String(100), nullable=False)
+    bonus_type: Mapped[str] = mapped_column(String(50), default="Festive")  # Festive | Performance | Milestone | Spot | Retention
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    distribution_month: Mapped[int] = mapped_column(Integer, default=7)
+    distribution_year: Mapped[int] = mapped_column(Integer, default=2026)
+    status: Mapped[str] = mapped_column(String(30), default="Disbursed")  # Pending | Approved | Disbursed
+    remarks: Mapped[str | None] = mapped_column(String(255))
+
+    employee: Mapped["Employee | None"] = relationship()
+
+
+class SalesCommission(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "hrms_sales_commissions"
+
+    employee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    period_month: Mapped[int] = mapped_column(Integer, default=7)
+    period_year: Mapped[int] = mapped_column(Integer, default=2026)
+    target_amount: Mapped[float] = mapped_column(Numeric(14, 2), default=0.0)
+    achieved_amount: Mapped[float] = mapped_column(Numeric(14, 2), default=0.0)
+    commission_rate: Mapped[float] = mapped_column(Numeric(5, 2), default=5.0)
+    commission_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="Approved")  # Pending | Approved | Paid
+    notes: Mapped[str | None] = mapped_column(String(255))
+
+    employee: Mapped["Employee"] = relationship()
+
+
 # -------------------------------------------------------------------------
 # POS MODULE MODELS
 # -------------------------------------------------------------------------

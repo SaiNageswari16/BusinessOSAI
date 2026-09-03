@@ -1250,6 +1250,8 @@ export const payrollApi = {
     request<PayGrade>("POST", "/hrms/payroll/grades", data),
   generatePayslip: (data: Record<string, unknown>) =>
     request<Payslip[]>("POST", "/hrms/payslips/process", data),
+  processBatchPayslips: (data: { month: number; year: number; status?: string }) =>
+    request<Payslip[]>("POST", "/hrms/payslips/process-batch", data),
   getPayslip: (id: string) =>
     request<Payslip>("GET", `/hrms/payslips/${id}`),
   getPublicPayslip: (id: string) =>
@@ -1268,6 +1270,35 @@ export const payrollApi = {
     request<{ message: string }>("DELETE", `/hrms/payroll/templates/${id}`),
   setDefaultTemplate: (id: string) =>
     request<{ message: string; template_id: string }>("POST", `/hrms/payroll/templates/${id}/set-default`),
+
+  // Loans, Advances, Bonuses & Commissions
+  listLoans: () =>
+    request<any[]>("GET", "/hrms/payroll/loans"),
+  createLoan: (data: any) =>
+    request<{ message: string; id: string }>("POST", "/hrms/payroll/loans", data),
+  updateLoanStatus: (id: string, status: string) =>
+    request<{ message: string; status: string }>("PATCH", `/hrms/payroll/loans/${id}/status`, { status }),
+
+  listAdvances: () =>
+    request<any[]>("GET", "/hrms/payroll/advances"),
+  createAdvance: (data: any) =>
+    request<{ message: string; id: string }>("POST", "/hrms/payroll/advances", data),
+  updateAdvanceStatus: (id: string, status: string) =>
+    request<{ message: string; status: string }>("PATCH", `/hrms/payroll/advances/${id}/status`, { status }),
+
+  listBonuses: () =>
+    request<any[]>("GET", "/hrms/payroll/bonuses"),
+  createBonus: (data: any) =>
+    request<{ message: string; id: string }>("POST", "/hrms/payroll/bonuses", data),
+  updateBonusStatus: (id: string, status: string) =>
+    request<{ message: string; status: string }>("PATCH", `/hrms/payroll/bonuses/${id}/status`, { status }),
+
+  listCommissions: () =>
+    request<any[]>("GET", "/hrms/payroll/commissions"),
+  createCommission: (data: any) =>
+    request<{ message: string; id: string }>("POST", "/hrms/payroll/commissions", data),
+  updateCommissionStatus: (id: string, status: string) =>
+    request<{ message: string; status: string }>("PATCH", `/hrms/payroll/commissions/${id}/status`, { status }),
 };
 
 // â”€â”€â”€ Workflow Engine Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

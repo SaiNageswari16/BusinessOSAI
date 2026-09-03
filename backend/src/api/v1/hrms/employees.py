@@ -138,6 +138,11 @@ async def list_employees(
         logging.getLogger("hrms.employees").warning(f"Auto-link user to employee skipped: {sync_err}")
 
     query = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
+
+    # If the user does not have company-wide employee viewing permissions, strictly isolate to their own profile
+    if not (ctx.has_permission("view:hrms_employees") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
+        query = query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
+
     if department_id:
         query = query.where(Employee.department_id == department_id)
     if designation_id:

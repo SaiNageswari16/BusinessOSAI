@@ -196,10 +196,38 @@ function HrmsModule() {
     return <Unauthorized />;
   }
 
-  let activeTab = "employees";
+  let activeTab = "";
   if (searchStr.includes("tab=")) {
     const params = new URLSearchParams(searchStr);
-    activeTab = params.get("tab") || "employees";
+    activeTab = params.get("tab") || "";
+  }
+
+  // If no tab is explicitly selected in URL, pick the most appropriate landing tab for the user's role
+  if (!activeTab) {
+    if (hasPermission("view:hrms_employees")) {
+      activeTab = "employees";
+    } else if (hasPermission("view:ess_attendance")) {
+      activeTab = "ess_attendance";
+    } else if (hasPermission("view:ess_leaves")) {
+      activeTab = "ess_leaves";
+    } else if (hasPermission("view:ess_payroll")) {
+      activeTab = "ess_payroll";
+    } else {
+      // Find first accessible tab
+      const firstAccessible = Object.keys(tabPermissions).find((t) => hasPermission(tabPermissions[t]));
+      activeTab = firstAccessible || "ess_attendance";
+    }
+  }
+
+  // Strict RBAC check for the chosen active tab
+  const requiredPerm = tabPermissions[activeTab];
+  if (requiredPerm && !hasPermission(requiredPerm)) {
+    // If regular employee tries to open admin tabs (like employees directory or payroll processing), gracefully route to ESS
+    if (hasPermission("view:ess_attendance")) {
+      activeTab = "ess_attendance";
+    } else {
+      return <Unauthorized />;
+    }
   }
 
   const formatTitle = (str: string) =>

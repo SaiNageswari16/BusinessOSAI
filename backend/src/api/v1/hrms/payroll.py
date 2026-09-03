@@ -20,6 +20,10 @@ from src.models import (
     Department,
     EmployeeDocument,
     Tenant,
+    EmployeeLoan,
+    SalaryAdvance,
+    EmployeeBonus,
+    SalesCommission,
 )
 from src.schemas.erp import (
     SalaryStructureCreate,
@@ -606,6 +610,7 @@ def _format_payslip_template(ct: Any, is_default_override: bool | None = None) -
 
 
 @router.get("/templates")
+@router.get("/payroll/templates")
 async def list_payslip_templates(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -645,6 +650,7 @@ async def list_payslip_templates(
 
 
 @router.post("/templates")
+@router.post("/payroll/templates")
 async def create_payslip_template(
     payload: PayslipTemplateCreate,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
@@ -708,6 +714,7 @@ async def create_payslip_template(
 
 
 @router.get("/templates/active")
+@router.get("/payroll/templates/active")
 async def get_active_payslip_template(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -730,6 +737,7 @@ async def get_active_payslip_template(
 
 
 @router.get("/public/templates/active")
+@router.get("/payroll/public/templates/active")
 async def get_public_active_payslip_template(
     tenant_id: str | None = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
@@ -755,6 +763,7 @@ async def get_public_active_payslip_template(
 
 
 @router.post("/templates/{template_id}/set-default")
+@router.post("/payroll/templates/{template_id}/set-default")
 async def set_default_payslip_template(
     template_id: str,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
@@ -814,21 +823,46 @@ async def set_default_payslip_template(
 
 
 @router.put("/templates/{template_id}")
+@router.put("/payroll/templates/{template_id}")
 async def update_payslip_template(
     template_id: str,
     payload: PayslipTemplateUpdate,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Update custom payslip template."""
-    try:
-        t_uuid = uuid.UUID(template_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid template ID format")
-    
-    rec = await db.get(PayslipTemplate, t_uuid)
-    if not rec or rec.tenant_id != ctx.tenant_id:
-        raise HTTPException(status_code=404, detail="Template not found")
+    """Update custom payslip template or tenant override for predefined presets."""
+    if template_id.startswith("tpl-"):
+        predefined = next((p for p in PREDEFINED_PAYSLIP_TEMPLATES if p["id"] == template_id), None)
+        rec = await db.scalar(
+            select(PayslipTemplate).where(
+                PayslipTemplate.tenant_id == ctx.tenant_id,
+                PayslipTemplate.template_type == "predefined",
+                PayslipTemplate.description == template_id
+            )
+        )
+        if not rec:
+            rec = PayslipTemplate(
+                tenant_id=ctx.tenant_id,
+                name=payload.name or (predefined["name"] if predefined else "Custom Corporate"),
+                description=template_id,
+                template_type="predefined",
+                is_default=bool(payload.is_default),
+                theme_config=dict(predefined["theme_config"]) if predefined else {},
+                header_config=dict(predefined["header_config"]) if predefined else {},
+                fields_config=dict(predefined["fields_config"]) if predefined else {},
+                notes_config=dict(predefined["notes_config"]) if predefined else {},
+            )
+            db.add(rec)
+            await db.flush()
+    else:
+        try:
+            t_uuid = uuid.UUID(template_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid template ID format")
+        
+        rec = await db.get(PayslipTemplate, t_uuid)
+        if not rec or rec.tenant_id != ctx.tenant_id:
+            raise HTTPException(status_code=404, detail="Template not found")
 
     if payload.is_default is True:
         await db.execute(
@@ -892,6 +926,7 @@ async def update_payslip_template(
 
 
 @router.delete("/templates/{template_id}")
+@router.delete("/payroll/templates/{template_id}")
 async def delete_payslip_template(
     template_id: str,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
@@ -923,6 +958,11 @@ async def list_payslips(
         .join(Employee, Payslip.employee_id == Employee.id)
         .where(Payslip.tenant_id == ctx.tenant_id)
     )
+
+    # If the user does not have company-wide payroll viewing permissions, strictly isolate to their own payslips
+    if not (ctx.has_permission("view:hrms_payslips") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
+        query = query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
+
     if employee_id:
         query = query.where(Payslip.employee_id == employee_id)
 
@@ -1026,9 +1066,13 @@ async def list_payslips(
 async def process_payroll(
     payload: PayslipCreate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    emp = await db.get(Employee, payload.employee_id)
+    if not emp or emp.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
     sal = await db.scalar(
         select(SalaryStructure).where(
             SalaryStructure.tenant_id == ctx.tenant_id,
@@ -1036,10 +1080,31 @@ async def process_payroll(
         )
     )
     if not sal:
-        raise HTTPException(
-            status_code=400,
-            detail="Employee does not have a configured Salary Structure. Please configure it first."
+        # Auto-create compliant SalaryStructure using employee's recorded basic salary
+        b_sal = float(emp.basic_salary) if emp.basic_salary and float(emp.basic_salary) > 0 else 30000.0
+        hra_val = round(b_sal * 0.40)
+        other_val = round(b_sal * 0.10)
+        gross_val = b_sal + hra_val + other_val
+        pf_val = round(min(b_sal, 15000.0) * 0.12)
+        esi_val = round(gross_val * 0.0075) if gross_val <= 21000.0 else 0.0
+        tds_val = round(((gross_val * 12 - 700000.0) * 0.10) / 12) if (gross_val * 12) > 700000.0 else 0.0
+        ded_val = pf_val + esi_val + tds_val
+        net_val = gross_val - ded_val
+
+        sal = SalaryStructure(
+            tenant_id=ctx.tenant_id,
+            employee_id=emp.id,
+            basic_salary=b_sal,
+            hra=hra_val,
+            other_allowances=other_val,
+            pf_deduction=pf_val,
+            esi_deduction=esi_val,
+            tds_deduction=tds_val,
+            other_deductions=0.0,
+            net_salary=net_val,
         )
+        db.add(sal)
+        await db.flush()
 
     # Delete existing payslip for this employee & period if any to re-run
     existing = await db.scalar(
@@ -1058,6 +1123,22 @@ async def process_payroll(
     deductions = sal.pf_deduction + sal.esi_deduction + sal.tds_deduction + sal.other_deductions
     gross = sal.basic_salary + allowances
 
+    # Check for active template
+    active_tpl = await db.scalar(
+        select(PayslipTemplate)
+        .where(PayslipTemplate.tenant_id == ctx.tenant_id, PayslipTemplate.is_default == True)
+    )
+    tpl_config = None
+    tpl_id = None
+    if active_tpl:
+        tpl_id = active_tpl.id if active_tpl.template_type != "predefined" else None
+        tpl_config = {
+            "theme_config": active_tpl.theme_config or {},
+            "header_config": active_tpl.header_config or {},
+            "fields_config": active_tpl.fields_config or {},
+            "notes_config": active_tpl.notes_config or {},
+        }
+
     slip = Payslip(
         tenant_id=ctx.tenant_id,
         employee_id=payload.employee_id,
@@ -1073,12 +1154,12 @@ async def process_payroll(
         gross_salary=gross,
         net_salary=sal.net_salary,
         status=payload.status,
-        pdf_url=f"/uploads/payslips/slip_processed_{payload.year}_{payload.month}.pdf"
+        template_id=tpl_id,
+        pdf_url=f"/vault/payslips/slip_pending.pdf"
     )
     db.add(slip)
     await db.flush()
 
-    emp = await db.get(Employee, payload.employee_id)
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     comp_name = tenant.name if tenant else "BusinessOS AI Global"
     desig_name = "Team Member"
@@ -1092,26 +1173,197 @@ async def process_payroll(
         if dept:
             dept_name = dept.name
 
-    if emp:
-        pdf_bytes = generate_payslip_pdf(slip, emp, comp_name, desig_name, dept_name)
+    pdf_bytes = generate_payslip_pdf(slip, emp, comp_name, desig_name, dept_name, template_config=tpl_config)
+    try:
+        vault_dir = Path("static/vault/payslips")
+        vault_dir.mkdir(parents=True, exist_ok=True)
+        (vault_dir / f"{slip.id}.pdf").write_bytes(pdf_bytes)
+    except Exception as e:
+        print(f"[PAYSLIP VAULT PDF NOTICE]: {e}")
+
+    slip.pdf_url = f"/vault/payslips/{slip.id}.pdf"
+
+    # Auto-archive to EmployeeDocument (Document Vault)
+    month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    m_title = month_names[payload.month - 1] if 1 <= payload.month <= 12 else f"Month {payload.month}"
+    doc_title = f"Salary Slip - {m_title} {payload.year}"
+
+    old_doc = await db.scalar(
+        select(EmployeeDocument).where(
+            EmployeeDocument.tenant_id == ctx.tenant_id,
+            EmployeeDocument.employee_id == payload.employee_id,
+            EmployeeDocument.document_name == doc_title
+        )
+    )
+    if old_doc:
+        await db.delete(old_doc)
+        await db.flush()
+
+    doc_entry = EmployeeDocument(
+        tenant_id=ctx.tenant_id,
+        employee_id=payload.employee_id,
+        document_name=doc_title,
+        document_type="Payslip",
+        file_path=f"/vault/payslips/{slip.id}.pdf",
+        upload_date=date.today(),
+        status="Valid",
+    )
+    db.add(doc_entry)
+
+    await write_audit_log(
+        db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
+        action="processed", entity_type="payroll", entity_id=slip.id,
+        new_values=payload.model_dump(mode="json"),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+
+
+@router.post("/payslips/process-batch", response_model=list[PayslipResponse])
+async def process_batch_payroll(
+    payload: dict,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """One-click batch payroll processing for all active employees of the organization."""
+    m = int(payload.get("month", 7))
+    y = int(payload.get("year", 2026))
+    p_status = str(payload.get("status", "Paid"))
+
+    employees = (
+        await db.scalars(
+            select(Employee).where(
+                Employee.tenant_id == ctx.tenant_id,
+                Employee.status.in_(["Active", "active", "Probation", "probation"])
+            )
+        )
+    ).all()
+
+    if not employees:
+        # Fallback to all employees if none marked active
+        employees = (
+            await db.scalars(
+                select(Employee).where(Employee.tenant_id == ctx.tenant_id)
+            )
+        ).all()
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    comp_name = tenant.name if tenant else "BusinessOS AI Global"
+
+    # Check for active template
+    active_tpl = await db.scalar(
+        select(PayslipTemplate)
+        .where(PayslipTemplate.tenant_id == ctx.tenant_id, PayslipTemplate.is_default == True)
+    )
+    tpl_config = None
+    tpl_id = None
+    if active_tpl:
+        tpl_id = active_tpl.id if active_tpl.template_type != "predefined" else None
+        tpl_config = {
+            "theme_config": active_tpl.theme_config or {},
+            "header_config": active_tpl.header_config or {},
+            "fields_config": active_tpl.fields_config or {},
+            "notes_config": active_tpl.notes_config or {},
+        }
+
+    vault_dir = Path("static/vault/payslips")
+    vault_dir.mkdir(parents=True, exist_ok=True)
+    month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    m_title = month_names[m - 1] if 1 <= m <= 12 else f"Month {m}"
+    doc_title = f"Salary Slip - {m_title} {y}"
+
+    for emp in employees:
+        sal = await db.scalar(
+            select(SalaryStructure).where(
+                SalaryStructure.tenant_id == ctx.tenant_id,
+                SalaryStructure.employee_id == emp.id
+            )
+        )
+        if not sal:
+            b_sal = float(emp.basic_salary) if emp.basic_salary and float(emp.basic_salary) > 0 else 30000.0
+            hra_val = round(b_sal * 0.40)
+            other_val = round(b_sal * 0.10)
+            gross_val = b_sal + hra_val + other_val
+            pf_val = round(min(b_sal, 15000.0) * 0.12)
+            esi_val = round(gross_val * 0.0075) if gross_val <= 21000.0 else 0.0
+            tds_val = round(((gross_val * 12 - 700000.0) * 0.10) / 12) if (gross_val * 12) > 700000.0 else 0.0
+            ded_val = pf_val + esi_val + tds_val
+            net_val = gross_val - ded_val
+
+            sal = SalaryStructure(
+                tenant_id=ctx.tenant_id,
+                employee_id=emp.id,
+                basic_salary=b_sal,
+                hra=hra_val,
+                other_allowances=other_val,
+                pf_deduction=pf_val,
+                esi_deduction=esi_val,
+                tds_deduction=tds_val,
+                other_deductions=0.0,
+                net_salary=net_val,
+            )
+            db.add(sal)
+            await db.flush()
+
+        existing = await db.scalar(
+            select(Payslip).where(
+                Payslip.tenant_id == ctx.tenant_id,
+                Payslip.employee_id == emp.id,
+                Payslip.month == m,
+                Payslip.year == y
+            )
+        )
+        if existing:
+            await db.delete(existing)
+            await db.flush()
+
+        gross = sal.basic_salary + sal.hra + sal.other_allowances
+        slip = Payslip(
+            tenant_id=ctx.tenant_id,
+            employee_id=emp.id,
+            month=m,
+            year=y,
+            basic_salary=sal.basic_salary,
+            hra=sal.hra,
+            other_allowances=sal.other_allowances,
+            pf_deduction=sal.pf_deduction,
+            esi_deduction=sal.esi_deduction,
+            tds_deduction=sal.tds_deduction,
+            other_deductions=sal.other_deductions,
+            gross_salary=gross,
+            net_salary=sal.net_salary,
+            status=p_status,
+            template_id=tpl_id,
+            pdf_url=f"/vault/payslips/slip_pending.pdf"
+        )
+        db.add(slip)
+        await db.flush()
+
+        desig_name = "Team Member"
+        if emp.designation_id:
+            desig = await db.get(Designation, emp.designation_id)
+            if desig:
+                desig_name = desig.name
+        dept_name = "General"
+        if emp.department_id:
+            dept = await db.get(Department, emp.department_id)
+            if dept:
+                dept_name = dept.name
+
         try:
-            vault_dir = Path("static/vault/payslips")
-            vault_dir.mkdir(parents=True, exist_ok=True)
+            pdf_bytes = generate_payslip_pdf(slip, emp, comp_name, desig_name, dept_name, template_config=tpl_config)
             (vault_dir / f"{slip.id}.pdf").write_bytes(pdf_bytes)
+            slip.pdf_url = f"/vault/payslips/{slip.id}.pdf"
         except Exception as e:
-            print(f"[PAYSLIP VAULT PDF NOTICE]: {e}")
+            print(f"[BATCH PAYSLIP PDF ERROR]: {e}")
 
-        slip.pdf_url = f"/vault/payslips/{slip.id}.pdf"
-
-        # Auto-archive to EmployeeDocument (Document Vault)
-        month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-        m_title = month_names[payload.month - 1] if 1 <= payload.month <= 12 else f"Month {payload.month}"
-        doc_title = f"Salary Slip - {m_title} {payload.year}"
-
+        # Vault document sync
         old_doc = await db.scalar(
             select(EmployeeDocument).where(
                 EmployeeDocument.tenant_id == ctx.tenant_id,
-                EmployeeDocument.employee_id == payload.employee_id,
+                EmployeeDocument.employee_id == emp.id,
                 EmployeeDocument.document_name == doc_title
             )
         )
@@ -1121,7 +1373,7 @@ async def process_payroll(
 
         doc_entry = EmployeeDocument(
             tenant_id=ctx.tenant_id,
-            employee_id=payload.employee_id,
+            employee_id=emp.id,
             document_name=doc_title,
             document_type="Payslip",
             file_path=f"/vault/payslips/{slip.id}.pdf",
@@ -1130,13 +1382,6 @@ async def process_payroll(
         )
         db.add(doc_entry)
 
-    await write_audit_log(
-        db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
-        action="processed", entity_type="payroll", entity_id=slip.id,
-        new_values=payload.model_dump(mode="json"),
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
     await db.commit()
     
     # Query all payslips to return
@@ -1558,3 +1803,389 @@ async def create_pay_grade(
         created_at=grade.created_at,
         updated_at=grade.updated_at
     )
+
+
+# -------------------------------------------------------------------------
+# EMPLOYEE LOANS & ADVANCES API
+# -------------------------------------------------------------------------
+
+from pydantic import BaseModel, Field
+
+class LoanCreateRequest(BaseModel):
+    employee_id: uuid.UUID
+    loan_type: str = "Personal"
+    principal_amount: float = Field(..., gt=0)
+    interest_rate: float = Field(default=0.0, ge=0)
+    tenure_months: int = Field(default=12, gt=0)
+    start_month: int = Field(default=7, ge=1, le=12)
+    start_year: int = Field(default=2026, ge=2020)
+    reason: str | None = None
+    status: str = "Approved"
+
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+@router.get("/payroll/loans")
+async def list_employee_loans(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    query = (
+        select(EmployeeLoan, Employee.full_name, Employee.employee_code, Department.name.label("department_name"))
+        .join(Employee, Employee.id == EmployeeLoan.employee_id)
+        .outerjoin(Department, Department.id == Employee.department_id)
+        .where(EmployeeLoan.tenant_id == ctx.tenant_id)
+        .order_by(EmployeeLoan.created_at.desc())
+    )
+    res = await db.execute(query)
+    loans = []
+    for l, emp_name, emp_code, dept_name in res.all():
+        loans.append({
+            "id": str(l.id),
+            "employee_id": str(l.employee_id),
+            "employee_name": emp_name,
+            "employee_code": emp_code,
+            "department": dept_name or "General",
+            "loan_type": l.loan_type,
+            "principal_amount": float(l.principal_amount),
+            "interest_rate": float(l.interest_rate),
+            "tenure_months": l.tenure_months,
+            "monthly_emi": float(l.monthly_emi),
+            "total_repayable": float(l.total_repayable),
+            "amount_repaid": float(l.amount_repaid),
+            "remaining_balance": float(l.remaining_balance),
+            "start_month": l.start_month,
+            "start_year": l.start_year,
+            "status": l.status,
+            "reason": l.reason,
+            "created_at": l.created_at.isoformat() if l.created_at else None,
+        })
+    return loans
+
+@router.post("/payroll/loans", status_code=status.HTTP_201_CREATED)
+async def create_employee_loan(
+    payload: LoanCreateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    emp = await db.get(Employee, payload.employee_id)
+    if not emp or emp.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Calculate EMI & Total Repayable
+    p = payload.principal_amount
+    r = (payload.interest_rate / 100) / 12
+    n = payload.tenure_months
+    if r > 0:
+        emi = round((p * r * ((1 + r) ** n)) / (((1 + r) ** n) - 1), 2)
+        total = round(emi * n, 2)
+    else:
+        emi = round(p / n, 2)
+        total = p
+
+    loan = EmployeeLoan(
+        tenant_id=ctx.tenant_id,
+        employee_id=payload.employee_id,
+        loan_type=payload.loan_type,
+        principal_amount=payload.principal_amount,
+        interest_rate=payload.interest_rate,
+        tenure_months=payload.tenure_months,
+        monthly_emi=emi,
+        total_repayable=total,
+        amount_repaid=0.0,
+        remaining_balance=total,
+        start_month=payload.start_month,
+        start_year=payload.start_year,
+        status=payload.status,
+        reason=payload.reason,
+        approved_by=ctx.user.full_name or "HR Admin",
+    )
+    db.add(loan)
+    await db.commit()
+    await db.refresh(loan)
+    return {"message": "Loan application registered successfully", "id": str(loan.id)}
+
+@router.patch("/payroll/loans/{loan_id}/status")
+async def update_loan_status(
+    loan_id: str,
+    payload: StatusUpdateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    try:
+        l_uuid = uuid.UUID(loan_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid loan ID")
+    loan = await db.get(EmployeeLoan, l_uuid)
+    if not loan or loan.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Loan record not found")
+    loan.status = payload.status
+    await db.commit()
+    return {"message": "Loan status updated", "status": loan.status}
+
+
+# -------------------------------------------------------------------------
+# SALARY ADVANCES API
+# -------------------------------------------------------------------------
+
+class AdvanceCreateRequest(BaseModel):
+    employee_id: uuid.UUID
+    amount: float = Field(..., gt=0)
+    reason: str
+    recovery_month: int = Field(default=7, ge=1, le=12)
+    recovery_year: int = Field(default=2026, ge=2020)
+    status: str = "Approved"
+
+@router.get("/payroll/advances")
+async def list_salary_advances(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    query = (
+        select(SalaryAdvance, Employee.full_name, Employee.employee_code, Department.name.label("department_name"))
+        .join(Employee, Employee.id == SalaryAdvance.employee_id)
+        .outerjoin(Department, Department.id == Employee.department_id)
+        .where(SalaryAdvance.tenant_id == ctx.tenant_id)
+        .order_by(SalaryAdvance.created_at.desc())
+    )
+    res = await db.execute(query)
+    advances = []
+    for a, emp_name, emp_code, dept_name in res.all():
+        advances.append({
+            "id": str(a.id),
+            "employee_id": str(a.employee_id),
+            "employee_name": emp_name,
+            "employee_code": emp_code,
+            "department": dept_name or "General",
+            "amount": float(a.amount),
+            "reason": a.reason,
+            "request_date": a.request_date.isoformat() if a.request_date else None,
+            "recovery_month": a.recovery_month,
+            "recovery_year": a.recovery_year,
+            "status": a.status,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        })
+    return advances
+
+@router.post("/payroll/advances", status_code=status.HTTP_201_CREATED)
+async def create_salary_advance(
+    payload: AdvanceCreateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    emp = await db.get(Employee, payload.employee_id)
+    if not emp or emp.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    adv = SalaryAdvance(
+        tenant_id=ctx.tenant_id,
+        employee_id=payload.employee_id,
+        amount=payload.amount,
+        reason=payload.reason,
+        recovery_month=payload.recovery_month,
+        recovery_year=payload.recovery_year,
+        status=payload.status,
+        approved_by=ctx.user.full_name or "HR Admin",
+    )
+    db.add(adv)
+    await db.commit()
+    await db.refresh(adv)
+    return {"message": "Salary advance recorded successfully", "id": str(adv.id)}
+
+@router.patch("/payroll/advances/{advance_id}/status")
+async def update_advance_status(
+    advance_id: str,
+    payload: StatusUpdateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    try:
+        a_uuid = uuid.UUID(advance_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid advance ID")
+    adv = await db.get(SalaryAdvance, a_uuid)
+    if not adv or adv.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Advance record not found")
+    adv.status = payload.status
+    await db.commit()
+    return {"message": "Advance status updated", "status": adv.status}
+
+
+# -------------------------------------------------------------------------
+# EMPLOYEE BONUSES & INCENTIVES API
+# -------------------------------------------------------------------------
+
+class BonusCreateRequest(BaseModel):
+    employee_id: uuid.UUID | None = None
+    bonus_title: str
+    bonus_type: str = "Festive"
+    amount: float = Field(..., gt=0)
+    distribution_month: int = Field(default=7, ge=1, le=12)
+    distribution_year: int = Field(default=2026, ge=2020)
+    status: str = "Disbursed"
+    remarks: str | None = None
+
+@router.get("/payroll/bonuses")
+async def list_employee_bonuses(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    query = (
+        select(EmployeeBonus, Employee.full_name, Employee.employee_code)
+        .outerjoin(Employee, Employee.id == EmployeeBonus.employee_id)
+        .where(EmployeeBonus.tenant_id == ctx.tenant_id)
+        .order_by(EmployeeBonus.created_at.desc())
+    )
+    res = await db.execute(query)
+    bonuses = []
+    for b, emp_name, emp_code in res.all():
+        bonuses.append({
+            "id": str(b.id),
+            "employee_id": str(b.employee_id) if b.employee_id else None,
+            "employee_name": emp_name or "All Eligible Employees (Company-Wide)",
+            "employee_code": emp_code or "ALL-STAFF",
+            "bonus_title": b.bonus_title,
+            "bonus_type": b.bonus_type,
+            "amount": float(b.amount),
+            "distribution_month": b.distribution_month,
+            "distribution_year": b.distribution_year,
+            "status": b.status,
+            "remarks": b.remarks,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+        })
+    return bonuses
+
+@router.post("/payroll/bonuses", status_code=status.HTTP_201_CREATED)
+async def create_employee_bonus(
+    payload: BonusCreateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    bonus = EmployeeBonus(
+        tenant_id=ctx.tenant_id,
+        employee_id=payload.employee_id,
+        bonus_title=payload.bonus_title,
+        bonus_type=payload.bonus_type,
+        amount=payload.amount,
+        distribution_month=payload.distribution_month,
+        distribution_year=payload.distribution_year,
+        status=payload.status,
+        remarks=payload.remarks,
+    )
+    db.add(bonus)
+    await db.commit()
+    await db.refresh(bonus)
+    return {"message": "Bonus declared successfully", "id": str(bonus.id)}
+
+@router.patch("/payroll/bonuses/{bonus_id}/status")
+async def update_bonus_status(
+    bonus_id: str,
+    payload: StatusUpdateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    try:
+        b_uuid = uuid.UUID(bonus_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid bonus ID")
+    bonus = await db.get(EmployeeBonus, b_uuid)
+    if not bonus or bonus.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Bonus record not found")
+    bonus.status = payload.status
+    await db.commit()
+    return {"message": "Bonus status updated", "status": bonus.status}
+
+
+# -------------------------------------------------------------------------
+# SALES COMMISSIONS & TARGETS API
+# -------------------------------------------------------------------------
+
+class CommissionCreateRequest(BaseModel):
+    employee_id: uuid.UUID
+    period_month: int = Field(default=7, ge=1, le=12)
+    period_year: int = Field(default=2026, ge=2020)
+    target_amount: float = Field(default=0.0, ge=0)
+    achieved_amount: float = Field(default=0.0, ge=0)
+    commission_rate: float = Field(default=5.0, ge=0)
+    status: str = "Approved"
+    notes: str | None = None
+
+@router.get("/payroll/commissions")
+async def list_sales_commissions(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    query = (
+        select(SalesCommission, Employee.full_name, Employee.employee_code, Department.name.label("department_name"))
+        .join(Employee, Employee.id == SalesCommission.employee_id)
+        .outerjoin(Department, Department.id == Employee.department_id)
+        .where(SalesCommission.tenant_id == ctx.tenant_id)
+        .order_by(SalesCommission.created_at.desc())
+    )
+    res = await db.execute(query)
+    commissions = []
+    for c, emp_name, emp_code, dept_name in res.all():
+        commissions.append({
+            "id": str(c.id),
+            "employee_id": str(c.employee_id),
+            "employee_name": emp_name,
+            "employee_code": emp_code,
+            "department": dept_name or "Sales",
+            "period_month": c.period_month,
+            "period_year": c.period_year,
+            "target_amount": float(c.target_amount),
+            "achieved_amount": float(c.achieved_amount),
+            "commission_rate": float(c.commission_rate),
+            "commission_amount": float(c.commission_amount),
+            "status": c.status,
+            "notes": c.notes,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+    return commissions
+
+@router.post("/payroll/commissions", status_code=status.HTTP_201_CREATED)
+async def create_sales_commission(
+    payload: CommissionCreateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    emp = await db.get(Employee, payload.employee_id)
+    if not emp or emp.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    comm_amt = round((payload.achieved_amount * payload.commission_rate) / 100, 2)
+    comm = SalesCommission(
+        tenant_id=ctx.tenant_id,
+        employee_id=payload.employee_id,
+        period_month=payload.period_month,
+        period_year=payload.period_year,
+        target_amount=payload.target_amount,
+        achieved_amount=payload.achieved_amount,
+        commission_rate=payload.commission_rate,
+        commission_amount=comm_amt,
+        status=payload.status,
+        notes=payload.notes,
+    )
+    db.add(comm)
+    await db.commit()
+    await db.refresh(comm)
+    return {"message": "Sales commission recorded successfully", "id": str(comm.id)}
+
+@router.patch("/payroll/commissions/{commission_id}/status")
+async def update_commission_status(
+    commission_id: str,
+    payload: StatusUpdateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    try:
+        c_uuid = uuid.UUID(commission_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid commission ID")
+    comm = await db.get(SalesCommission, c_uuid)
+    if not comm or comm.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Commission record not found")
+    comm.status = payload.status
+    await db.commit()
+    return {"message": "Commission status updated", "status": comm.status}
+
