@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from sqlalchemy import func, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
@@ -962,13 +963,15 @@ async def list_payslips(
     )
 
     # If the user does not have company-wide payroll viewing permissions, strictly isolate to their own payslips
-    if not (ctx.has_permission("view:hrms_payslips") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
-        query = query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
+    user_id = getattr(ctx.user, "id", None)
+    user_email = getattr(ctx.user, "email", None)
+    if not (ctx.has_permission("view:hrms_payslips") or ctx.has_permission("manage:hrms") or ctx.is_tenant_owner):
+        query = query.where((Employee.user_id == user_id) | (Employee.email == user_email))
 
     if employee_id:
         query = query.where(Payslip.employee_id == employee_id)
 
-    result = await db.execute(query)
+    result = await db.execute(query.order_by(Payslip.year.desc(), Payslip.month.desc(), Employee.full_name.asc()))
     
     payslips = []
     for slip, emp in result.all():
@@ -997,70 +1000,6 @@ async def list_payslips(
             )
         )
 
-    # Auto-seed mock payslips if empty
-    if not payslips:
-        result_structures = await db.execute(
-            select(SalaryStructure, Employee)
-            .join(Employee, SalaryStructure.employee_id == Employee.id)
-            .where(SalaryStructure.tenant_id == ctx.tenant_id)
-        )
-        for sal, emp in result_structures.all():
-            allowances = sal.hra + sal.other_allowances
-            deductions = sal.pf_deduction + sal.esi_deduction + sal.tds_deduction + sal.other_deductions
-            gross = sal.basic_salary + allowances
-            
-            # Generate 3 months of payslips
-            periods = [(5, 2026), (6, 2026), (7, 2026)]
-            for m, y in periods:
-                slip = Payslip(
-                    tenant_id=ctx.tenant_id,
-                    employee_id=emp.id,
-                    month=m,
-                    year=y,
-                    basic_salary=sal.basic_salary,
-                    hra=sal.hra,
-                    other_allowances=sal.other_allowances,
-                    pf_deduction=sal.pf_deduction,
-                    esi_deduction=sal.esi_deduction,
-                    tds_deduction=sal.tds_deduction,
-                    other_deductions=sal.other_deductions,
-                    gross_salary=gross,
-                    net_salary=sal.net_salary,
-                    status="Paid" if m != 7 else "Processing",
-                    pdf_url=f"/uploads/payslips/slip_{emp.employee_code}_{y}_{m}.pdf"
-                )
-                db.add(slip)
-        await db.commit()
-
-        # Re-run query
-        result = await db.execute(query)
-        payslips = []
-        for slip, emp in result.all():
-            payslips.append(
-                PayslipResponse(
-                    id=slip.id,
-                    tenant_id=slip.tenant_id,
-                    employee_id=slip.employee_id,
-                    employee_name=emp.full_name,
-                    employee_code=emp.employee_code,
-                    month=slip.month,
-                    year=slip.year,
-                    basic_salary=float(slip.basic_salary),
-                    hra=float(slip.hra),
-                    other_allowances=float(slip.other_allowances),
-                    pf_deduction=float(slip.pf_deduction),
-                    esi_deduction=float(slip.esi_deduction),
-                    tds_deduction=float(slip.tds_deduction),
-                    other_deductions=float(slip.other_deductions),
-                    gross_salary=float(slip.gross_salary),
-                    net_salary=float(slip.net_salary),
-                    status=slip.status,
-                    pdf_url=slip.pdf_url,
-                    created_at=slip.created_at,
-                    updated_at=slip.updated_at,
-                )
-            )
-            
     return payslips
 
 
@@ -1244,14 +1183,28 @@ async def get_monthly_attendance_sheet(
 
     employees = (
         await db.scalars(
-            select(Employee).where(
+            select(Employee)
+            .options(
+                selectinload(Employee.department),
+                selectinload(Employee.designation),
+            )
+            .where(
                 Employee.tenant_id == ctx.tenant_id,
                 Employee.status.in_(["Active", "active", "Probation", "probation"])
             )
         )
     ).all()
     if not employees:
-        employees = (await db.scalars(select(Employee).where(Employee.tenant_id == ctx.tenant_id))).all()
+        employees = (
+            await db.scalars(
+                select(Employee)
+                .options(
+                    selectinload(Employee.department),
+                    selectinload(Employee.designation),
+                )
+                .where(Employee.tenant_id == ctx.tenant_id)
+            )
+        ).all()
 
     # Query all attendance records for the month
     att_records = (
@@ -1357,8 +1310,8 @@ async def get_monthly_attendance_sheet(
             "employee_id": str(emp.id),
             "employee_code": emp.employee_code or f"EMP-{100+idx}",
             "full_name": emp.full_name,
-            "department": emp.department.name if emp.department else "Operations",
-            "designation": emp.designation.name if emp.designation else "Executive",
+            "department": getattr(emp.department, "name", "Operations") if getattr(emp, "department", None) else "Operations",
+            "designation": getattr(emp.designation, "name", "Executive") if getattr(emp, "designation", None) else "Executive",
             "shift_name": "General (09:00 - 18:00)" if idx % 2 == 0 else "Morning (07:00 - 16:00)",
             "total_days": days_in_month,
             "working_days": days_in_month - 8,

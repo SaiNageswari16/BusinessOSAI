@@ -963,6 +963,9 @@ async def update_product(
                 product.brand_id = new_brand.id
 
 
+    if "stock" in updates and updates["stock"] is not None:
+        updates["initial_stock"] = updates.pop("stock")
+
     if "status" in updates and updates["status"]:
         updates["status"] = _parse_status(updates["status"])
         
@@ -1002,6 +1005,10 @@ async def update_product(
             db.add(new_mc)
 
     await db.commit()
+    try:
+        await invalidate_cache_by_prefix("pos_products")
+    except Exception:
+        pass
     
     product = await db.scalar(
         select(Product)

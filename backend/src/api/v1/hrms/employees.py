@@ -85,7 +85,7 @@ async def list_employees(
     status_filter: str | None = Query(None, alias="status"),
     role: str | None = Query(None, alias="role"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
 ):
     # Auto-link any workspace User belonging to this tenant who doesn't have an Employee profile yet

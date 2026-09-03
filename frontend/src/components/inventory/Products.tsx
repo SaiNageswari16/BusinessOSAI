@@ -4497,6 +4497,8 @@ export function Products() {
   const renderLocalRow = (product: InventoryProduct, visible: string[], isExact = false) => {
     const specs = (product.specifications && typeof product.specifications === 'object') ? product.specifications : {};
 
+    const activeColumns = LOCAL_COLUMNS.filter(c => visible.includes(c.id));
+
     return (
       <tr
         key={product.id}
@@ -4504,7 +4506,8 @@ export function Products() {
           isExact ? "bg-amber-50/40 font-semibold" : ""
         }`}
       >
-        {visible.map((colId) => {
+        {activeColumns.map((col) => {
+          const colId = col.id;
           switch (colId) {
             case "image":
               return (
