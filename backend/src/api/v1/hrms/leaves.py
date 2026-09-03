@@ -46,7 +46,19 @@ async def list_leave_requests(
     if status_filter:
         query = query.where(LeaveRequest.status == status_filter)
 
-    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    count_query = (
+        select(func.count(LeaveRequest.id))
+        .join(Employee, LeaveRequest.employee_id == Employee.id)
+        .where(LeaveRequest.tenant_id == ctx.tenant_id)
+    )
+    if not (ctx.has_permission("view:hrms_leaves") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
+        count_query = count_query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
+    if employee_id:
+        count_query = count_query.where(LeaveRequest.employee_id == employee_id)
+    if status_filter:
+        count_query = count_query.where(LeaveRequest.status == status_filter)
+
+    total = await db.scalar(count_query)
     result = await db.execute(
         query.order_by(LeaveRequest.from_date.desc(), Employee.full_name.asc())
         .offset((page - 1) * page_size)

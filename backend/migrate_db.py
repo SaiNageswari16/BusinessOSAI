@@ -362,6 +362,71 @@ async def migrate():
             except Exception as e:
                 logger.info(f"Migration note for payroll addon update: {e}")
 
+    push_notification_statements = [
+        """
+        CREATE TABLE IF NOT EXISTS push_notification_templates (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            name VARCHAR(200) NOT NULL,
+            category VARCHAR(50) DEFAULT 'hrms',
+            title_template VARCHAR(255) NOT NULL,
+            body_template TEXT NOT NULL,
+            action_url VARCHAR(500),
+            priority VARCHAR(30) DEFAULT 'normal',
+            icon_type VARCHAR(50) DEFAULT 'bell',
+            is_system BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_push_notification_templates_tenant ON push_notification_templates(tenant_id)",
+        """
+        CREATE TABLE IF NOT EXISTS notification_broadcasts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            sender_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            template_id UUID REFERENCES push_notification_templates(id) ON DELETE SET NULL,
+            title VARCHAR(255) NOT NULL,
+            body TEXT NOT NULL,
+            category VARCHAR(50) DEFAULT 'system',
+            target_type VARCHAR(50) DEFAULT 'all_org',
+            target_filter JSONB DEFAULT '[]'::jsonb,
+            action_url VARCHAR(500),
+            recipients_count INTEGER DEFAULT 0,
+            status VARCHAR(50) DEFAULT 'sent',
+            scheduled_at TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_notification_broadcasts_tenant ON notification_broadcasts(tenant_id)",
+        """
+        CREATE TABLE IF NOT EXISTS user_device_tokens (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            device_token TEXT NOT NULL,
+            platform VARCHAR(30) DEFAULT 'web',
+            device_name VARCHAR(100),
+            is_active BOOLEAN DEFAULT TRUE,
+            last_used_at TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            CONSTRAINT uq_user_device_token UNIQUE (user_id, device_token)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_user_device_tokens_user ON user_device_tokens(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_user_device_tokens_tenant ON user_device_tokens(tenant_id)",
+    ]
+
+    for stmt in push_notification_statements:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info("Successfully executed push notification schema update.")
+            except Exception as e:
+                logger.info(f"Migration note for push notification update: {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())
 

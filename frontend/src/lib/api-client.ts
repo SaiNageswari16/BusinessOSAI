@@ -5045,3 +5045,69 @@ export const crmCallsApi = {
     return `${API_BASE}/crm/calls/export-csv?${query.toString()}`;
   },
 };
+
+// ── Push Notifications & In-App Alerts ───────────────────────────────────────
+
+export interface LiveNotification {
+  id: string;
+  tenant_id: string;
+  title: string;
+  body: string;
+  category: string;
+  unread: boolean;
+  created_at: string;
+}
+
+export interface PushNotificationTemplate {
+  id: string;
+  name: string;
+  category: string;
+  title_template: string;
+  body_template: string;
+  action_url?: string | null;
+  priority: string;
+  icon_type?: string | null;
+  is_system?: boolean;
+  created_at?: string | null;
+}
+
+export interface NotificationBroadcast {
+  id: string;
+  sender_name?: string | null;
+  title: string;
+  body: string;
+  category: string;
+  target_type: string;
+  recipients_count: number;
+  status: string;
+  created_at: string;
+}
+
+export interface BroadcastPushPayload {
+  template_id?: string;
+  title: string;
+  body: string;
+  category?: string;
+  target_type?: string;
+  target_filter?: string[];
+  action_url?: string;
+  priority?: string;
+  channels?: string[];
+}
+
+export const pushNotificationsApi = {
+  listTemplates: () => request<PushNotificationTemplate[]>("GET", "/system/notifications/templates"),
+  createTemplate: (data: Partial<PushNotificationTemplate>) => request<PushNotificationTemplate>("POST", "/system/notifications/templates", data),
+  updateTemplate: (id: string, data: Partial<PushNotificationTemplate>) => request<PushNotificationTemplate>("PUT", `/system/notifications/templates/${id}`, data),
+  deleteTemplate: (id: string) => request<{ message: string }>("DELETE", `/system/notifications/templates/${id}`),
+
+  sendBroadcast: (data: BroadcastPushPayload) => request<{ message: string; broadcast_id: string; recipients_count: number; status: string }>("POST", "/system/notifications/broadcast", data),
+  listBroadcasts: (limit = 50) => request<NotificationBroadcast[]>("GET", "/system/notifications/broadcasts", undefined, { limit }),
+
+  registerDevice: (data: { device_token: string; platform: string; device_name?: string }) =>
+    request<{ message: string; platform: string }>("POST", "/system/notifications/devices/register", data),
+  unregisterDevice: (data: { device_token: string; platform: string }) =>
+    request<{ message: string }>("POST", "/system/notifications/devices/unregister", data),
+};
+
+

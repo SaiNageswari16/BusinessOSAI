@@ -1842,6 +1842,52 @@ class CRMCallLog(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
+class PushNotificationTemplate(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Reusable push and in-app notification message templates."""
+    __tablename__ = "push_notification_templates"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(50), default="hrms", index=True)  # hrms | crm | pos | inventory | system
+    title_template: Mapped[str] = mapped_column(String(255), nullable=False)
+    body_template: Mapped[str] = mapped_column(Text, nullable=False)
+    action_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    priority: Mapped[str] = mapped_column(String(30), default="normal")  # normal | high | urgent
+    icon_type: Mapped[str | None] = mapped_column(String(50), default="bell")
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class NotificationBroadcast(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Dispatched push notification broadcast records."""
+    __tablename__ = "notification_broadcasts"
+
+    sender_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("push_notification_templates.id", ondelete="SET NULL"), nullable=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), default="system", index=True)
+    target_type: Mapped[str] = mapped_column(String(50), default="all_org")  # all_org | roles | departments | individual
+    target_filter: Mapped[list | None] = mapped_column(JSONB, default=list)  # list of role_ids, dept_ids, or user_ids
+    action_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    recipients_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(50), default="sent")  # sent | scheduled | failed
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UserDeviceToken(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    """Device tokens for Web Push (Service Worker) and Mobile (FCM / APNs)."""
+    __tablename__ = "user_device_tokens"
+    __table_args__ = (
+        UniqueConstraint("user_id", "device_token", name="uq_user_device_token"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_token: Mapped[str] = mapped_column(Text, nullable=False)  # FCM Token or Web Push Subscription JSON
+    platform: Mapped[str] = mapped_column(String(30), default="web")  # web | android | ios | pwa
+    device_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 
 from .erp import *
 from .inventory import *

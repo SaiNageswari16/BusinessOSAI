@@ -268,7 +268,7 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
       if (meRes?.id) {
         try {
-          const attRes = await attendanceApi.list(1, 10, undefined, undefined, meRes.id);
+          const attRes = await attendanceApi.list(1, 10, meRes.id);
           setAttendance(attRes.items || []);
         } catch (err) {
           console.error("Attendance fetch error:", err);
