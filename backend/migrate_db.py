@@ -16,16 +16,67 @@ async def migrate():
         logger.info("Ensured all new tables exist in schema metadata.")
 
     # Run ALTER statements in separate transactions to avoid transaction abort locks
+    # 1. Add settings column to tenants
     async with engine.begin() as conn:
-        # 1. Add settings column to tenants
         try:
-            await conn.execute(text("ALTER TABLE tenants ADD COLUMN settings JSONB DEFAULT '{}'::jsonb"))
+            await conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}'::jsonb"))
             logger.info("Successfully added 'settings' column to 'tenants' table.")
         except Exception as e:
-            if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
-                logger.info("'settings' column already exists in 'tenants'.")
-            else:
-                logger.error(f"Error adding 'settings' column to 'tenants': {e}")
+            logger.info(f"Tenant settings note: {e}")
+
+    # 2. Add columns to companies (Google Reviews, GSP Credentials, GST Registrations, Logos)
+    company_cols = [
+        ("google_review_url", "VARCHAR(500)"),
+        ("google_place_id", "VARCHAR(150)"),
+        ("google_review_enabled", "BOOLEAN DEFAULT FALSE"),
+        ("gsp_credentials", "JSONB DEFAULT '{}'::jsonb"),
+        ("gst_registrations", "JSONB DEFAULT '[]'::jsonb"),
+        ("established_date", "DATE"),
+        ("tax_config_label", "VARCHAR(50)"),
+        ("logo_url", "TEXT"),
+        ("logo_initials", "VARCHAR(10)"),
+        ("email_settings", "JSONB DEFAULT '{}'::jsonb"),
+        ("bank_name", "VARCHAR(150)"),
+    ]
+    for name, col_type in company_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE companies ADD COLUMN IF NOT EXISTS {name} {col_type}"))
+                logger.info(f"Successfully added '{name}' column to 'companies' table.")
+            except Exception as e:
+                logger.info(f"Company column {name} note: {e}")
+
+    # 3. Delivery Challans constraints and columns
+    challan_stmts = [
+        "ALTER TABLE delivery_challans DROP CONSTRAINT IF EXISTS delivery_challans_invoice_id_fkey;",
+        "ALTER TABLE delivery_challans DROP CONSTRAINT IF EXISTS delivery_challans_customer_id_fkey;",
+        "ALTER TABLE delivery_challans ADD COLUMN IF NOT EXISTS reference_number VARCHAR(100);",
+        "ALTER TABLE delivery_challans ADD COLUMN IF NOT EXISTS recipient_name VARCHAR(255);",
+    ]
+    for stmt in challan_stmts:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info("Successfully executed delivery challan schema update.")
+            except Exception as e:
+                logger.info(f"Challan schema note: {e}")
+
+    # 4. POS Transactions status types
+    pos_stmts = [
+        "ALTER TABLE pos_transactions ALTER COLUMN status TYPE VARCHAR(50) USING status::VARCHAR(50);",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'credit';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'partially_paid';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'completed';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'refunded';",
+        "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'on_hold';",
+    ]
+    for stmt in pos_stmts:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info("Successfully executed pos transaction schema update.")
+            except Exception as e:
+                logger.info(f"POS schema note: {e}")
 
     # Add columns to crm_leads one by one in separate blocks
     columns_to_add = [
