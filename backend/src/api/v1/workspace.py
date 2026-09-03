@@ -12,8 +12,9 @@ from src.models import (
     AttendanceRecord, Employee, Product, GoodsIssue, ExpenseClaim,
     PurchaseRequest, LeaveRequest, Warehouse, InventoryBatch, 
     InvoiceReturn, PurchaseOrder, Branch, ActivityLog, 
-    LiveNotification, Interview, User
+    LiveNotification, Interview, User, Lead
 )
+from src.models.marketplace import MarketplaceOrder
 from src.models.erp import InvoiceType, InvoiceStatus, ExpenseStatus
 
 router = APIRouter(prefix="/workspace", tags=["Workspace Dashboard"])
@@ -159,7 +160,19 @@ async def get_dashboard_kpis(
                 "tone": "amber",
                 "isCurrency": True
             }
-        ]
+        ],
+        "totalSales": todays_revenue,
+        "todaysSalesCount": todays_sales,
+        "ordersPending": orders_pending,
+        "activeCustomers": active_customers,
+        "employeesPresent": employees_present,
+        "totalEmployees": total_employees,
+        "employeesAbsent": max(0, total_employees - employees_present),
+        "inventoryValue": inventory_value,
+        "pendingDeliveries": pending_deliveries,
+        "pendingPayments": pending_payments,
+        "posRevenueToday": float(pos_rev),
+        "posTransactionsToday": pos_sales,
     }
 
 @router.get("/dashboard/charts")
@@ -381,3 +394,184 @@ async def get_dashboard_widgets(
         "notifications": notifications,
         "calendarEvents": calendarEvents
     }
+
+
+@router.get("/dashboard/feeds")
+async def get_dashboard_feeds(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:dashboard"))],
+    db: AsyncSession = Depends(get_db)
+):
+    today = date.today()
+    feeds = {}
+
+    # 1. POS Feed
+    try:
+        pos_txs_q = select(POSTransaction).where(
+            POSTransaction.tenant_id == ctx.tenant_id
+        ).order_by(desc(POSTransaction.created_at)).limit(5)
+        pos_txs = (await db.execute(pos_txs_q)).scalars().all()
+        pos_items = []
+        for tx in pos_txs:
+            created_str = tx.created_at.strftime("%H:%M") if tx.created_at else "Recently"
+            pos_items.append({
+                "id": str(tx.id),
+                "title": f"Receipt {tx.receipt_number}",
+                "subtitle": "Terminal Cashier • POS Sale",
+                "badge": (tx.status or "Completed").capitalize(),
+                "badgeColor": "bg-emerald-50 text-emerald-600" if (tx.status or "").lower() == "completed" else "bg-amber-50 text-amber-600",
+                "meta": f"{float(tx.total_amount):,.2f} • {created_str}",
+                "icon": "Receipt",
+                "iconBg": "bg-emerald-50 text-emerald-600",
+                "navigateTo": "/pos?tab=sales_history"
+            })
+        feeds["pos"] = pos_items
+    except Exception:
+        feeds["pos"] = []
+
+    # 2. Sales & CRM Leads of the Day
+    try:
+        leads_q = select(Lead).where(
+            Lead.tenant_id == ctx.tenant_id
+        ).order_by(desc(Lead.created_at)).limit(5)
+        leads = (await db.execute(leads_q)).scalars().all()
+        lead_items = []
+        for l in leads:
+            created_str = l.created_at.strftime("%H:%M") if l.created_at else "Today"
+            val_str = f"₹{float(l.estimated_value):,.0f}" if l.estimated_value else "New"
+            lead_items.append({
+                "id": str(l.id),
+                "title": l.name,
+                "subtitle": f"{l.company_name or 'Inbound Lead'} • {l.source or 'Direct'}",
+                "badge": l.status or "New",
+                "badgeColor": "bg-rose-50 text-rose-600" if (l.status or "").lower() in ["hot", "new"] else "bg-blue-50 text-blue-600",
+                "meta": f"{val_str} • {created_str}",
+                "icon": "UserPlus",
+                "iconBg": "bg-rose-50 text-rose-600",
+                "navigateTo": "/crm?tab=leads"
+            })
+        feeds["sales_crm"] = lead_items
+    except Exception:
+        feeds["sales_crm"] = []
+
+    # 3. Marketplace Orders
+    try:
+        mp_orders_q = select(MarketplaceOrder).order_by(desc(MarketplaceOrder.created_at)).limit(5)
+        mp_orders = (await db.execute(mp_orders_q)).scalars().all()
+        mp_items = []
+        for o in mp_orders:
+            created_str = o.created_at.strftime("%b %d") if o.created_at else "Today"
+            mp_items.append({
+                "id": str(o.id),
+                "title": f"Order #{o.id}",
+                "subtitle": f"{o.customer_name} • {o.delivery_partner or 'Online Store'}",
+                "badge": (o.order_status or "Processing").capitalize(),
+                "badgeColor": "bg-sky-50 text-sky-600",
+                "meta": f"₹{float(o.total_amount):,.2f} • {created_str}",
+                "icon": "ShoppingBag",
+                "iconBg": "bg-sky-50 text-sky-600",
+                "navigateTo": "/marketplace?tab=orders"
+            })
+        feeds["marketplace"] = mp_items
+    except Exception:
+        feeds["marketplace"] = []
+
+    # 4. Accounting Payment Deadlines
+    try:
+        inv_due_q = select(Invoice).where(
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.balance_due > 0
+        ).order_by(Invoice.due_date.asc().nulls_last()).limit(5)
+        due_invoices = (await db.execute(inv_due_q)).scalars().all()
+        acc_items = []
+        for inv in due_invoices:
+            is_overdue = bool(inv.due_date and inv.due_date < today)
+            due_str = inv.due_date.strftime('%b %d') if inv.due_date else "Pending"
+            acc_items.append({
+                "id": str(inv.id),
+                "title": f"Invoice {inv.invoice_number}",
+                "subtitle": f"Balance Due • Due {due_str}",
+                "badge": "Overdue" if is_overdue else "Due Soon",
+                "badgeColor": "bg-rose-50 text-rose-600" if is_overdue else "bg-amber-50 text-amber-600",
+                "meta": f"₹{float(inv.balance_due):,.2f}",
+                "icon": "Clock",
+                "iconBg": "bg-rose-50 text-rose-600" if is_overdue else "bg-amber-50 text-amber-600",
+                "navigateTo": "/accounting?tab=invoices"
+            })
+        feeds["accounting"] = acc_items
+    except Exception:
+        feeds["accounting"] = []
+
+    # 5. HRMS Employee Absences & Leaves
+    try:
+        leave_q = select(LeaveRequest, Employee.full_name, Employee.department).join(
+            Employee, Employee.id == LeaveRequest.employee_id, isouter=True
+        ).where(
+            LeaveRequest.tenant_id == ctx.tenant_id
+        ).order_by(desc(LeaveRequest.created_at)).limit(5)
+        leaves = (await db.execute(leave_q)).all()
+        hrm_items = []
+        for lr, emp_name, dept in leaves:
+            start_str = lr.start_date.strftime('%b %d') if lr.start_date else "Today"
+            hrm_items.append({
+                "id": str(lr.id),
+                "title": emp_name or "Staff Member",
+                "subtitle": f"{dept or 'General'} • {lr.leave_type or 'Leave'}",
+                "badge": lr.status or "Pending",
+                "badgeColor": "bg-rose-50 text-rose-600" if (lr.status or "").lower() == "rejected" else "bg-amber-50 text-amber-600",
+                "meta": f"{start_str} • {lr.reason or 'Personal'}",
+                "icon": "UserX",
+                "iconBg": "bg-rose-50 text-rose-600",
+                "navigateTo": "/hrms?tab=leave_requests"
+            })
+        feeds["hrm"] = hrm_items
+    except Exception:
+        feeds["hrm"] = []
+
+    # 6. Inventory Low Stock
+    try:
+        low_stock_q = select(Product).where(
+            Product.tenant_id == ctx.tenant_id,
+            Product.initial_stock <= Product.reorder_level
+        ).order_by(Product.initial_stock.asc()).limit(5)
+        low_prods = (await db.execute(low_stock_q)).scalars().all()
+        inv_items = []
+        for p in low_prods:
+            inv_items.append({
+                "id": str(p.id),
+                "title": p.name,
+                "subtitle": f"Stock: {p.initial_stock} (Reorder: {p.reorder_level})",
+                "badge": "Reorder Now" if p.initial_stock <= 0 else "Low Stock",
+                "badgeColor": "bg-rose-50 text-rose-600" if p.initial_stock <= 0 else "bg-amber-50 text-amber-600",
+                "meta": f"SKU: {p.sku or 'N/A'}",
+                "icon": "AlertTriangle",
+                "iconBg": "bg-rose-50 text-rose-600",
+                "navigateTo": "/inventory?tab=low_stock"
+            })
+        feeds["inventory"] = inv_items
+    except Exception:
+        feeds["inventory"] = []
+
+    # 7. Operations Dispatches
+    try:
+        issues_q = select(GoodsIssue).where(
+            GoodsIssue.tenant_id == ctx.tenant_id
+        ).order_by(desc(GoodsIssue.created_at)).limit(5)
+        issues = (await db.execute(issues_q)).scalars().all()
+        op_items = []
+        for issue in issues:
+            op_items.append({
+                "id": str(issue.id),
+                "title": f"Issue #{issue.id[:8]}",
+                "subtitle": f"Dispatch Status: {issue.status}",
+                "badge": (issue.status or "Pending").capitalize(),
+                "badgeColor": "bg-blue-50 text-blue-600",
+                "meta": "Warehouse Dock",
+                "icon": "Truck",
+                "iconBg": "bg-blue-50 text-blue-600",
+                "navigateTo": "/procurement?tab=goods_received_notes"
+            })
+        feeds["operations"] = op_items
+    except Exception:
+        feeds["operations"] = []
+
+    return feeds

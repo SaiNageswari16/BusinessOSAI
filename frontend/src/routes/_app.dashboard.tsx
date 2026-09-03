@@ -13,7 +13,7 @@ import {
   Store, AlertTriangle, ArrowUpRight, ArrowDownRight,
   Clock, MapPin, Activity, CheckCircle, Navigation,
   Wallet, RefreshCw, BarChart3, Radio, FileCheck,
-  TrendingDown, Flame, BadgeMinus
+  TrendingDown, Flame, BadgeMinus, Skull, UserX, ShoppingBag
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -50,6 +50,28 @@ const tooltipStyle: React.CSSProperties = {
   boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
 };
 
+const ICON_MAP: Record<string, any> = {
+  Receipt,
+  UserPlus,
+  ShoppingBag,
+  Clock,
+  UserX,
+  AlertTriangle,
+  Truck,
+  Boxes,
+  CreditCard,
+  Wallet,
+  Sparkles,
+  CheckCircle2,
+  Calendar,
+  UserCheck,
+  Package,
+  Store,
+  Navigation,
+  Skull,
+  FileText
+};
+
 function Dashboard() {
   const routerState = useRouterState();
   const navigate = useNavigate();
@@ -73,6 +95,7 @@ function Dashboard() {
   const { data: employeesData } = useQuery({ queryKey: ["dashboard-backend-employees"], queryFn: async () => { try { const res = await employeesApi.list(); return Array.isArray(res) ? res : (res as any)?.items || []; } catch { return []; } }, staleTime: 60000 });
   const { data: invoicesData } = useQuery({ queryKey: ["dashboard-backend-invoices"], queryFn: async () => { try { const res = await invoicesApi.listInvoices(); return Array.isArray(res) ? res : (res as any)?.items || []; } catch { return []; } }, staleTime: 60000 });
   const { data: dashboardData, isLoading: kpisLoading } = useQuery({ queryKey: ["dashboard-kpis"], queryFn: workspaceApi.getDashboardKPIs });
+  const { data: backendFeeds } = useQuery({ queryKey: ["dashboard-feeds"], queryFn: workspaceApi.getDashboardFeeds, staleTime: 30000 });
 
   useEffect(() => { setLoading(false); }, []);
   const isActuallyLoading = loading || kpisLoading;
@@ -98,16 +121,15 @@ function Dashboard() {
       case "inventory":
         return {
           kpis: [
-            { id: "val", label: "Stock Valuation", value: `${currency.symbol}${(displayedSales * 2.4 / 1000000).toFixed(2)}M`, icon: Boxes, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +8.4%", suffix: "vs last month" },
-            { id: "skus", label: "Active SKUs", value: String(totalProducts || 24), icon: Package, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +5", suffix: "new products" },
-            { id: "low", label: "Low Stock Items", value: "3", icon: AlertTriangle, iconBg: "bg-orange-50 text-orange-600", growth: "⚠ Action", suffix: "needs reorder" },
-            { id: "out", label: "Out of Stock", value: "0", icon: Package, iconBg: "bg-sky-50 text-sky-600", growth: "✓ 0%", suffix: "stockouts" },
+            { id: "val", label: "Stock Verification", value: `${currency.symbol}${(displayedSales * 2.4 / 1000000).toFixed(2)}M`, icon: Boxes, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +8.4%", suffix: "vs last month" },
             { id: "inflow", label: "Stock Inflow", value: "1,250", icon: Layers, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ +12%", suffix: "units received" },
             { id: "outflow", label: "Stock Outflow", value: "840", icon: ShoppingCart, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +6%", suffix: "units dispatched" },
-            { id: "transfers", label: "Transfers", value: "4", icon: Truck, iconBg: "bg-blue-50 text-blue-600", growth: "↗ 100%", suffix: "in transit" },
+            { id: "out", label: "Out of Stock", value: "0", icon: Package, iconBg: "bg-sky-50 text-sky-600", growth: "✓ 0%", suffix: "stockouts" },
+            { id: "low", label: "Low Stock Limit", value: "3", icon: AlertTriangle, iconBg: "bg-orange-50 text-orange-600", growth: "⚠ Action", suffix: "needs reorder" },
             { id: "reorder", label: "Reorder Value", value: `${currency.symbol}45.2K`, icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "↗ Pending", suffix: "P.O. queue" },
-            { id: "slow_mov", label: "Slow Moving Stocks", value: "18", icon: TrendingDown, iconBg: "bg-rose-50 text-rose-600", growth: "⚠ Review", suffix: ">60 days stagnant" },
-            { id: "fast_mov", label: "Fast Moving Stocks", value: "42", icon: Flame, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +8.3%", suffix: "top velocity SKUs" },
+            { id: "fast_mov", label: "Fast Moving", value: "42", icon: Flame, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +8.3%", suffix: "top velocity SKUs" },
+            { id: "slow_mov", label: "Slow Moving", value: "18", icon: TrendingDown, iconBg: "bg-rose-50 text-rose-600", growth: "⚠ Review", suffix: ">60 days stagnant" },
+            { id: "dead_stock", label: "Dead Stock", value: "6", icon: Skull, iconBg: "bg-slate-100 text-slate-700", growth: "⚠ 0 sales", suffix: ">90 days stagnant" },
           ],
           chartTitle: "Stock Inflow vs Outflow",
           chartLine1Name: "Inflow Units",
@@ -144,11 +166,14 @@ function Dashboard() {
             { name: "Beverages", value: 20, count: 768, percent: "20%", color: "#10b981" },
             { name: "Packaging", value: 10, count: 384, percent: "10%", color: "#f59e0b" },
           ],
-          activities: [
-            { id: "inv-1", title: "Stock adjustment performed", subtitle: "Adjustment ID: ADJ-000123", time: "10 min ago", icon: Boxes, iconBg: "bg-purple-50 text-purple-700" },
-            { id: "inv-2", title: "Warehouse Transfer #TR-881 approved", subtitle: "Dubai Main -> Abu Dhabi Hub", time: "35 min ago", icon: Truck, iconBg: "bg-blue-50 text-blue-600" },
-            { id: "inv-3", title: "New Bundle Created", subtitle: "Arabica Starter Kit 3-Pack", time: "1 hr ago", icon: Package, iconBg: "bg-emerald-50 text-emerald-600" },
-            { id: "inv-4", title: "Reorder Alert Triggered", subtitle: "Roasted Almonds 250G (Low stock)", time: "2 hr ago", icon: AlertTriangle, iconBg: "bg-amber-50 text-amber-600" },
+          feedTitle: "Stock Movements & Alerts",
+          feedSubtitle: "Inventory audit & dispatch queue",
+          feedViewAllUrl: "/inventory?tab=low_stock",
+          feedItems: [
+            { id: "inv-1", title: "Roasted Almonds 250G", subtitle: "Stock: 3 units left (Reorder: 10)", badge: "Reorder Now", badgeColor: "bg-rose-50 text-rose-600", meta: "Critical", icon: AlertTriangle, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/inventory?tab=low_stock" },
+            { id: "inv-2", title: "Arabica Beans Premium", subtitle: "Transfer #TR-881: Dubai -> Abu Dhabi", badge: "In Transit", badgeColor: "bg-blue-50 text-blue-600", meta: "500 units", icon: Truck, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/inventory?tab=batches" },
+            { id: "inv-3", title: "Organic Honey Jar", subtitle: "Dormant SKU • 94 days stagnant", badge: "Dead Stock", badgeColor: "bg-slate-100 text-slate-700", meta: "18 items", icon: Skull, iconBg: "bg-slate-100 text-slate-700", navigateTo: "/inventory?tab=dead_stock" },
+            { id: "inv-4", title: "Cold Brew Blend 1KG", subtitle: "PO-4412 Received into Bay 3", badge: "Inflow Cleared", badgeColor: "bg-emerald-50 text-emerald-600", meta: "+250 units", icon: Package, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/inventory?tab=bins" },
           ],
           healthLabels: { item1: "Warehouse Nodes", item1Sub: "3 Active Hubs", item2: "Scanner Service", item3: "Barcode Engine", item4: "Sync Status", item5: "Stock Accuracy" },
         };
@@ -200,11 +225,14 @@ function Dashboard() {
             { name: "Out for Delivery", value: 10, count: 4, percent: "10%", color: "#6d28d9" },
             { name: "Delayed", value: 5, count: 2, percent: "5%", color: "#ef4444" },
           ],
-          activities: [
-            { id: "op-1", title: "Order DEL-4482 Dispatched", subtitle: "Destination: 742 Evergreen Terrace", time: "5 min ago", icon: Truck, iconBg: "bg-blue-50 text-blue-600" },
-            { id: "op-2", title: "Order DEL-4481 Delivered", subtitle: "Signed by: Tom Cruise", time: "22 min ago", icon: CheckCircle2, iconBg: "bg-emerald-50 text-emerald-600" },
-            { id: "op-3", title: "Fleet Driver Sarah Assigned", subtitle: "Route 9 Northbound active", time: "40 min ago", icon: Navigation, iconBg: "bg-purple-50 text-purple-700" },
-            { id: "op-4", title: "Dispatch Delay Flagged", subtitle: "Hwy 101 Traffic incident resolved", time: "1 hr ago", icon: AlertTriangle, iconBg: "bg-amber-50 text-amber-600" },
+          feedTitle: "Active Dispatches & Deliveries",
+          feedSubtitle: "Live fleet telemetry & routes",
+          feedViewAllUrl: "/procurement?tab=purchase_orders",
+          feedItems: [
+            { id: "op-1", title: "Order DEL-4482 Dispatched", subtitle: "Route 9 • Driver: Sarah M.", badge: "Out for Delivery", badgeColor: "bg-blue-50 text-blue-600", meta: "ETA 15m", icon: Truck, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/procurement?tab=purchase_orders" },
+            { id: "op-2", title: "Order DEL-4481 Delivered", subtitle: "Industrial Area 4 • Signed POD", badge: "Delivered", badgeColor: "bg-emerald-50 text-emerald-600", meta: "22m ago", icon: CheckCircle2, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/procurement?tab=goods_received_notes" },
+            { id: "op-3", title: "Fleet Driver Route Assigned", subtitle: "Downtown Central Express", badge: "Live GPS", badgeColor: "bg-purple-50 text-purple-700", meta: "40m ago", icon: Navigation, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/procurement?tab=purchase_orders" },
+            { id: "op-4", title: "Vendor GRN-0921 Verified", subtitle: "Central Receiving Dock 2", badge: "GRN Ready", badgeColor: "bg-amber-50 text-amber-600", meta: "1h ago", icon: Boxes, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/procurement?tab=goods_received_notes" },
           ],
           healthLabels: { item1: "Fleet Telemetry", item1Sub: "GPS Connected", item2: "Route AI", item3: "Dispatch Queue", item4: "SLA Health", item5: "Fleet Load" },
         };
@@ -212,15 +240,15 @@ function Dashboard() {
       case "pos":
         return {
           kpis: [
-            { id: "pos_rev", label: "POS Revenue", value: `${currency.symbol}18,450`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +16.2%", suffix: "vs yesterday" },
-            { id: "pos_tx", label: "Transactions", value: "64", icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12", suffix: "tickets" },
-            { id: "pos_reg", label: "Active Registers", value: "3/3", icon: Radio, iconBg: "bg-orange-50 text-orange-600", growth: "✓ 100%", suffix: "online" },
-            { id: "pos_walkin", label: "Walk-in Clients", value: "58", icon: Users, iconBg: "bg-sky-50 text-sky-600", growth: "↗ +18%", suffix: "footfall" },
+            { id: "pos_rev", label: "POS Revenue", value: `${currency.symbol}${((dashboardData as any)?.posRevenueToday != null && (dashboardData as any).posRevenueToday > 0 ? (dashboardData as any).posRevenueToday : 18450).toLocaleString()}`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +16.2%", suffix: "vs yesterday" },
+            { id: "pos_tx", label: "Transactions", value: String((dashboardData as any)?.posTransactionsToday || 64), icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12", suffix: "tickets" },
             { id: "pos_ticket", label: "Avg Ticket Size", value: `${currency.symbol}288`, icon: Receipt, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ +4.8%", suffix: "per basket" },
             { id: "pos_cash", label: "Cash in Drawer", value: `${currency.symbol}4,820`, icon: Wallet, iconBg: "bg-emerald-50 text-emerald-600", growth: "✓ Balanced", suffix: "drawer count" },
             { id: "pos_card", label: "Card / Digital", value: `${currency.symbol}13,630`, icon: CreditCard, iconBg: "bg-blue-50 text-blue-600", growth: "↗ 74%", suffix: "contactless" },
             { id: "pos_ref", label: "Refunds / Returns", value: `${currency.symbol}0.00`, icon: RefreshCw, iconBg: "bg-amber-50 text-amber-600", growth: "✓ 0%", suffix: "clean shift" },
             { id: "pos_cn", label: "Credit Notes", value: `${currency.symbol}1,240`, icon: BadgeMinus, iconBg: "bg-rose-50 text-rose-600", growth: "⚠ 3 notes", suffix: "issued today" },
+            { id: "pos_reg", label: "Active Registers", value: "3/3", icon: Radio, iconBg: "bg-orange-50 text-orange-600", growth: "✓ 100%", suffix: "online" },
+            { id: "pos_walkin", label: "Walk-in Clients", value: "58", icon: Users, iconBg: "bg-sky-50 text-sky-600", growth: "↗ +18%", suffix: "footfall" },
           ],
           chartTitle: "Hourly POS Sales Trend",
           chartLine1Name: "Today's Sales",
@@ -257,11 +285,14 @@ function Dashboard() {
             { name: "Apple / Google Pay", value: 15, count: 10, percent: "15%", color: "#2563eb" },
             { name: "Store Credit", value: 5, count: 3, percent: "5%", color: "#f59e0b" },
           ],
-          activities: [
-            { id: "pos-1", title: "Receipt REC-DW21J9Z7 Completed", subtitle: "Amount: ₹1,625.40 (Cash)", time: "2 min ago", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600" },
-            { id: "pos-2", title: "Card Payment Approved", subtitle: "Terminal 01 • Visa Contactless", time: "8 min ago", icon: CreditCard, iconBg: "bg-blue-50 text-blue-600" },
-            { id: "pos-3", title: "Cash Drawer Opened (No Sale)", subtitle: "Manager float check verified", time: "25 min ago", icon: Wallet, iconBg: "bg-purple-50 text-purple-700" },
-            { id: "pos-4", title: "Cashier Shift Started", subtitle: "Cashier: Alex Morgan (Terminal 02)", time: "1 hr ago", icon: UserCheck, iconBg: "bg-amber-50 text-amber-600" },
+          feedTitle: "Transactions Details",
+          feedSubtitle: "Live POS shift ticket feed",
+          feedViewAllUrl: "/pos?tab=sales_history",
+          feedItems: [
+            { id: "pos-1", title: "Receipt REC-DW21J9Z7", subtitle: "Walk-in Customer • Register 01", badge: "Cash Paid", badgeColor: "bg-emerald-50 text-emerald-600", meta: "₹1,625.40 • 2m ago", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/pos?tab=sales_history" },
+            { id: "pos-2", title: "Receipt REC-DW21J9Z6", subtitle: "Sarah Jenkins • Terminal 02", badge: "Visa Paid", badgeColor: "bg-blue-50 text-blue-600", meta: "₹3,420.00 • 8m ago", icon: CreditCard, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/pos?tab=sales_history" },
+            { id: "pos-3", title: "Receipt REC-DW21J9Z5", subtitle: "Al-Noor Cafe • QR UPI Pay", badge: "Settled", badgeColor: "bg-purple-50 text-purple-700", meta: "₹8,750.00 • 25m ago", icon: Wallet, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/pos?tab=sales_history" },
+            { id: "pos-4", title: "Receipt REC-DW21J9Z4", subtitle: "Walk-in Customer • Register 02", badge: "Store Credit", badgeColor: "bg-amber-50 text-amber-600", meta: "₹450.00 • 1h ago", icon: Receipt, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/pos?tab=sales_history" },
           ],
           healthLabels: { item1: "Terminal Sync", item1Sub: "Real-time Live", item2: "Printers Status", item3: "Payment Gateway", item4: "Drawer Float", item5: "Online Registers" },
         };
@@ -313,11 +344,14 @@ function Dashboard() {
             { name: "Negotiation", value: 20, count: 9, percent: "20%", color: "#10b981" },
             { name: "Closed Won", value: 15, count: 6, percent: "15%", color: "#f59e0b" },
           ],
-          activities: [
-            { id: "crm-1", title: "Deal Closed: Acme Corp", subtitle: "Value: ₹45,000 (Annual Contract)", time: "12 min ago", icon: CheckCircle2, iconBg: "bg-emerald-50 text-emerald-600" },
-            { id: "crm-2", title: "New Lead Registered", subtitle: "Lead: Global Tech Logistics", time: "30 min ago", icon: UserPlus, iconBg: "bg-blue-50 text-blue-600" },
-            { id: "crm-3", title: "Quotation Q-902 Sent", subtitle: "Sent to: Apex Retail Group", time: "1 hr ago", icon: FileText, iconBg: "bg-purple-50 text-purple-700" },
-            { id: "crm-4", title: "Follow-up Scheduled", subtitle: "Discovery Call with TechNova", time: "2 hr ago", icon: Calendar, iconBg: "bg-amber-50 text-amber-600" },
+          feedTitle: "Today's Leads",
+          feedSubtitle: "Inbound funnel & active prospects",
+          feedViewAllUrl: "/crm?tab=leads",
+          feedItems: [
+            { id: "crm-1", title: "Apex Logistics Corp", subtitle: "Rajesh Sharma • Enterprise AI Suite", badge: "Hot Lead", badgeColor: "bg-rose-50 text-rose-600", meta: "₹120K • 12m ago", icon: UserPlus, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/crm?tab=leads" },
+            { id: "crm-2", title: "Global Tech Logistics", subtitle: "Inbound Website • Multi-location ERP", badge: "New Lead", badgeColor: "bg-blue-50 text-blue-600", meta: "₹65K • 30m ago", icon: Sparkles, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/crm?tab=leads" },
+            { id: "crm-3", title: "Apex Retail Group", subtitle: "Quotation Q-902 Sent • Review pending", badge: "Proposal", badgeColor: "bg-purple-50 text-purple-700", meta: "₹240K • 1h ago", icon: FileText, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/crm?tab=quotations" },
+            { id: "crm-4", title: "TechNova Solutions", subtitle: "Discovery Call Scheduled for 3 PM", badge: "Meeting", badgeColor: "bg-amber-50 text-amber-600", meta: "Today • 2h ago", icon: Calendar, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/crm?tab=leads" },
           ],
           healthLabels: { item1: "CRM Pipeline", item1Sub: "Real-time AI", item2: "Email Engine", item3: "Lead Scoring", item4: "Target Pacing", item5: "Sales Reps" },
         };
@@ -369,11 +403,14 @@ function Dashboard() {
             { name: "Packaging Supplies", value: 20, count: 26, percent: "20%", color: "#2563eb" },
             { name: "Electronics", value: 10, count: 12, percent: "10%", color: "#f59e0b" },
           ],
-          activities: [
-            { id: "m-1", title: "Vendor Approved: SpiceWorld LLC", subtitle: "Category: Food & Beverage", time: "15 min ago", icon: Store, iconBg: "bg-emerald-50 text-emerald-600" },
-            { id: "m-2", title: "Merchant Payout Disbursed", subtitle: "Amount: ₹48,200 to FreshMart", time: "45 min ago", icon: Wallet, iconBg: "bg-blue-50 text-blue-600" },
-            { id: "m-3", title: "12 New Products Listed", subtitle: "Vendor: Arabian Spices Co", time: "1 hr ago", icon: Package, iconBg: "bg-purple-50 text-purple-700" },
-            { id: "m-4", title: "KYC Verification Completed", subtitle: "Merchant ID: VEND-004", time: "3 hr ago", icon: Shield, iconBg: "bg-amber-50 text-amber-600" },
+          feedTitle: "Upcoming & Online Orders",
+          feedSubtitle: "Online Store & Merchant Fulfillment",
+          feedViewAllUrl: "/marketplace?tab=orders",
+          feedItems: [
+            { id: "m-1", title: "Order #ORD-MK-9821", subtitle: "FreshMart Grocery • Online Store Order", badge: "Awaiting Dispatch", badgeColor: "bg-sky-50 text-sky-600", meta: "₹3,890.00 • Today", icon: ShoppingBag, iconBg: "bg-sky-50 text-sky-600", navigateTo: "/marketplace?tab=orders" },
+            { id: "m-2", title: "Order #ORD-MK-9820", subtitle: "SpiceWorld LLC • Standard Courier", badge: "In Preparation", badgeColor: "bg-amber-50 text-amber-600", meta: "₹1,450.00 • Today", icon: Store, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/marketplace?tab=orders" },
+            { id: "m-3", title: "Order #ORD-MK-9819", subtitle: "Arabian Spices Co • Scheduled Dispatch", badge: "Confirmed", badgeColor: "bg-purple-50 text-purple-700", meta: "₹12,400.00 • Tomorrow", icon: Package, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/marketplace?tab=orders" },
+            { id: "m-4", title: "Order #ORD-MK-9818", subtitle: "Direct Online Store • Hyperlocal", badge: "Driver Assigned", badgeColor: "bg-emerald-50 text-emerald-600", meta: "₹2,180.00 • 35m ago", icon: Truck, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/marketplace?tab=orders" },
           ],
           healthLabels: { item1: "Marketplace Core", item1Sub: "Operational", item2: "KYC Engine", item3: "Escrow Wallet", item4: "Payout Gateway", item5: "Active Merchants" },
         };
@@ -381,14 +418,14 @@ function Dashboard() {
       case "accounting":
         return {
           kpis: [
-            { id: "profit", label: "Net Profit", value: `${currency.symbol}121.3K`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +18.5%", suffix: "margin 65%" },
-            { id: "inv_tot", label: "Total Invoiced", value: `${currency.symbol}185.4K`, icon: FileText, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12.4%", suffix: "billed" },
             { id: "inv_pd", label: "Total Paid", value: `${currency.symbol}142.5K`, icon: CheckCircle2, iconBg: "bg-orange-50 text-orange-600", growth: "↗ 76.8%", suffix: "collected" },
-            { id: "ar", label: "Accounts Receivable", value: `${currency.symbol}42.9K`, icon: Receipt, iconBg: "bg-sky-50 text-sky-600", growth: "↗ Pending", suffix: "due < 30d" },
+            { id: "ar", label: "Accounts Receivable", value: `${currency.symbol}${((dashboardData as any)?.pendingPayments ? (Number((dashboardData as any).pendingPayments) / 1000).toFixed(1) + 'K' : '42.9K')}`, icon: Receipt, iconBg: "bg-sky-50 text-sky-600", growth: "↗ Pending", suffix: "due < 30d" },
             { id: "bills", label: "Vendor Bills", value: `${currency.symbol}38.4K`, icon: Receipt, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ -3.8%", suffix: "AP expense" },
             { id: "bill_pd", label: "Bills Paid", value: `${currency.symbol}30.0K`, icon: Wallet, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ 78%", suffix: "cleared" },
             { id: "ap", label: "Accounts Payable", value: `${currency.symbol}8.4K`, icon: Receipt, iconBg: "bg-blue-50 text-blue-600", growth: "✓ Current", suffix: "not overdue" },
             { id: "cashflow", label: "Cash Flow", value: `${currency.symbol}95.0K`, icon: TrendingUp, iconBg: "bg-amber-50 text-amber-600", growth: "↗ Positive", suffix: "bank balance" },
+            { id: "profit", label: "Net Profit", value: `${currency.symbol}121.3K`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +18.5%", suffix: "margin 65%" },
+            { id: "inv_tot", label: "Total Invoiced", value: `${currency.symbol}185.4K`, icon: FileText, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12.4%", suffix: "billed" },
           ],
           chartTitle: "Income vs Expenses",
           chartLine1Name: "Gross Income",
@@ -425,11 +462,14 @@ function Dashboard() {
             { name: "Rent & Utilities", value: 15, count: 9615, percent: "15%", color: "#2563eb" },
             { name: "Marketing & Ops", value: 10, count: 6410, percent: "10%", color: "#f59e0b" },
           ],
-          activities: [
-            { id: "acc-1", title: "Invoice INV-0042 Cleared", subtitle: "Payment: ₹14,200 via Bank Wire", time: "18 min ago", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600" },
-            { id: "acc-2", title: "Vendor Bill VB-1002 Approved", subtitle: "Supplier: Global Logistics LLC", time: "45 min ago", icon: FileText, iconBg: "bg-blue-50 text-blue-600" },
-            { id: "acc-3", title: "Tax Report Generated", subtitle: "Monthly VAT Reconciliation", time: "1 hr ago", icon: FileCheck, iconBg: "bg-purple-50 text-purple-700" },
-            { id: "acc-4", title: "Bank Reconciliation Complete", subtitle: "Emirates NBD Account synced", time: "3 hr ago", icon: Wallet, iconBg: "bg-amber-50 text-amber-600" },
+          feedTitle: "Payment Deadlines",
+          feedSubtitle: "Vendor payables & collection due dates",
+          feedViewAllUrl: "/accounting?tab=vendor_bills",
+          feedItems: [
+            { id: "acc-1", title: "Global Logistics LLC", subtitle: "Vendor Bill VB-1002 • Freight Clearance", badge: "Due Today", badgeColor: "bg-rose-50 text-rose-600", meta: "₹18,500.00 • Overdue", icon: AlertTriangle, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/accounting?tab=vendor_bills" },
+            { id: "acc-2", title: "Apex Retail Group", subtitle: "Invoice INV-0042 • Outstanding AR", badge: "Due in 2 Days", badgeColor: "bg-amber-50 text-amber-600", meta: "₹42,900.00 • Net 15", icon: Clock, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/accounting?tab=invoices" },
+            { id: "acc-3", title: "Arabian Packaging Supplies", subtitle: "Vendor Bill VB-0994 • Net 30 Terms", badge: "Due in 5 Days", badgeColor: "bg-blue-50 text-blue-600", meta: "₹12,400.00 • Pending", icon: FileText, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/accounting?tab=vendor_bills" },
+            { id: "acc-4", title: "VAT Return Statutory Deadline", subtitle: "Monthly VAT Reconciliation & Tax Filing", badge: "Statutory Filing", badgeColor: "bg-purple-50 text-purple-700", meta: "15th of Month", icon: Receipt, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/accounting?tab=gst" },
           ],
           healthLabels: { item1: "Chart of Accounts", item1Sub: "Reconciled", item2: "VAT Compliance", item3: "Bank Feed", item4: "Ledger Audit", item5: "P&L Health" },
         };
@@ -437,9 +477,10 @@ function Dashboard() {
       case "hrm":
         return {
           kpis: [
-            { id: "hc", label: "Total Headcount", value: String(totalEmployees || 5), icon: Users, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +1", suffix: "new hire" },
-            { id: "pres", label: "Present Today", value: `${totalEmployees}/${totalEmployees}`, icon: UserCheck, iconBg: "bg-purple-50 text-purple-600", growth: "✓ 100%", suffix: "attendance" },
-            { id: "leave", label: "On Leave", value: "0", icon: Clock, iconBg: "bg-orange-50 text-orange-600", growth: "✓ 0%", suffix: "absenteeism" },
+            { id: "hc", label: "Total Headcount", value: String((dashboardData as any)?.totalEmployees || totalEmployees || 5), icon: Users, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +1", suffix: "new hire" },
+            { id: "pres", label: "Present Today", value: `${(dashboardData as any)?.employeesPresent ?? totalEmployees}/${(dashboardData as any)?.totalEmployees ?? totalEmployees}`, icon: UserCheck, iconBg: "bg-purple-50 text-purple-600", growth: "✓ 100%", suffix: "attendance" },
+            { id: "absent", label: "Absent Todays", value: String((dashboardData as any)?.employeesAbsent ?? 0), icon: UserX, iconBg: "bg-rose-50 text-rose-600", growth: "✓ 0%", suffix: "unplanned" },
+            { id: "leave", label: "On Leave", value: "0", icon: Clock, iconBg: "bg-orange-50 text-orange-600", growth: "✓ 0%", suffix: "approved leave" },
             { id: "shifts", label: "Active Shifts", value: "2", icon: Radio, iconBg: "bg-sky-50 text-sky-600", growth: "✓ Day/Night", suffix: "roster" },
             { id: "payroll", label: "Monthly Payroll", value: `${currency.symbol}145.0K`, icon: DollarSign, iconBg: "bg-indigo-50 text-indigo-600", growth: "✓ Disbursed", suffix: "100% processed" },
             { id: "prod", label: "Productivity Score", value: "94.2%", icon: Sparkles, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +3.5%", suffix: "high performance" },
@@ -481,11 +522,14 @@ function Dashboard() {
             { name: "Sales & Marketing", value: 20, count: 1, percent: "20%", color: "#2563eb" },
             { name: "Administration", value: 10, count: 0, percent: "10%", color: "#f59e0b" },
           ],
-          activities: [
-            { id: "hrm-1", title: "New Employee Onboarded", subtitle: "Employee: Aaron Smith (Engineering)", time: "15 min ago", icon: UserPlus, iconBg: "bg-emerald-50 text-emerald-600" },
-            { id: "hrm-2", title: "Biometric Attendance Synced", subtitle: "All 5 employees clocked in", time: "1 hr ago", icon: UserCheck, iconBg: "bg-blue-50 text-blue-600" },
-            { id: "hrm-3", title: "Leave Request Submitted", subtitle: "Annual leave request for review", time: "2 hr ago", icon: Calendar, iconBg: "bg-purple-50 text-purple-700" },
-            { id: "hrm-4", title: "Monthly Payroll Drafted", subtitle: "Payroll cycle ready for signoff", time: "4 hr ago", icon: DollarSign, iconBg: "bg-amber-50 text-amber-600" },
+          feedTitle: "Employee Absences & Leaves",
+          feedSubtitle: "Today's absenteeism & pending leave requests",
+          feedViewAllUrl: "/hrms?tab=leave_requests",
+          feedItems: [
+            { id: "hrm-1", title: "Vikram Malhotra", subtitle: "Engineering Dept • Medical Emergency", badge: "Absent Today", badgeColor: "bg-rose-50 text-rose-600", meta: "1 Day • Unapproved", icon: UserX, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/hrms?tab=daily_attendance" },
+            { id: "hrm-2", title: "Fatima Al-Sayed", subtitle: "Operations • Annual Vacation Leave", badge: "On Leave", badgeColor: "bg-amber-50 text-amber-600", meta: "Day 2 of 5 • Approved", icon: Calendar, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/hrms?tab=leave_requests" },
+            { id: "hrm-3", title: "Rohan Sharma", subtitle: "Sales & Marketing • Half-Day Afternoon", badge: "Half-Day", badgeColor: "bg-blue-50 text-blue-600", meta: "0.5 Day • Today", icon: Clock, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/hrms?tab=leave_requests" },
+            { id: "hrm-4", title: "Meera Nair", subtitle: "Finance & Accounts • WFH Remote Log", badge: "Remote Clock", badgeColor: "bg-purple-50 text-purple-700", meta: "Active • Biometric Verified", icon: UserCheck, iconBg: "bg-purple-50 text-purple-700", navigateTo: "/hrms?tab=daily_attendance" },
           ],
           healthLabels: { item1: "HRMS Database", item1Sub: "Operational", item2: "Biometric Sync", item3: "Payroll Gateway", item4: "Compliance", item5: "Active Staff" },
         };
@@ -545,11 +589,14 @@ function Dashboard() {
             { name: "Marketplace", value: 25, count: 0, percent: "0%", color: "#f59e0b" },
             { name: "POS Sales", value: 25, count: 0, percent: "0%", color: "#8b5cf6" },
           ],
-          activities: [
-            { id: "act-1", title: 'Company "venatic" was updated', subtitle: "General information changed", time: "2 min ago", icon: Building2, iconBg: "bg-indigo-50 text-indigo-600" },
-            { id: "act-2", title: "New user Tejas Patel added", subtitle: "Role: Manager", time: "15 min ago", icon: UserPlus, iconBg: "bg-emerald-50 text-emerald-600" },
-            { id: "act-3", title: "Inventory adjustment performed", subtitle: "Adjustment ID: ADJ-000123", time: "45 min ago", icon: Boxes, iconBg: "bg-purple-50 text-purple-700" },
-            { id: "act-4", title: "Payment of ₹12,500 received", subtitle: "From: ABC Technologies", time: "1 hr ago", icon: Receipt, iconBg: "bg-orange-50 text-orange-600" },
+          feedTitle: "Quick Actions & Critical Feeds",
+          feedSubtitle: "Direct shortcuts to active alerts",
+          feedViewAllUrl: "/pos?tab=sales_history",
+          feedItems: [
+            { id: "act-1", title: "POS Sale #REC-0891 Cleared", subtitle: "Terminal 01 • ₹1,625.40 Cash", badge: "POS Live", badgeColor: "bg-emerald-50 text-emerald-600", meta: "2m ago", icon: Receipt, iconBg: "bg-emerald-50 text-emerald-600", navigateTo: "/pos?tab=sales_history" },
+            { id: "act-2", title: "New Enterprise Lead: Apex Corp", subtitle: "Rajesh Sharma • ₹120K Deal Value", badge: "Hot Lead", badgeColor: "bg-rose-50 text-rose-600", meta: "15m ago", icon: UserPlus, iconBg: "bg-rose-50 text-rose-600", navigateTo: "/crm?tab=leads" },
+            { id: "act-3", title: "Stock Reorder Alert Triggered", subtitle: "Roasted Almonds 250G below limit", badge: "Inventory", badgeColor: "bg-amber-50 text-amber-600", meta: "3 left", icon: AlertTriangle, iconBg: "bg-amber-50 text-amber-600", navigateTo: "/inventory?tab=low_stock" },
+            { id: "act-4", title: "Global Logistics Bill Due Today", subtitle: "Vendor Bill VB-1002 • Net 30 Terms", badge: "Overdue", badgeColor: "bg-blue-50 text-blue-600", meta: "₹18,500", icon: Clock, iconBg: "bg-blue-50 text-blue-600", navigateTo: "/accounting?tab=vendor_bills" },
           ],
           healthLabels: { item1: "System Health", item1Sub: "Real-time system status", item2: "Server Status", item3: "Database", item4: "Backup Status", item5: "Active Users" },
         };
@@ -557,6 +604,17 @@ function Dashboard() {
   }, [activeTab, displayedSales, totalProducts, totalCustomers, totalEmployees, currency]);
 
   const activeChartData = tabConfig.chartData[chartPeriod] || tabConfig.chartData.month;
+
+  const liveTabItems = useMemo(() => {
+    const rawItems = backendFeeds?.[activeTab];
+    if (Array.isArray(rawItems) && rawItems.length > 0) {
+      return rawItems.map((item: any) => ({
+        ...item,
+        icon: ICON_MAP[item.icon] || Package,
+      }));
+    }
+    return tabConfig.feedItems;
+  }, [backendFeeds, activeTab, tabConfig.feedItems]);
 
   return (
     <div className="p-3 space-y-2.5 font-sans bg-background">
@@ -780,28 +838,58 @@ function Dashboard() {
           </div>
         </Card>
 
-        {/* Right Card (~25% / 3 cols): Recent Activities */}
+        {/* Right Card (~25% / 3 cols): Replaces "Recent Activities" with contextual feed & direct navigation */}
         <Card className="lg:col-span-3 bg-card border border-border/70 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-foreground">Recent Activities</h3>
-            <span className="text-xs font-semibold text-purple-700 hover:text-purple-800 cursor-pointer">
-              View all
-            </span>
+          <div className="flex items-center justify-between pb-2 border-b border-border/40">
+            <div>
+              <h3 className="text-sm font-bold text-foreground">{tabConfig.feedTitle}</h3>
+              {tabConfig.feedSubtitle && (
+                <p className="text-[10px] text-muted-foreground">{tabConfig.feedSubtitle}</p>
+              )}
+            </div>
+            <button
+              onClick={() => navigate({ to: tabConfig.feedViewAllUrl })}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 hover:text-purple-800 transition-colors cursor-pointer group"
+            >
+              <span>View all</span>
+              <ArrowUpRight className="size-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </button>
           </div>
 
-          <div className="space-y-3 pt-2">
-            {tabConfig.activities.map((item, idx) => {
+          <div className="space-y-2 pt-2">
+            {liveTabItems.map((item) => {
               const Icon = item.icon;
               return (
-                <div key={idx} className="flex items-start gap-2.5">
-                  <div className={cn("size-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5", item.iconBg)}>
+                <div
+                  key={item.id}
+                  onClick={() => navigate({ to: item.navigateTo })}
+                  className="flex items-start gap-2.5 p-2 -mx-1.5 rounded-xl hover:bg-muted/50 cursor-pointer transition-all border border-transparent hover:border-border/60 group"
+                  title={`Open ${item.title}`}
+                >
+                  <div className={cn("size-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 transition-transform group-hover:scale-105", item.iconBg)}>
                     <Icon className="size-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-foreground truncate">{item.title}</div>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xs font-bold text-foreground truncate group-hover:text-purple-700 transition-colors">
+                        {item.title}
+                      </span>
+                      {item.badge && (
+                        <span className={cn("text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0", item.badgeColor || "bg-purple-50 text-purple-700")}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-[11px] text-muted-foreground truncate">{item.subtitle}</div>
+                    {item.meta && (
+                      <div className="text-[10px] font-semibold text-slate-500 mt-0.5 flex items-center justify-between">
+                        <span>{item.meta}</span>
+                        <span className="text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-medium flex items-center gap-0.5">
+                          Open →
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-[10px] text-muted-foreground shrink-0 font-medium">{item.time}</div>
                 </div>
               );
             })}

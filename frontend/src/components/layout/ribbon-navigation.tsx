@@ -5,6 +5,37 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
 import { useRbac } from "@/contexts/rbac-context";
 
+function matchesNavUrl(targetUrl: string, currentHref: string, currentPathname: string): boolean {
+  if (!targetUrl) return false;
+  const [targetPath, targetSearch] = targetUrl.split("?");
+
+  if (targetPath !== currentPathname) {
+    return false;
+  }
+
+  const currentSearchStr = currentHref.includes("?") ? currentHref.split("?")[1] : "";
+  const currentParams = new URLSearchParams(currentSearchStr);
+
+  if (!targetSearch) {
+    // If target has no query params, match if current URL also has no query params
+    return !currentSearchStr;
+  }
+
+  const targetParams = new URLSearchParams(targetSearch);
+  for (const [key, val] of targetParams.entries()) {
+    const currentVal = currentParams.get(key);
+    // Special case for POS root default tab
+    if (key === "tab" && !currentVal && val === "sales_history" && currentPathname === "/pos") {
+      continue;
+    }
+    if (currentVal !== val) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function RibbonNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -53,45 +84,58 @@ export function RibbonNavigation() {
     })
   ) || visibleNav.find(g => g.group === "Core ERP") || visibleNav[0] || nav[0];
 
-  let activeI = activeG?.items[0];
-  let activeS = activeG?.items[0]?.subItems?.[0];
+  let activeI: NavItem | undefined;
+  let activeS: any;
 
   // 2. Refine active group, item, and subItem by exact search query match
+  // First check if any subItem strictly matches
   for (const group of visibleNav) {
     for (const item of group.items) {
-      if (item.subItems) {
+      if (item.subItems && item.subItems.length > 0) {
         for (const sub of item.subItems) {
-          if (currentPathWithSearch.includes(sub.to)) {
+          if (matchesNavUrl(sub.to, currentPathWithSearch, currentPath)) {
             activeG = group;
             activeI = item;
             activeS = sub;
+            break;
           }
         }
-      } else {
-        if (currentPathWithSearch.includes(item.to)) {
+      }
+      if (activeI) break;
+    }
+    if (activeI) break;
+  }
+
+  // If no subItem matched, check direct items with strict match
+  if (!activeI) {
+    for (const group of visibleNav) {
+      for (const item of group.items) {
+        if (matchesNavUrl(item.to, currentPathWithSearch, currentPath)) {
           activeG = group;
           activeI = item;
-          activeS = undefined;
+          activeS = item.subItems?.[0];
+          break;
         }
       }
+      if (activeI) break;
     }
   }
 
-  // 3. Fallback to first item/subitem within activeG if no subItem matched
+  // 3. Fallback to first item/subitem within activeG if no item matched
   if (!activeI && activeG?.items?.length > 0) {
     activeI = activeG.items[0];
     activeS = activeG.items[0]?.subItems?.[0];
   }
 
   const [activeGroup, setActiveGroup] = useState<NavGroup>(activeG);
-  const [activeItem, setActiveItem] = useState<NavItem>(activeI);
+  const [activeItem, setActiveItem] = useState<NavItem>(activeI || activeG?.items?.[0]);
   const [activeSubItem, setActiveSubItem] = useState<any>(activeS);
 
   const isTerminal = activeGroup?.group === "POS" && activeItem?.label === "Terminal";
 
   useEffect(() => {
     setActiveGroup(activeG);
-    setActiveItem(activeI);
+    if (activeI) setActiveItem(activeI);
     setActiveSubItem(activeS);
   }, [location.pathname, location.href, activeG, activeI, activeS]);
 
@@ -177,7 +221,7 @@ export function RibbonNavigation() {
             </div>
           )}
           {activeItem.subItems.map((sub: any) => {
-            const isActive = activeSubItem?.label === sub.label || currentPathWithSearch.includes(sub.to);
+            const isActive = activeSubItem?.label === sub.label || matchesNavUrl(sub.to, currentPathWithSearch, currentPath);
             const SubIcon = sub.icon;
             return (
               <button

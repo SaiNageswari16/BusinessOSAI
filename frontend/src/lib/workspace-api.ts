@@ -68,5 +68,8 @@ export const workspaceApi = {
   },
   getDashboardWidgets: async (): Promise<DashboardWidgetsData> => {
     return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/widgets`);
+  },
+  getDashboardFeeds: async (): Promise<Record<string, any[]>> => {
+    return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/feeds`);
   }
 };
