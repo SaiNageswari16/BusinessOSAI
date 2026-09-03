@@ -103,6 +103,9 @@ async def list_employees(
         )
         unlinked_users = users_without_emp.all()
         if unlinked_users:
+            emp_count = await db.scalar(
+                select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
+            ) or 0
             for u in unlinked_users:
                 # Check if employee with this email already exists
                 existing_emp = await db.scalar(
@@ -115,22 +118,30 @@ async def list_employees(
                     if not existing_emp.user_id:
                         existing_emp.user_id = u.id
                 else:
-                    emp_count = await db.scalar(
-                        select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
-                    ) or 0
-                    seq = str(emp_count + 1).zfill(4)
-                    db.add(Employee(
-                        tenant_id=ctx.tenant_id,
-                        user_id=u.id,
-                        employee_code=f"EMP-{seq}",
-                        full_name=u.full_name or u.email.split('@')[0].capitalize(),
-                        email=u.email,
-                        phone=u.phone,
-                        date_of_joining=date.today(),
-                        employment_type="Full-Time",
-                        status="Active",
-                        sales_points=0.0,
-                    ))
+                    code_found = False
+                    while not code_found:
+                        emp_count += 1
+                        candidate_code = f"EMP-{str(emp_count).zfill(4)}"
+                        code_exists = await db.scalar(
+                            select(Employee.id).where(
+                                Employee.tenant_id == ctx.tenant_id,
+                                Employee.employee_code == candidate_code
+                            )
+                        )
+                        if not code_exists:
+                            code_found = True
+                            db.add(Employee(
+                                tenant_id=ctx.tenant_id,
+                                user_id=u.id,
+                                employee_code=candidate_code,
+                                full_name=u.full_name or u.email.split('@')[0].capitalize(),
+                                email=u.email,
+                                phone=u.phone,
+                                date_of_joining=date.today(),
+                                employment_type="Full-Time",
+                                status="Active",
+                                sales_points=0.0,
+                            ))
             await db.commit()
     except Exception as sync_err:
         await db.rollback()
@@ -140,8 +151,10 @@ async def list_employees(
     query = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
 
     # If the user does not have company-wide employee viewing permissions, strictly isolate to their own profile
-    if not (ctx.has_permission("view:hrms_employees") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
-        query = query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
+    user_id = getattr(ctx.user, "id", None)
+    user_email = getattr(ctx.user, "email", None)
+    if not (ctx.has_permission("view:hrms_employees") or ctx.has_permission("manage:hrms") or ctx.is_tenant_owner):
+        query = query.where((Employee.user_id == user_id) | (Employee.email == user_email))
 
     if department_id:
         query = query.where(Employee.department_id == department_id)

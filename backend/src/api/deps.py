@@ -21,17 +21,21 @@ class CurrentUserContext:
         tenant_id: uuid.UUID,
         permissions: set[str],
         active_role_id: uuid.UUID | None = None,
+        is_tenant_owner: bool = False,
+        tenant_slug: str = "",
     ):
         self.user = user
         self.tenant_id = tenant_id
         self.permissions = permissions
         self.active_role_id = active_role_id
+        self.is_tenant_owner = is_tenant_owner
+        self.tenant_slug = tenant_slug
 
     def has_permission(self, permission: str) -> bool:
         # 1. Tenant Owner or System Platform Admin has UNRESTRICTED full control over all things & users
-        if getattr(self.user, "is_tenant_owner", False):
+        if self.is_tenant_owner:
             return True
-        if getattr(self.user, "tenant", None) and getattr(self.user.tenant, "slug", "") == "system":
+        if self.tenant_slug == "system":
             return True
 
         # 2. Wildcard & Super Admin permissions
@@ -215,9 +219,14 @@ async def get_current_user_context(
         permissions.add("manage:erp")
 
     request.state.user = user
-    request.state.tenant_id = resolved_tenant_id
-    request.state.active_role_id = active_role_id
-    return CurrentUserContext(user=user, tenant_id=resolved_tenant_id, permissions=permissions, active_role_id=active_role_id)
+    return CurrentUserContext(
+        user=user,
+        tenant_id=resolved_tenant_id,
+        permissions=permissions,
+        active_role_id=active_role_id,
+        is_tenant_owner=bool(getattr(user, "is_tenant_owner", False) or is_platform_admin_user),
+        tenant_slug=tenant_slug,
+    )
 
 
 
