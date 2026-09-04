@@ -24,7 +24,19 @@ export interface OfferLetterExportOptions {
   signingAuthority: string;
   signingTitle: string;
   clauses: string;
+  subjectText?: string;
+  openingText?: string;
+  closingText?: string;
   templateTitle?: string;
+  // Typography & Styling (Word-like)
+  fontFamily?: string;
+  fontSize?: number; // Base body font size in pt (e.g. 10, 11, 12)
+  headingSize?: number; // Heading size in pt (e.g. 16, 18, 20)
+  lineHeight?: number; // e.g. 1.2, 1.45, 1.6
+  primaryColor?: string; // e.g. #0f172a, #1e1b4b, #1e293b
+  accentColor?: string; // e.g. #4f46e5, #0284c7, #059669
+  textAlign?: "left" | "justify";
+  marginSize?: "compact" | "normal" | "spacious";
   // Letterhead & Branding
   orgName: string;
   orgAddress: string;
@@ -33,7 +45,11 @@ export interface OfferLetterExportOptions {
   orgGstin?: string;
   orgCin?: string;
   orgLogo?: string;
-  letterheadStyle?: "corporate" | "modern" | "minimal" | "bordered";
+  logoPosition?: "left" | "center" | "right" | "hidden";
+  logoSize?: "small" | "medium" | "large";
+  headerBadgeText?: string;
+  footerText?: string;
+  letterheadStyle?: "corporate" | "modern" | "minimal" | "bordered" | "banner";
   // Watermark
   watermarkEnabled?: boolean;
   watermarkText?: string;
@@ -41,7 +57,7 @@ export interface OfferLetterExportOptions {
 }
 
 /**
- * Downloads a formatted Microsoft Word document (.doc) with letterhead, logo, watermark, and tables.
+ * Downloads a formatted Microsoft Word document (.doc) with letterhead, logo, watermark, typography, and tables.
  */
 export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
   const {
@@ -59,7 +75,19 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
     signingAuthority,
     signingTitle,
     clauses,
+    subjectText,
+    openingText,
+    closingText,
+    footerText,
     templateTitle = "Employment Offer & Agreement",
+    fontFamily = "'Calibri', 'Segoe UI', Arial, sans-serif",
+    fontSize = 10.5,
+    headingSize = 17,
+    lineHeight = 1.45,
+    primaryColor = "#0f172a",
+    accentColor = "#4f46e5",
+    textAlign = "left",
+    marginSize = "normal",
     orgName,
     orgAddress,
     orgEmail,
@@ -67,11 +95,21 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
     orgGstin,
     orgCin,
     orgLogo,
+    logoPosition = "left",
+    logoSize = "medium",
+    headerBadgeText = "OFFICIAL OFFER",
     letterheadStyle = "corporate",
     watermarkEnabled = true,
     watermarkText = "CONFIDENTIAL",
     watermarkOpacity = 0.12,
   } = opts;
+
+  const marginMap = {
+    compact: "0.6in 0.6in 0.6in 0.6in",
+    normal: "0.9in 0.9in 0.9in 0.9in",
+    spacious: "1.2in 1.2in 1.2in 1.2in"
+  };
+  const pageMargin = marginMap[marginSize] || marginMap.normal;
 
   const basic = (ctc * salarySplit.basicPct) / 100;
   const hra = (ctc * salarySplit.hraPct) / 100;
@@ -83,6 +121,29 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
   const formattedExpiryDate = expiryDate ? new Date(expiryDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "[Expiry Date]";
   const refNumber = `BOS-OFFER-${Math.floor(100000 + Math.random() * 900000)}`;
 
+  const substituteVars = (str: string) => {
+    if (!str) return "";
+    return str
+      .replace(/\{\{candidate_name\}\}/gi, candidateName)
+      .replace(/\{\{candidate_email\}\}/gi, candidateEmail || "")
+      .replace(/\{\{role\}\}/gi, role)
+      .replace(/\{\{designation\}\}/gi, role)
+      .replace(/\{\{company_name\}\}/gi, orgName)
+      .replace(/\{\{org_name\}\}/gi, orgName)
+      .replace(/\{\{ctc_annual\}\}/gi, `${currencySymbol}${ctc.toLocaleString()}`)
+      .replace(/\{\{joining_date\}\}/gi, formattedJoinDate)
+      .replace(/\{\{expiry_date\}\}/gi, formattedExpiryDate)
+      .replace(/\{\{probation\}\}/gi, probationMonths > 0 ? `${probationMonths} months` : "None")
+      .replace(/\{\{notice\}\}/gi, `${noticeDays} days`)
+      .replace(/\{\{signatory_name\}\}/gi, signingAuthority)
+      .replace(/\{\{signatory_title\}\}/gi, signingTitle);
+  };
+
+  const resolvedSubject = substituteVars(subjectText || `Formal Offer of Employment — ${role}`);
+  const resolvedOpening = substituteVars(openingText || `On behalf of <strong>${orgName}</strong>, we are pleased to extend this formal offer of employment for the position of <strong>${role}</strong>${department ? ` in the <strong>${department}</strong> team` : ""}. We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.`);
+  const resolvedClosing = substituteVars(closingText || `This offer remains valid until <strong>${formattedExpiryDate}</strong>. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.`);
+  const resolvedClauses = substituteVars(clauses);
+
   const docHtml = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
     <head>
@@ -91,39 +152,40 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
       <style>
         @page {
           size: 8.5in 11.0in;
-          margin: 1.0in 1.0in 1.0in 1.0in;
+          margin: ${pageMargin};
           mso-header-margin: 0.5in;
           mso-footer-margin: 0.5in;
         }
         body {
-          font-family: 'Calibri', 'Arial', sans-serif;
-          font-size: 11pt;
-          line-height: 1.45;
-          color: #1a1a1a;
+          font-family: ${fontFamily};
+          font-size: ${fontSize}pt;
+          line-height: ${lineHeight};
+          color: ${primaryColor};
+          text-align: ${textAlign};
           position: relative;
         }
         .header-table {
           width: 100%;
-          border-bottom: 2pt solid #0f172a;
+          border-bottom: 2pt solid ${primaryColor};
           padding-bottom: 12pt;
           margin-bottom: 16pt;
         }
         .company-title {
-          font-size: 18pt;
+          font-size: ${headingSize + 2}pt;
           font-weight: bold;
-          color: #0f172a;
+          color: ${primaryColor};
           margin: 0;
         }
         .company-sub {
-          font-size: 9pt;
+          font-size: ${fontSize - 1.5}pt;
           color: #64748b;
           margin: 2pt 0 0 0;
         }
         .badge {
-          background-color: #0f172a;
+          background-color: ${primaryColor};
           color: #ffffff;
           padding: 4pt 8pt;
-          font-size: 9pt;
+          font-size: ${fontSize - 1.5}pt;
           font-weight: bold;
           text-align: right;
           border-radius: 3pt;
@@ -139,7 +201,7 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
           width: 100%;
           border-collapse: collapse;
           margin: 12pt 0;
-          font-size: 10pt;
+          font-size: ${fontSize - 1}pt;
         }
         table.salary-table th {
           background-color: #f1f5f9;
@@ -158,11 +220,11 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
         }
         .clause-box {
           background-color: #fcfcfc;
-          border-left: 3pt solid #3b82f6;
+          border-left: 3pt solid ${accentColor};
           padding: 8pt 12pt;
           margin: 12pt 0;
-          font-size: 9.5pt;
-          line-height: 1.5;
+          font-size: ${fontSize - 1}pt;
+          line-height: ${lineHeight};
         }
         .watermark {
           position: fixed;
@@ -180,7 +242,7 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
         }
         .sig-table {
           width: 100%;
-          margin-top: 30pt;
+          margin-top: 26pt;
           border-top: 1pt solid #e2e8f0;
           padding-top: 10pt;
         }
@@ -199,7 +261,7 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
             <div class="company-sub">Email: ${orgEmail || "hr@" + orgName.toLowerCase().replace(/[^a-z]/g, "") + ".com"} | Phone: ${orgPhone || "+91-800-555-0199"}${orgGstin ? ` | GSTIN: ${orgGstin}` : ""}</div>
           </td>
           <td style="text-align: right; vertical-align: top;">
-            <span class="badge">OFFICIAL OFFER</span>
+            <span class="badge">${headerBadgeText}</span>
             <div style="font-size: 8.5pt; color: #64748b; margin-top: 4pt; font-family: monospace;">REF: ${refNumber}</div>
             <div style="font-size: 8.5pt; color: #64748b; margin-top: 2pt;">Date: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</div>
           </td>
@@ -212,26 +274,24 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
           <tr>
             <td>
               <span style="font-size: 8pt; font-weight: bold; color: #64748b; text-transform: uppercase;">APPOINTMENT OFFERED TO:</span><br>
-              <strong style="font-size: 12pt; color: #0f172a;">${candidateName}</strong><br>
+              <strong style="font-size: ${fontSize + 1.5}pt; color: ${primaryColor};">${candidateName}</strong><br>
               <span style="color: #475569;">${candidateEmail || ""}</span>
             </td>
             <td style="text-align: right;">
               <span style="font-size: 8pt; font-weight: bold; color: #64748b; text-transform: uppercase;">POSITION & DESIGNATION:</span><br>
-              <strong style="font-size: 11pt; color: #0f172a;">${role}</strong><br>
+              <strong style="font-size: ${fontSize + 0.5}pt; color: ${primaryColor};">${role}</strong><br>
               <span style="color: #475569;">Target Joining: ${formattedJoinDate}</span>
             </td>
           </tr>
         </table>
       </div>
 
-      <p>Dear <strong>${candidateName}</strong>,</p>
+      <p style="font-weight: bold; font-size: ${headingSize - 4}pt; margin-bottom: 6pt;">${resolvedSubject}</p>
+      <p style="margin-bottom: 8pt;">Dear <strong>${candidateName}</strong>,</p>
+      <p style="margin-bottom: 12pt;">${resolvedOpening}</p>
 
-      <p>We are delighted to extend to you this formal offer of employment with <strong>${orgName}</strong> for the position of <strong>${role}</strong>${department ? ` in the <strong>${department}</strong> team` : ""}.</p>
-
-      <p>Your performance, capabilities, and professional experience throughout our recruitment process demonstrated exceptional alignment with our core organizational values and forward growth objectives.</p>
-
-      <h3 style="font-size: 12pt; color: #0f172a; border-bottom: 1pt solid #cbd5e1; padding-bottom: 3pt; margin-top: 16pt;">1. Compensation Structure (Annual & Monthly Breakup)</h3>
-      <p style="font-size: 10pt; color: #475569;">Your Total Cost to Company (CTC) is agreed at <strong>${currencySymbol}${ctc.toLocaleString()}</strong> per annum, distributed as follows:</p>
+      <h3 style="font-size: ${headingSize - 4}pt; color: ${primaryColor}; border-bottom: 1pt solid #cbd5e1; padding-bottom: 3pt; margin-top: 16pt;">1. Compensation Structure (Annual & Monthly Breakup)</h3>
+      <p style="font-size: ${fontSize - 0.5}pt; color: #475569;">Your Total Cost to Company (CTC) is agreed at <strong>${currencySymbol}${ctc.toLocaleString()}</strong> per annum, distributed as follows:</p>
 
       <table class="salary-table">
         <thead>
@@ -276,38 +336,40 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
         </tbody>
       </table>
 
-      <div style="background-color: #f0fdf4; border: 1pt solid #bbf7d0; padding: 8pt; border-radius: 4pt; margin-bottom: 12pt; font-size: 9.5pt; color: #166534;">
-        <strong>Net Estimated In-Hand Gross:</strong> ${currencySymbol}${Math.round(monthlyGross).toLocaleString()} / month (Subject to applicable professional tax & income tax withholding).
+      <div style="background-color: #f0fdf4; border: 1pt solid #bbf7d0; padding: 8pt; border-radius: 4pt; margin-bottom: 12pt; font-size: ${fontSize - 1}pt; color: #166534;">
+        <strong>Net Estimated In-Hand Gross:</strong> ${currencySymbol}${Math.round(monthlyGross).toLocaleString()} / month (Subject to applicable statutory tax withholding).
       </div>
 
-      <h3 style="font-size: 12pt; color: #0f172a; border-bottom: 1pt solid #cbd5e1; padding-bottom: 3pt; margin-top: 14pt;">2. Employment Terms & Standard Covenants</h3>
+      <h3 style="font-size: ${headingSize - 4}pt; color: ${primaryColor}; border-bottom: 1pt solid #cbd5e1; padding-bottom: 3pt; margin-top: 14pt;">2. Employment Terms & Standard Covenants</h3>
       <div class="clause-box">
-        <p><strong>Probation Period:</strong> ${probationMonths > 0 ? `${probationMonths} months from joining date.` : "No probation required (Direct Full Appointment)."}</p>
+        <p><strong>Probation Period:</strong> ${probationMonths > 0 ? `${probationMonths} months from joining date.` : "No probation required (Direct Appointment)."}</p>
         <p><strong>Notice Period:</strong> ${noticeDays} days written notice or gross salary in lieu thereof.</p>
-        <div style="margin-top: 6pt; white-space: pre-wrap;">${clauses}</div>
+        <div style="margin-top: 6pt; white-space: pre-wrap;">${resolvedClauses}</div>
       </div>
 
-      <h3 style="font-size: 12pt; color: #0f172a; border-bottom: 1pt solid #cbd5e1; padding-bottom: 3pt; margin-top: 14pt;">3. Acceptance & Expiry</h3>
-      <p>This offer remains valid until <strong>${formattedExpiryDate}</strong>. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.</p>
+      <h3 style="font-size: ${headingSize - 4}pt; color: ${primaryColor}; border-bottom: 1pt solid #cbd5e1; padding-bottom: 3pt; margin-top: 14pt;">3. Acceptance & Expiry</h3>
+      <p style="margin-bottom: 14pt;">${resolvedClosing}</p>
 
       <!-- Signature Section -->
       <table class="sig-table">
         <tr>
           <td style="vertical-align: top; width: 50%;">
-            <div style="font-size: 9pt; color: #64748b; text-transform: uppercase;">Authorized Signatory:</div>
+            <div style="font-size: 8.5pt; color: #64748b; text-transform: uppercase;">Authorized Signatory:</div>
             <div style="margin-top: 25pt; border-bottom: 1pt solid #94a3b8; width: 80%;"></div>
-            <strong style="font-size: 11pt; color: #0f172a; display: block; margin-top: 4pt;">${signingAuthority}</strong>
-            <span style="font-size: 9pt; color: #64748b;">${signingTitle}</span><br>
-            <span style="font-size: 9pt; color: #64748b;">${orgName}</span>
+            <strong style="font-size: ${fontSize}pt; color: ${primaryColor}; display: block; margin-top: 4pt;">${signingAuthority}</strong>
+            <span style="font-size: 8.5pt; color: #64748b;">${signingTitle}</span><br>
+            <span style="font-size: 8.5pt; color: #64748b;">${orgName}</span>
           </td>
           <td style="vertical-align: top; width: 50%; text-align: right;">
-            <div style="font-size: 9pt; color: #64748b; text-transform: uppercase;">Candidate Acceptance Signature:</div>
+            <div style="font-size: 8.5pt; color: #64748b; text-transform: uppercase;">Candidate Acceptance Signature:</div>
             <div style="margin-top: 25pt; border-bottom: 1pt solid #94a3b8; width: 80%; margin-left: auto;"></div>
-            <strong style="font-size: 11pt; color: #0f172a; display: block; margin-top: 4pt;">${candidateName}</strong>
-            <span style="font-size: 9pt; color: #64748b;">Date of Acceptance: __________________</span>
+            <strong style="font-size: ${fontSize}pt; color: ${primaryColor}; display: block; margin-top: 4pt;">${candidateName}</strong>
+            <span style="font-size: 8.5pt; color: #64748b;">Date of Acceptance: __________________</span>
           </td>
         </tr>
       </table>
+
+      ${footerText ? `<div style="font-size: 8pt; color: #94a3b8; text-align: center; margin-top: 24pt; border-top: 1pt solid #e2e8f0; padding-top: 8pt;">${footerText}</div>` : ""}
     </body>
     </html>
   `;

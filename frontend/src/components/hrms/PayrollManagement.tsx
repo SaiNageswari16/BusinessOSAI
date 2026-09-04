@@ -7,7 +7,7 @@ import {
   CalendarClock, Clock, ArrowUpRight, CheckCheck, AlertCircle, Calendar,
   List, ChevronLeft, ChevronRight, Search, Filter
 } from "lucide-react";
-import { payrollApi, employeesApi, designationsApi, SalaryStructure, Payslip, Employee, PayGrade, Designation } from "../../lib/api-client";
+import { payrollApi, employeesApi, designationsApi, resolveImageUrl, SalaryStructure, Payslip, Employee, PayGrade, Designation } from "../../lib/api-client";
 import { Button } from "../ui/button";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -28,7 +28,8 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     const { tenant } = useTenant();
     const activeGst = getActiveBillingGst();
     const orgName = activeGst?.trade_name || activeGst?.legal_name || tenant?.name || "BusinessOS Enterprise";
-    const orgLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const rawLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const orgLogo = resolveImageUrl(rawLogo);
     const orgInitials = orgName.substring(0, 2).toUpperCase();
     const orgAddress = activeGst?.address || tenant?.settings?.address || "100 Innovation Boulevard, Tech District";
     const orgGstin = activeGst?.gstin || tenant?.settings?.gstin || "";

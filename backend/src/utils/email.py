@@ -69,7 +69,7 @@ async def resolve_email_config(
             company = await db.get(Company, c_uuid)
             if company and company.email_settings and isinstance(company.email_settings, dict):
                 cfg = company.email_settings
-                if cfg.get("enabled", True) and cfg.get("mail_server"):
+                if cfg.get("enabled", True) and cfg.get("mail_server") and str(cfg.get("mail_server")).strip():
                     return EmailConfig(
                         mail_server=str(cfg.get("mail_server")).strip(),
                         mail_port=int(cfg.get("mail_port") or 587),
@@ -95,7 +95,7 @@ async def resolve_email_config(
             tenant = await db.scalar(select(Tenant).where(Tenant.id == t_uuid))
             if tenant and tenant.settings and isinstance(tenant.settings, dict):
                 t_cfg = tenant.settings.get("email_settings")
-                if isinstance(t_cfg, dict) and t_cfg.get("enabled", True) and t_cfg.get("mail_server"):
+                if isinstance(t_cfg, dict) and t_cfg.get("enabled", True) and t_cfg.get("mail_server") and str(t_cfg.get("mail_server")).strip():
                     return EmailConfig(
                         mail_server=str(t_cfg.get("mail_server")).strip(),
                         mail_port=int(t_cfg.get("mail_port") or 587),
@@ -119,7 +119,7 @@ async def resolve_email_config(
             for comp in comps:
                 if comp.email_settings and isinstance(comp.email_settings, dict):
                     cfg = comp.email_settings
-                    if cfg.get("enabled", True) and cfg.get("mail_server"):
+                    if cfg.get("enabled", True) and cfg.get("mail_server") and str(cfg.get("mail_server")).strip():
                         return EmailConfig(
                             mail_server=str(cfg.get("mail_server")).strip(),
                             mail_port=int(cfg.get("mail_port") or 587),
@@ -136,11 +136,12 @@ async def resolve_email_config(
             logger.warning(f"Error resolving tenant email config: {e}")
 
     # 4. Fallback to system .env configuration
-    env_server = getattr(settings, "mail_server", None) or ""
-    env_port = getattr(settings, "mail_port", None) or 587
-    env_user = getattr(settings, "mail_username", None) or ""
-    env_pwd = getattr(settings, "mail_password", None) or ""
-    env_from = getattr(settings, "mail_from", None) or env_user or "recruitment@businessos.ai"
+    import os
+    env_server = getattr(settings, "mail_server", None) or os.getenv("MAIL_SERVER", "")
+    env_port = getattr(settings, "mail_port", None) or os.getenv("MAIL_PORT", 587)
+    env_user = getattr(settings, "mail_username", None) or os.getenv("MAIL_USERNAME", "")
+    env_pwd = getattr(settings, "mail_password", None) or os.getenv("MAIL_PASSWORD", "")
+    env_from = getattr(settings, "mail_from", None) or os.getenv("MAIL_FROM", "") or env_user or "recruitment@businessos.ai"
 
     return EmailConfig(
         mail_server=str(env_server).strip(),
@@ -151,7 +152,7 @@ async def resolve_email_config(
         sender_name="BusinessOS Global",
         use_tls=True,
         use_ssl=False,
-        enabled=bool(env_server),
+        enabled=bool(env_server and str(env_server).strip()),
     )
 
 

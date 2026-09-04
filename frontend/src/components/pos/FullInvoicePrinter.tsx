@@ -4,7 +4,7 @@ import { Printer, X } from 'lucide-react';
 import { getActiveInvoicePrintTemplate, getActiveBillingGst, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { companiesApi } from "@/lib/api-client";
+import { companiesApi, resolveImageUrl } from "@/lib/api-client";
 
 export interface FullInvoiceData {
   invoice_number?: string;
@@ -216,10 +216,8 @@ export function FullInvoicePrinter({
     !template.logoUrl.includes('/Logo.png')
   );
 
-  const dynamicLogoUrl =
-    activeLogo ||
-    (isTemplateLogoCustom ? template.logoUrl : '') ||
-    '/Logo.png';
+  const rawLogo = activeLogo || (isTemplateLogoCustom ? template.logoUrl : '') || '';
+  const dynamicLogoUrl = resolveImageUrl(rawLogo) || '/Logo.png';
 
   // 3. Address Resolution
   const isTemplateAddressCustom = Boolean(

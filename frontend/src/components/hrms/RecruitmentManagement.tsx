@@ -38,17 +38,41 @@ import {
   Download,
   Eye,
   ShieldCheck,
+  ShieldAlert,
   Layers,
   FileCheck,
   Building2,
-  Calculator
+  Calculator,
+  Key,
+  Clipboard
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Card } from "../ui/card";
 import { Progress } from "../ui/progress";
-import { recruitmentApi, employeesApi, inventoryApi, JobOpening, Applicant, Interview, Offer, Onboarding, Employee } from "../../lib/api-client";
+import {
+  recruitmentApi,
+  employeesApi,
+  rolesApi,
+  departmentsApi,
+  designationsApi,
+  companiesApi,
+  branchesApi,
+  inventoryApi,
+  resolveImageUrl,
+  JobOpening,
+  Applicant,
+  Interview,
+  Offer,
+  Onboarding,
+  Employee,
+  Role,
+  Department,
+  Designation,
+  Company,
+  Branch
+} from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
@@ -135,6 +159,43 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
   const [onboardings, setOnboardings] = useState<Onboarding[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
 
+  // Reference Data for Candidate -> Employee & Role Mapping
+  const [coreRoles, setCoreRoles] = useState<Role[]>([]);
+  const [departmentsList, setDepartmentsList] = useState<Department[]>([]);
+  const [designationsList, setDesignationsList] = useState<Designation[]>([]);
+  const [companiesList, setCompaniesList] = useState<Company[]>([]);
+  const [branchesList, setBranchesList] = useState<Branch[]>([]);
+
+  // Candidate Hiring / Conversion Modal State
+  const [hireModalOpen, setHireModalOpen] = useState(false);
+  const [hiringApplicant, setHiringApplicant] = useState<Applicant | null>(null);
+  const [hiringOffer, setHiringOffer] = useState<Offer | null>(null);
+  const [hiringSubmitting, setHiringSubmitting] = useState(false);
+  const [hireForm, setHireForm] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+    role_id: "",
+    department_id: "",
+    designation_id: "",
+    company_id: "",
+    branch_id: "",
+    joining_date: new Date().toISOString().split("T")[0],
+    basic_salary: 0,
+    status: "Active"
+  });
+
+  // Post-Hire Credentials Modal State
+  const [createdEmpCredentials, setCreatedEmpCredentials] = useState<{
+    code: string;
+    name: string;
+    email: string;
+    tempPassword: string;
+    roleName: string;
+  } | null>(null);
+  const [copiedPass, setCopiedPass] = useState(false);
+
   const publicOpenJobs = jobs.filter((j) => j.status === "Open");
 
   const [loading, setLoading] = useState(true);
@@ -212,6 +273,25 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     }
   };
 
+  const loadReferenceData = async () => {
+    try {
+      const [rRes, dRes, desRes, cRes, bRes] = await Promise.all([
+        rolesApi.list(1, 100).catch(() => ({ items: [] })),
+        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
+        designationsApi.list(1, 100).catch(() => ({ items: [] })),
+        companiesApi.list(1, 100).catch(() => ({ items: [] })),
+        branchesApi.list(1, 100).catch(() => ({ items: [] }))
+      ]);
+      setCoreRoles(rRes.items || []);
+      setDepartmentsList(dRes.items || []);
+      setDesignationsList(desRes.items || []);
+      setCompaniesList(cRes.items || []);
+      setBranchesList(bRes.items || []);
+    } catch (e) {
+      console.error("Failed to load reference data", e);
+    }
+  };
+
   const loadAllData = async () => {
     setLoading(true);
     setError("");
@@ -222,7 +302,8 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
         loadInterviews(),
         loadOffers(),
         loadOnboardings(),
-        loadEmployees()
+        loadEmployees(),
+        loadReferenceData()
       ]);
     } catch (e) {
       console.error(e);
@@ -335,7 +416,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
   const orgCin = activeGst?.cin || (tenant as any)?.settings?.cin || "";
   const orgEmail = activeGst?.email || (tenant as any)?.settings?.email || "hr@businessos.ai";
   const orgPhone = activeGst?.phone || (tenant as any)?.settings?.phone || "+91 (800) 555-0199";
-  const orgLogo = tenant?.logo_url || tenant?.raw?.logo_url || "";
+  const orgLogo = resolveImageUrl(activeGst?.logo_url || tenant?.logo_url || tenant?.raw?.logo_url || "");
   const orgInitials = tenant?.logo || tenant?.raw?.logo_initials || orgName.slice(0, 2).toUpperCase();
 
   const [createOfferOpen, setCreateOfferOpen] = useState(false);
@@ -364,13 +445,70 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
   const [offerNoticeDays, setOfferNoticeDays] = useState(30);
   const [customClausesText, setCustomClausesText] = useState(PREDEFINED_OFFER_TEMPLATES[0].defaultClauses);
 
-  // Preview & View Modal
+  // Custom Templates from LocalStorage
+  const [customOfferTemplates, setCustomOfferTemplates] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem("hrms_custom_offer_templates");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      try {
+        const saved = localStorage.getItem("hrms_custom_offer_templates");
+        if (saved) setCustomOfferTemplates(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    window.addEventListener("offer_templates_updated", handleStorageChange);
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener("offer_templates_updated", handleStorageChange);
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
+
+  const allOfferBlueprints = [...PREDEFINED_OFFER_TEMPLATES, ...customOfferTemplates];
+
+  // Preview & Edit Offer States
   const [previewOfferModalOpen, setPreviewOfferModalOpen] = useState(false);
   const [selectedOfferForPreview, setSelectedOfferForPreview] = useState<Offer | null>(null);
+  const [selectedOfferForEdit, setSelectedOfferForEdit] = useState<Offer | null>(null);
+
+  const handleDeleteCustomBlueprint = (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete custom template "${name}"?`)) {
+      const updated = customOfferTemplates.filter(t => t.id !== id);
+      setCustomOfferTemplates(updated);
+      try {
+        localStorage.setItem("hrms_custom_offer_templates", JSON.stringify(updated));
+        window.dispatchEvent(new Event("offer_templates_updated"));
+      } catch (e) {
+        console.error(e);
+      }
+      showNotification(`Template "${name}" deleted from library.`);
+    }
+  };
+
+  const handleDeleteOffer = async (offerId: string) => {
+    if (!window.confirm("Are you sure you want to delete this offer letter? This action cannot be undone.")) {
+      return;
+    }
+    try {
+      await recruitmentApi.deleteOffer(offerId);
+      setOffers(prev => prev.filter(o => o.id !== offerId));
+      showNotification("Offer letter deleted successfully!");
+    } catch (err: any) {
+      showNotification(err?.message || "Failed to delete offer letter", "error");
+    }
+  };
 
   const handleSelectPredefinedTemplate = (tplId: string) => {
     setSelectedOfferTemplateId(tplId);
-    const tpl = PREDEFINED_OFFER_TEMPLATES.find(t => t.id === tplId);
+    const tpl = allOfferBlueprints.find(t => t.id === tplId);
     if (tpl) {
       setSalarySplit({
         basicPct: tpl.salarySplit.basicPct,
@@ -382,7 +520,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
       setOfferProbationMonths(tpl.probationMonths);
       setOfferNoticeDays(tpl.noticeDays);
       setCustomClausesText(tpl.defaultClauses);
-      showNotification(`Applied '${tpl.name}' predefined template settings!`);
+      showNotification(`Applied '${tpl.name}' template settings!`);
     }
   };
 
@@ -399,31 +537,52 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     clauses?: string;
     templateName?: string;
   }) => {
+    let customData: any = {};
+    if (offerData?.clauses) {
+      try {
+        const trimmed = offerData.clauses.trim();
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+          customData = JSON.parse(trimmed);
+        }
+      } catch (e) {
+        customData = {};
+      }
+    }
+
     const candidate = offerData?.candidateName || applicants.find(a => a.id === offerForm.applicantId)?.name || "Approved Candidate";
     const candidateEmail = offerData?.candidateEmail || applicants.find(a => a.id === offerForm.applicantId)?.email || "candidate@email.com";
     const role = offerData?.role || applicants.find(a => a.id === offerForm.applicantId)?.job_title || "Software Engineer";
     const ctcVal = offerData?.ctc || offerForm.ctc || 95000;
     const joinDate = offerData?.joiningDate || offerForm.joiningDate || new Date().toISOString().split("T")[0];
     const expDate = offerData?.expiryDate || offerForm.expiryDate || new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
-    const signer = offerData?.signingAuthority || offerForm.signingAuthority || "Authorized HR Director";
-    const signerTitle = offerData?.signingTitle || offerForm.signingTitle || "Head of Talent & People Operations";
-    const clauses = offerData?.clauses || customClausesText || PREDEFINED_OFFER_TEMPLATES[0].defaultClauses;
-    const tplTitle = offerData?.templateName || PREDEFINED_OFFER_TEMPLATES.find(t => t.id === selectedOfferTemplateId)?.name || "Corporate Employment Offer";
+    const signer = customData.signing_authority || offerData?.signingAuthority || offerForm.signingAuthority || "Authorized HR Director";
+    const signerTitle = customData.signing_title || offerData?.signingTitle || offerForm.signingTitle || "Head of Talent & People Operations";
+    const clauses = customData.clauses || offerData?.clauses || customClausesText || PREDEFINED_OFFER_TEMPLATES[0].defaultClauses;
+    const tplTitle = customData.template_name || offerData?.templateName || PREDEFINED_OFFER_TEMPLATES.find(t => t.id === selectedOfferTemplateId)?.name || "Corporate Employment Offer";
+    const subject = customData.subject || `Formal Offer of Employment — ${role}`;
+    const openingText = customData.opening_text || `On behalf of <strong>${orgName}</strong>, we are delighted to extend this formal offer of employment for the position of <strong>${role}</strong>. Following our appraisal sessions, we were exceptionally impressed with your domain expertise and believe you will play a pivotal role in accelerating our organizational objectives.`;
+    const closingText = customData.closing_text || `Please review this offer letter and indicate your acceptance by signing below and returning a duplicate copy on or before <strong>${new Date(expDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}</strong>.`;
+    const footerText = customData.footer_text || `${orgName} • Confidential`;
 
-    const basicVal = (ctcVal * salarySplit.basicPct) / 100;
-    const hraVal = (ctcVal * salarySplit.hraPct) / 100;
-    const specialVal = (ctcVal * salarySplit.specialPct) / 100;
-    const pfVal = (ctcVal * salarySplit.pfPct) / 100;
-    const monthlyGross = (ctcVal - pfVal) / 12;
+    const basicPct = customData.basic_pct !== undefined ? Number(customData.basic_pct) : salarySplit.basicPct;
+    const hraPct = customData.hra_pct !== undefined ? Number(customData.hra_pct) : salarySplit.hraPct;
+    const specialPct = customData.special_pct !== undefined ? Number(customData.special_pct) : salarySplit.specialPct;
+    const pfPct = customData.pf_pct !== undefined ? Number(customData.pf_pct) : salarySplit.pfPct;
 
-    const orgName = tenant?.name || "BusinessOS AI Global Technologies";
-    const orgLogo = tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const basicVal = (ctcVal * basicPct) / 100;
+    const hraVal = (ctcVal * hraPct) / 100;
+    const specialVal = (ctcVal * specialPct) / 100;
+    const pfVal = (ctcVal * pfPct) / 100;
+
+    const activeBillingGst = getActiveBillingGst();
+    const orgName = customData.org_name || activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS AI Global Technologies";
+    const orgLogo = resolveImageUrl(customData.org_logo || activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "");
     const orgInitials = orgName.substring(0, 2).toUpperCase();
-    const orgAddress = (tenant as any)?.address || "Cyber City, DLF Phase 2, Gurugram, Haryana - 122002, India";
-    const orgEmail = (tenant as any)?.email || "careers@businessos.ai";
-    const orgPhone = (tenant as any)?.phone || "+91 98493 44919";
-    const orgGstin = (tenant as any)?.tax_id || (tenant as any)?.gstin || getActiveBillingGst() || "";
-    const orgCin = (tenant as any)?.cin || "U72200DL2024PTC123456";
+    const orgAddress = customData.org_address || activeBillingGst?.address || (tenant as any)?.address || "Cyber City, DLF Phase 2, Gurugram, Haryana - 122002, India";
+    const orgEmail = customData.org_email || activeBillingGst?.email || (tenant as any)?.email || "careers@businessos.ai";
+    const orgPhone = customData.org_phone || activeBillingGst?.phone || (tenant as any)?.phone || "+91 98493 44919";
+    const orgGstin = activeBillingGst?.gstin || (tenant as any)?.tax_id || (tenant as any)?.gstin || "";
+    const orgCin = activeBillingGst?.cin || (tenant as any)?.cin || "U72200DL2024PTC123456";
 
     const printWin = window.open("", "_blank", "width=850,height=1100");
     if (!printWin) {
@@ -633,11 +792,11 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
               <p>Position: <strong>${role}</strong> | Joining Date: <strong>${new Date(joinDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}</strong></p>
             </div>
 
+            <p style="font-size:10.5pt; font-weight:800; color:#0f172a; margin-bottom:8px;">${subject}</p>
+
             <div class="salutation">Dear ${candidate},</div>
             
-            <p class="body-paragraph">
-              On behalf of <strong>${orgName}</strong>, we are delighted to extend this formal offer of employment for the position of <strong>${role}</strong>. Following our appraisal sessions, we were exceptionally impressed with your domain expertise and believe you will play a pivotal role in accelerating our organizational objectives.
-            </p>
+            <p class="body-paragraph">${openingText}</p>
 
             <div class="table-title">Annexure A: Annual & Monthly Compensation Structure</div>
             <table class="comp-table">
@@ -652,25 +811,25 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
               <tbody>
                 <tr>
                   <td>Basic Salary</td>
-                  <td>${salarySplit.basicPct}%</td>
+                  <td>${basicPct}%</td>
                   <td>${currency.symbol}${(basicVal / 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td>${currency.symbol}${basicVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 <tr>
                   <td>House Rent Allowance (HRA)</td>
-                  <td>${salarySplit.hraPct}%</td>
+                  <td>${hraPct}%</td>
                   <td>${currency.symbol}${(hraVal / 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td>${currency.symbol}${hraVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 <tr>
                   <td>Special / Flexi Allowance</td>
-                  <td>${salarySplit.specialPct}%</td>
+                  <td>${specialPct}%</td>
                   <td>${currency.symbol}${(specialVal / 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td>${currency.symbol}${specialVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 <tr>
                   <td>Employer PF Contribution (Statutory)</td>
-                  <td>${salarySplit.pfPct}%</td>
+                  <td>${pfPct}%</td>
                   <td>${currency.symbol}${(pfVal / 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td>${currency.symbol}${pfVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
@@ -686,9 +845,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
             <div class="table-title">Annexure B: Employment Terms & Statutory Covenants</div>
             <div class="clauses-box">${clauses}</div>
 
-            <p class="body-paragraph" style="font-size:8.5pt;">
-              Please review this offer letter and indicate your acceptance by signing below and returning a duplicate copy on or before <strong>${new Date(expDate).toLocaleDateString("en-IN", { dateStyle: "medium" })}</strong>.
-            </p>
+            <p class="body-paragraph" style="font-size:8.5pt;">${closingText}</p>
 
             <div class="signatures-grid">
               <div class="sign-column">
@@ -706,7 +863,7 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
 
             <div class="footer-strip">
               <div>Secure Digital Verification Token: BOS-SIGN-${Math.floor(100000 + Math.random() * 900000)}</div>
-              <div>${orgName} • Confidential</div>
+              <div>${footerText}</div>
             </div>
           </div>
 
@@ -1115,8 +1272,126 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     }
   };
 
+  // Open Candidate Hiring / Conversion Modal
+  const openHireModal = (app: Applicant, matchedOffer?: Offer) => {
+    const offerForApp = matchedOffer || offers.find((o) => o.applicant_id === app.id);
+    const names = (app.name || "").trim().split(" ");
+    const firstName = names[0] || "Candidate";
+    const lastName = names.slice(1).join(" ") || "Employee";
+
+    const matchedJob = jobs.find((j) => j.id === app.job_id);
+    const foundDes = designationsList.find(
+      (d) =>
+        matchedJob &&
+        (d.title?.toLowerCase() === matchedJob.title?.toLowerCase() || d.id === matchedJob.id)
+    );
+    const foundDept = departmentsList.find(
+      (d) =>
+        matchedJob &&
+        (d.name?.toLowerCase() === matchedJob.department?.toLowerCase() || d.id === matchedJob.department)
+    );
+
+    const salaryVal = offerForApp?.ctc
+      ? Math.round(Number(offerForApp.ctc) / 12)
+      : Number(app.proposed_salary || app.expected_salary || 0);
+
+    const defaultRole = coreRoles.find((r) => r.name?.toLowerCase().includes("employee")) || coreRoles[0];
+
+    setHiringApplicant(app);
+    setHiringOffer(offerForApp || null);
+    setHireForm({
+      first_name: firstName,
+      last_name: lastName,
+      email: app.email || "",
+      phone: app.phone || "",
+      role_id: defaultRole ? defaultRole.id : "",
+      department_id: foundDept ? foundDept.id : (departmentsList[0]?.id || ""),
+      designation_id: foundDes ? foundDes.id : (designationsList[0]?.id || ""),
+      company_id: companiesList[0]?.id || "",
+      branch_id: branchesList[0]?.id || "",
+      joining_date: offerForApp?.joining_date || new Date().toISOString().split("T")[0],
+      basic_salary: salaryVal,
+      status: "Active"
+    });
+    setHireModalOpen(true);
+  };
+
+  const handleConfirmHire = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hiringApplicant) return;
+    setHiringSubmitting(true);
+    try {
+      const created = await employeesApi.create({
+        first_name: hireForm.first_name,
+        last_name: hireForm.last_name,
+        email: hireForm.email,
+        phone: hireForm.phone,
+        designation_id: hireForm.designation_id || null,
+        department_id: hireForm.department_id || null,
+        company_id: hireForm.company_id || null,
+        branch_id: hireForm.branch_id || null,
+        role_id: hireForm.role_id || null,
+        joining_date: hireForm.joining_date,
+        basic_salary: Number(hireForm.basic_salary) || 0,
+        status: "Active"
+      });
+
+      // Update candidate stage to Hired
+      await recruitmentApi.updateApplicant(hiringApplicant.id, { stage: "Hired" });
+      try {
+        await recruitmentApi.addApplicantNote(
+          hiringApplicant.id,
+          `Candidate officially converted to Employee (${created.employee_code || "EMP"}) with Core ERP Role: ${created.role_name || "Assigned"}`
+        );
+      } catch {}
+
+      // If there's an offer letter document for this candidate, associate with document vault
+      if (hiringOffer && created.id) {
+        try {
+          await employeesApi.createDocument(created.id, {
+            title: `Employment Offer Letter - ${created.first_name} ${created.last_name}`,
+            document_type: "Offer Letter",
+            document_url: `/docs/offers/${hiringOffer.id}`,
+            notes: `Auto-attached during candidate conversion on ${new Date().toLocaleDateString()}`
+          });
+        } catch {}
+      }
+
+      await loadAllData();
+      setHireModalOpen(false);
+
+      const assignedRoleName =
+        coreRoles.find((r) => r.id === hireForm.role_id)?.name || created.role_name || "Employee";
+      const tempPass = `Welcome@${created.employee_code || "EMP0001"}`;
+
+      setCreatedEmpCredentials({
+        code: created.employee_code || "EMP",
+        name: `${created.first_name} ${created.last_name}`,
+        email: created.email,
+        tempPassword: tempPass,
+        roleName: assignedRoleName
+      });
+
+      showNotification(
+        `Candidate successfully hired and provisioned with Core ERP Role "${assignedRoleName}"!`
+      );
+    } catch (err: any) {
+      showNotification(err.message || "Failed to create employee from candidate", "error");
+    } finally {
+      setHiringSubmitting(false);
+    }
+  };
+
   // Progress Applicant Stage
   const handleProgressStage = async (appId: string, stage: Applicant["stage"]) => {
+    if (stage === "Hired") {
+      const app = applicants.find((a) => a.id === appId) || selectedApplicant;
+      if (app) {
+        openHireModal(app);
+        return;
+      }
+    }
+
     try {
       const res = await recruitmentApi.updateApplicant(appId, { stage });
       await loadAllData();
@@ -1921,29 +2196,58 @@ ${customClausesText || offerForm.customTemplate}`;
                 </div>
               </div>
 
-              {/* Predefined Templates Quick Bar */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                {PREDEFINED_OFFER_TEMPLATES.map((tpl) => (
-                  <div
-                    key={tpl.id}
-                    onClick={() => {
-                      handleSelectPredefinedTemplate(tpl.id);
-                      setOfferStudioTab("templates");
-                      setCreateOfferOpen(true);
-                    }}
-                    className="p-3.5 rounded-xl border border-border/70 bg-card hover:border-primary/50 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary mb-1.5">{tpl.badge}</span>
-                      <h4 className="font-bold text-xs text-foreground leading-snug">{tpl.name}</h4>
-                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{tpl.description}</p>
+              {/* Offer Blueprints Quick Bar (Predefined + Custom Saved) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {allOfferBlueprints.map((tpl) => {
+                  const isCustom = tpl.isCustom;
+                  return (
+                    <div
+                      key={tpl.id}
+                      onClick={() => {
+                        handleSelectPredefinedTemplate(tpl.id);
+                        setOfferStudioTab("templates");
+                        setCreateOfferOpen(true);
+                      }}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                        isCustom
+                          ? "border-amber-500/30 bg-amber-500/5 hover:border-amber-500 hover:shadow-md"
+                          : "border-border/70 bg-card hover:border-primary/50 hover:shadow-md"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1 mb-1.5">
+                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                            isCustom ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 font-extrabold" : "bg-primary/10 text-primary"
+                          }`}>
+                            {tpl.badge}
+                          </span>
+                          {isCustom && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400">Custom</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteCustomBlueprint(tpl.id, tpl.name);
+                                }}
+                                className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/50 text-rose-500 transition-colors"
+                                title="Delete Template"
+                              >
+                                <Trash2 className="size-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <h4 className="font-bold text-xs text-foreground leading-snug">{tpl.name}</h4>
+                        <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{tpl.description}</p>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between text-[10px] text-primary font-semibold">
+                        <span>Quick Draft</span>
+                        <ArrowRight className="size-3" />
+                      </div>
                     </div>
-                    <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between text-[10px] text-primary font-semibold">
-                      <span>Quick Draft</span>
-                      <ArrowRight className="size-3" />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="space-y-4">
@@ -1993,6 +2297,19 @@ ${customClausesText || offerForm.customTemplate}`;
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2">
+                            {/* Edit Offer Action */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 gap-1.5 h-8 text-xs font-bold"
+                              onClick={() => {
+                                setSelectedOfferForEdit(offer);
+                                setCreateOfferOpen(true);
+                              }}
+                            >
+                              <Edit2 className="size-3.5" /> Edit Offer
+                            </Button>
+
                             {/* View & Print Action */}
                             <Button
                               size="sm"
@@ -2030,15 +2347,36 @@ ${customClausesText || offerForm.customTemplate}`;
                               <FileCheck className="size-3.5" /> Save to Vault
                             </Button>
 
+                            {/* Delete Offer Action */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-rose-500/40 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 gap-1.5 h-8 text-xs font-bold"
+                              onClick={() => handleDeleteOffer(offer.id)}
+                            >
+                              <Trash2 className="size-3.5" /> Delete
+                            </Button>
+
                             {offer.status === "Awaiting Acceptance" && (
                               <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-500 hover:bg-blue-500/10 gap-1.5 h-8 text-xs font-bold" onClick={() => handleEmailOffer(offer.id)}>
                                 <Send className="size-3.5" /> Re-send Email
                               </Button>
                             )}
 
-                            {offer.status === "Accepted" && offer.applicant_id && (
-                              <Button size="sm" className="gradient-brand text-white gap-1.5 h-8 text-xs font-bold shadow-md" onClick={() => handleProgressStage(offer.applicant_id!, "Hired")}>
-                                <UserPlus className="size-3.5" /> Start Onboarding & Create Employee
+                            {offer.applicant_id && (
+                              <Button
+                                size="sm"
+                                className="gradient-brand text-white gap-1.5 h-8 text-xs font-bold shadow-md"
+                                onClick={() => {
+                                  const app = applicants.find((a) => a.id === offer.applicant_id);
+                                  if (app) {
+                                    openHireModal(app, offer);
+                                  } else {
+                                    handleProgressStage(offer.applicant_id!, "Hired");
+                                  }
+                                }}
+                              >
+                                <UserPlus className="size-3.5" /> Convert to Employee & Assign Role
                               </Button>
                             )}
                           </div>
@@ -3365,19 +3703,25 @@ ${customClausesText || offerForm.customTemplate}`;
       {/* Offer Letter Studio & Custom Template Builder Modal */}
       <OfferLetterStudioModal
         open={createOfferOpen}
-        onClose={() => setCreateOfferOpen(false)}
+        onClose={() => {
+          setCreateOfferOpen(false);
+          setSelectedOfferForEdit(null);
+        }}
         applicants={applicants}
         employees={employees}
         selectedApplicantId={offerForm.applicantId}
+        initialTemplateId={selectedOfferTemplateId}
+        editingOffer={selectedOfferForEdit}
         onOfferSent={() => {
+          setSelectedOfferForEdit(null);
           void loadAllData();
         }}
         showNotification={showNotification}
         handleSaveOfferDocument={handleSaveOfferDocument}
         handleSendOfferApi={async (payload) => {
           const res = await recruitmentApi.createOffer({
-            applicant_id: payload.applicant_id,
-            employee_id: payload.employee_id,
+            applicant_id: payload.applicant_id || undefined,
+            employee_id: payload.employee_id || undefined,
             candidate: payload.candidate,
             candidate_email: payload.candidate_email,
             role: payload.role,
@@ -3385,17 +3729,334 @@ ${customClausesText || offerForm.customTemplate}`;
             expiry_date: payload.expiry_date,
             joining_date: payload.joining_date,
             signer_name: `${payload.signing_authority} (${payload.signing_title})`,
-            custom_template: `Template: ${payload.template_name}
-CTC: ${currency.symbol}${payload.ctc} (Basic: ${payload.basic_pct}%, HRA: ${payload.hra_pct}%, Special: ${payload.special_pct}%, PF: ${payload.pf_pct}%)
-Probation: ${payload.probation_months} Months | Notice: ${payload.notice_days} Days
-Watermark: ${payload.watermark_text || "None"}
-
-Terms & Clauses:
-${payload.clauses}`
+            custom_template: JSON.stringify(payload)
           });
-          await handleEmailOffer(res.id);
+          try {
+            await handleEmailOffer(res.id);
+          } catch (err: any) {
+            console.warn("[OFFER EMAIL NOTICE] Email dispatch skipped or SMTP not configured:", err);
+          }
+        }}
+        handleUpdateOfferApi={async (offerId, payload) => {
+          await recruitmentApi.updateOffer(offerId, {
+            applicant_id: payload.applicant_id || undefined,
+            employee_id: payload.employee_id || undefined,
+            candidate: payload.candidate,
+            candidate_email: payload.candidate_email,
+            role: payload.role,
+            ctc: payload.ctc,
+            expiry_date: payload.expiry_date,
+            joining_date: payload.joining_date,
+            signer_name: `${payload.signing_authority} (${payload.signing_title})`,
+            custom_template: JSON.stringify(payload)
+          });
         }}
       />
+
+      {/* Convert Candidate to Employee & Assign Core ERP Role Modal */}
+      <AnimatePresence>
+        {hireModalOpen && hiringApplicant && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card w-full max-w-2xl rounded-2xl border border-border shadow-2xl overflow-hidden my-8"
+            >
+              <div className="p-6 border-b border-border flex items-center justify-between gradient-brand text-white">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-sm border border-white/20">
+                    <UserPlus className="size-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-white">Convert Candidate to Employee</h3>
+                    <p className="text-xs text-white/80">
+                      Provision employee account & assign Core ERP Role permissions
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHireModalOpen(false)}
+                  className="text-white/70 hover:text-white transition-colors"
+                >
+                  <XCircle className="size-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmHire} className="p-6 space-y-5">
+                {/* Candidate Info Summary Header */}
+                <div className="p-3.5 rounded-xl bg-muted/50 border border-border flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Candidate</span>
+                    <span className="font-bold text-foreground text-sm">{hiringApplicant.name}</span>
+                    <span className="text-xs text-muted-foreground ml-2">({hiringApplicant.email})</span>
+                  </div>
+                  {hiringOffer && (
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Offer Extended</span>
+                      <span className="font-bold font-mono text-foreground text-sm">{currency.symbol}{hiringOffer.ctc.toLocaleString()}/yr</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Core ERP Role Selection (Prominent) */}
+                <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+                      <ShieldCheck className="size-4 text-indigo-500" />
+                      Core ERP System Role & RBAC Permissions <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                      Controls access & permissions
+                    </span>
+                  </div>
+                  <select
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm font-medium focus:ring-2 focus:ring-indigo-500/30 outline-none"
+                    value={hireForm.role_id}
+                    onChange={(e) => setHireForm({ ...hireForm, role_id: e.target.value })}
+                    required
+                  >
+                    <option value="">Select Core ERP System Role...</option>
+                    {coreRoles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.name} {role.description ? `— ${role.description}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    This candidate will be assigned this Core ERP role, granting them instant access to corresponding modules (POS, Accounts, Inventory, HRMS, Sales, etc.).
+                  </p>
+                </div>
+
+                {/* Name Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">First Name *</label>
+                    <Input
+                      required
+                      value={hireForm.first_name}
+                      onChange={(e) => setHireForm({ ...hireForm, first_name: e.target.value })}
+                      placeholder="e.g. Rahul"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">Last Name *</label>
+                    <Input
+                      required
+                      value={hireForm.last_name}
+                      onChange={(e) => setHireForm({ ...hireForm, last_name: e.target.value })}
+                      placeholder="e.g. Sharma"
+                    />
+                  </div>
+                </div>
+
+                {/* Email & Phone */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">Official / Corporate Email *</label>
+                    <Input
+                      type="email"
+                      required
+                      value={hireForm.email}
+                      onChange={(e) => setHireForm({ ...hireForm, email: e.target.value })}
+                      placeholder="e.g. rahul.s@company.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">Phone Number</label>
+                    <Input
+                      value={hireForm.phone}
+                      onChange={(e) => setHireForm({ ...hireForm, phone: e.target.value })}
+                      placeholder="+91 98765 43210"
+                    />
+                  </div>
+                </div>
+
+                {/* Department & Designation */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">Department</label>
+                    <select
+                      className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm font-medium"
+                      value={hireForm.department_id}
+                      onChange={(e) => setHireForm({ ...hireForm, department_id: e.target.value })}
+                    >
+                      <option value="">Select Department...</option>
+                      {departmentsList.map((d) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">Designation / Title</label>
+                    <select
+                      className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm font-medium"
+                      value={hireForm.designation_id}
+                      onChange={(e) => setHireForm({ ...hireForm, designation_id: e.target.value })}
+                    >
+                      <option value="">Select Designation...</option>
+                      {designationsList.map((d) => (
+                        <option key={d.id} value={d.id}>{d.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Company & Branch */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">Operating Company</label>
+                    <select
+                      className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm font-medium"
+                      value={hireForm.company_id}
+                      onChange={(e) => setHireForm({ ...hireForm, company_id: e.target.value })}
+                    >
+                      <option value="">Select Company...</option>
+                      {companiesList.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">Branch / Store Location</label>
+                    <select
+                      className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm font-medium"
+                      value={hireForm.branch_id}
+                      onChange={(e) => setHireForm({ ...hireForm, branch_id: e.target.value })}
+                    >
+                      <option value="">Select Branch...</option>
+                      {branchesList.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Joining Date & Monthly Salary */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">Joining Date *</label>
+                    <Input
+                      type="date"
+                      required
+                      value={hireForm.joining_date}
+                      onChange={(e) => setHireForm({ ...hireForm, joining_date: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1">Basic Monthly Salary ({currency.symbol})</label>
+                    <Input
+                      type="number"
+                      value={hireForm.basic_salary}
+                      onChange={(e) => setHireForm({ ...hireForm, basic_salary: parseFloat(e.target.value) || 0 })}
+                      placeholder="50000"
+                    />
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setHireModalOpen(false)}
+                    disabled={hiringSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={hiringSubmitting}
+                    className="gradient-brand text-white font-bold gap-2 shadow-lg"
+                  >
+                    {hiringSubmitting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <UserCheck className="size-4" />
+                    )}
+                    {hiringSubmitting ? "Converting & Provisioning..." : "Confirm Hire & Provision Employee"}
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Post-Hire Credentials Confirmation Modal */}
+      <AnimatePresence>
+        {createdEmpCredentials && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl p-6 space-y-5"
+            >
+              <div className="flex items-center gap-3">
+                <div className="size-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center">
+                  <CheckCircle className="size-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-foreground">Employee Account Provisioned!</h3>
+                  <p className="text-xs text-muted-foreground">Candidate has been onboarded with assigned Core ERP role.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 bg-muted/40 p-4 rounded-xl border border-border text-sm">
+                <div className="flex justify-between items-center py-1 border-b border-border/60">
+                  <span className="text-muted-foreground text-xs font-medium">Employee Name:</span>
+                  <span className="font-bold text-foreground">{createdEmpCredentials.name}</span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-border/60">
+                  <span className="text-muted-foreground text-xs font-medium">Employee ID:</span>
+                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{createdEmpCredentials.code}</span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-border/60">
+                  <span className="text-muted-foreground text-xs font-medium">Assigned Core ERP Role:</span>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-bold text-xs border border-indigo-500/20">
+                    {createdEmpCredentials.roleName}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-border/60">
+                  <span className="text-muted-foreground text-xs font-medium">Login Username / Email:</span>
+                  <span className="font-mono text-foreground text-xs">{createdEmpCredentials.email}</span>
+                </div>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-muted-foreground text-xs font-medium">Temporary Password:</span>
+                  <span className="font-mono font-bold text-foreground text-xs bg-background px-2 py-1 rounded border border-border">
+                    {createdEmpCredentials.tempPassword}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  className="gap-1.5 text-xs"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `Employee ID: ${createdEmpCredentials.code}\nEmail: ${createdEmpCredentials.email}\nTemp Password: ${createdEmpCredentials.tempPassword}\nCore ERP Role: ${createdEmpCredentials.roleName}`
+                    );
+                    setCopiedPass(true);
+                    setTimeout(() => setCopiedPass(false), 2000);
+                  }}
+                >
+                  {copiedPass ? <Check className="size-3.5 text-emerald-500" /> : <Clipboard className="size-3.5" />}
+                  {copiedPass ? "Copied Credentials!" : "Copy Credentials"}
+                </Button>
+                <Button
+                  className="gradient-brand text-white text-xs font-bold"
+                  onClick={() => setCreatedEmpCredentials(null)}
+                >
+                  Done & Continue
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

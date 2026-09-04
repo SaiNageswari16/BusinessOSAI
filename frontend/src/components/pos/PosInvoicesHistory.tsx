@@ -21,7 +21,7 @@ import {
   MessageCircle,
   Truck
 } from "lucide-react";
-import { posApi, invoicesApi } from "@/lib/api-client";
+import { posApi, invoicesApi, resolveImageUrl } from "@/lib/api-client";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
 import { EWayBillModal } from "./EWayBillModal";
 import { toast } from "sonner";
@@ -465,11 +465,12 @@ export function PosInvoicesHistory() {
 
     const activeBillingGst = getActiveBillingGst(tenant?.id);
     const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS Store";
-    const orgLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const rawLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const orgLogo = resolveImageUrl(rawLogo);
     const orgGstin = activeBillingGst?.gstin || (tenant as any)?.tax_id || (tenant as any)?.gstin || (tenant as any)?.raw?.tax_id || "37AAAAA0000A1Z5";
     const orgAddress = activeBillingGst?.address || (tenant as any)?.address || (tenant as any)?.raw?.address || "Main Branch Store";
     const orgPhone = activeBillingGst?.phone || (tenant as any)?.phone || (tenant as any)?.raw?.phone || "";
-    const googleReviewUrl = activeBillingGst?.google_review_url || (tenant as any)?.raw?.google_review_url || null;
+    const googleReviewUrl = activeBillingGst?.google_review_url || (tenant as any)?.raw?.google_review_url || (activeBillingGst?.google_place_id ? `https://search.google.com/local/writereview?placeid=${activeBillingGst.google_place_id}` : null);
     const showReviewQR = activeBillingGst?.google_review_enabled !== false && Boolean(googleReviewUrl);
 
     const itemsHtml = (inv.items || [])
@@ -521,6 +522,8 @@ export function PosInvoicesHistory() {
                     <span>${inv.payment_status === "Unpaid" ? "Payment Status: Unpaid / Credit" : `Payment Mode: ${inv.payment_mode || "Cash"}`}</span>
                     <span>Paid: ₹${Number(inv.amount_received || 0).toFixed(2)}</span>
                   </div>
+          <div class="line"></div>
+          <p style="margin-top:10px; font-weight:bold; text-align:center;">*** THANK YOU FOR YOUR BUSINESS ***</p>
           ${showReviewQR && googleReviewUrl ? `
           <div style="text-align:center; margin: 10px 0 6px 0; padding-top: 8px; border-top: 1px dashed #000;">
             <div style="font-size:10px; font-weight:bold; letter-spacing: 2px;">★ ★ ★ ★ ★</div>
@@ -529,8 +532,6 @@ export function PosInvoicesHistory() {
             <div style="font-size:8.5px; margin-top:2px;">Scan to share your 5-star review!</div>
           </div>
           ` : ""}
-          <div class="line"></div>
-          <p style="margin-top:10px; font-weight:bold;">*** THANK YOU FOR YOUR BUSINESS ***</p>
           <script>
             window.onload = function() { window.print(); setTimeout(function(){ window.close(); }, 500); }
           </script>

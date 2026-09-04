@@ -21,6 +21,8 @@ import {
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { resolveImageUrl } from "@/lib/api-client";
+import { getActiveBillingGst } from "@/lib/receipt-template-store";
 
 export interface PrintTemplate {
   id: string;
@@ -1501,8 +1503,8 @@ function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
                     </label>
                     <div className="flex items-center gap-3">
                       <div className="size-12 rounded-lg border bg-background flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
-                        {(form.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url) ? (
-                          <img src={form.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url || ""} alt="Logo" className="w-full h-full object-contain p-1" />
+                        {resolveImageUrl(form.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || tenant?.raw?.logo_url || "") ? (
+                          <img src={resolveImageUrl(form.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || tenant?.raw?.logo_url || "")} alt="Logo" className="w-full h-full object-contain p-1" />
                         ) : (
                           <span className="text-xs font-bold text-muted-foreground uppercase">{form.storeName?.slice(0, 2) || "LOGO"}</span>
                         )}
@@ -2145,7 +2147,7 @@ function LiveTemplateRender({ template }: { template: PrintTemplate }) {
             {f.showLogo && (
               <div className="flex items-center gap-2.5 mb-2">
                 <img
-                  src={template.logoUrl || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "/Logo.png"}
+                  src={resolveImageUrl(template.logoUrl || getActiveBillingGst()?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "") || "/Logo.png"}
                   alt="Logo"
                   className="h-9 max-w-[120px] object-contain rounded-lg shadow-2xs"
                 />

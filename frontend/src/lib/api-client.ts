@@ -639,6 +639,8 @@ export interface Employee {
   nfc_card_number?: string | null;
   status: string;
   manager_id: string | null;
+  role_id?: string | null;
+  role_name?: string | null;
   created_at: string;
   updated_at: string;
   temporary_password?: string;
@@ -979,6 +981,30 @@ export const businessUnitsApi = {
   update: (id: string, data: Record<string, unknown>) =>
     request<BusinessUnit>("PATCH", `/erp/business-units/${id}`, data),
   delete: (id: string) => request<void>("DELETE", `/erp/business-units/${id}`),
+};
+
+// ─── ERP — Roles & Access Control ──────────────────────────────────────────
+
+export interface Role {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  is_system?: boolean;
+  status?: string;
+  permissions?: any[];
+}
+
+export const rolesApi = {
+  list: (page = 1, pageSize = 100) =>
+    request<PaginatedResponse<Role>>("GET", "/erp/roles", undefined, {
+      page,
+      page_size: pageSize,
+    }),
+  get: (id: string) => request<Role>("GET", `/erp/roles/${id}`),
+  create: (data: Record<string, unknown>) => request<Role>("POST", "/erp/roles", data),
+  update: (id: string, data: Record<string, unknown>) => request<Role>("PATCH", `/erp/roles/${id}`, data),
+  delete: (id: string) => request<void>("DELETE", `/erp/roles/${id}`),
 };
 
 // â”€â”€â”€ Financial â€” Fiscal Years â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1486,6 +1512,10 @@ export const recruitmentApi = {
     request<Offer>("GET", `/hrms/recruitment/public/offers/${id}`),
   createOffer: (data: Record<string, unknown>) =>
     request<Offer>("POST", "/hrms/recruitment/offers", data),
+  updateOffer: (id: string, data: Record<string, unknown>) =>
+    request<Offer>("PUT", `/hrms/recruitment/offers/${id}`, data),
+  deleteOffer: (id: string) =>
+    request<{ status: string; message: string; id: string }>("DELETE", `/hrms/recruitment/offers/${id}`),
   sendOfferEmail: (id: string) =>
     request<{ status: string; message: string }>("POST", `/hrms/recruitment/offers/${id}/send-email`),
   updateOfferStatus: (id: string, data: Record<string, unknown>) =>

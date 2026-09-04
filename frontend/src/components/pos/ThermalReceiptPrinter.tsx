@@ -2,9 +2,10 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { getActiveReceiptTemplate, getTenantTemplatesKey, getTenantDefaultsKey, ReceiptTemplate } from '../../lib/receipt-template-store';
+import { getActiveReceiptTemplate, getActiveBillingGst, getTenantTemplatesKey, getTenantDefaultsKey, ReceiptTemplate } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { resolveImageUrl } from "@/lib/api-client";
 
 interface ThermalReceiptPrinterProps {
   bill: any;
@@ -37,15 +38,28 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
     console.error('Failed to load inventory print template:', e);
   }
 
+  // Active Billing GST & Scoped Organization Details
+  const activeBillingGst = getActiveBillingGst(tenant?.id);
   const fallbackStore = getActiveReceiptTemplate();
   const tenantRaw = (tenant as any)?.raw || {};
-  const storeName = tenant?.name || invTemplate?.storeName || fallbackStore.storeName || 'Store';
-  const storeAddress = invTemplate?.storeAddress || tenantRaw?.address || fallbackStore.address || '';
-  const storePhone = invTemplate?.storePhone || tenantRaw?.phone || fallbackStore.phone || '';
-  const gstin = invTemplate?.gstin || tenantRaw?.gstin || fallbackStore.gstin || '';
+  
+  const storeName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || invTemplate?.storeName || fallbackStore.storeName || 'Store';
+  const storeAddress = activeBillingGst?.address || invTemplate?.storeAddress || tenantRaw?.address || fallbackStore.address || '';
+  const storePhone = activeBillingGst?.phone || invTemplate?.storePhone || tenantRaw?.phone || fallbackStore.phone || '';
+  const gstin = activeBillingGst?.gstin || invTemplate?.gstin || tenantRaw?.gstin || fallbackStore.gstin || '';
   const headerTitle = invTemplate?.headerTitle || fallbackStore.invoiceTitle || 'RETAIL RECEIPT';
   const footerText = invTemplate?.footerText || fallbackStore.footerNote || '*** THANK YOU FOR SHOPPING ***';
   const termsText = invTemplate?.termsText || fallbackStore.declarationText || '';
+
+  // Logo Resolution per organization
+  const rawLogo = activeBillingGst?.logo_url || invTemplate?.logoUrl || fallbackStore.logoUrl || tenant?.logo_url || tenantRaw?.logo_url || '';
+  const resolvedLogoUrl = resolveImageUrl(rawLogo);
+
+  // Google Review Resolution per organization
+  const rawGoogleReviewUrl = activeBillingGst?.google_review_url || invTemplate?.googleReviewUrl || fallbackStore.googleReviewUrl || '';
+  const googlePlaceId = activeBillingGst?.google_place_id || '';
+  const resolvedGoogleReviewUrl = rawGoogleReviewUrl || (googlePlaceId ? `https://search.google.com/local/writereview?placeid=${googlePlaceId}` : '');
+  const googleReviewEnabled = (activeBillingGst?.google_review_enabled !== false) && (invTemplate?.showGoogleReviewQR !== false) && Boolean(resolvedGoogleReviewUrl);
 
   const f = invTemplate?.fields || {
     showLogo: true,
@@ -62,7 +76,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   const customerName = bill.customerName || 'ACME Enterprises';
 
   const items = bill.items || [];
-  const rawSubtotal = bill.subtotal || items.reduce((sum, i) => sum + ((i.quantity || 1) * (i.unit_price || i.price || 0)), 0);
+  const rawSubtotal = bill.subtotal || items.reduce((sum: number, i: any) => sum + ((i.quantity || 1) * (i.unit_price || i.price || 0)), 0);
   const rawDiscount = bill.discount || bill.discount_amount || 0;
   const rawTax = bill.tax || bill.tax_amount || (rawSubtotal * 0.05);
   const grandTotal = bill.total || bill.grand_total || (rawSubtotal - rawDiscount + rawTax);
@@ -88,11 +102,11 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
       {/* Header */}
       <div className="text-center border-b-[1.5px] border-dashed border-black pb-2">
         {f.showLogo && (
-          (invTemplate?.logoUrl || fallbackStore.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url) ? (
+          resolvedLogoUrl ? (
             <img
-              src={invTemplate?.logoUrl || fallbackStore.logoUrl || tenant?.logo_url || tenant?.raw?.logo_url}
+              src={resolvedLogoUrl}
               alt="Logo"
-              className="mx-auto max-h-8 max-w-[120px] object-contain mb-1 filter grayscale contrast-200"
+              className="mx-auto max-h-10 max-w-[140px] object-contain mb-1 filter grayscale contrast-200"
             />
           ) : (
             <div className="mx-auto h-7 w-7 bg-black text-white font-extrabold flex items-center justify-center text-xs rounded mb-1">
@@ -218,35 +232,40 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
         </div>
       )}
 
-      {/* Google Review QR */}
-      {(invTemplate?.showGoogleReviewQR !== false && (invTemplate?.googleReviewUrl || fallbackStore.googleReviewUrl)) && (
-        <div className="flex flex-col items-center justify-center pt-1.5 my-1 border-t border-dashed border-black text-center">
-          <span className="text-[9px] font-black block uppercase tracking-wider text-black">
-            ★ ★ ★ ★ ★ RATE US ON GOOGLE
-          </span>
-          <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=0&data=${encodeURIComponent(
-              invTemplate?.googleReviewUrl || fallbackStore.googleReviewUrl || 'https://search.google.com/local/writereview'
-            )}`}
-            alt="Google Review QR"
-            style={{ imageRendering: 'pixelated' }}
-            className="w-16 h-16 object-contain border-[1.5px] border-black p-0.5 my-1"
-          />
-          <span className="text-[8.5px] font-bold block text-black">
-            Scan to Review Us on Google!
-          </span>
-        </div>
-      )}
-
-      {/* Terms & Footer */}
+      {/* Terms & Conditions */}
       {termsText && (
         <div className="text-[9.5px] font-semibold border-t border-dashed border-black pt-1 mt-1 text-center text-black leading-tight">
           {termsText}
         </div>
       )}
+
+      {/* Thank You Footer Message */}
       {footerText && (
-        <div className="text-[10px] font-extrabold border-t border-dashed border-black pt-1 mt-1 text-center whitespace-pre-line leading-tight text-black">
+        <div className="text-[10px] font-extrabold border-t border-dashed border-black pt-1 mt-1 text-center whitespace-pre-line leading-tight text-black uppercase tracking-wider">
           {footerText}
+        </div>
+      )}
+
+      {/* Google Review Section Below Thank You Message */}
+      {googleReviewEnabled && resolvedGoogleReviewUrl && (
+        <div className="flex flex-col items-center justify-center pt-2 mt-1.5 border-t-[1.5px] border-dashed border-black text-center">
+          <div className="flex items-center justify-center gap-1 font-black text-[10px] tracking-widest text-black">
+            <span>★ ★ ★ ★ ★</span>
+          </div>
+          <span className="text-[9.5px] font-black uppercase tracking-wider text-black mt-0.5">
+            LEAVE US A GOOGLE REVIEW
+          </span>
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=0&data=${encodeURIComponent(
+              resolvedGoogleReviewUrl
+            )}`}
+            alt="Google Review QR Code"
+            style={{ imageRendering: 'pixelated' }}
+            className="w-16 h-16 object-contain border-[1.5px] border-black p-0.5 my-1"
+          />
+          <span className="text-[8.5px] font-bold block text-black">
+            Scan to Share Your Feedback on Google!
+          </span>
         </div>
       )}
     </div>,

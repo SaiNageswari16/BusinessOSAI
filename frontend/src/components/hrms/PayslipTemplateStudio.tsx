@@ -31,6 +31,7 @@ import {
   payrollApi,
   PayslipTemplate,
   Payslip,
+  resolveImageUrl,
 } from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -201,7 +202,8 @@ export function PayslipTemplateStudio() {
   const activeGst = getActiveBillingGst();
 
   const orgName = activeGst?.trade_name || activeGst?.legal_name || tenant?.name || "BusinessOS Enterprise";
-  const orgLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+  const rawLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+  const orgLogo = resolveImageUrl(rawLogo);
   const orgInitials = orgName.substring(0, 2).toUpperCase();
   const orgAddress = activeGst?.address || tenant?.settings?.address || "100 Innovation Boulevard, Tech District, Suite 400";
   const orgGstin = activeGst?.gstin || tenant?.settings?.gstin || "07AAAAA0000A1Z5";

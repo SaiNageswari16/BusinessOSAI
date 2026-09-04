@@ -42,6 +42,50 @@ router = APIRouter(prefix="/hrms", tags=["HRMS - Employee Management"])
 
 # ─── Employees CRUD ───────────────────────────────────────────────
 
+async def _enrich_employees_with_roles(db: AsyncSession, employees: list[Employee], tenant_id: uuid.UUID) -> list[EmployeeResponse]:
+    if not employees:
+        return []
+    
+    user_ids = [e.user_id for e in employees if e.user_id]
+    user_role_map = {}
+    if user_ids:
+        stmt = (
+            select(UserRole.user_id, Role.id, Role.name)
+            .join(Role, UserRole.role_id == Role.id)
+            .where(UserRole.user_id.in_(user_ids))
+        )
+        res = await db.execute(stmt)
+        for uid, rid, rname in res.all():
+            user_role_map[uid] = (rid, rname)
+            
+    emails = [e.email.lower() for e in employees if not e.user_id and e.email]
+    if emails:
+        stmt = (
+            select(User.email, Role.id, Role.name)
+            .join(UserRole, User.id == UserRole.user_id)
+            .join(Role, UserRole.role_id == Role.id)
+            .where(User.tenant_id == tenant_id, func.lower(User.email).in_(emails))
+        )
+        res = await db.execute(stmt)
+        for uemail, rid, rname in res.all():
+            user_role_map[uemail.lower()] = (rid, rname)
+
+    responses = []
+    for emp in employees:
+        resp = EmployeeResponse.model_validate(emp)
+        if emp.user_id and emp.user_id in user_role_map:
+            resp.role_id, resp.role_name = user_role_map[emp.user_id]
+        elif emp.email and emp.email.lower() in user_role_map:
+            resp.role_id, resp.role_name = user_role_map[emp.email.lower()]
+        responses.append(resp)
+    return responses
+
+
+async def _enrich_single_employee_role(db: AsyncSession, emp: Employee, tenant_id: uuid.UUID) -> EmployeeResponse:
+    res = await _enrich_employees_with_roles(db, [emp], tenant_id)
+    return res[0]
+
+
 @router.get("/employees/me", response_model=EmployeeResponse)
 async def get_my_employee_profile(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
@@ -74,7 +118,7 @@ async def get_my_employee_profile(
         db.add(emp)
         await db.commit()
         await db.refresh(emp)
-    return emp
+    return await _enrich_single_employee_role(db, emp, ctx.tenant_id)
 
 @router.get("/employees", response_model=PaginatedResponse[EmployeeResponse])
 async def list_employees(
@@ -188,7 +232,9 @@ async def list_employees(
     result = await db.execute(
         query.order_by(Employee.employee_code.asc()).offset((page - 1) * page_size).limit(page_size)
     )
-    return paginate(result.scalars().all(), total or 0, page, page_size)
+    raw_employees = result.scalars().all()
+    items = await _enrich_employees_with_roles(db, raw_employees, ctx.tenant_id)
+    return paginate(items, total or 0, page, page_size)
 
 
 @router.post("/employees", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
@@ -266,36 +312,44 @@ async def create_employee(
         await db.flush()
         linked_user_id = new_user.id
         
-        # Ensure Employee role exists and assign it
-        role = await db.scalar(
-            select(Role).where(Role.tenant_id == ctx.tenant_id, Role.name == "Employee")
-        )
-        if not role:
-            role = Role(
-                tenant_id=ctx.tenant_id,
-                name="Employee",
-                description="Standard employee access to ESS and profile logs",
-                is_system=False
+        # Determine which role to assign (from payload or fallback to standard Employee role)
+        selected_role = None
+        if payload.role_id:
+            selected_role = await db.scalar(
+                select(Role).where(Role.tenant_id == ctx.tenant_id, Role.id == payload.role_id)
             )
-            db.add(role)
-            await db.flush()
-            
-            # Grant view:dashboard, view:hrms & all ESS permissions
-            ess_perm_codes = [
-                "view:dashboard", "view:hrms", 
-                "view:ess_attendance", "view:ess_leaves", 
-                "view:ess_payroll", "view:ess_documents", 
-                "view:ess_tasks_announcements"
-            ]
-            for code in ess_perm_codes:
-                perm_obj = await db.scalar(select(Permission).where(Permission.code == code))
-                if perm_obj:
-                    db.add(RolePermission(role_id=role.id, permission_id=perm_obj.id))
-            await db.flush()
+        
+        if not selected_role:
+            # Ensure Employee role exists and assign it
+            selected_role = await db.scalar(
+                select(Role).where(Role.tenant_id == ctx.tenant_id, Role.name == "Employee")
+            )
+            if not selected_role:
+                selected_role = Role(
+                    tenant_id=ctx.tenant_id,
+                    name="Employee",
+                    description="Standard employee access to ESS and profile logs",
+                    is_system=False
+                )
+                db.add(selected_role)
+                await db.flush()
+                
+                # Grant view:dashboard, view:hrms & all ESS permissions
+                ess_perm_codes = [
+                    "view:dashboard", "view:hrms", 
+                    "view:ess_attendance", "view:ess_leaves", 
+                    "view:ess_payroll", "view:ess_documents", 
+                    "view:ess_tasks_announcements"
+                ]
+                for code in ess_perm_codes:
+                    perm_obj = await db.scalar(select(Permission).where(Permission.code == code))
+                    if perm_obj:
+                        db.add(RolePermission(role_id=selected_role.id, permission_id=perm_obj.id))
+                await db.flush()
             
         db.add(UserRole(
             user_id=new_user.id,
-            role_id=role.id,
+            role_id=selected_role.id,
             is_default=True,
             company_id=payload.company_id,
             branch_id=payload.branch_id
@@ -303,11 +357,32 @@ async def create_employee(
     else:
         linked_user_id = existing_user.id
         existing_user.employee_id = payload.employee_code
+        if payload.role_id:
+            target_role = await db.scalar(
+                select(Role).where(Role.tenant_id == ctx.tenant_id, Role.id == payload.role_id)
+            )
+            if target_role:
+                user_role = await db.scalar(
+                    select(UserRole).where(UserRole.user_id == existing_user.id)
+                )
+                if user_role:
+                    user_role.role_id = target_role.id
+                    user_role.company_id = payload.company_id or user_role.company_id
+                    user_role.branch_id = payload.branch_id or user_role.branch_id
+                else:
+                    db.add(UserRole(
+                        user_id=existing_user.id,
+                        role_id=target_role.id,
+                        is_default=True,
+                        company_id=payload.company_id,
+                        branch_id=payload.branch_id
+                    ))
 
+    emp_data = payload.model_dump(exclude={"user_id", "role_id", "role_name"})
     emp = Employee(
         tenant_id=ctx.tenant_id,
         user_id=linked_user_id,
-        **payload.model_dump(exclude={"user_id"})
+        **emp_data
     )
     db.add(emp)
     await db.flush()
@@ -343,7 +418,7 @@ async def create_employee(
         print(f"Simulation: Invite email could not be sent to {payload.email}: {email_err}")
 
     # Set the temporary password field in the schema object to present to UI
-    response_obj = EmployeeResponse.model_validate(emp)
+    response_obj = await _enrich_single_employee_role(db, emp, ctx.tenant_id)
     if not existing_user:
         response_obj.temporary_password = temp_pass
     return response_obj
@@ -415,7 +490,7 @@ async def get_employee(
     )
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    return emp
+    return await _enrich_single_employee_role(db, emp, ctx.tenant_id)
 
 
 @router.patch("/employees/{emp_id}", response_model=EmployeeResponse)
@@ -433,8 +508,41 @@ async def update_employee(
         raise HTTPException(status_code=404, detail="Employee not found")
 
     updates = payload.model_dump(exclude_unset=True)
+    role_id_to_update = updates.pop("role_id", None)
+    updates.pop("role_name", None)
+
     for key, value in updates.items():
-        setattr(emp, key, value)
+        if hasattr(emp, key):
+            setattr(emp, key, value)
+
+    if role_id_to_update is not None:
+        target_role = await db.scalar(
+            select(Role).where(Role.tenant_id == ctx.tenant_id, Role.id == role_id_to_update)
+        )
+        if target_role:
+            user = None
+            if emp.user_id:
+                user = await db.get(User, emp.user_id)
+            if not user and emp.email:
+                user = await db.scalar(
+                    select(User).where(User.tenant_id == ctx.tenant_id, func.lower(User.email) == emp.email.lower())
+                )
+            if user:
+                user_role = await db.scalar(
+                    select(UserRole).where(UserRole.user_id == user.id)
+                )
+                if user_role:
+                    user_role.role_id = target_role.id
+                    user_role.company_id = emp.company_id or user_role.company_id
+                    user_role.branch_id = emp.branch_id or user_role.branch_id
+                else:
+                    db.add(UserRole(
+                        user_id=user.id,
+                        role_id=target_role.id,
+                        is_default=True,
+                        company_id=emp.company_id,
+                        branch_id=emp.branch_id
+                    ))
 
     await write_audit_log(
         db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
@@ -444,7 +552,8 @@ async def update_employee(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    return emp
+    await db.refresh(emp)
+    return await _enrich_single_employee_role(db, emp, ctx.tenant_id)
 
 
 @router.post("/employees/{emp_id}/add-points", response_model=EmployeeResponse)

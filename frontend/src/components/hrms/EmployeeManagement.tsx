@@ -9,12 +9,14 @@ import {
   companiesApi,
   branchesApi,
   recruitmentApi,
+  rolesApi,
   Employee,
   Department,
   Designation,
   Team,
   Company,
   Branch,
+  Role,
   EmployeeDocument,
   EmployeeVCard
 } from "../../lib/api-client";
@@ -55,6 +57,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   
   // Filters & Pagination
   const [search, setSearch] = useState("");
@@ -107,6 +110,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     branch_id: "",
     department_id: "",
     designation_id: "",
+    role_id: "",
     manager_id: "",
     date_of_joining: new Date().toISOString().split("T")[0]
   });
@@ -135,6 +139,9 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       
       const teamsRes = await teamsApi.list(1, 100);
       setTeams(teamsRes.items);
+
+      const rolesRes = await rolesApi.list(1, 100);
+      setRoles(rolesRes.items || (Array.isArray(rolesRes) ? rolesRes : []));
     } catch (e) {
       console.error("Failed to load multi-org reference data", e);
     }
@@ -262,6 +269,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         branch_id: formData.branch_id || null,
         department_id: formData.department_id || null,
         designation_id: formData.designation_id || null,
+        role_id: formData.role_id || null,
         manager_id: formData.manager_id || null
       };
       
@@ -357,6 +365,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       branch_id: emp.branch_id ?? "",
       department_id: emp.department_id ?? "",
       designation_id: emp.designation_id ?? "",
+      role_id: emp.role_id ?? "",
       manager_id: emp.manager_id ?? "",
       date_of_joining: emp.date_of_joining ?? new Date().toISOString().split("T")[0]
     });
@@ -1177,7 +1186,28 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
           <Button variant="outline" className="h-8 text-xs font-semibold" onClick={() => setBulkDialogOpen(true)}>
             Bulk Import CSV
           </Button>
-          <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0 animate-pulse-subtle" onClick={() => { setEditingEmployee(null); setAddDialogOpen(true); }}>
+          <Button className="h-8 text-xs font-semibold gradient-brand text-white border-0 animate-pulse-subtle" onClick={() => {
+            setEditingEmployee(null);
+            setFormData({
+              employee_code: "",
+              full_name: "",
+              email: "",
+              phone: "",
+              employment_type: "Full-Time",
+              status: "Active",
+              basic_salary: "",
+              punch_method: "GPS",
+              nfc_card_number: "",
+              company_id: companies[0]?.id || "",
+              branch_id: "",
+              department_id: "",
+              designation_id: "",
+              role_id: "",
+              manager_id: "",
+              date_of_joining: new Date().toISOString().split("T")[0]
+            });
+            setAddDialogOpen(true);
+          }}>
             <Plus className="size-3.5 mr-1.5" /> Create Employee User
           </Button>
         </div>
@@ -1280,8 +1310,15 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                           </div>
                         </td>
                         <td className="px-6 py-4 font-mono font-bold text-slate-700">{emp.employee_code}</td>
-                        <td className="px-6 py-4 font-semibold text-purple-700">
-                          {designations.find(d => d.id === emp.designation_id)?.name || "—"}
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-purple-700">
+                            {designations.find(d => d.id === emp.designation_id)?.name || "—"}
+                          </div>
+                          {emp.role_name && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 mt-0.5">
+                              <ShieldAlert className="size-2.5" /> {emp.role_name}
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-muted-foreground">
                           {departments.find(d => d.id === emp.department_id)?.name || "—"}
@@ -1396,6 +1433,31 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
                     {designations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                 </div>
+              </div>
+
+              {/* Core ERP System Role & RBAC Access Permissions */}
+              <div className="space-y-1 bg-indigo-50/40 dark:bg-indigo-950/20 p-3 rounded-xl border border-indigo-200 dark:border-indigo-900/50">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase flex items-center gap-1.5">
+                    <ShieldAlert className="size-3.5 text-indigo-600" /> Core ERP System Role & Permissions *
+                  </label>
+                  <span className="text-[10px] text-muted-foreground font-semibold">Defines system permissions</span>
+                </div>
+                <select
+                  value={formData.role_id}
+                  onChange={e => setFormData(p => ({ ...p, role_id: e.target.value }))}
+                  className="w-full h-10 px-3 text-sm rounded-md border border-indigo-300 dark:border-indigo-800 bg-background font-semibold text-foreground focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  <option value="">-- Standard Employee (ESS & Profile Access) --</option>
+                  {roles.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} {r.description ? `— ${r.description}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  The user account linked to this employee will automatically inherit module access and action permissions configured in Core ERP Roles & Permissions.
+                </p>
               </div>
               
               <div className="grid grid-cols-2 gap-3">
@@ -1708,12 +1770,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
               expiry_date: payload.expiry_date,
               joining_date: payload.joining_date,
               signer_name: `${payload.signing_authority} (${payload.signing_title})`,
-              custom_template: `Template: ${payload.template_name}
-CTC: ₹${payload.ctc} (Basic: ${payload.basic_pct}%, HRA: ${payload.hra_pct}%, Special: ${payload.special_pct}%, PF: ${payload.pf_pct}%)
-Probation: ${payload.probation_months} Months | Notice: ${payload.notice_days} Days
-
-Terms & Clauses:
-${payload.clauses}`
+              custom_template: JSON.stringify(payload)
             });
             toast.success(`Offer letter released and saved to ${payload.candidate}'s Document Vault!`);
             setOfferStudioOpen(false);

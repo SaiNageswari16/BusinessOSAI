@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { recruitmentApi, Offer } from "@/lib/api-client";
+import { recruitmentApi, Offer, resolveImageUrl } from "@/lib/api-client";
 import { Printer, Download, ArrowLeft, CheckCircle, Clock, ShieldCheck, AlertCircle, Building2, Briefcase, Calendar, Award } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -19,13 +19,23 @@ export function VaultOfferViewerPage() {
   // Tenant / Company details from storage or fallbacks
   const storedTenant = typeof window !== "undefined" ? localStorage.getItem("bos-tenant") : null;
   const parsedTenant = storedTenant ? JSON.parse(storedTenant) : null;
-  const orgName = parsedTenant?.name || "BusinessOS Global Enterprises";
-  const orgAddress = parsedTenant?.address || parsedTenant?.settings?.address || "100 Innovation Boulevard, Tech Hub";
-  const orgGstin = parsedTenant?.tax_id || parsedTenant?.settings?.gstin || "07AAAAA0000A1Z5";
-  const orgCin = parsedTenant?.cin || parsedTenant?.settings?.cin || "U72200DL2024PTC123456";
-  const orgEmail = parsedTenant?.email || parsedTenant?.settings?.email || "hr@businessos.ai";
-  const orgPhone = parsedTenant?.phone || parsedTenant?.settings?.phone || "+91 98493 44919";
-  const orgLogo = parsedTenant?.logo_url || parsedTenant?.raw?.logo_url || "";
+
+  const customData: any = (() => {
+    if (!offer?.custom_template) return {};
+    try {
+      return typeof offer.custom_template === "string" ? JSON.parse(offer.custom_template) : offer.custom_template;
+    } catch {
+      return {};
+    }
+  })();
+
+  const orgName = customData.org_name || parsedTenant?.name || "BusinessOS Global Enterprises";
+  const orgAddress = customData.org_address || parsedTenant?.address || parsedTenant?.settings?.address || "100 Innovation Boulevard, Tech Hub";
+  const orgGstin = customData.org_gstin || parsedTenant?.tax_id || parsedTenant?.settings?.gstin || "07AAAAA0000A1Z5";
+  const orgCin = customData.org_cin || parsedTenant?.cin || parsedTenant?.settings?.cin || "U72200DL2024PTC123456";
+  const orgEmail = customData.org_email || parsedTenant?.email || parsedTenant?.settings?.email || "hr@businessos.ai";
+  const orgPhone = customData.org_phone || parsedTenant?.phone || parsedTenant?.settings?.phone || "+91 98493 44919";
+  const orgLogo = resolveImageUrl(customData.org_logo || parsedTenant?.logo_url || parsedTenant?.raw?.logo_url || "");
   const orgInitials = orgName.slice(0, 2).toUpperCase();
 
   useEffect(() => {

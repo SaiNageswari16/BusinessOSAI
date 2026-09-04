@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class ORMModel(BaseModel):
@@ -1221,6 +1221,8 @@ class EmployeeBase(BaseModel):
     designation_id: uuid.UUID | None = None
     manager_id: uuid.UUID | None = None
     user_id: uuid.UUID | None = None
+    role_id: uuid.UUID | None = None
+    role_name: str | None = None
 
 
 class EmployeeCreate(EmployeeBase):
@@ -1247,6 +1249,8 @@ class EmployeeUpdate(BaseModel):
     designation_id: uuid.UUID | None = None
     manager_id: uuid.UUID | None = None
     user_id: uuid.UUID | None = None
+    role_id: uuid.UUID | None = None
+    role_name: str | None = None
 
 
 class EmployeeResponse(ORMModel):
@@ -1271,6 +1275,8 @@ class EmployeeResponse(ORMModel):
     designation_id: uuid.UUID | None
     manager_id: uuid.UUID | None
     user_id: uuid.UUID | None
+    role_id: uuid.UUID | None = None
+    role_name: str | None = None
     created_at: datetime
     updated_at: datetime
     temporary_password: str | None = None
@@ -2044,14 +2050,48 @@ class OfferLetterBase(BaseModel):
     signer_title: str | None = "Head of HR"
     custom_template: str | None = None
 
+    @field_validator("applicant_id", "employee_id", mode="before")
+    @classmethod
+    def parse_optional_uuid(cls, v):
+        if not v or v == "" or (isinstance(v, str) and not v.strip()):
+            return None
+        if isinstance(v, uuid.UUID):
+            return v
+        try:
+            return uuid.UUID(str(v).strip())
+        except (ValueError, TypeError):
+            return None
+
 
 class OfferLetterCreate(OfferLetterBase):
     pass
 
 
 class OfferLetterUpdate(BaseModel):
+    applicant_id: uuid.UUID | None = None
+    employee_id: uuid.UUID | None = None
+    candidate: str | None = None
+    candidate_email: str | None = None
+    role: str | None = None
+    ctc: float | None = None
+    expiry_date: date | None = None
+    joining_date: date | None = None
+    signer_name: str | None = None
     status: str | None = None
     email_sent: bool | None = None
+    custom_template: str | None = None
+
+    @field_validator("applicant_id", "employee_id", mode="before")
+    @classmethod
+    def parse_optional_uuid(cls, v):
+        if not v or v == "" or (isinstance(v, str) and not v.strip()):
+            return None
+        if isinstance(v, uuid.UUID):
+            return v
+        try:
+            return uuid.UUID(str(v).strip())
+        except (ValueError, TypeError):
+            return None
 
 
 class OfferLetterResponse(ORMModel):

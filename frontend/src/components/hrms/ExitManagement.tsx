@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, FileText, Shield, Calculator, Award, Trash2, CheckCircle, Clock, XCircle, AlertTriangle, Printer, Download, Eye } from "lucide-react";
-import { exitApi, employeesApi, ExitResignation, ExitClearanceTask, ExitFinalSettlement, ExitExperienceLetter, Employee } from "../../lib/api-client";
+import { exitApi, employeesApi, resolveImageUrl, ExitResignation, ExitClearanceTask, ExitFinalSettlement, ExitExperienceLetter, Employee } from "../../lib/api-client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
@@ -20,8 +20,8 @@ export function ExitManagement({ tab = "resignation" }: Props) {
     const orgGstin = activeGst?.gstin || tenant?.settings?.gstin || "";
     const orgCin = activeGst?.cin || tenant?.settings?.cin || "";
     const orgEmail = activeGst?.email || tenant?.settings?.email || "hr@businessos.ai";
-    const orgPhone = activeGst?.phone || tenant?.settings?.phone || "+91 (800) 555-0199";
-    const orgLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const rawLogo = (activeGst as any)?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const orgLogo = resolveImageUrl(rawLogo);
     const orgInitials = (tenant?.logo_initials || orgName.slice(0, 2)).toUpperCase();
 
   const [resignations, setResignations] = useState<ExitResignation[]>([]);

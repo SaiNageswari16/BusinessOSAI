@@ -5,7 +5,7 @@ import {
   CheckCircle, Plus, Loader2, X, ArrowLeft, Trash2, Box, Layers, CheckSquare, Square, Edit2
 } from "lucide-react";
 import { Button } from "../ui/button";
-import { deliveryChallanApi, invoicesApi, crmApi, inventoryApi } from "../../lib/api-client";
+import { deliveryChallanApi, invoicesApi, crmApi, inventoryApi, resolveImageUrl } from "../../lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -388,7 +388,8 @@ export function DeliveryChallans() {
 
     const activeBillingGst = getActiveBillingGst(tenant?.id);
     const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS Store";
-    const orgLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const rawLogo = activeBillingGst?.logo_url || tenant?.logo_url || (tenant as any)?.raw?.logo_url || "";
+    const orgLogo = resolveImageUrl(rawLogo);
     const orgGstin = activeBillingGst?.gstin || (tenant as any)?.tax_id || (tenant as any)?.gstin || (tenant as any)?.raw?.tax_id || "37AAAAA0000A1Z5";
     const orgAddress = activeBillingGst?.address || (tenant as any)?.address || (tenant as any)?.raw?.address || "Main Branch";
     const orgPhone = activeBillingGst?.phone || (tenant as any)?.phone || (tenant as any)?.raw?.phone || "";
