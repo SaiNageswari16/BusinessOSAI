@@ -72,37 +72,56 @@ function cleanExtractedText(raw: string): string {
 }
 
 /**
- * Extract clean text from a PDF file dynamically using PDF.js if available
+ * Extract clean text from a PDF file using on-demand CDN script loading or stream regex fallback
  */
 async function extractTextFromPdf(arrayBuffer: ArrayBuffer): Promise<string> {
+  // If in browser, attempt to load PDF.js dynamically via CDN script tag
+  if (typeof window !== "undefined") {
+    try {
+      let pdfjs: any = (window as any).pdfjsLib;
+      if (!pdfjs) {
+        await new Promise<void>((resolve) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+          script.onload = () => resolve();
+          script.onerror = () => resolve();
+          document.head.appendChild(script);
+        });
+        pdfjs = (window as any).pdfjsLib;
+      }
+
+      if (pdfjs) {
+        if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
+          pdfjs.GlobalWorkerOptions.workerSrc =
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        }
+        const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        const pageTexts: string[] = [];
+
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items
+            .map((item: any) => item.str)
+            .join(" ");
+          pageTexts.push(pageText);
+        }
+
+        if (pageTexts.length > 0) {
+          return pageTexts.join("\n\n");
+        }
+      }
+    } catch (err) {
+      console.warn("Dynamic PDF.js extraction skipped:", err);
+    }
+  }
+
+  // Fallback: extract string tokens from raw byte stream
   try {
-    const pdfjsLib = await import("pdfjs-dist").catch(() => null);
-    if (!pdfjsLib) {
-      return "";
-    }
-
-    if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      try {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "4.10.38"}/pdf.worker.min.mjs`;
-      } catch {}
-    }
-
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-    const pdf = await loadingTask.promise;
-    const pageTexts: string[] = [];
-
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(" ");
-      pageTexts.push(pageText);
-    }
-
-    return pageTexts.join("\n\n");
-  } catch (err) {
-    console.warn("PDF extraction skipped or module not loaded:", err);
+    const text = new TextDecoder("latin1").decode(new Uint8Array(arrayBuffer));
+    return cleanExtractedText(text);
+  } catch {
     return "";
   }
 }
@@ -217,25 +236,16 @@ export async function parseUploadedOfferDoc(file: File): Promise<ParsedOfferDoc>
     rawText = await extractTextFromPdf(arrayBuffer);
   } else if (extension === "docx") {
     const arrayBuffer = await file.arrayBuffer();
-    
-    // First try native zero-dependency docx parser
     const nativeParsed = await extractDocxXml(arrayBuffer);
     if (nativeParsed.text) {
       rawText = nativeParsed.text;
       htmlContent = nativeParsed.html;
     } else {
-      // Fallback: dynamic mammoth import if available
       try {
-        const mammoth = await import("mammoth").catch(() => null);
-        if (mammoth) {
-          const rawTextResult = await mammoth.extractRawText({ arrayBuffer });
-          rawText = rawTextResult.value || "";
-
-          const htmlResult = await mammoth.convertToHtml({ arrayBuffer });
-          htmlContent = htmlResult.value || "";
-        }
-      } catch (err) {
-        console.warn("Mammoth extraction fallback skipped:", err);
+        const text = await file.text();
+        rawText = cleanExtractedText(text);
+      } catch {
+        rawText = "";
       }
     }
   } else if (extension === "html" || extension === "htm") {
