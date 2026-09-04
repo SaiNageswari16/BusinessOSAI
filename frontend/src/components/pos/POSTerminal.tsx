@@ -413,16 +413,65 @@ function PosTerminalInner() {
     });
   };
 
+  // Helper to match a product to a category/sub-category by ID or Name
+  const isProductInCategory = (p: any, catId: string, allCats: any[]) => {
+    if (!catId || catId === "all") return true;
 
+    // Find target category object
+    const targetCat = allCats.find(
+      (c) =>
+        String(c.id).toLowerCase().trim() === String(catId).toLowerCase().trim() ||
+        String(c.name).toLowerCase().trim() === String(catId).toLowerCase().trim()
+    );
+    const targetName = (targetCat ? targetCat.name : catId).toLowerCase().trim();
+    const targetId = String(targetCat?.id || catId).toLowerCase().trim();
+
+    const pCatId = String(p.category_id || (typeof p.category === "object" ? p.category?.id : p.category) || "").toLowerCase().trim();
+    const pCatName = String(p.category_name || (typeof p.category === "object" ? p.category?.name : (typeof p.category === "string" ? p.category : "")) || "").toLowerCase().trim();
+    const pSubCat = String(p.sub_category || p.subcategory || p.sub_category_name || "").toLowerCase().trim();
+
+    // 1. Direct match by ID or Name
+    if (pCatId && (pCatId === targetId || pCatId === targetName)) return true;
+    if (pCatName && (pCatName === targetName || pCatName === targetId)) return true;
+    if (pSubCat && (pSubCat === targetName || pSubCat === targetId)) return true;
+
+    // 2. Contains match (handles slight casing or whitespace discrepancies)
+    if (pCatName && targetName && (pCatName === targetName || pCatName.includes(targetName) || targetName.includes(pCatName))) return true;
+    if (pSubCat && targetName && (pSubCat === targetName || pSubCat.includes(targetName) || targetName.includes(pSubCat))) return true;
+
+    // 3. Child categories check (if target is a parent category, match if product belongs to any child)
+    const childCats = allCats.filter((c) => {
+      const pId = String(c.parent_id || "").toLowerCase().trim();
+      return pId && (pId === targetId || pId === targetName || (targetCat && pId === String(targetCat.id).toLowerCase().trim()));
+    });
+
+    for (const child of childCats) {
+      const childId = String(child.id).toLowerCase().trim();
+      const childName = String(child.name).toLowerCase().trim();
+      if (
+        (pCatId && (pCatId === childId || pCatId === childName)) ||
+        (pCatName && (pCatName === childName || pCatName === childId)) ||
+        (pSubCat && (pSubCat === childName || pSubCat === childId)) ||
+        (pCatName && (pCatName.includes(childName) || childName.includes(pCatName))) ||
+        (pSubCat && (pSubCat.includes(childName) || childName.includes(pSubCat)))
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  };
 
   // Load real data from backend on mount
   useEffect(() => {
     const loadData = async () => {
       setIsLoadingProducts(true);
       try {
-        const [cats, prods, bList, heldHistory] = await Promise.all([
-          posApi.getCategories(),
-          posApi.getProducts(),
+        const [cats, invCatsRes, posProds, invProdsRes, bList, heldHistory] = await Promise.all([
+          posApi.getCategories().catch(() => []),
+          inventoryApi.getCategories({ page_size: 500 }).catch(() => null),
+          posApi.getProducts({ limit: 5000 }).catch(() => []),
+          inventoryApi.getProducts({ page_size: 5000, sort_by: "updated_at", sort_order: "desc" }).catch(() => null),
           inventoryApi.getBatches().catch(() => []),
           posApi.getHistory({ status_filter: 'on_hold', limit: 100 }).catch(() => [])
         ]);
@@ -445,107 +494,121 @@ function PosTerminalInner() {
           }
         }
 
-        const rawCats = Array.isArray(cats) ? cats : ((cats as any)?.items || []);
-        if (rawCats.length > 0) {
-          const mappedCats = rawCats.map((c: any, i: number) => ({
-            id: c.id,
-            name: c.name,
-            parent_id: c.parent_id || null,
-            color: c.color || posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
-            icon: posCategories[i % posCategories.length]?.icon || null,
-            aiScore: Math.floor(Math.random() * 30) + 70,
-          }));
-          setCategories(mappedCats);
-        } else {
-          // Fallback: try inventory categories API (same ProductCategory table, has parent_id hierarchy)
-          try {
-            const invCatsRes: any = await inventoryApi.getCategories({ page_size: 500 });
-            const invCats: any[] = Array.isArray(invCatsRes) ? invCatsRes : (invCatsRes?.items || []);
-            if (invCats.length > 0) {
-              const mappedInvCats = invCats.map((c: any, i: number) => ({
-                id: c.id,
+        // 1. Build unified categories list
+        const rawPosCats = Array.isArray(cats) ? cats : ((cats as any)?.items || []);
+        const rawInvCats = Array.isArray(invCatsRes) ? invCatsRes : ((invCatsRes as any)?.items || []);
+        
+        const catMap = new Map<string, any>();
+        [...rawPosCats, ...rawInvCats].forEach((c: any, i: number) => {
+          if (c && (c.id || c.name)) {
+            const key = String(c.id || c.name);
+            if (!catMap.has(key)) {
+              catMap.set(key, {
+                id: c.id || c.name,
                 name: c.name,
                 parent_id: c.parent_id || null,
-                color: posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
+                color: c.color || posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
                 icon: posCategories[i % posCategories.length]?.icon || null,
-                aiScore: 80,
-              }));
-              setCategories(mappedInvCats);
-            } else if (prods && prods.length > 0) {
-              // Deep fallback: extract unique categories + sub-categories from products
-              const catMap = new Map<string, { id: string; name: string; parent_id: null }>();
-              const subCatMap = new Map<string, { id: string; name: string; parent_id: string }>();
-              prods.forEach((p: any) => {
-                const catName = p.category?.name || p.category_name || p.category || "";
-                const subCatName = p.sub_category || p.subcategory || p.sub_category_name || "";
-                if (catName) catMap.set(catName, { id: catName, name: catName, parent_id: null });
-                if (catName && subCatName) subCatMap.set(`${catName}::${subCatName}`, { id: `${catName}__${subCatName}`, name: subCatName, parent_id: catName });
+                aiScore: Math.floor(Math.random() * 30) + 70,
               });
-              const allCats = [
-                ...Array.from(catMap.values()).map((c, i) => ({ ...c, color: posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700", icon: posCategories[i % posCategories.length]?.icon || null, aiScore: 80 })),
-                ...Array.from(subCatMap.values()).map((c, i) => ({ ...c, color: posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700", icon: null, aiScore: 80 })),
-              ];
-              setCategories(allCats.length > 0 ? allCats : posCategories);
-            } else {
-              setCategories(posCategories);
             }
-          } catch {
-            setCategories(posCategories);
           }
-        }
+        });
 
+        // 2. Build unified products list
+        const rawPosProds: any[] = Array.isArray(posProds) ? posProds : ((posProds as any)?.items || []);
+        const rawInvProds: any[] = Array.isArray(invProdsRes) ? invProdsRes : ((invProdsRes as any)?.items || []);
 
-        let fetchedProds: any[] = Array.isArray(prods) ? prods : ((prods as any)?.items || []);
-        if (fetchedProds.length === 0) {
-          try {
-            const invProdsRes: any = await inventoryApi.getProducts({ page_size: 300 });
-            fetchedProds = Array.isArray(invProdsRes) ? invProdsRes : (invProdsRes?.items || []);
-          } catch (e) {
-            console.warn("Could not fetch inventory products fallback:", e);
+        const prodMap = new Map<string, any>();
+        rawPosProds.forEach((p: any) => { if (p?.id) prodMap.set(String(p.id), p); });
+        rawInvProds.forEach((p: any) => {
+          if (p?.id) {
+            const existing = prodMap.get(String(p.id)) || {};
+            prodMap.set(String(p.id), { ...existing, ...p });
           }
-        }
+        });
 
-        if (Array.isArray(fetchedProds)) {
-          const mappedProds = fetchedProds.map((p: any) => {
-            const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
-            const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
-            const rawWholesale = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : 0));
-            const rawB2B = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
-            const wPrice = rawWholesale > 0 ? rawWholesale : (basePrice > 0 ? Math.round(basePrice * 0.90 * 100) / 100 : 0);
-            const bPrice = rawB2B > 0 ? rawB2B : (rawWholesale > 0 ? Math.round(rawWholesale * 0.95 * 100) / 100 : (basePrice > 0 ? Math.round(basePrice * 0.85 * 100) / 100 : 0));
-            const taxPct = Number(p.tax_percent != null ? p.tax_percent : (p.tax_rate != null ? p.tax_rate : 18));
-            return {
-              id: p.id,
-              name: p.name,
-              brand: p.brand?.name || p.brand || "",
-              category: p.category_id || p.category?.id || "all",
-              category_name: p.category?.name || p.category_name || "",
-              shortDesc: p.description || p.short_description || `${p.name}`,
-              longDesc: p.description || "",
-              barcode: p.barcode || "",
-              sku: p.sku || "",
-              hsn_code: p.hsn_code || "1905",
-              sellingPrice: basePrice,
-              wholesalePrice: wPrice,
-              b2bPrice: bPrice,
-              minWholesaleQty: Number(p.min_wholesale_qty || 1),
-              mrp: Number(p.mrp || basePrice || 0),
-              purchasePrice: Number(p.purchase_price || p.cost_price || 0),
-              tax_percent: taxPct,
-              tax: taxPct,
-              is_tax_inclusive: p.is_tax_inclusive !== false,
-              discount: Number(p.discount || p.discount_limit || 0),
-              stock: Number(p.stock || p.initial_stock || 0),
-              reorderLevel: Number(p.reorder_level || 10),
-              image: p.image_url ? resolveImageUrl(p.image_url) : null,
-              aiScore: Math.floor(Math.random() * 30) + 70,
-              isFastMoving: (p.stock || p.initial_stock || 0) > 50,
-            };
-          });
-          setProducts(mappedProds);
-        }
+        const allFetchedProds = Array.from(prodMap.values());
+
+        // Extract any missing categories / subcategories present on products
+        allFetchedProds.forEach((p: any, i: number) => {
+          const catName = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
+          const subCatName = p.sub_category || p.subcategory || p.sub_category_name || "";
+          if (catName && !catMap.has(catName)) {
+            catMap.set(catName, {
+              id: p.category_id || catName,
+              name: catName,
+              parent_id: null,
+              color: posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
+              icon: posCategories[i % posCategories.length]?.icon || null,
+              aiScore: 80
+            });
+          }
+          if (catName && subCatName) {
+            const subKey = `${catName}::${subCatName}`;
+            if (!catMap.has(subKey)) {
+              const parentCatObj = catMap.get(catName) || catMap.get(p.category_id);
+              catMap.set(subKey, {
+                id: subKey,
+                name: subCatName,
+                parent_id: parentCatObj ? parentCatObj.id : catName,
+                color: posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
+                icon: null,
+                aiScore: 80
+              });
+            }
+          }
+        });
+
+        const finalCats = Array.from(catMap.values());
+        setCategories(finalCats.length > 0 ? finalCats : posCategories);
+
+        const mappedProds = allFetchedProds.map((p: any) => {
+          const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
+          const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
+          const rawWholesale = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : 0));
+          const rawB2B = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
+          const wPrice = rawWholesale > 0 ? rawWholesale : (basePrice > 0 ? Math.round(basePrice * 0.90 * 100) / 100 : 0);
+          const bPrice = rawB2B > 0 ? rawB2B : (rawWholesale > 0 ? Math.round(rawWholesale * 0.95 * 100) / 100 : (basePrice > 0 ? Math.round(basePrice * 0.85 * 100) / 100 : 0));
+          const taxPct = Number(p.tax_percent != null ? p.tax_percent : (p.tax_rate != null ? p.tax_rate : 18));
+          
+          const catNameVal = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
+          const subCatNameVal = p.sub_category || p.subcategory || p.sub_category_name || "";
+
+          return {
+            id: p.id,
+            name: p.name,
+            brand: p.brand?.name || (typeof p.brand === "string" ? p.brand : "") || "",
+            category: p.category_id || p.category?.id || catNameVal || "all",
+            category_id: p.category_id || p.category?.id || null,
+            category_name: catNameVal,
+            sub_category: subCatNameVal,
+            shortDesc: p.description || p.short_description || `${p.name}`,
+            longDesc: p.description || "",
+            barcode: p.barcode || "",
+            sku: p.sku || "",
+            hsn_code: p.hsn_code || "1905",
+            sellingPrice: basePrice,
+            wholesalePrice: wPrice,
+            b2bPrice: bPrice,
+            minWholesaleQty: Number(p.min_wholesale_qty || 1),
+            mrp: Number(p.mrp || basePrice || 0),
+            purchasePrice: Number(p.purchase_price || p.cost_price || 0),
+            tax_percent: taxPct,
+            tax: taxPct,
+            is_tax_inclusive: p.is_tax_inclusive !== false,
+            discount: Number(p.discount || p.discount_limit || 0),
+            stock: Number(p.stock || p.initial_stock || 0),
+            reorderLevel: Number(p.reorder_level || 10),
+            image: p.image_url ? resolveImageUrl(p.image_url) : null,
+            aiScore: Math.floor(Math.random() * 30) + 70,
+            isFastMoving: (p.stock || p.initial_stock || 0) > 50,
+          };
+        });
+
+        setProducts(mappedProds);
       } catch (err) {
-        console.warn("Backend not available:", err);
+        console.warn("Backend loading notice:", err);
       } finally {
         setIsLoadingProducts(false);
       }
@@ -555,143 +618,33 @@ function PosTerminalInner() {
 
 
   useEffect(() => {
-    // Attempt to enter fullscreen (requires user gesture, which the previous Link click provides)
+    // Attempt to enter fullscreen
     try {
       if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch((err) => {
-          console.warn("Fullscreen request was blocked (needs user gesture).", err);
-        });
+        document.documentElement.requestFullscreen().catch(() => {});
       }
-    } catch (e) { }
-
-    return () => {
-      // Exit fullscreen when unmounting the terminal
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => { });
-      }
-    };
+    } catch {}
   }, []);
 
-  // Professional Cashier Keyboard shortcut listener
+  // Sync active session when switching back from other views
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Avoid triggering when user is typing inside an open modal or input field
-      const isInputFocused = ["INPUT", "TEXTAREA", "SELECT"].includes((document.activeElement?.tagName || ""));
-
-      if (e.key === "F2") {
-        e.preventDefault();
-        const searchInput = document.getElementById("pos-barcode-input") || document.getElementById("global-search");
-        if (searchInput) (searchInput as HTMLInputElement).focus();
-      } else if (e.key === "F4" && !isInputFocused) {
-        e.preventDefault();
-        if (cart.length > 0) {
-          handleHoldBill();
-        } else {
-          openHeldBillsModal();
+    if (currentView === 'billing') {
+      posApi.getCurrentSession().then(sess => {
+        setCurrentSession(sess);
+      }).catch(err => {
+        if (err?.status === 404) {
+          setSessionModalOpen(true);
         }
-      } else if (e.key === "F8" && !isInputFocused && cart.length > 0) {
-        e.preventDefault();
-        setDiscountModalItem(cart[0]);
-        setDiscountInput(cart[0]?.discount?.toString() || "0");
-      } else if (e.key === "F9" && !isInputFocused && cart.length > 0) {
-        e.preventDefault();
-        setCashModalOpen(true);
-      } else if (e.key === "F10" && !isInputFocused && cart.length > 0) {
-        e.preventDefault();
-        setCheckoutModalOpen(true);
-      } else if (e.key === "Escape") {
-        setDiscountModalItem(null);
-        setCheckoutModalOpen(false);
-        setPartialModalOpen(false);
-        setCashModalOpen(false);
-        setHeldBillsModalOpen(false);
-        setIsCustomerModalOpen(false);
-        setSessionModalOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cart]);
+      });
+    }
+  }, [currentView]);
 
-  // Hardware Barcode Scanner Listener in POS Terminal
-  useHardwareBarcodeScanner({
-    onScan: async (scannedCode) => {
-      const code = scannedCode.trim();
-      if (!code) return;
-
-      const matched = products.find(
-        p => p.barcode === code || p.sku === code || p.barcode?.toLowerCase() === code.toLowerCase()
-      );
-
-      if (matched) {
-        addToCart(matched);
-        toast.success(`Scanned: ${matched.name} (+1 to Cart)`);
-        return;
-      }
-
-      try {
-        const fastRes = await inventoryApi.lookupProductByBarcode(code);
-        if (fastRes?.success && fastRes?.product?.name) {
-          const p = fastRes.product;
-          const posProd = {
-            id: p.id || `scanned-${code}`,
-            name: p.name,
-            barcode: p.barcode || code,
-            sku: p.sku || code,
-            category: p.category || "General",
-            sellingPrice: p.selling_price || p.mrp || 100,
-            mrp: p.mrp || p.selling_price || 100,
-            image_url: p.image || "/static/uploads/products/default_product.jpg",
-          };
-          addToCart(posProd);
-          toast.success(`Scanned & Added: ${p.name}`);
-          return;
-        }
-      } catch (e) { }
-      // Automatically create a provisional/unknown item to allow immediate billing:
-      const provItem = {
-        id: `scanned-${code}`,
-        name: `Scanned Item (${code})`,
-        barcode: code,
-        sku: `SKU-${code}`,
-        category: "all",
-        sellingPrice: 100, // Default price, editable
-        mrp: 100,
-        purchasePrice: 60,
-        tax: 5,
-        discount: 0,
-        stock: 99,
-        isProvisional: true, // Mark it as provisional
-        brand: "General",
-        shortDesc: "Provisional scanned product",
-        longDesc: "This item was added dynamically via barcode scanner. Edit details to save to inventory.",
-        image: "/static/uploads/products/default_product.jpg",
-        aiScore: 50,
-      };
-      addToCart(provItem);
-      toast.info(`Unknown barcode: added provisional item to cart. Click details to edit name/price.`);
-    },
-    enabled: true
-  });
-
-  // Category Getters (Strict Top-Level Main Categories on left sidebar)
+  // Available Main Categories
   const parentCategories = useMemo(() => {
-    // Only top-level main categories (where parent_id is null/undefined/empty)
     const mainCats = categories.filter(c => !c.parent_id);
-
-    // Filter to main categories that actually contain products (directly or via sub-categories)
     const categoriesWithProducts = mainCats.filter(cat => {
-      const subCatIds = new Set(categories.filter(c => c.parent_id === cat.id).map(c => c.id));
-      const count = products.filter(p =>
-        p.category === cat.id ||
-        p.category_id === cat.id ||
-        (p.category && p.category.toLowerCase() === cat.name.toLowerCase()) ||
-        subCatIds.has(p.category) ||
-        subCatIds.has(p.category_id)
-      ).length;
-      return count > 0;
+      return products.some(p => isProductInCategory(p, cat.id, categories));
     });
-
     return categoriesWithProducts.length > 0 ? categoriesWithProducts : mainCats;
   }, [categories, products]);
 
@@ -703,23 +656,10 @@ function PosTerminalInner() {
   // Brands available under current Category / Sub-Category
   const availableBrands = useMemo(() => {
     const brandSet = new Set<string>();
+    const activeTarget = activeSubCategory !== "all" ? activeSubCategory : activeCategory;
     products.forEach(p => {
       if (!p.brand) return;
-
-      if (activeSubCategory !== "all") {
-        const subCat = categories.find(c => c.id === activeSubCategory);
-        const matchId = p.category === activeSubCategory || p.category_id === activeSubCategory;
-        const matchName = subCat && p.category?.toLowerCase() === subCat.name.toLowerCase();
-        if (matchId || matchName) brandSet.add(p.brand);
-      } else if (activeCategory !== "all") {
-        const parentCat = categories.find(c => c.id === activeCategory);
-        const matchParentId = p.category === activeCategory || p.category_id === activeCategory;
-        const matchParentName = parentCat && p.category?.toLowerCase() === parentCat.name.toLowerCase();
-        const subCatIds = new Set(categories.filter(c => c.parent_id === activeCategory).map(c => c.id));
-        const subCatNames = new Set(categories.filter(c => c.parent_id === activeCategory).map(c => c.name.toLowerCase()));
-        const matchSub = subCatIds.has(p.category) || subCatIds.has(p.category_id) || subCatNames.has(p.category?.toLowerCase());
-        if (matchParentId || matchParentName || matchSub) brandSet.add(p.brand);
-      } else {
+      if (isProductInCategory(p, activeTarget, categories)) {
         brandSet.add(p.brand);
       }
     });
@@ -728,6 +668,7 @@ function PosTerminalInner() {
 
   // Filter products by parent category, sub-category, brand, and search query
   const filteredProducts = useMemo(() => {
+    const activeTarget = activeSubCategory !== "all" ? activeSubCategory : activeCategory;
     return products.filter(p => {
       // 1. Search Query Filter
       if (searchQuery.trim()) {
@@ -743,25 +684,9 @@ function PosTerminalInner() {
         if (p.brand?.toLowerCase() !== activeBrand.toLowerCase()) return false;
       }
 
-      // 3. Sub-category Filter (if selected)
-      if (activeSubCategory !== "all") {
-        const subCat = categories.find(c => c.id === activeSubCategory);
-        const matchId = p.category === activeSubCategory || p.category_id === activeSubCategory;
-        const matchName = subCat && p.category?.toLowerCase() === subCat.name.toLowerCase();
-        return matchId || matchName;
-      }
-
-      // 4. Parent category Filter (if selected)
-      if (activeCategory !== "all") {
-        const parentCat = categories.find(c => c.id === activeCategory);
-        const matchParentId = p.category === activeCategory || p.category_id === activeCategory;
-        const matchParentName = parentCat && p.category?.toLowerCase() === parentCat.name.toLowerCase();
-
-        const subCatIds = new Set(categories.filter(c => c.parent_id === activeCategory).map(c => c.id));
-        const subCatNames = new Set(categories.filter(c => c.parent_id === activeCategory).map(c => c.name.toLowerCase()));
-        const matchSub = subCatIds.has(p.category) || subCatIds.has(p.category_id) || subCatNames.has(p.category?.toLowerCase());
-
-        return matchParentId || matchParentName || matchSub;
+      // 3. Category & Sub-category Filter
+      if (activeTarget !== "all") {
+        if (!isProductInCategory(p, activeTarget, categories)) return false;
       }
 
       return true;
@@ -770,8 +695,10 @@ function PosTerminalInner() {
 
 
   const totalPosPages = Math.ceil(filteredProducts.length / posPageSize) || 1;
-  const paginatedProducts = filteredProducts.slice((posPage - 1) * posPageSize, posPage * posPageSize);
 
+  const paginatedProducts = useMemo(() => {
+    return filteredProducts.slice((posPage - 1) * posPageSize, posPage * posPageSize);
+  }, [filteredProducts, posPage, posPageSize]);
 
   // Cart actions
   const addToCart = (product: any, e?: React.MouseEvent) => {
@@ -1551,8 +1478,7 @@ function PosTerminalInner() {
                 {(parentCategories.length > 0 ? parentCategories : categories).map(cat => {
                   const Icon = (cat.icon && typeof cat.icon === 'function') ? cat.icon : Layers;
                   const isActive = activeCategory === cat.id;
-                  const subCatIds = new Set(categories.filter(c => c.parent_id === cat.id).map(c => c.id));
-                  const count = products.filter(p => p.category === cat.id || p.category_id === cat.id || subCatIds.has(p.category) || subCatIds.has(p.category_id)).length;
+                  const count = products.filter(p => isProductInCategory(p, cat.id, categories)).length;
 
                   return (
                     <button
@@ -1611,7 +1537,7 @@ function PosTerminalInner() {
 
                       {currentSubCategories.map(subCat => {
                         const isSubActive = activeSubCategory === subCat.id;
-                        const subCount = products.filter(p => p.category === subCat.id || p.category_id === subCat.id || p.category?.toLowerCase() === subCat.name.toLowerCase()).length;
+                        const subCount = products.filter(p => isProductInCategory(p, subCat.id, categories)).length;
 
                         return (
                           <button
@@ -1655,13 +1581,11 @@ function PosTerminalInner() {
 
                       {availableBrands.map(bName => {
                         const isBrandActive = activeBrand.toLowerCase() === bName.toLowerCase();
+                        const activeTarget = activeSubCategory !== "all" ? activeSubCategory : activeCategory;
                         const bCount = products.filter(p => {
                           const matchesBrand = p.brand?.toLowerCase() === bName.toLowerCase();
-                          if (activeSubCategory !== "all") {
-                            return matchesBrand && (p.category === activeSubCategory || p.category_id === activeSubCategory);
-                          }
-                          if (activeCategory !== "all") {
-                            return matchesBrand && (p.category === activeCategory || p.category_id === activeCategory);
+                          if (activeTarget !== "all") {
+                            return matchesBrand && isProductInCategory(p, activeTarget, categories);
                           }
                           return matchesBrand;
                         }).length;

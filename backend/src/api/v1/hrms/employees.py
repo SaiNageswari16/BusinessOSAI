@@ -1,6 +1,7 @@
 """
 HRMS — Employee Management Endpoints (Single & Bulk Import, Profiles, Documents)
 """
+import logging
 import uuid
 from decimal import Decimal
 from datetime import date, datetime, timezone
@@ -9,6 +10,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger("hrms.employees")
 
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
@@ -601,7 +604,8 @@ async def delete_employee(
     ]
     for q in nullify_emp_queries:
         try:
-            await db.execute(text(q), {"eid": emp_id, "code": emp_code, "eid_str": str(emp_id)})
+            async with db.begin_nested():
+                await db.execute(text(q), {"eid": emp_id, "code": emp_code, "eid_str": str(emp_id)})
         except Exception as e:
             logger.debug("Employee nullify note: %s", e)
 
@@ -624,7 +628,8 @@ async def delete_employee(
     ]
     for q in cascade_delete_queries:
         try:
-            await db.execute(text(q), {"eid": emp_id})
+            async with db.begin_nested():
+                await db.execute(text(q), {"eid": emp_id})
         except Exception as e:
             logger.debug("Employee cascade delete query note: %s", e)
 

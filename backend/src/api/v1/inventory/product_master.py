@@ -305,7 +305,6 @@ Respond with ONLY a valid JSON object matching this schema:
 
 
 @router.get("/categories", response_model=PaginatedResponse[ProductCategoryResponse])
-@cache_response(expire=300, prefix="pos_categories")
 async def list_product_categories(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -711,7 +710,6 @@ async def delete_uom(
 # ==========================================
 
 @router.get("/products", response_model=PaginatedResponse[ProductResponse])
-@cache_response(expire=60, prefix="pos_products")
 async def list_products(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: Annotated[AsyncSession, Depends(get_db)],

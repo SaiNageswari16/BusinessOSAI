@@ -22,7 +22,6 @@ router = APIRouter(tags=["POS - Products"])
 # ─── Categories ────────────────────────────────────────────────────────────────
 
 @router.get("/categories", response_model=list[POSCategoryResponse])
-@cache_response(expire=300, prefix="pos_categories")
 async def list_categories(
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db),
@@ -92,12 +91,11 @@ async def delete_category(
 # ─── Products ──────────────────────────────────────────────────────────────────
 
 @router.get("/products", response_model=list[POSProductResponse])
-@cache_response(expire=60, prefix="pos_products")
 async def list_products(
     category_id: Optional[uuid.UUID] = Query(None),
     search: Optional[str] = Query(None),
     active_only: bool = Query(True),
-    limit: int = Query(200, le=500),
+    limit: int = Query(2000, le=5000),
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -117,7 +115,7 @@ async def list_products(
             | Product.barcode.ilike(like)
             | Product.sku.ilike(like)
         )
-    stmt = stmt.order_by(Product.name).limit(limit)
+    stmt = stmt.order_by(Product.updated_at.desc(), Product.name.asc()).limit(limit)
     result = await db.execute(stmt)
     products = result.scalars().all()
 
@@ -278,7 +276,6 @@ async def bulk_create_products(
 
 
 @router.get("/products/{product_id}", response_model=POSProductResponse)
-@cache_response(expire=60, prefix="pos_products")
 async def get_product(
     product_id: uuid.UUID,
     ctx: CurrentUserContext = Depends(get_current_user_context),

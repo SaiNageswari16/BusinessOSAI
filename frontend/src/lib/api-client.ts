@@ -3662,7 +3662,7 @@ export const posApi = {
   lookupBarcode: (barcode: string) =>
     request<{ success: boolean; message?: string; product?: any }>("GET", `/products/barcode/${barcode}`),
   getCategories: () => request<POSCategory[]>("GET", "/pos/categories"),
-  getProducts: (params?: { category_id?: string; search?: string }) =>
+  getProducts: (params?: { category_id?: string; search?: string; limit?: number }) =>
     request<POSProduct[]>("GET", "/pos/products", undefined, params as Record<string, string | number | boolean | null | undefined>),
   createProduct: (data: Record<string, unknown>) => request<POSProduct>("POST", "/pos/products", data),
   bulkCreateProducts: (products: Record<string, unknown>[]) =>

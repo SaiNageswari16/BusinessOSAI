@@ -846,7 +846,7 @@ export function PosSalesInvoice() {
 
       // 2. Secondary: Fetch POS products and merge
       try {
-        const posRes: any = await posApi.getProducts();
+        const posRes: any = await posApi.getProducts({ limit: 2000 });
         const posItems = posRes?.items || (Array.isArray(posRes) ? posRes : []);
         if (Array.isArray(posItems)) {
           posItems.forEach((p: any) => {
