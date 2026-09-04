@@ -305,9 +305,12 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     setLoading(true);
     try {
       await employeesApi.delete(id);
-      loadEmployees();
+      toast.success("Employee profile deleted successfully");
+      await loadEmployees();
     } catch (err: any) {
-      setError(err.message || "Delete failed");
+      const msg = err?.detail || err?.message || "Failed to delete employee";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

@@ -594,13 +594,18 @@ async def delete_employee(
 
     emp_name = emp.full_name
     emp_code = emp.employee_code
+    emp_user_id = emp.user_id
+    emp_email = emp.email
 
-    # 1. Nullify references pointing to this employee
+    # 1. Nullify references pointing to this employee across all tables
     nullify_emp_queries = [
         "UPDATE employees SET manager_id = NULL WHERE manager_id = :eid",
         "UPDATE fixed_assets SET custodian_id = NULL WHERE custodian_id = :eid",
         "UPDATE expense_claims SET employee_id = NULL WHERE employee_id = :eid",
         "UPDATE users SET employee_id = NULL WHERE employee_id = :code OR employee_id = :eid_str",
+        "UPDATE face_recognition_logs SET employee_id = NULL WHERE employee_id = :eid",
+        "UPDATE performance_goals SET employee_id = NULL WHERE employee_id = :eid",
+        "UPDATE recruitment_offer_letters SET employee_id = NULL WHERE employee_id = :eid",
     ]
     for q in nullify_emp_queries:
         try:
@@ -609,19 +614,32 @@ async def delete_employee(
         except Exception as e:
             logger.debug("Employee nullify note: %s", e)
 
-    # 2. Cascade delete all child records tied to this employee
+    # 2. Cascade delete all child records tied to this employee across all HRMS models
     cascade_delete_queries = [
         "DELETE FROM employee_documents WHERE employee_id = :eid",
         "DELETE FROM attendance_records WHERE employee_id = :eid",
+        "DELETE FROM attendance_corrections WHERE employee_id = :eid",
+        "DELETE FROM face_recognition_logs WHERE employee_id = :eid",
         "DELETE FROM leave_requests WHERE employee_id = :eid",
+        "DELETE FROM leave_balances WHERE employee_id = :eid",
+        "DELETE FROM salary_structures WHERE employee_id = :eid",
         "DELETE FROM payslips WHERE employee_id = :eid",
+        "DELETE FROM hrms_employee_loans WHERE employee_id = :eid",
+        "DELETE FROM hrms_salary_advances WHERE employee_id = :eid",
+        "DELETE FROM hrms_employee_bonuses WHERE employee_id = :eid",
+        "DELETE FROM hrms_sales_commissions WHERE employee_id = :eid",
+        "DELETE FROM recruitment_offer_letters WHERE employee_id = :eid",
+        "DELETE FROM recruitment_onboardings WHERE applicant_id IN (SELECT id FROM recruitment_applicants WHERE email = :emp_email)",
+        "DELETE FROM performance_appraisals WHERE employee_id = :eid",
+        "DELETE FROM performance_goals WHERE employee_id = :eid",
+        "DELETE FROM exit_resignations WHERE employee_id = :eid",
+        "DELETE FROM exit_clearance_tasks WHERE employee_id = :eid",
+        "DELETE FROM exit_final_settlements WHERE employee_id = :eid",
+        "DELETE FROM exit_experience_letters WHERE employee_id = :eid",
         "DELETE FROM shift_assignments WHERE employee_id = :eid",
         "DELETE FROM loan_records WHERE employee_id = :eid",
         "DELETE FROM salary_advances WHERE employee_id = :eid",
         "DELETE FROM exit_requests WHERE employee_id = :eid",
-        "DELETE FROM performance_appraisals WHERE employee_id = :eid",
-        "DELETE FROM performance_goals WHERE employee_id = :eid",
-        "DELETE FROM performance_kpis WHERE employee_id = :eid",
         "DELETE FROM performance_reviews WHERE employee_id = :eid",
         "DELETE FROM hrms_onboardings WHERE employee_id = :eid",
         "DELETE FROM hrms_offers WHERE employee_id = :eid",
@@ -629,20 +647,46 @@ async def delete_employee(
     for q in cascade_delete_queries:
         try:
             async with db.begin_nested():
-                await db.execute(text(q), {"eid": emp_id})
+                await db.execute(text(q), {"eid": emp_id, "emp_email": emp_email or ""})
         except Exception as e:
             logger.debug("Employee cascade delete query note: %s", e)
 
-    # 3. Write audit log
-    await write_audit_log(
-        db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
-        action="deleted", entity_type="employee", entity_id=emp.id,
-        old_values={"name": emp_name, "code": emp_code},
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
+    # 3. Clean up linked user login if one exists for this employee
+    target_user_id = emp_user_id
+    if not target_user_id and emp_email:
+        u = await db.scalar(
+            select(User).where(User.tenant_id == ctx.tenant_id, func.lower(User.email) == emp_email.lower())
+        )
+        if u:
+            target_user_id = u.id
 
-    # 4. Direct SQL delete the employee record
+    if target_user_id and target_user_id != ctx.user.id:
+        try:
+            async with db.begin_nested():
+                await db.execute(text("UPDATE departments SET head_user_id = NULL WHERE head_user_id = :uid"), {"uid": target_user_id})
+                await db.execute(text("UPDATE regions SET manager_user_id = NULL WHERE manager_user_id = :uid"), {"uid": target_user_id})
+                await db.execute(text("UPDATE zones SET manager_user_id = NULL WHERE manager_user_id = :uid"), {"uid": target_user_id})
+                await db.execute(text("UPDATE teams SET lead_user_id = NULL WHERE lead_user_id = :uid"), {"uid": target_user_id})
+                await db.execute(text("UPDATE business_units SET head_user_id = NULL WHERE head_user_id = :uid"), {"uid": target_user_id})
+                await db.execute(text("DELETE FROM user_roles WHERE user_id = :uid"), {"uid": target_user_id})
+                await db.execute(text("UPDATE employees SET user_id = NULL WHERE id = :eid"), {"eid": emp_id})
+                await db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": target_user_id})
+        except Exception as e:
+            logger.debug("Linked user cleanup note: %s", e)
+
+    # 4. Write audit log
+    try:
+        await write_audit_log(
+            db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
+            action="deleted", entity_type="employee", entity_id=emp.id,
+            old_values={"name": emp_name, "code": emp_code},
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except Exception as e:
+        logger.debug("Audit log note: %s", e)
+
+    # 5. Direct SQL delete the employee record
     await db.execute(text("DELETE FROM employees WHERE id = :eid"), {"eid": emp_id})
     await db.commit()
 
