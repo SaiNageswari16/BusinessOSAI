@@ -52,13 +52,17 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
   // hasPermission uses the flat permissions list on the user (aggregated across all roles by /auth/me)
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
-    // System Administration permission is strictly reserved for God Mode (Platform Admins)
-    if (permission === "manage:system_admin") {
-      return Boolean(user.isPlatformAdmin || user.email === "venaticfungus@gmail.com");
-    }
 
-    // Platform Admins (God mode) bypass all module/permission restrictions
-    if (user.isPlatformAdmin || user.email === "venaticfungus@gmail.com") {
+    // 1. Platform Admins / Tenant Owners / Super Admins bypass all module/permission restrictions
+    const isSuperAdminRole = Boolean(
+      user.roles?.some((r) => {
+        const name = (r.name || "").toLowerCase();
+        return name.includes("admin") || name.includes("owner");
+      }) ||
+      user.permissions?.some((p) => ["all", "*:*", "admin", "super_admin", "manage:all", "manage:erp"].includes(p))
+    );
+
+    if (user.isPlatformAdmin || user.isTenantOwner || isSuperAdminRole || user.email === "venaticfungus@gmail.com") {
       return true;
     }
 
@@ -74,11 +78,11 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       if (perm.includes("marketplace") || perm.includes("appstore")) return "marketplace";
       if (perm.includes("iot") || perm.includes("telemetry") || perm.includes("device") || perm.includes("sensor")) return "iot";
       if (perm.includes("report") || perm.includes("analytics") || perm.includes("intelligence")) return "reports";
-      if (perm.startsWith("view:settings") || perm.startsWith("manage:settings")) return "settings";
+      if (perm.includes("setting") || perm.includes("system") || perm.includes("config")) return "settings";
       return null;
     };
 
-    // Module-level entitlement check for client workspaces (Platform Admin bypasses this)
+    // Module-level entitlement check for client workspaces
     if (user.enabledModules && user.enabledModules.length > 0) {
       const targetMod = getModuleForPermission(permission);
       // Core ERP, workspace dashboard, and general settings are standard tenant administration
@@ -95,13 +99,10 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Tenant owners (admins of the organization) have full access to all enabled modules & Core ERP
-    if (user.isTenantOwner) return true;
-
     // Direct match
     if (user.permissions.includes(permission)) return true;
 
-    // Module-group virtual permissions — only expand to the specific module's permissions
+    // Module-group virtual permissions — expand to all related permissions in that module
     if (permission === "view:hrms") {
       return user.permissions.some(
         (p) =>
@@ -118,7 +119,8 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     if (permission === "view:erp") {
       return user.permissions.some(p =>
         p.startsWith("view:erp_") || p.startsWith("manage:erp_") ||
-        p.startsWith("view:accounting_") || p.startsWith("manage:accounting_")
+        p.startsWith("view:accounting_") || p.startsWith("manage:accounting_") ||
+        p.includes("role") || p.includes("user") || p.includes("company") || p.includes("branch")
       );
     }
     if (permission === "view:crm") {
@@ -133,8 +135,15 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     if (permission === "view:procurement") {
       return user.permissions.some(p => p.startsWith("view:procurement_") || p.startsWith("manage:procurement_") || p.includes("purchase") || p.includes("supplier") || p.includes("vendor"));
     }
-    if (permission === "view:settings") {
-      return user.permissions.some(p => p.startsWith("view:settings_") || p.startsWith("manage:settings_"));
+    if (permission === "view:settings" || permission === "view:system_config" || permission === "manage:system_config" || permission === "manage:system_admin" || permission === "manage:settings") {
+      return user.permissions.some(p =>
+        p.includes("system_config") ||
+        p.includes("settings") ||
+        p.includes("system") ||
+        p.includes("webhooks") ||
+        p.startsWith("manage:erp") ||
+        p.startsWith("view:erp")
+      );
     }
     if (permission === "view:marketplace") {
       return user.permissions.some(p => p.startsWith("view:marketplace") || p.startsWith("manage:marketplace"));
@@ -147,8 +156,13 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     if (permission === "view:iot") {
       return user.permissions.some(p => p.startsWith("view:iot") || p.startsWith("manage:iot"));
     }
-    if (permission === "view:reports") {
-      return user.permissions.some(p => p.startsWith("view:reports") || p.startsWith("manage:reports"));
+    if (permission === "view:reports" || permission === "view:analytics" || permission === "manage:analytics" || permission === "manage:reports") {
+      return user.permissions.some(p =>
+        p.includes("analytics") ||
+        p.includes("report") ||
+        p.includes("ai_insights") ||
+        p.includes("intelligence")
+      );
     }
     return false;
   };
