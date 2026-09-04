@@ -302,7 +302,6 @@ DEFAULT_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ("manage:reports", "Manage & Create Reports", "reports", "Build custom reports, configure scheduled export jobs"),
     ("view:ai_insights", "View AI Predictive Insights", "analytics", "Access AI demand forecasts and business anomaly alerts"),
     ("manage:ai_insights", "Manage AI Models & Forecasts", "analytics", "Tune AI forecasting models and replenishment parameters"),
-]ts"),
 ]
 
 
