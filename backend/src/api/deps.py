@@ -74,6 +74,18 @@ class CurrentUserContext:
             action, resource = permission.split(":", 1)
             if f"manage:{resource}" in self.permissions or f"*:{resource}" in self.permissions or f"manage:{action}" in self.permissions:
                 return True
+            # Customer management access (shared between CRM, POS Billing, and Invoicing)
+            if resource in ("crm_customers", "customers"):
+                if any(
+                    p in self.permissions
+                    for p in (
+                        "manage:crm_customers", "view:crm_customers", "manage:crm", "view:crm",
+                        "manage:pos_terminal", "manage:pos", "view:pos",
+                        "manage:invoices", "view:invoices", "manage:erp", "view:erp"
+                    )
+                ):
+                    return True
+
             # Inventory / catalog / import matching
             if resource in ("inventory", "master_catalog", "products"):
                 if any(p in self.permissions for p in ("manage:inventory", "create:inventory", "update:inventory", "manage:erp", "view:inventory", "inventory")):
