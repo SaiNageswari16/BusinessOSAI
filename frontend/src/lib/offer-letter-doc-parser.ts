@@ -1,13 +1,3 @@
-import mammoth from "mammoth";
-import * as pdfjsLib from "pdfjs-dist";
-
-// Set worker source for pdfjs
-try {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "4.10.38"}/pdf.worker.min.mjs`;
-} catch (e) {
-  console.warn("Could not set PDF.js workerSrc", e);
-}
-
 export interface ParsedOfferDoc {
   fileName: string;
   subjectText?: string;
@@ -32,7 +22,6 @@ function cleanExtractedText(raw: string): string {
 
   // Split into lines
   const lines = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-
   const cleanedLines: string[] = [];
 
   for (const line of lines) {
@@ -58,10 +47,8 @@ function cleanExtractedText(raw: string): string {
     if (isPdfBinaryHeader) continue;
 
     // Check character printable ratio (detect compressed binary gibberish)
-    // Remove unprintable control characters and replacement diamonds
     const cleanLine = trimmed
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\uFFFD\uFFFE\uFFFF]/g, "")
-      .replace(/[]/g, "")
       .trim();
 
     if (!cleanLine || cleanLine.length < 2) continue;
@@ -85,10 +72,21 @@ function cleanExtractedText(raw: string): string {
 }
 
 /**
- * Extract clean text from a PDF file using PDF.js
+ * Extract clean text from a PDF file dynamically using PDF.js if available
  */
 async function extractTextFromPdf(arrayBuffer: ArrayBuffer): Promise<string> {
   try {
+    const pdfjsLib = await import("pdfjs-dist").catch(() => null);
+    if (!pdfjsLib) {
+      return "";
+    }
+
+    if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "4.10.38"}/pdf.worker.min.mjs`;
+      } catch {}
+    }
+
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdf = await loadingTask.promise;
     const pageTexts: string[] = [];
@@ -104,9 +102,104 @@ async function extractTextFromPdf(arrayBuffer: ArrayBuffer): Promise<string> {
 
     return pageTexts.join("\n\n");
   } catch (err) {
-    console.error("PDF.js extraction failed:", err);
+    console.warn("PDF extraction skipped or module not loaded:", err);
     return "";
   }
+}
+
+/**
+ * Browser-native zero-dependency extraction of word/document.xml from .docx zip archive
+ */
+async function extractDocxXml(arrayBuffer: ArrayBuffer): Promise<{ text: string; html: string }> {
+  try {
+    const uint8 = new Uint8Array(arrayBuffer);
+    const view = new DataView(arrayBuffer);
+    let offset = 0;
+
+    while (offset < uint8.length - 30) {
+      if (view.getUint32(offset, true) !== 0x04034b50) {
+        offset++;
+        continue;
+      }
+
+      const compressionMethod = view.getUint16(offset + 8, true);
+      const compressedSize = view.getUint32(offset + 18, true);
+      const fileNameLen = view.getUint16(offset + 26, true);
+      const extraFieldLen = view.getUint16(offset + 28, true);
+
+      const fileNameBytes = uint8.slice(offset + 30, offset + 30 + fileNameLen);
+      const entryFileName = new TextDecoder().decode(fileNameBytes);
+      const fileDataStart = offset + 30 + fileNameLen + extraFieldLen;
+
+      if (entryFileName === "word/document.xml") {
+        let xmlString = "";
+        const fileData = uint8.slice(fileDataStart, fileDataStart + compressedSize);
+
+        if (compressionMethod === 0) {
+          xmlString = new TextDecoder().decode(fileData);
+        } else if (compressionMethod === 8 && typeof DecompressionStream !== "undefined") {
+          try {
+            const stream = new Response(fileData).body?.pipeThrough(new DecompressionStream("deflate-raw"));
+            if (stream) {
+              xmlString = await new Response(stream).text();
+            }
+          } catch (e) {
+            console.warn("DecompressionStream error for docx:", e);
+          }
+        }
+
+        if (xmlString) {
+          return parseDocxXmlString(xmlString);
+        }
+      }
+
+      offset = fileDataStart + (compressedSize > 0 ? compressedSize : 1);
+    }
+  } catch (err) {
+    console.warn("Native docx parse error:", err);
+  }
+
+  return { text: "", html: "" };
+}
+
+function parseDocxXmlString(xmlString: string): { text: string; html: string } {
+  try {
+    if (typeof DOMParser !== "undefined") {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlString, "text/xml");
+      const paragraphs = doc.getElementsByTagName("w:p");
+      const textLines: string[] = [];
+      const htmlParas: string[] = [];
+
+      for (let i = 0; i < paragraphs.length; i++) {
+        const p = paragraphs[i];
+        const textNodes = p.getElementsByTagName("w:t");
+        let pText = "";
+        for (let j = 0; j < textNodes.length; j++) {
+          pText += textNodes[j].textContent || "";
+        }
+        const trimmed = pText.trim();
+        if (trimmed) {
+          textLines.push(trimmed);
+          htmlParas.push(`<p>${trimmed}</p>`);
+        }
+      }
+
+      if (textLines.length > 0) {
+        return {
+          text: textLines.join("\n"),
+          html: htmlParas.join("\n")
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("DOMParser docx xml parsing error:", e);
+  }
+
+  // Regex fallback
+  const matches = xmlString.match(/<w:t[^>]*>(.*?)<\/w:t>/g) || [];
+  const plain = matches.map((m) => m.replace(/<[^>]+>/g, "")).join(" ");
+  return { text: plain, html: `<p>${plain}</p>` };
 }
 
 /**
@@ -123,21 +216,37 @@ export async function parseUploadedOfferDoc(file: File): Promise<ParsedOfferDoc>
     const arrayBuffer = await file.arrayBuffer();
     rawText = await extractTextFromPdf(arrayBuffer);
   } else if (extension === "docx") {
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const rawTextResult = await mammoth.extractRawText({ arrayBuffer });
-      rawText = rawTextResult.value || "";
+    const arrayBuffer = await file.arrayBuffer();
+    
+    // First try native zero-dependency docx parser
+    const nativeParsed = await extractDocxXml(arrayBuffer);
+    if (nativeParsed.text) {
+      rawText = nativeParsed.text;
+      htmlContent = nativeParsed.html;
+    } else {
+      // Fallback: dynamic mammoth import if available
+      try {
+        const mammoth = await import("mammoth").catch(() => null);
+        if (mammoth) {
+          const rawTextResult = await mammoth.extractRawText({ arrayBuffer });
+          rawText = rawTextResult.value || "";
 
-      const htmlResult = await mammoth.convertToHtml({ arrayBuffer });
-      htmlContent = htmlResult.value || "";
-    } catch (err) {
-      console.warn("Mammoth extraction failed", err);
+          const htmlResult = await mammoth.convertToHtml({ arrayBuffer });
+          htmlContent = htmlResult.value || "";
+        }
+      } catch (err) {
+        console.warn("Mammoth extraction fallback skipped:", err);
+      }
     }
   } else if (extension === "html" || extension === "htm") {
     htmlContent = await file.text();
-    const tempDiv = document.createElement("div");
-    tempDiv.innerHTML = htmlContent;
-    rawText = tempDiv.innerText || tempDiv.textContent || "";
+    if (typeof document !== "undefined") {
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = htmlContent;
+      rawText = tempDiv.innerText || tempDiv.textContent || "";
+    } else {
+      rawText = htmlContent.replace(/<[^>]+>/g, " ");
+    }
   } else if (extension === "txt") {
     try {
       rawText = await file.text();
@@ -148,7 +257,6 @@ export async function parseUploadedOfferDoc(file: File): Promise<ParsedOfferDoc>
     // Other file types (e.g. .doc)
     try {
       const text = await file.text();
-      // Ensure we don't return raw binary
       rawText = cleanExtractedText(text);
     } catch {
       rawText = "";
