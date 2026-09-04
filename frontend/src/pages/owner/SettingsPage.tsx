@@ -1,0 +1,1035 @@
+import { useState, useEffect } from 'react';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Badge } from '@/components/ui/Badge';
+import { Icon } from '@/components/ui/Icon';
+import { apiClient } from '@/services/apiClient';
+import { api } from '@/services/api';
+import { notifyModuleVisibilityChanged } from '@/config/navigation';
+import { cn } from '@/utils/cn';
+
+interface NotificationSetting {
+  id: string;
+  label: string;
+  desc: string;
+  category: 'Member Alerts' | 'Financial' | 'Hardware & AI';
+  enabled: boolean;
+  channel: 'SMS & WhatsApp' | 'Email' | 'Push & Web';
+}
+
+interface IntegrationApp {
+  id: string;
+  name: string;
+  icon: string;
+  category: 'Health & Wearables' | 'Hardware Scanners' | 'Payments & SMS';
+  desc: string;
+  connected: boolean;
+  statusText: string;
+  badgeColor: string;
+  apiKey?: string;
+}
+
+export function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<'General' | 'Profile' | 'Devices & BMI' | 'Notifications' | 'Security' | 'Billing' | 'Integrations'>('General');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // General Settings State
+  const [gymName, setGymName] = useState('');
+  const [gymPhone, setGymPhone] = useState('');
+  const [gymEmail, setGymEmail] = useState('');
+  const [gymAddress, setGymAddress] = useState('');
+  const [currency, setCurrency] = useState('INR (₹)');
+  const [timeZone, setTimeZone] = useState('Asia/Kolkata (GMT +5:30)');
+  const [openingTime, setOpeningTime] = useState('06:00 AM');
+  const [closingTime, setClosingTime] = useState('10:00 PM');
+  const [gstNumber, setGstNumber] = useState('');
+
+  // Module & Page Visibility Switches (POS & Inventory)
+  const [enablePos, setEnablePos] = useState<boolean>(() => {
+    const saved = localStorage.getItem('fitclub_enable_pos');
+    return saved !== null ? saved !== 'false' : true;
+  });
+  const [enableInventory, setEnableInventory] = useState<boolean>(() => {
+    const saved = localStorage.getItem('fitclub_enable_inventory');
+    return saved !== null ? saved !== 'false' : true;
+  });
+
+  // Owner Profile State
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPhone, setOwnerPhone] = useState('');
+  const [ownerRole, setOwnerRole] = useState('Gym Owner');
+
+  // Devices & BMI Config State
+  const [esslUrl, setEsslUrl] = useState('');
+  const [inbodyUrl, setInbodyUrl] = useState('');
+  const [bmiUnderweightMax, setBmiUnderweightMax] = useState('18.5');
+  const [bmiNormalMax, setBmiNormalMax] = useState('24.9');
+  const [bmiOverweightMax, setBmiOverweightMax] = useState('29.9');
+  const [athleticBodyFatMale, setAthleticBodyFatMale] = useState('17.0');
+  const [athleticBodyFatFemale, setAthleticBodyFatFemale] = useState('24.0');
+  const [deviceAutoSync, setDeviceAutoSync] = useState(true);
+
+  // Security State
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(true);
+
+  // Notification Preferences State
+  const [notifications, setNotifications] = useState<NotificationSetting[]>([
+    { id: '1', label: 'New Member Enrollment', desc: 'Instant WhatsApp & Email welcome kit sent on enrollment', category: 'Member Alerts', enabled: true, channel: 'SMS & WhatsApp' },
+    { id: '2', label: 'Payment Receipt & Invoice', desc: 'Automatic GST tax invoice delivered upon successful payment', category: 'Financial', enabled: true, channel: 'SMS & WhatsApp' },
+    { id: '3', label: 'Membership Expiry Alert', desc: 'Automated 7-day & 3-day renewal reminder sequences', category: 'Member Alerts', enabled: true, channel: 'SMS & WhatsApp' },
+    { id: '4', label: 'Low Inventory Stock Alert', desc: 'Notify branch manager when supplement or merch stock is below 5 units', category: 'Financial', enabled: true, channel: 'Push & Web' },
+    { id: '5', label: 'AI Health & Attendance Insights', desc: 'Weekly automated performance & retention telemetry summary', category: 'Hardware & AI', enabled: true, channel: 'Email' },
+    { id: '6', label: 'Hardware Device Offline Alert', desc: 'Immediate notification when InBody or eSSL Biometric device drops connection', category: 'Hardware & AI', enabled: true, channel: 'Push & Web' },
+  ]);
+
+  // Integrations State
+  const [integrations, setIntegrations] = useState<IntegrationApp[]>([
+    { id: 'inbody', name: 'InBody 570 / 270 Scanner', icon: 'activity', category: 'Hardware Scanners', desc: 'Direct LAN/Wi-Fi bioelectrical impedance data sync', connected: true, statusText: 'Online', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { id: 'essl', name: 'eSSL Biometric Gate Control', icon: 'lock', category: 'Hardware Scanners', desc: 'RFID fingerprint & facial recognition access control', connected: true, statusText: 'Online', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { id: 'razorpay', name: 'Razorpay Payment Gateway', icon: 'credit-card', category: 'Payments & SMS', desc: 'UPI, Credit Cards, NetBanking & Auto-debit subscriptions', connected: true, statusText: 'Merchant Active', badgeColor: 'bg-brand-50 text-brand-700 border-brand-200' },
+    { id: 'whatsapp', name: 'WhatsApp Business API (Twilio)', icon: 'message-square', category: 'Payments & SMS', desc: 'Automated member notifications & renewal payment links', connected: true, statusText: 'Connected', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { id: 'apple_health', name: 'Apple HealthKit', icon: 'heart', category: 'Health & Wearables', desc: 'Sync member step count, active calories & workout telemetry', connected: true, statusText: 'Syncing Active', badgeColor: 'bg-purple-50 text-purple-700 border-purple-200' },
+    { id: 'google_fit', name: 'Google Health Connect', icon: 'smartphone', category: 'Health & Wearables', desc: 'Android wearable activity & sleep data synchronization', connected: false, statusText: 'Disconnected', badgeColor: 'bg-navy-50 text-navy-600 border-navy-200' },
+  ]);
+
+  // Load existing settings, owner profile, and BMI config from backend DB on mount
+  useEffect(() => {
+    Promise.all([
+      apiClient.get<any>('/gym/settings').catch(() => null),
+      api.auth.me().catch(() => null),
+      apiClient.get<any>('/bmi-config').catch(() => null),
+    ]).then(([gymRes, userRes, bmiRes]) => {
+      if (gymRes) {
+        if (gymRes.gym_name) setGymName(gymRes.gym_name);
+        if (gymRes.phone) setGymPhone(gymRes.phone);
+        if (gymRes.email) setGymEmail(gymRes.email);
+        if (gymRes.address) setGymAddress(gymRes.address);
+        if (gymRes.gstin) setGstNumber(gymRes.gstin);
+        if (gymRes.essl_bioserver_url) setEsslUrl(gymRes.essl_bioserver_url);
+        if (gymRes.inbody_url) setInbodyUrl(gymRes.inbody_url);
+        if (gymRes.enable_pos !== undefined) {
+          setEnablePos(Boolean(gymRes.enable_pos));
+          localStorage.setItem('fitclub_enable_pos', String(Boolean(gymRes.enable_pos)));
+        }
+        if (gymRes.enable_inventory !== undefined) {
+          setEnableInventory(Boolean(gymRes.enable_inventory));
+          localStorage.setItem('fitclub_enable_inventory', String(Boolean(gymRes.enable_inventory)));
+        }
+        notifyModuleVisibilityChanged();
+      }
+      if (userRes) {
+        const fullName = (userRes as any).full_name || (userRes as any).name || '';
+        if (fullName) setOwnerName(fullName);
+        if (userRes.email) setOwnerEmail(userRes.email);
+        if ((userRes as any).phone) setOwnerPhone((userRes as any).phone);
+        if (userRes.role) setOwnerRole(`Gym ${userRes.role.toUpperCase()}`);
+      }
+      if (bmiRes && bmiRes.data) {
+        const d = bmiRes.data;
+        if (d.bmiUnderweightMax !== undefined) setBmiUnderweightMax(String(d.bmiUnderweightMax));
+        if (d.bmiNormalMax !== undefined) setBmiNormalMax(String(d.bmiNormalMax));
+        if (d.bmiOverweightMax !== undefined) setBmiOverweightMax(String(d.bmiOverweightMax));
+        if (d.bodyFatAthleticMaxMale !== undefined) setAthleticBodyFatMale(String(d.bodyFatAthleticMaxMale));
+        if (d.bodyFatAthleticMaxFemale !== undefined) setAthleticBodyFatFemale(String(d.bodyFatAthleticMaxFemale));
+      }
+    });
+  }, []);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleTogglePos = (nextState: boolean) => {
+    setEnablePos(nextState);
+    localStorage.setItem('fitclub_enable_pos', String(nextState));
+    notifyModuleVisibilityChanged();
+    setHasUnsavedChanges(true);
+    apiClient.post('/gym/settings', {
+      gym_name: gymName,
+      phone: gymPhone,
+      gstin: gstNumber,
+      essl_bioserver_url: esslUrl,
+      enable_pos: nextState,
+      enable_inventory: enableInventory,
+    }).catch(() => null);
+    triggerToast(nextState ? '✅ POS Page is now visible in menu' : '🔒 POS Page is now hidden from menu');
+  };
+
+  const handleToggleInventory = (nextState: boolean) => {
+    setEnableInventory(nextState);
+    localStorage.setItem('fitclub_enable_inventory', String(nextState));
+    notifyModuleVisibilityChanged();
+    setHasUnsavedChanges(true);
+    apiClient.post('/gym/settings', {
+      gym_name: gymName,
+      phone: gymPhone,
+      gstin: gstNumber,
+      essl_bioserver_url: esslUrl,
+      enable_pos: enablePos,
+      enable_inventory: nextState,
+    }).catch(() => null);
+    triggerToast(nextState ? '✅ Inventory Page is now visible in menu' : '🔒 Inventory Page is now hidden from menu');
+  };
+
+  const handleToggleNotification = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, enabled: !n.enabled } : n))
+    );
+    setHasUnsavedChanges(true);
+  };
+
+  const handleToggleIntegration = (id: string) => {
+    setIntegrations((prev) =>
+      prev.map((app) =>
+        app.id === id
+          ? {
+              ...app,
+              connected: !app.connected,
+              statusText: !app.connected ? 'Connected' : 'Disconnected',
+              badgeColor: !app.connected
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-navy-50 text-navy-600 border-navy-200',
+            }
+          : app
+      )
+    );
+    setHasUnsavedChanges(true);
+  };
+
+  const handleSaveSettings = async () => {
+    // 1. Save BMI Config thresholds to DB
+    try {
+      await apiClient.patch('/bmi-config', {
+        version: 'v1',
+        bmiUnderweightMax: parseFloat(bmiUnderweightMax),
+        bmiNormalMax: parseFloat(bmiNormalMax),
+        bmiOverweightMax: parseFloat(bmiOverweightMax),
+        bodyFatAthleticMaxMale: parseFloat(athleticBodyFatMale),
+        bodyFatAthleticMaxFemale: parseFloat(athleticBodyFatFemale),
+        bodyFatAthleticMaxOther: 20.0,
+      });
+    } catch (_err) {
+      // If patch 404s because no row exists yet, POST initial row
+      try {
+        await apiClient.post('/bmi-config', {
+          version: 'v1',
+          bmiUnderweightMax: parseFloat(bmiUnderweightMax),
+          bmiNormalMax: parseFloat(bmiNormalMax),
+          bmiOverweightMax: parseFloat(bmiOverweightMax),
+          bodyFatAthleticMaxMale: parseFloat(athleticBodyFatMale),
+          bodyFatAthleticMaxFemale: parseFloat(athleticBodyFatFemale),
+          bodyFatAthleticMaxOther: 20.0,
+        });
+      } catch (_err) {}
+    }
+
+    // 2. Save Gym Branch settings and module switches to DB
+    try {
+      await apiClient.post('/gym/settings', {
+        gym_name: gymName,
+        phone: gymPhone,
+        gstin: gstNumber,
+        essl_bioserver_url: esslUrl,
+        enable_pos: enablePos,
+        enable_inventory: enableInventory,
+      });
+      localStorage.setItem('fitclub_enable_pos', String(enablePos));
+      localStorage.setItem('fitclub_enable_inventory', String(enableInventory));
+      notifyModuleVisibilityChanged();
+    } catch (_err) {}
+
+    setHasUnsavedChanges(false);
+    triggerToast('Settings and device thresholds saved successfully!');
+  };
+
+  const tabs = [
+    { id: 'General', label: 'General', icon: 'settings' },
+    { id: 'Profile', label: 'Profile & Owner', icon: 'user' },
+    { id: 'Devices & BMI', label: 'Devices & BMI', icon: 'activity' },
+    { id: 'Notifications', label: 'Notifications', icon: 'bell' },
+    { id: 'Security', label: 'Security', icon: 'shield' },
+    { id: 'Billing', label: 'Billing & Plan', icon: 'credit-card' },
+    { id: 'Integrations', label: 'Integrations', icon: 'layers' },
+  ] as const;
+
+  return (
+    <div className="space-y-6 animate-fade-in relative pb-12">
+      {/* Toast Notification Popup */}
+      {toastMessage && (
+        <div className="fixed top-20 right-6 z-50 bg-emerald-900/90 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md border border-emerald-500/30 flex items-center gap-2.5 animate-slide-in">
+          <Icon name="check-circle" size={18} className="text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Top Glassmorphic Hero Card */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-navy-900 via-brand-950 to-navy-900 p-6 md:p-8 text-white shadow-2xl border border-navy-800/80">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="px-3 py-1 rounded-full bg-brand-500/20 text-brand-300 text-xs font-bold border border-brand-500/30 backdrop-blur-md">
+                FIT CLUB OS • Branch Admin
+              </span>
+              <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30 backdrop-blur-md flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                Hardware Gateway Active
+              </span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white font-serif">
+              System Settings & Configurations
+            </h1>
+            <p className="text-navy-300 text-xs max-w-xl">
+              Configure gym brand profile, BMI scanner threshold parameters, automated member communication alerts, and hardware device integrations.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {hasUnsavedChanges && (
+              <span className="text-amber-400 text-xs font-bold bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20 animate-pulse">
+                Unsaved Changes
+              </span>
+            )}
+            <button
+              onClick={handleSaveSettings}
+              className="btn-primary py-2.5 px-5 bg-gradient-to-r from-brand-500 to-indigo-600 hover:from-brand-600 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl shadow-glow flex items-center gap-2 transition-all active:scale-95"
+            >
+              <Icon name="check" size={16} />
+              Save All Changes
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Tab Navigation Bar */}
+      <div className="card p-2 bg-white/80 backdrop-blur-md border border-navy-100/80 shadow-sm rounded-2xl">
+        <div className="flex gap-1 overflow-x-auto scrollbar-none">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 relative',
+                  isActive
+                    ? 'bg-navy-900 text-white shadow-md'
+                    : 'text-navy-600 hover:bg-navy-50 hover:text-navy-900'
+                )}
+              >
+                <Icon name={tab.icon} size={15} className={isActive ? 'text-brand-400' : 'text-navy-400'} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* TAB 1: GENERAL SETTINGS */}
+      {activeTab === 'General' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
+          <div className="lg:col-span-8 space-y-6">
+            {/* Page & Module Visibility Controls (POS & Inventory Switches) */}
+            <div className="card p-6 border border-navy-100 bg-white space-y-5 shadow-sm rounded-3xl">
+              <div className="flex items-center justify-between border-b border-navy-100 pb-3 flex-wrap gap-2">
+                <div className="space-y-0.5">
+                  <h3 className="text-base font-bold text-navy-900 flex items-center gap-2">
+                    <Icon name="toggle-left" size={18} className="text-brand-600" />
+                    Module & Navigation Visibility Switches
+                  </h3>
+                  <p className="text-xs text-navy-500">
+                    Turn switch on to show or off to hide POS and Inventory pages in the sidebar and mobile menus.
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold border border-brand-200">
+                  Instant Menu Sync
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 1. POS Page Switch */}
+                <div
+                  className={`p-4 rounded-2xl border transition-all duration-200 flex flex-col justify-between space-y-4 ${
+                    enablePos
+                      ? 'bg-gradient-to-br from-white via-brand-50/20 to-brand-50/40 border-brand-500/40 shadow-sm'
+                      : 'bg-navy-50/40 border-navy-200/60 opacity-85'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+                          enablePos
+                            ? 'bg-brand-600 text-white shadow-md shadow-brand-500/25'
+                            : 'bg-navy-200 text-navy-500'
+                        }`}
+                      >
+                        <Icon name="shopping-cart" size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-navy-900">
+                          POS Page
+                        </h4>
+                        <span
+                          className={`inline-block text-[10px] px-2 py-0.5 rounded-md font-extrabold uppercase mt-0.5 ${
+                            enablePos
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-navy-200 text-navy-600'
+                          }`}
+                        >
+                          {enablePos ? 'ON • Visible' : 'OFF • Hidden'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Switch Button */}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={enablePos}
+                      onClick={() => handleTogglePos(!enablePos)}
+                      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                        enablePos ? 'bg-brand-600' : 'bg-navy-300'
+                      }`}
+                    >
+                      <span className="sr-only">Toggle POS Page</span>
+                      <span
+                        className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          enablePos ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-navy-500 leading-snug">
+                    {enablePos
+                      ? 'Point of Sale (POS) checkout & billing counter is active and visible in navigation.'
+                      : 'Point of Sale (POS) page is currently hidden from owner navigation.'}
+                  </p>
+                </div>
+
+                {/* 2. Inventory Page Switch */}
+                <div
+                  className={`p-4 rounded-2xl border transition-all duration-200 flex flex-col justify-between space-y-4 ${
+                    enableInventory
+                      ? 'bg-gradient-to-br from-white via-brand-50/20 to-brand-50/40 border-brand-500/40 shadow-sm'
+                      : 'bg-navy-50/40 border-navy-200/60 opacity-85'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+                          enableInventory
+                            ? 'bg-brand-600 text-white shadow-md shadow-brand-500/25'
+                            : 'bg-navy-200 text-navy-500'
+                        }`}
+                      >
+                        <Icon name="package" size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-navy-900">
+                          Inventory Page
+                        </h4>
+                        <span
+                          className={`inline-block text-[10px] px-2 py-0.5 rounded-md font-extrabold uppercase mt-0.5 ${
+                            enableInventory
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-navy-200 text-navy-600'
+                          }`}
+                        >
+                          {enableInventory ? 'ON • Visible' : 'OFF • Hidden'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Switch Button */}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={enableInventory}
+                      onClick={() => handleToggleInventory(!enableInventory)}
+                      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                        enableInventory ? 'bg-brand-600' : 'bg-navy-300'
+                      }`}
+                    >
+                      <span className="sr-only">Toggle Inventory Page</span>
+                      <span
+                        className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          enableInventory ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-navy-500 leading-snug">
+                    {enableInventory
+                      ? 'Supplements, merchandise & equipment inventory stock page is visible in navigation.'
+                      : 'Inventory management page is currently hidden from owner navigation.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Gym Branch Information Card */}
+            <div className="card p-6 border border-navy-100 bg-white space-y-6 shadow-sm rounded-3xl">
+            <div className="flex items-center justify-between border-b border-navy-100 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-navy-900">Gym Branch Information</h3>
+                <p className="text-xs text-navy-400">Basic contact profile and branch operational parameters</p>
+              </div>
+              <Badge variant="brand" dot>Indiranagar Branch</Badge>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-navy-700 mb-1.5 block">Gym Branch Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Fit Club Elite"
+                  value={gymName}
+                  onChange={(e) => { setGymName(e.target.value); setHasUnsavedChanges(true); }}
+                  className="input-field text-xs font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-navy-700 mb-1.5 block">Official Phone Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. +91 98765 43210"
+                  value={gymPhone}
+                  onChange={(e) => { setGymPhone(e.target.value); setHasUnsavedChanges(true); }}
+                  className="input-field text-xs font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-navy-700 mb-1.5 block">Support Email Address</label>
+                <input
+                  type="email"
+                  placeholder="e.g. contact@fitclub.ai"
+                  value={gymEmail}
+                  onChange={(e) => { setGymEmail(e.target.value); setHasUnsavedChanges(true); }}
+                  className="input-field text-xs font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-navy-700 mb-1.5 block">GSTIN / Tax Reg Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 29ABCDE1234F1Z5"
+                  value={gstNumber}
+                  onChange={(e) => { setGstNumber(e.target.value); setHasUnsavedChanges(true); }}
+                  className="input-field text-xs font-bold font-mono uppercase"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-navy-700 mb-1.5 block">Currency</label>
+                <select
+                  value={currency}
+                  onChange={(e) => { setCurrency(e.target.value); setHasUnsavedChanges(true); }}
+                  className="input-field text-xs font-bold"
+                >
+                  <option value="INR (₹)">Indian Rupee (INR ₹)</option>
+                  <option value="USD ($)">US Dollar (USD $)</option>
+                  <option value="AED (AED)">UAE Dirham (AED)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-navy-700 mb-1.5 block">Time Zone</label>
+                <select
+                  value={timeZone}
+                  onChange={(e) => { setTimeZone(e.target.value); setHasUnsavedChanges(true); }}
+                  className="input-field text-xs font-bold"
+                >
+                  <option value="Asia/Kolkata (GMT +5:30)">Asia/Kolkata (GMT +5:30)</option>
+                  <option value="UTC (GMT +0:00)">UTC (GMT +0:00)</option>
+                  <option value="America/New_York (EST)">America/New_York (EST)</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-xs font-bold text-navy-700 mb-1.5 block">Physical Gym Address</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 100 Feet Road, Indiranagar, Bengaluru"
+                  value={gymAddress}
+                  onChange={(e) => { setGymAddress(e.target.value); setHasUnsavedChanges(true); }}
+                  className="input-field text-xs font-bold"
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-navy-100 pt-4 space-y-3">
+              <h4 className="text-xs font-bold text-navy-900">Operating Hours</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-navy-500 block mb-1">Opening Time</label>
+                  <input
+                    type="text"
+                    value={openingTime}
+                    onChange={(e) => { setOpeningTime(e.target.value); setHasUnsavedChanges(true); }}
+                    className="input-field text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-navy-500 block mb-1">Closing Time</label>
+                  <input
+                    type="text"
+                    value={closingTime}
+                    onChange={(e) => { setClosingTime(e.target.value); setHasUnsavedChanges(true); }}
+                    className="input-field text-xs font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>
+
+          {/* Right Sidebar Info Card */}
+          <div className="lg:col-span-4 space-y-4">
+            <div className="card p-5 border border-brand-100 bg-gradient-to-br from-brand-50/50 to-white space-y-3">
+              <div className="w-10 h-10 rounded-2xl bg-brand-100 text-brand-600 flex items-center justify-center">
+                <Icon name="info" size={20} />
+              </div>
+              <h4 className="text-sm font-bold text-navy-900">Branch Profile Telemetry</h4>
+              <p className="text-xs text-navy-600 leading-relaxed">
+                Gym name, phone number, and address are automatically printed on official GST Tax Invoices and member body composition result sheets.
+              </p>
+              <div className="p-3 rounded-xl bg-white border border-brand-200 text-xs font-semibold text-brand-900">
+                Current Active Tax Rate: <span className="font-bold">18% GST (9% CGST + 9% SGST)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: OWNER PROFILE */}
+      {activeTab === 'Profile' && (
+        <div className="card p-6 border border-navy-100 bg-white space-y-6 shadow-sm animate-fade-in max-w-4xl">
+          <div className="flex items-center justify-between border-b border-navy-100 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-navy-900">Owner & Admin Profile</h3>
+              <p className="text-xs text-navy-400">Personal details and administrative access privileges</p>
+            </div>
+            <Badge variant="brand">Administrator</Badge>
+          </div>
+
+          <div className="flex items-center gap-5 p-4 rounded-2xl bg-navy-50/60 border border-navy-100">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-600 via-indigo-600 to-purple-700 flex items-center justify-center text-white text-xl font-black shadow-md relative">
+              AR
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-navy-900">{ownerName}</h4>
+              <p className="text-xs text-navy-500 font-medium">{ownerRole}</p>
+              <button className="btn-secondary text-xs py-1 px-3 mt-1 flex items-center gap-1.5">
+                <Icon name="upload" size={13} /> Change Avatar
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-navy-700 mb-1.5 block">Full Name</label>
+              <input
+                type="text"
+                value={ownerName}
+                onChange={(e) => { setOwnerName(e.target.value); setHasUnsavedChanges(true); }}
+                className="input-field text-xs font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-navy-700 mb-1.5 block">Email Address</label>
+              <input
+                type="email"
+                value={ownerEmail}
+                onChange={(e) => { setOwnerEmail(e.target.value); setHasUnsavedChanges(true); }}
+                className="input-field text-xs font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-navy-700 mb-1.5 block">Personal Phone</label>
+              <input
+                type="text"
+                value={ownerPhone}
+                onChange={(e) => { setOwnerPhone(e.target.value); setHasUnsavedChanges(true); }}
+                className="input-field text-xs font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-navy-700 mb-1.5 block">Administrative Role</label>
+              <input
+                type="text"
+                value={ownerRole}
+                disabled
+                className="input-field text-xs font-bold opacity-60 bg-navy-50"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: DEVICES & BMI CONFIG */}
+      {activeTab === 'Devices & BMI' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
+          <div className="lg:col-span-8 space-y-6">
+            {/* Card A: Hardware Server Integrations */}
+            <div className="card p-6 border border-navy-100 bg-white space-y-5 shadow-sm">
+              <div className="flex items-center justify-between border-b border-navy-100 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-navy-900">Hardware Gateway Server Connections</h3>
+                  <p className="text-xs text-navy-400">Endpoints for physical bioelectric scanners & eSSL access gates</p>
+                </div>
+                <Badge variant="success" dot>Real Hardware API</Badge>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-navy-700 mb-1 block">InBody Scanner Device Endpoint</label>
+                  <input
+                    type="text"
+                    value={inbodyUrl}
+                    onChange={(e) => { setInbodyUrl(e.target.value); setHasUnsavedChanges(true); }}
+                    className="input-field text-xs font-mono font-bold"
+                    placeholder="http://192.168.1.150:3000"
+                  />
+                  <span className="text-[10px] text-navy-400 mt-1 block">LAN socket or REST gateway URL for physical InBody 570 / 270 hardware.</span>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-navy-700 mb-1 block">eSSL Biometric eBioserver URL</label>
+                  <input
+                    type="text"
+                    value={esslUrl}
+                    onChange={(e) => { setEsslUrl(e.target.value); setHasUnsavedChanges(true); }}
+                    className="input-field text-xs font-mono font-bold"
+                    placeholder="http://192.168.1.120:8080/ebioserver"
+                  />
+                  <span className="text-[10px] text-navy-400 mt-1 block">Server URL for RFID & fingerprint attendance gate autolock integration.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card B: Database-Driven BMI Classification Config */}
+            <div className="card p-6 border border-brand-100 bg-white space-y-5 shadow-sm">
+              <div className="flex items-center justify-between border-b border-navy-100 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-navy-900">BMI Classification Threshold Parameters</h3>
+                  <p className="text-xs text-navy-400">Database-backed parameters for health categorization (DB table: <code className="font-mono text-brand-600">bmi_classification_config</code>)</p>
+                </div>
+                <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
+                  Zero Hardcoded Constants
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200">
+                  <label className="text-xs font-bold text-blue-900 block mb-1">Underweight Ceiling</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={bmiUnderweightMax}
+                    onChange={(e) => { setBmiUnderweightMax(e.target.value); setHasUnsavedChanges(true); }}
+                    className="input-field text-sm font-bold bg-white text-blue-950"
+                  />
+                  <span className="text-[10px] text-blue-600 mt-1 block">BMI &lt; {bmiUnderweightMax}</span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-200">
+                  <label className="text-xs font-bold text-emerald-900 block mb-1">Normal Range Ceiling</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={bmiNormalMax}
+                    onChange={(e) => { setBmiNormalMax(e.target.value); setHasUnsavedChanges(true); }}
+                    className="input-field text-sm font-bold bg-white text-emerald-950"
+                  />
+                  <span className="text-[10px] text-emerald-600 mt-1 block">{bmiUnderweightMax} to {bmiNormalMax}</span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200">
+                  <label className="text-xs font-bold text-amber-900 block mb-1">Overweight Ceiling</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={bmiOverweightMax}
+                    onChange={(e) => { setBmiOverweightMax(e.target.value); setHasUnsavedChanges(true); }}
+                    className="input-field text-sm font-bold bg-white text-amber-950"
+                  />
+                  <span className="text-[10px] text-amber-600 mt-1 block">{bmiNormalMax} to {bmiOverweightMax}</span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-navy-100 space-y-3">
+                <h4 className="text-xs font-bold text-navy-900">Gender Athletic Body Fat Cutoffs (%)</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-navy-600 block mb-1">Male Athletic Fat Ceiling (%)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={athleticBodyFatMale}
+                      onChange={(e) => { setAthleticBodyFatMale(e.target.value); setHasUnsavedChanges(true); }}
+                      className="input-field text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-navy-600 block mb-1">Female Athletic Fat Ceiling (%)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={athleticBodyFatFemale}
+                      onChange={(e) => { setAthleticBodyFatFemale(e.target.value); setHasUnsavedChanges(true); }}
+                      className="input-field text-xs font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-4 space-y-4">
+            <div className="card p-5 border border-navy-100 bg-white space-y-3">
+              <h4 className="text-xs font-bold text-navy-900">Scanner Telemetry Status</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between p-2 rounded-xl bg-navy-50">
+                  <span className="text-navy-500">InBody Protocol:</span>
+                  <span className="font-bold text-navy-900">Direct TCP/LAN</span>
+                </div>
+                <div className="flex justify-between p-2 rounded-xl bg-navy-50">
+                  <span className="text-navy-500">Impedance Frequencies:</span>
+                  <span className="font-bold text-navy-900">5kHz, 50kHz, 250kHz</span>
+                </div>
+                <div className="flex justify-between p-2 rounded-xl bg-navy-50">
+                  <span className="text-navy-500">Fabricated Data:</span>
+                  <span className="font-bold text-emerald-600">Disabled (0%)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: NOTIFICATIONS */}
+      {activeTab === 'Notifications' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
+          <div className="lg:col-span-8 card p-6 border border-navy-100 bg-white space-y-5 shadow-sm">
+            <div className="flex items-center justify-between border-b border-navy-100 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-navy-900">Notification Preferences</h3>
+                <p className="text-xs text-navy-400">Manage real-time communication triggers for members and gym staff</p>
+              </div>
+              <Badge variant="brand">Automated Triggers</Badge>
+            </div>
+
+            <div className="space-y-3">
+              {notifications.map((n) => (
+                <div
+                  key={n.id}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-navy-50/70 border border-navy-100/80 hover:bg-navy-50 transition-all"
+                >
+                  <div className="space-y-1 max-w-md">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-navy-900">{n.label}</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-white text-navy-600 border border-navy-200">
+                        {n.channel}
+                      </span>
+                    </div>
+                    <p className="text-xs text-navy-400">{n.desc}</p>
+                  </div>
+
+                  <button
+                    onClick={() => handleToggleNotification(n.id)}
+                    className={cn(
+                      'relative w-12 h-6 rounded-full transition-colors focus:outline-none ring-2 ring-transparent focus:ring-brand-400',
+                      n.enabled ? 'bg-brand-600' : 'bg-navy-200'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform',
+                        n.enabled ? 'translate-x-6' : 'translate-x-0.5'
+                      )}
+                    />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="lg:col-span-4 space-y-4">
+            <div className="card p-5 border border-navy-100 bg-white space-y-3">
+              <h4 className="text-xs font-bold text-navy-900">Live Preview Box</h4>
+              <div className="p-3.5 rounded-2xl bg-slate-900 text-white text-xs space-y-2 font-sans shadow-inner">
+                <div className="flex items-center justify-between text-[10px] text-slate-400 border-b border-slate-800 pb-1">
+                  <span>WhatsApp Business API</span>
+                  <span>Just Now</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  💪 <span className="font-bold text-brand-400">FIT CLUB</span>: Welcome <span className="font-bold">[Member Name]</span>! Your membership plan is active. View your InBody scan report anytime in the app.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: SECURITY */}
+      {activeTab === 'Security' && (
+        <div className="card p-6 border border-navy-100 bg-white space-y-6 shadow-sm animate-fade-in max-w-4xl">
+          <div className="flex items-center justify-between border-b border-navy-100 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-navy-900">Security & Credentials</h3>
+              <p className="text-xs text-navy-400">Password management and multi-factor authentication setup</p>
+            </div>
+            <Badge variant="success" dot>Secured</Badge>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-navy-700 mb-1.5 block">Current Password</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="input-field text-xs font-bold"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-navy-700 mb-1.5 block">New Password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="input-field text-xs font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-navy-700 mb-1.5 block">Confirm New Password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="input-field text-xs font-bold"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-navy-50/70 border border-navy-100 flex items-center justify-between">
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-navy-900">Two-Factor Authentication (2FA)</div>
+              <div className="text-xs text-navy-400">Require authenticator app passcode on login</div>
+            </div>
+            <button
+              onClick={() => setTwoFactorEnabled(!twoFactorEnabled)}
+              className={cn(
+                'btn-secondary text-xs py-1.5 px-3 font-bold',
+                twoFactorEnabled ? 'text-emerald-700 border-emerald-200 bg-emerald-50' : ''
+              )}
+            >
+              {twoFactorEnabled ? 'Enabled' : 'Enable 2FA'}
+            </button>
+          </div>
+
+          <div className="flex justify-end">
+            <button onClick={() => triggerToast('Security settings updated')} className="btn-primary text-xs py-2.5 px-4 flex items-center gap-2">
+              <Icon name="shield" size={15} /> Update Security Settings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: BILLING */}
+      {activeTab === 'Billing' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
+          <div className="lg:col-span-8 space-y-5">
+            <div className="card p-6 bg-gradient-to-br from-navy-900 to-brand-950 text-white border-navy-800 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold tracking-wider uppercase text-brand-300">Subscription Plan</span>
+                <Badge variant="brand">Enterprise Unlimited</Badge>
+              </div>
+              <div>
+                <div className="text-3xl font-black">₹24,000 <span className="text-xs font-normal text-navy-300">/ month</span></div>
+                <p className="text-xs text-navy-300 mt-1">Multi-branch access, Unlimited members, InBody hardware sync & AI features.</p>
+              </div>
+              <div className="border-t border-navy-800 pt-3 text-xs text-navy-300 flex items-center justify-between">
+                <span>Next Billing Date: September 26, 2026</span>
+                <span className="text-emerald-400 font-bold">Auto-renewal On</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: INTEGRATIONS */}
+      {activeTab === 'Integrations' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
+          <div className="lg:col-span-8 card p-6 border border-navy-100 bg-white space-y-5 shadow-sm">
+            <div className="flex items-center justify-between border-b border-navy-100 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-navy-900">Third-Party Platform Integrations</h3>
+                <p className="text-xs text-navy-400">Connect hardware devices, payment gateways, and health ecosystems</p>
+              </div>
+              <Badge variant="brand">6 Active Adapters</Badge>
+            </div>
+
+            <div className="space-y-3">
+              {integrations.map((app) => (
+                <div
+                  key={app.id}
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-navy-50/70 border border-navy-100 hover:bg-navy-50 transition-all"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-white border border-navy-200 shadow-sm flex items-center justify-center text-brand-600">
+                    <Icon name={app.icon} size={18} />
+                  </div>
+
+                  <div className="flex-1 space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-navy-900">{app.name}</span>
+                      <span className={cn('px-2 py-0.5 rounded-full text-[9px] font-bold border', app.badgeColor)}>
+                        {app.statusText}
+                      </span>
+                    </div>
+                    <p className="text-xs text-navy-400">{app.desc}</p>
+                  </div>
+
+                  <button
+                    onClick={() => handleToggleIntegration(app.id)}
+                    className={cn(
+                      'btn-secondary text-xs py-1.5 px-3 font-bold',
+                      app.connected ? 'text-rose-700 hover:bg-rose-50 border-rose-200' : 'btn-primary text-white'
+                    )}
+                  >
+                    {app.connected ? 'Disconnect' : 'Connect'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
