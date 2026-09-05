@@ -8,6 +8,7 @@ import {
   Layers, ShieldCheck, FileSpreadsheet,
 } from "lucide-react";
 import { branchesApi, companiesApi, downloadCsv, type Branch, type Company } from "@/lib/api-client";
+import { useTenant } from "@/contexts/tenant-context";
 import {
   INDIA_REGIONS,
   INDIA_STATES_MASTER,
@@ -54,9 +55,28 @@ function BranchFormModal({
 }) {
   const isEdit = !!branch;
   const [saving, setSaving] = useState(false);
+  const { tenant, companiesList } = useTenant();
+
+  // Robust multi-company fallback
+  const availableCompanies = useMemo(() => {
+    if (companies && companies.length > 0) return companies;
+    if (companiesList && companiesList.length > 0) {
+      return companiesList.map(c => ({ id: c.id, name: c.name, legal_name: c.name } as Company));
+    }
+    if (tenant) {
+      return [{ id: tenant.id, name: tenant.name, legal_name: tenant.name } as Company];
+    }
+    return [];
+  }, [companies, companiesList, tenant]);
 
   // Form State
-  const [companyId, setCompanyId] = useState(branch?.company_id ?? (companies[0]?.id ?? ""));
+  const [companyId, setCompanyId] = useState(branch?.company_id || availableCompanies[0]?.id || "");
+
+  useEffect(() => {
+    if (!companyId && availableCompanies.length > 0) {
+      setCompanyId(availableCompanies[0].id);
+    }
+  }, [availableCompanies, companyId]);
   const [country, setCountry] = useState(branch?.country ?? "India");
   const [regionName, setRegionName] = useState(branch?.region_name ?? (branch?.state ? getRegionByState(branch.state) : "South India") ?? "South India");
   const [stateName, setStateName] = useState(branch?.state ?? "Telangana");
@@ -222,7 +242,7 @@ function BranchFormModal({
               required
               className="w-full h-9.5 px-3 text-xs rounded-lg border bg-background font-semibold"
             >
-              {companies.map((c) => (
+              {availableCompanies.map((c) => (
                 <option key={c.id} value={c.id}>{c.name} ({c.legal_name || "Primary Legal Entity"})</option>
               ))}
             </select>
@@ -562,17 +582,32 @@ export function BranchManagement() {
   const [editBranch, setEditBranch] = useState<Branch | null>(null);
   const [deleteBranch, setDeleteBranch] = useState<Branch | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const { tenant, companiesList } = useTenant();
+
+  // Combine fetched companies and tenant context
+  const effectiveCompanies = useMemo(() => {
+    if (companies && companies.length > 0) return companies;
+    if (companiesList && companiesList.length > 0) {
+      return companiesList.map(c => ({ id: c.id, name: c.name, legal_name: c.name } as Company));
+    }
+    if (tenant) {
+      return [{ id: tenant.id, name: tenant.name, legal_name: tenant.name } as Company];
+    }
+    return [];
+  }, [companies, companiesList, tenant]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [brRes, coRes] = await Promise.all([
         branchesApi.list(1, 200, search || undefined, selectedCompanyId !== "all" ? selectedCompanyId : undefined),
-        companiesApi.list(1, 100),
+        companiesApi.list(1, 100).catch(() => ({ items: [] })),
       ]);
       setBranches(brRes.items);
       setTotal(brRes.total);
-      setCompanies(coRes.items);
+      if (coRes?.items && coRes.items.length > 0) {
+        setCompanies(coRes.items);
+      }
     } catch (err) {
       console.error("Failed to load branches:", err);
     } finally {
@@ -628,7 +663,12 @@ export function BranchManagement() {
     };
   }, [branches]);
 
-  const companyMap = Object.fromEntries(companies.map((c) => [c.id, c.name]));
+  const companyMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    effectiveCompanies.forEach(c => { map[c.id] = c.name; });
+    if (tenant) { map[tenant.id] = tenant.name; }
+    return map;
+  }, [effectiveCompanies, tenant]);
 
   // CSV Export matching India_Region_Zone_District_Branch_Hierarchy.xlsx structure
   const handleExportHierarchy = () => {
@@ -750,7 +790,7 @@ export function BranchManagement() {
             className="h-8.5 px-2.5 text-xs rounded-lg border bg-background font-medium shrink-0"
           >
             <option value="all">All Companies</option>
-            {companies.map((c) => (
+            {effectiveCompanies.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
@@ -936,7 +976,7 @@ export function BranchManagement() {
         {showForm && (
           <BranchFormModal
             branch={editBranch}
-            companies={companies}
+            companies={effectiveCompanies}
             onClose={() => { setShowForm(false); setEditBranch(null); }}
             onSaved={load}
           />

@@ -128,6 +128,8 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
       .replace(/\{\{candidate_email\}\}/gi, candidateEmail || "")
       .replace(/\{\{role\}\}/gi, role)
       .replace(/\{\{designation\}\}/gi, role)
+      .replace(/\{\{department\}\}/gi, department || "General")
+      .replace(/\{\{candidate_department\}\}/gi, department || "General")
       .replace(/\{\{company_name\}\}/gi, orgName)
       .replace(/\{\{org_name\}\}/gi, orgName)
       .replace(/\{\{ctc_annual\}\}/gi, `${currencySymbol}${ctc.toLocaleString()}`)
@@ -280,6 +282,7 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
             <td style="text-align: right;">
               <span style="font-size: 8pt; font-weight: bold; color: #64748b; text-transform: uppercase;">POSITION & DESIGNATION:</span><br>
               <strong style="font-size: ${fontSize + 0.5}pt; color: ${primaryColor};">${role}</strong><br>
+              ${department ? `<span style="color: #475569; font-size: ${fontSize - 1.5}pt;">Department: <strong>${department}</strong></span><br>` : ""}
               <span style="color: #475569;">Target Joining: ${formattedJoinDate}</span>
             </td>
           </tr>

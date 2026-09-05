@@ -11,7 +11,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
-import { Applicant, Offer, employeesApi, companiesApi, resolveImageUrl, Company, recruitmentApi } from "../../lib/api-client";
+import { Applicant, Offer, employeesApi, companiesApi, designationsApi, departmentsApi, resolveImageUrl, Company, recruitmentApi } from "../../lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
@@ -265,8 +265,9 @@ export function OfferLetterStudioModal({
   const [candidateNameInput, setCandidateNameInput] = useState<string>("");
   const [candidateEmailInput, setCandidateEmailInput] = useState<string>("");
   const [candidateRoleInput, setCandidateRoleInput] = useState<string>("");
+  const [candidateDepartmentInput, setCandidateDepartmentInput] = useState<string>("");
 
-  // Designations catalog collected dynamically from jobs, employees, applicants, and company standards
+  // Designations catalog collected dynamically from Core ERP / HRMS Master Designations API, jobs, and employees
   const [designationsList, setDesignationsList] = useState<string[]>([
     "Lead Software Engineer",
     "Senior Full Stack Developer",
@@ -285,12 +286,28 @@ export function OfferLetterStudioModal({
     "Financial Analyst"
   ]);
 
+  // Departments catalog collected dynamically from Core ERP / HRMS Master Departments API
+  const [departmentsList, setDepartmentsList] = useState<string[]>([
+    "Engineering",
+    "Product & Design",
+    "Sales & Marketing",
+    "Human Resources",
+    "Finance & Accounts",
+    "Operations",
+    "Customer Success",
+    "Administration",
+    "Information Technology"
+  ]);
+
   // Hydrate state when editing an existing offer letter
   useEffect(() => {
     if (open && editingOffer) {
       setCandidateNameInput(editingOffer.candidate || "");
       setCandidateEmailInput(editingOffer.candidate_email || "");
       setCandidateRoleInput(editingOffer.role || "");
+      if ((editingOffer as any).department) {
+        setCandidateDepartmentInput((editingOffer as any).department);
+      }
       
       const signerClean = editingOffer.signer_name || "Priya Sharma";
       const signerAuth = signerClean.includes("(") ? signerClean.split("(")[0].trim() : signerClean;
@@ -375,6 +392,7 @@ export function OfferLetterStudioModal({
         setCandidateNameInput(emp.full_name || emp.name || "");
         setCandidateEmailInput(emp.email || "");
         setCandidateRoleInput(emp.designation?.name || emp.designation_name || emp.position || emp.role || "Staff");
+        setCandidateDepartmentInput(emp.department?.name || emp.department_name || (emp as any).department || "");
       }
     }
   }, [selectedEmployeeId, employeeList]);
@@ -390,17 +408,31 @@ export function OfferLetterStudioModal({
     }
   }, [employees, open]);
 
-  // Load available designations and job positions
+  // Load available designations and departments from Master ERP/HRMS APIs
   useEffect(() => {
     if (open) {
-      recruitmentApi.listJobs().then((res: any) => {
-        const jobs = res.items || (Array.isArray(res) ? res : []);
-        const jobTitles = jobs.map((j: any) => j.title).filter(Boolean);
+      Promise.all([
+        designationsApi.list(1, 100).catch(() => ({ items: [] })),
+        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
+        recruitmentApi.listJobs().catch(() => ({ items: [] })),
+      ]).then(([desigRes, deptRes, jobsRes]: any) => {
+        const serverDesigs = (desigRes?.items || []).map((d: any) => d.name).filter(Boolean);
+        const serverDepts = (deptRes?.items || []).map((d: any) => d.name).filter(Boolean);
+        const jobTitles = (jobsRes?.items || []).map((j: any) => j.title).filter(Boolean);
         const empRoles = (employeeList || []).map((e: any) => e.designation?.name || e.designation_name || e.position || e.role).filter(Boolean);
+        const empDepts = (employeeList || []).map((e: any) => e.department?.name || e.department_name || e.department).filter(Boolean);
         const appRoles = (applicants || []).map((a: any) => a.job_title).filter(Boolean);
+        const appDepts = (applicants || []).map((a: any) => (a as any).department).filter(Boolean);
+
         setDesignationsList(prev => {
-          const merged = Array.from(new Set([...prev, ...jobTitles, ...empRoles, ...appRoles]));
-          return merged.sort((a, b) => a.localeCompare(b));
+          const merged = Array.from(new Set([...serverDesigs, ...jobTitles, ...empRoles, ...appRoles, ...prev]));
+          return merged.filter(Boolean).sort((a, b) => a.localeCompare(b));
+        });
+
+        setDepartmentsList(prev => {
+          const defaultDepts = ["Engineering", "Product & Design", "Sales & Marketing", "Human Resources", "Finance & Accounts", "Operations", "Customer Success", "Administration", "Information Technology"];
+          const merged = Array.from(new Set([...serverDepts, ...empDepts, ...appDepts, ...prev, ...defaultDepts]));
+          return merged.filter(Boolean).sort((a, b) => a.localeCompare(b));
         });
       }).catch(console.error);
     }
@@ -478,6 +510,9 @@ export function OfferLetterStudioModal({
         setCandidateNameInput(app.name || "");
         setCandidateEmailInput(app.email || "");
         setCandidateRoleInput(app.job_title || "");
+        if ((app as any).department) {
+          setCandidateDepartmentInput((app as any).department);
+        }
         setOfferForm(prev => ({
           ...prev,
           applicantId: selectedApplicantId,
@@ -498,6 +533,9 @@ export function OfferLetterStudioModal({
       setCandidateNameInput(app.name || "");
       setCandidateEmailInput(app.email || "");
       setCandidateRoleInput(app.job_title || "");
+      if ((app as any).department) {
+        setCandidateDepartmentInput((app as any).department);
+      }
     }
   };
 
@@ -508,6 +546,7 @@ export function OfferLetterStudioModal({
       setCandidateNameInput(emp.full_name || emp.name || "");
       setCandidateEmailInput(emp.email || "");
       setCandidateRoleInput(emp.designation?.name || emp.designation_name || emp.position || emp.role || "Staff");
+      setCandidateDepartmentInput(emp.department?.name || emp.department_name || (emp as any).department || "");
       const annualSalary = emp.basic_salary ? (Number(emp.basic_salary) * 12) : 1200000;
       setOfferForm(prev => ({
         ...prev,
@@ -831,6 +870,12 @@ export function OfferLetterStudioModal({
       : (selectedApplicant?.job_title || "Team Member")
   );
 
+  const candidateDepartment = candidateDepartmentInput.trim() || (
+    recipientType === "employee"
+      ? (selectedEmployee?.department?.name || selectedEmployee?.department_name || (selectedEmployee as any)?.department || "General")
+      : ((selectedApplicant as any)?.department || "General")
+  );
+
   // Calculations
   const ctcVal = Number(offerForm.ctc || 0);
   const basicVal = (ctcVal * salarySplit.basicPct) / 100;
@@ -847,6 +892,8 @@ export function OfferLetterStudioModal({
       .replace(/\{\{candidate_email\}\}/gi, candidateEmail)
       .replace(/\{\{role\}\}/gi, candidateRole)
       .replace(/\{\{designation\}\}/gi, candidateRole)
+      .replace(/\{\{department\}\}/gi, candidateDepartment)
+      .replace(/\{\{candidate_department\}\}/gi, candidateDepartment)
       .replace(/\{\{company_name\}\}/gi, headerOrgName)
       .replace(/\{\{org_name\}\}/gi, headerOrgName)
       .replace(/\{\{ctc_annual\}\}/gi, `${currency.symbol}${ctcVal.toLocaleString()}`)
@@ -869,7 +916,7 @@ export function OfferLetterStudioModal({
 
   // Resolved dynamic texts
   const resolvedSubject = subjectText ? resolveVars(subjectText) : `Formal Offer of Employment — ${candidateRole}`;
-  const resolvedOpening = openingText ? resolveVars(openingText) : `On behalf of <strong>${headerOrgName}</strong>, we are pleased to extend this formal offer of employment for the position of <strong>${candidateRole}</strong>. We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.`;
+  const resolvedOpening = openingText ? resolveVars(openingText) : `On behalf of <strong>${headerOrgName}</strong>, we are pleased to extend this formal offer of employment for the position of <strong>${candidateRole}</strong>${candidateDepartment && candidateDepartment !== 'General' ? ` in the <strong>${candidateDepartment}</strong> department` : ''}. We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.`;
   const resolvedClosing = closingText ? resolveVars(closingText) : `This offer remains valid until <strong>${offerForm.expiryDate ? new Date(offerForm.expiryDate).toLocaleDateString("en-US", { dateStyle: "long" }) : "[Expiry Date]"}</strong>. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.`;
   const resolvedClauses = resolveVars(customClausesText);
   const resolvedFooter = footerText ? resolveVars(footerText) : `${headerOrgName} • Private & Confidential`;
@@ -880,6 +927,7 @@ export function OfferLetterStudioModal({
       candidateName,
       candidateEmail,
       role: candidateRole,
+      department: candidateDepartment,
       ctc: ctcVal,
       currencySymbol: currency.symbol,
       salarySplit,
@@ -1153,7 +1201,7 @@ export function OfferLetterStudioModal({
               <p style="font-size:7.5pt; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:2px;">Private & Confidential • Appointment Offer</p>
               <h3>${candidateName}</h3>
               <p>Email: ${candidateEmail}</p>
-              <p>Position: <strong>${candidateRole}</strong> | Joining Date: <strong>${new Date(offerForm.joiningDate).toLocaleDateString("en-US", { dateStyle: "medium" })}</strong></p>
+              <p>Position: <strong>${candidateRole}</strong> ${candidateDepartment && candidateDepartment !== 'General' ? ` | Department: <strong>${candidateDepartment}</strong>` : ""} | Joining Date: <strong>${new Date(offerForm.joiningDate).toLocaleDateString("en-US", { dateStyle: "medium" })}</strong></p>
             </div>
 
             <p style="font-size: ${fontSize + 1}pt; font-weight: 800; margin-bottom: 10px; color: ${primaryColor};">${resolvedSubject}</p>
@@ -1274,6 +1322,7 @@ export function OfferLetterStudioModal({
         candidate: candidateName,
         candidate_email: candidateEmail,
         role: candidateRole,
+        department: candidateDepartment,
         ctc: offerForm.ctc,
         basic_pct: salarySplit.basicPct,
         hra_pct: salarySplit.hraPct,
@@ -1554,7 +1603,7 @@ export function OfferLetterStudioModal({
         </div>
 
         {/* Candidate Quick Details Bar (Visible across all tabs) */}
-        <div className="px-6 py-3 bg-muted/30 border-b border-border/60 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="px-6 py-3 bg-muted/30 border-b border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <label className="block text-[10px] font-extrabold uppercase text-muted-foreground mb-0.5">Candidate Full Name *</label>
             <Input
@@ -1581,6 +1630,16 @@ export function OfferLetterStudioModal({
               onChange={(e) => setCandidateRoleInput(e.target.value)}
               list="company-designations-list"
               placeholder="e.g. Lead Software Engineer"
+              className="h-8 text-xs font-semibold bg-background"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-extrabold uppercase text-muted-foreground mb-0.5">Department / Division</label>
+            <Input
+              value={candidateDepartmentInput}
+              onChange={(e) => setCandidateDepartmentInput(e.target.value)}
+              list="company-departments-list"
+              placeholder="e.g. Engineering / Operations"
               className="h-8 text-xs font-semibold bg-background"
             />
           </div>
@@ -1759,6 +1818,7 @@ export function OfferLetterStudioModal({
                     { tag: "{{candidate_name}}", label: "Candidate Name" },
                     { tag: "{{candidate_email}}", label: "Candidate Email" },
                     { tag: "{{role}}", label: "Designation / Role" },
+                    { tag: "{{department}}", label: "Department" },
                     { tag: "{{company_name}}", label: "Company Name" },
                     { tag: "{{ctc_annual}}", label: "Annual CTC" },
                     { tag: "{{joining_date}}", label: "Joining Date" },
@@ -3192,9 +3252,15 @@ export function OfferLetterStudioModal({
         )}
       </AnimatePresence>
 
-      {/* Datalists for Company Designations & Signatory Titles Auto-Completion */}
+      {/* Datalists for Company Designations, Departments & Signatory Titles Auto-Completion */}
       <datalist id="company-designations-list">
         {designationsList.map((d, i) => (
+          <option key={i} value={d} />
+        ))}
+      </datalist>
+
+      <datalist id="company-departments-list">
+        {departmentsList.map((d, i) => (
           <option key={i} value={d} />
         ))}
       </datalist>
