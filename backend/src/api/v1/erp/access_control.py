@@ -8,7 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.api.deps import CurrentUserContext, require_permission
+from src.api.deps import CurrentUserContext, require_permission, require_any_permission
 from src.config import get_settings
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
@@ -115,7 +115,7 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
 
 @router.get("/permissions", response_model=list[PermissionResponse])
 async def list_permissions(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:roles"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:roles", "manage:roles", "view:permission_matrix", "view:access_control", "view:erp", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     result = await db.execute(select(Permission).order_by(Permission.module, Permission.code))
@@ -124,7 +124,7 @@ async def list_permissions(
 
 @router.get("/roles", response_model=PaginatedResponse[RoleResponse])
 async def list_roles(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:erp"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:roles", "manage:roles", "view:permission_matrix", "view:access_control", "view:erp", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
@@ -209,7 +209,7 @@ async def update_role(
 
 @router.get("/users", response_model=PaginatedResponse[UserResponse])
 async def list_users(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:users", "manage:users", "view:access_control", "view:erp", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
@@ -437,7 +437,7 @@ async def delete_erp_user(
 
 @router.get("/workspaces", response_model=list[WorkspaceResponse])
 async def list_workspaces(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:workspaces", "manage:workspaces", "view:settings", "manage:settings", "view:erp", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Workspace
@@ -448,7 +448,7 @@ async def list_workspaces(
 @router.post("/workspaces", response_model=WorkspaceResponse, status_code=status.HTTP_201_CREATED)
 async def create_workspace(
     payload: WorkspaceCreate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:workspaces", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Workspace
@@ -471,7 +471,7 @@ async def create_workspace(
 async def update_workspace(
     workspace_id: uuid.UUID,
     payload: WorkspaceUpdate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:workspaces", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Workspace
@@ -494,7 +494,7 @@ async def update_workspace(
 @router.delete("/workspaces/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workspace(
     workspace_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:workspaces", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Workspace
@@ -511,7 +511,7 @@ async def delete_workspace(
 
 @router.get("/api-keys", response_model=list[ApiKeyResponse])
 async def list_api_keys(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:api_keys", "manage:api_keys", "view:settings", "manage:settings", "view:erp", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import ApiKey
@@ -522,7 +522,7 @@ async def list_api_keys(
 @router.post("/api-keys", response_model=ApiKeyResponse, status_code=status.HTTP_201_CREATED)
 async def generate_api_key(
     payload: ApiKeyCreate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:api_keys", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     import secrets
@@ -546,7 +546,7 @@ async def generate_api_key(
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_api_key(
     key_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:api_keys", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import ApiKey
@@ -563,7 +563,7 @@ async def delete_api_key(
 
 @router.get("/mfa-policies", response_model=list[MfaPolicyResponse])
 async def list_mfa_policies(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:mfa_policies", "manage:mfa_policies", "view:settings", "manage:settings", "view:erp", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import MfaPolicy
@@ -574,7 +574,7 @@ async def list_mfa_policies(
 @router.post("/mfa-policies", response_model=MfaPolicyResponse, status_code=status.HTTP_201_CREATED)
 async def create_mfa_policy(
     payload: MfaPolicyCreate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:mfa_policies", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import MfaPolicy
@@ -595,7 +595,7 @@ async def create_mfa_policy(
 async def update_mfa_policy(
     policy_id: uuid.UUID,
     payload: MfaPolicyCreate,  # Reuse create payload for simple patch updates
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:mfa_policies", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import MfaPolicy
@@ -618,7 +618,7 @@ async def update_mfa_policy(
 @router.delete("/mfa-policies/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_mfa_policy(
     policy_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:settings"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:mfa_policies", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import MfaPolicy
@@ -629,5 +629,6 @@ async def delete_mfa_policy(
         raise HTTPException(status_code=404, detail="MFA Policy not found")
     await db.delete(policy)
     await db.flush()
+
 
 

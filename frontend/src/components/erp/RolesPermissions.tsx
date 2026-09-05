@@ -5,9 +5,11 @@ import {
   Check, Lock, Unlock, ChevronRight, AlertTriangle,
 } from "lucide-react";
 import { useAuth, canAssignSuperAdmin } from "@/contexts/auth-context";
+import { useRbac } from "@/contexts/rbac-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -796,7 +798,9 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
 export function RolesPermissions() {
     const { currency, formatCurrency } = useCurrency();
   const { accessToken, user: currentUser } = useAuth();
+  const { hasPermission } = useRbac();
   const canManageSuperAdmin = canAssignSuperAdmin(currentUser);
+  const canManageRoles = hasPermission("manage:roles");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
@@ -941,15 +945,17 @@ export function RolesPermissions() {
             Configure role-based access control. Each role controls which portals and modules a user can access.
           </p>
         </div>
-        <button
-          onClick={() => {
-            setEditRole(undefined);
-            setShowModal(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition"
-        >
-          <Plus className="size-4" /> New Role
-        </button>
+        {canManageRoles && (
+          <button
+            onClick={() => {
+              setEditRole(undefined);
+              setShowModal(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition"
+          >
+            <Plus className="size-4" /> New Role
+          </button>
+        )}
       </div>
 
       {error && (
@@ -1007,31 +1013,33 @@ export function RolesPermissions() {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditRole(role);
-                              setShowModal(true);
-                            }}
-                            className="p-1 rounded hover:bg-muted"
-                            title="Edit role"
-                          >
-                            <Edit2 className="size-3.5 text-muted-foreground" />
-                          </button>
-                          {!role.is_system && (
+                        {canManageRoles && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                void deleteRole(role);
+                                setEditRole(role);
+                                setShowModal(true);
                               }}
-                              className="p-1 rounded hover:bg-destructive/10"
-                              title="Delete role"
+                              className="p-1 rounded hover:bg-muted"
+                              title="Edit role"
                             >
-                              <Trash2 className="size-3.5 text-destructive" />
+                              <Edit2 className="size-3.5 text-muted-foreground" />
                             </button>
-                          )}
-                        </div>
+                            {!role.is_system && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void deleteRole(role);
+                                }}
+                                className="p-1 rounded hover:bg-destructive/10"
+                                title="Delete role"
+                              >
+                                <Trash2 className="size-3.5 text-destructive" />
+                              </button>
+                            )}
+                          </div>
+                        )}
                         {isSelected && <ChevronRight className="size-4 text-primary shrink-0" />}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{role.description}</p>
@@ -1069,29 +1077,31 @@ export function RolesPermissions() {
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">{selectedRole.description}</p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => {
-                        setEditRole(selectedRole);
-                        setShowModal(true);
-                      }}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm hover:bg-muted transition"
-                    >
-                      <Edit2 className="size-3.5" /> Edit
-                    </button>
-                    {!selectedRole.is_system && (
+                  {canManageRoles && (
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => {
-                          if (window.confirm(`Delete role "${selectedRole.name}"? This cannot be undone.`)) {
-                            void deleteRole(selectedRole);
-                          }
+                          setEditRole(selectedRole);
+                          setShowModal(true);
                         }}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm hover:bg-muted transition"
                       >
-                        <Trash2 className="size-3.5" /> Delete
+                        <Edit2 className="size-3.5" /> Edit
                       </button>
-                    )}
-                  </div>
+                      {!selectedRole.is_system && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Delete role "${selectedRole.name}"? This cannot be undone.`)) {
+                              void deleteRole(selectedRole);
+                            }
+                          }}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition"
+                        >
+                          <Trash2 className="size-3.5" /> Delete
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Users with this role */}

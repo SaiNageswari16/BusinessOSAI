@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useAuth, canAssignSuperAdmin } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
+import { useRbac } from "@/contexts/rbac-context";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -352,6 +353,8 @@ function UserFormModal({
 export function UserManagement({ tab = "users" }: { tab?: string }) {
     const { currency, formatCurrency } = useCurrency();
   const { accessToken, user: currentUser } = useAuth();
+  const { hasPermission } = useRbac();
+  const canManageUsers = hasPermission("manage:users");
   const { tenant } = useTenant();
   const canAssignSuperAdminRole = canAssignSuperAdmin(currentUser);
   const [users, setUsers] = useState<User[]>([]);
@@ -494,15 +497,17 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           <h1 className="text-base font-bold">User Management</h1>
           <p className="text-sm text-muted-foreground mt-1">Create users, assign roles, and manage access for your tenant.</p>
         </div>
-        <button
-          onClick={() => {
-            setEditUser(undefined);
-            setShowModal(true);
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition cursor-pointer"
-        >
-          <UserPlus className="size-3.5" /> New User
-        </button>
+        {canManageUsers && (
+          <button
+            onClick={() => {
+              setEditUser(undefined);
+              setShowModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition cursor-pointer"
+          >
+            <UserPlus className="size-3.5" /> New User
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-4 gap-4">
@@ -628,41 +633,47 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          setEditUser(user);
-                          setShowModal(true);
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-muted transition text-muted-foreground hover:text-foreground"
-                      >
-                        <Edit2 className="size-4" />
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!confirm(`Delete user "${user.full_name}"? This cannot be undone.`)) return;
-                          const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}`, {
-                            method: "DELETE",
-                            headers: { Authorization: `Bearer ${accessToken}` },
-                          });
-                          if (!res.ok) {
-                            const body = await res.text();
-                            let msg = "Failed to delete user";
-                            try {
-                              const json = JSON.parse(body);
-                              if (typeof json.detail === "string") msg = json.detail;
-                            } catch {}
-                            toast.error(msg);
-                            return;
-                          }
-                          toast.success("User deleted");
-                          await loadUsers();
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 transition text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </div>
+                    {canManageUsers ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditUser(user);
+                            setShowModal(true);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-muted transition text-muted-foreground hover:text-foreground"
+                          title="Edit User"
+                        >
+                          <Edit2 className="size-4" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Delete user "${user.full_name}"? This cannot be undone.`)) return;
+                            const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}`, {
+                              method: "DELETE",
+                              headers: { Authorization: `Bearer ${accessToken}` },
+                            });
+                            if (!res.ok) {
+                              const body = await res.text();
+                              let msg = "Failed to delete user";
+                              try {
+                                const json = JSON.parse(body);
+                                if (typeof json.detail === "string") msg = json.detail;
+                              } catch {}
+                              toast.error(msg);
+                              return;
+                            }
+                            toast.success("User deleted");
+                            await loadUsers();
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-destructive/10 transition text-muted-foreground hover:text-destructive"
+                          title="Delete User"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Read-only</span>
+                    )}
                   </td>
                 </motion.tr>
               ))

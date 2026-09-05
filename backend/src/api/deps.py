@@ -46,17 +46,105 @@ class CurrentUserContext:
             if f"manage:{resource}" in self.permissions or f"*:{resource}" in self.permissions:
                 return True
 
-        # 4. Top-level module umbrella matching (only for top-level view:hrms, view:erp, etc.)
-        if permission == "view:hrms":
+        # 4. Top-level module umbrella matching
+        if permission in ("view:hrms", "manage:hrms"):
             return any(
                 p.startswith("view:hrms")
                 or p.startswith("manage:hrms")
                 for p in self.permissions
             )
 
-
         if permission in ("view:erp", "manage:erp"):
-            return any(p.startswith("manage:erp") or p.startswith("view:erp") for p in self.permissions)
+            return any(
+                p.startswith("manage:erp")
+                or p.startswith("view:erp")
+                or p.startswith("view:users")
+                or p.startswith("manage:users")
+                or p.startswith("view:roles")
+                or p.startswith("manage:roles")
+                or p.startswith("view:permission_matrix")
+                or p.startswith("view:access_control")
+                or p.startswith("manage:access_control")
+                or p.startswith("view:workspaces")
+                or p.startswith("manage:workspaces")
+                or p.startswith("view:subscription")
+                or p.startswith("manage:subscription")
+                or p.startswith("view:api_keys")
+                or p.startswith("manage:api_keys")
+                or p.startswith("view:mfa_policies")
+                or p.startswith("manage:mfa_policies")
+                or p.startswith("view:company")
+                or p.startswith("manage:company")
+                or p.startswith("view:branches")
+                or p.startswith("manage:branches")
+                or p.startswith("view:departments")
+                or p.startswith("manage:departments")
+                or p.startswith("view:designations")
+                or p.startswith("manage:designations")
+                or p.startswith("view:teams")
+                or p.startswith("manage:teams")
+                or p.startswith("view:workflow")
+                or p.startswith("manage:workflow")
+                or p.startswith("view:financials")
+                or p.startswith("manage:financials")
+                or p.startswith("view:currencies")
+                or p.startswith("manage:currencies")
+                or p.startswith("view:fiscal_years")
+                or p.startswith("manage:fiscal_years")
+                or p.startswith("view:taxes")
+                or p.startswith("manage:taxes")
+                or p.startswith("view:payment_terms")
+                or p.startswith("manage:payment_terms")
+                or p.startswith("view:cost_centers")
+                or p.startswith("manage:cost_centers")
+                or p.startswith("view:number_series")
+                or p.startswith("manage:number_series")
+                or p.startswith("view:geography")
+                or p.startswith("manage:geography")
+                or p.startswith("view:locations")
+                or p.startswith("manage:locations")
+                or p.startswith("view:tags")
+                or p.startswith("manage:tags")
+                or p.startswith("view:document_templates")
+                or p.startswith("manage:document_templates")
+                or p.startswith("view:notification_templates")
+                or p.startswith("manage:notification_templates")
+                for p in self.permissions
+            )
+
+        if permission in ("view:iot", "manage:iot"):
+            return any(p.startswith("view:iot") or p.startswith("manage:iot") for p in self.permissions)
+
+        if permission in ("view:analytics", "manage:analytics", "view:reports", "manage:reports"):
+            return any(
+                p.startswith("view:analytics")
+                or p.startswith("manage:analytics")
+                or p.startswith("view:reports")
+                or p.startswith("manage:reports")
+                or p.startswith("view:ai_insights")
+                or p.startswith("manage:ai_insights")
+                or "analytics" in p
+                or "report" in p
+                for p in self.permissions
+            )
+
+        if permission in ("view:system_config", "manage:system_config", "view:settings", "manage:settings"):
+            return any(
+                p.startswith("view:system_config")
+                or p.startswith("manage:system_config")
+                or p.startswith("view:settings")
+                or p.startswith("manage:settings")
+                or p.startswith("view:system_admin")
+                or p.startswith("manage:system_admin")
+                or p.startswith("view:audit")
+                or p.startswith("manage:audit")
+                or p.startswith("view:backup")
+                or p.startswith("manage:backup")
+                or "system_config" in p
+                or "settings" in p
+                for p in self.permissions
+            )
+
 
         # 5. Resource action wildcard fallback
         if ":" in permission:

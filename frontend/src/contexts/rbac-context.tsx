@@ -141,11 +141,33 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     }
     if (permission === "view:erp") {
       return perms.some(p =>
-        p.startsWith("view:erp_") || p.startsWith("manage:erp_") ||
+        p.startsWith("view:erp") || p.startsWith("manage:erp") ||
         p.startsWith("view:users") || p.startsWith("manage:users") ||
         p.startsWith("view:roles") || p.startsWith("manage:roles") ||
-        p.startsWith("view:company") || p.startsWith("manage:company") ||
-        p.startsWith("view:branches") || p.startsWith("manage:branches")
+        p.startsWith("view:permission_matrix") || p.startsWith("view:access_control") ||
+        p.startsWith("manage:access_control") || p.startsWith("view:workspaces") ||
+        p.startsWith("manage:workspaces") || p.startsWith("view:subscription") ||
+        p.startsWith("manage:subscription") || p.startsWith("view:api_keys") ||
+        p.startsWith("manage:api_keys") || p.startsWith("view:mfa_policies") ||
+        p.startsWith("manage:mfa_policies") || p.startsWith("view:company") ||
+        p.startsWith("manage:company") || p.startsWith("view:branches") ||
+        p.startsWith("manage:branches") || p.startsWith("view:departments") ||
+        p.startsWith("manage:departments") || p.startsWith("view:designations") ||
+        p.startsWith("manage:designations") || p.startsWith("view:teams") ||
+        p.startsWith("manage:teams") || p.startsWith("view:workflow") ||
+        p.startsWith("manage:workflow") || p.startsWith("view:financials") ||
+        p.startsWith("manage:financials") || p.startsWith("view:currencies") ||
+        p.startsWith("manage:currencies") || p.startsWith("view:fiscal_years") ||
+        p.startsWith("manage:fiscal_years") || p.startsWith("view:taxes") ||
+        p.startsWith("manage:taxes") || p.startsWith("view:payment_terms") ||
+        p.startsWith("manage:payment_terms") || p.startsWith("view:cost_centers") ||
+        p.startsWith("manage:cost_centers") || p.startsWith("view:number_series") ||
+        p.startsWith("manage:number_series") || p.startsWith("view:geography") ||
+        p.startsWith("manage:geography") || p.startsWith("view:locations") ||
+        p.startsWith("manage:locations") || p.startsWith("view:tags") ||
+        p.startsWith("manage:tags") || p.startsWith("view:document_templates") ||
+        p.startsWith("manage:document_templates") || p.startsWith("view:notification_templates") ||
+        p.startsWith("manage:notification_templates")
       );
     }
     if (permission === "view:crm") {
@@ -165,6 +187,8 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
         p.includes("system_config") ||
         p.includes("settings") ||
         p.includes("system_admin") ||
+        p.includes("audit") ||
+        p.includes("backup") ||
         p.includes("webhooks")
       );
     }
@@ -181,7 +205,7 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       );
     }
     if (permission === "view:iot") {
-      return perms.some(p => p.startsWith("view:iot") || p.startsWith("manage:iot"));
+      return perms.some(p => p.startsWith("view:iot") || p.startsWith("manage:iot") || p.includes("iot") || p.includes("telemetry") || p.includes("device"));
     }
     if (permission === "view:reports" || permission === "view:analytics" || permission === "manage:analytics" || permission === "manage:reports") {
       return perms.some(p =>

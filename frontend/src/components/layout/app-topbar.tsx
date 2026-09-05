@@ -5,7 +5,7 @@ import {
   ChevronDown, Building2, ShieldCheck, Globe, Coins,
   Component, Archive, Layers, Terminal, ShoppingCart,
   ShoppingBag, Receipt, UsersRound, BarChart3, Settings,
-  LayoutDashboard,
+  LayoutDashboard, RadioTower,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -128,6 +128,18 @@ const moduleDisplayList = [
     icon: UsersRound, 
     defaultTo: "/hrms?tab=employees", 
     permission: "view:hrms",
+    activeText: "text-purple-700",
+    activeBg: "bg-purple-50/90",
+    hoverText: "group-hover:text-purple-700",
+    hoverBg: "hover:bg-purple-50/50",
+    indicator: "bg-purple-700",
+  },
+  { 
+    group: "IoT", 
+    label: "IoT", 
+    icon: RadioTower, 
+    defaultTo: "/iot?tab=connected_devices", 
+    permission: "view:iot",
     activeText: "text-purple-700",
     activeBg: "bg-purple-50/90",
     hoverText: "group-hover:text-purple-700",
