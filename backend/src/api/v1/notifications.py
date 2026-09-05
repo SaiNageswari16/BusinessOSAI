@@ -88,6 +88,11 @@ class BroadcastPushRequest(BaseModel):
     action_url: Optional[str] = None
     channels: List[str] = Field(default_factory=lambda: ["in_app", "mobile_push", "web_push"])
 
+class DeviceTokenRegisterRequest(BaseModel):
+    device_token: str
+    platform: str = "web"
+    device_name: Optional[str] = None
+
 class BroadcastResponse(BaseModel):
     id: uuid.UUID
     title: str
