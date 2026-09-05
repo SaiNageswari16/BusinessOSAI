@@ -1460,6 +1460,11 @@ async def process_batch_payroll(
             )
         ).all()
 
+    target_emp_ids = payload.get("employee_ids")
+    if target_emp_ids and isinstance(target_emp_ids, list) and len(target_emp_ids) > 0:
+        target_str_set = {str(eid).strip() for eid in target_emp_ids}
+        employees = [e for e in employees if str(e.id) in target_str_set]
+
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     comp_name = tenant.name if tenant else "BusinessOS AI Global"
 
@@ -1700,6 +1705,115 @@ async def get_payslip(
         created_at=slip.created_at,
         updated_at=slip.updated_at,
     )
+
+
+@router.get("/payroll/employee-history/{employee_id}")
+async def get_employee_payroll_history(
+    employee_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Returns exhaustive month-by-month payroll history, earnings, deductions, and aggregated metrics for an employee.
+    """
+    emp = await db.get(Employee, employee_id)
+    if not emp or emp.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    desig_name = "N/A"
+    if emp.designation_id:
+        desig = await db.get(Designation, emp.designation_id)
+        if desig:
+            desig_name = desig.name
+
+    dept_name = "N/A"
+    if emp.department_id:
+        dept = await db.get(Department, emp.department_id)
+        if dept:
+            dept_name = dept.name
+
+    struct = await db.scalar(
+        select(SalaryStructure).where(
+            SalaryStructure.tenant_id == ctx.tenant_id,
+            SalaryStructure.employee_id == employee_id
+        )
+    )
+
+    slips = (
+        await db.scalars(
+            select(Payslip)
+            .where(
+                Payslip.tenant_id == ctx.tenant_id,
+                Payslip.employee_id == employee_id
+            )
+            .order_by(Payslip.year.desc(), Payslip.month.desc())
+        )
+    ).all()
+
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    history_items = []
+    total_gross = 0.0
+    total_net = 0.0
+    total_deductions = 0.0
+
+    for s in slips:
+        g = float(s.gross_salary or 0)
+        n = float(s.net_salary or 0)
+        pf = float(s.pf_deduction or 0)
+        esi = float(s.esi_deduction or 0)
+        tds = float(s.tds_deduction or 0)
+        od = float(s.other_deductions or 0)
+        d = pf + esi + tds + od
+
+        total_gross += g
+        total_net += n
+        total_deductions += d
+
+        m_idx = max(1, min(12, s.month))
+        history_items.append({
+            "id": str(s.id),
+            "month": s.month,
+            "year": s.year,
+            "period_label": f"{month_names[m_idx - 1]} {s.year}",
+            "basic_salary": float(s.basic_salary or 0),
+            "hra": float(s.hra or 0),
+            "other_allowances": float(s.other_allowances or 0),
+            "gross_salary": g,
+            "pf_deduction": pf,
+            "esi_deduction": esi,
+            "tds_deduction": tds,
+            "other_deductions": od,
+            "total_deductions": d,
+            "net_salary": n,
+            "status": s.status or "Paid",
+            "pdf_url": s.pdf_url,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+        })
+
+    avg_monthly_net = round(total_net / len(slips), 2) if slips else 0.0
+
+    return {
+        "employee": {
+            "id": str(emp.id),
+            "full_name": emp.full_name,
+            "employee_code": emp.employee_code,
+            "email": emp.email,
+            "phone": emp.phone,
+            "department": dept_name,
+            "designation": desig_name,
+            "joining_date": emp.joining_date.isoformat() if hasattr(emp, "joining_date") and emp.joining_date else None,
+            "status": emp.status,
+            "base_salary": float(struct.basic_salary) if struct else (float(emp.basic_salary) if emp.basic_salary else 0.0),
+        },
+        "summary": {
+            "total_runs": len(history_items),
+            "total_gross_paid": round(total_gross, 2),
+            "total_net_paid": round(total_net, 2),
+            "total_deductions": round(total_deductions, 2),
+            "avg_monthly_net": avg_monthly_net,
+        },
+        "history": history_items,
+    }
 
 
 @router.get("/public/payslips/{id}", response_model=PayslipResponse)

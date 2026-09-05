@@ -1374,8 +1374,49 @@ export const payrollApi = {
       "/hrms/payroll/sync-attendance-sheet",
       data
     ),
-  processBatchPayroll: (data: { month: number; year: number; status?: string }) =>
+  processBatchPayroll: (data: { month: number; year: number; status?: string; employee_ids?: string[] }) =>
     request<Payslip[]>("POST", "/hrms/payslips/process-batch", data),
+  getEmployeePayrollHistory: (employeeId: string) =>
+    request<{
+      employee: {
+        id: string;
+        full_name: string;
+        employee_code: string;
+        email?: string;
+        phone?: string;
+        department: string;
+        designation: string;
+        joining_date?: string;
+        status: string;
+        base_salary: number;
+      };
+      summary: {
+        total_runs: number;
+        total_gross_paid: number;
+        total_net_paid: number;
+        total_deductions: number;
+        avg_monthly_net: number;
+      };
+      history: Array<{
+        id: string;
+        month: number;
+        year: number;
+        period_label: string;
+        basic_salary: number;
+        hra: number;
+        other_allowances: number;
+        gross_salary: number;
+        pf_deduction: number;
+        esi_deduction: number;
+        tds_deduction: number;
+        other_deductions: number;
+        total_deductions: number;
+        net_salary: number;
+        status: string;
+        pdf_url?: string;
+        created_at?: string;
+      }>;
+    }>("GET", `/hrms/payroll/employee-history/${employeeId}`),
 };
 
 // â”€â”€â”€ Workflow Engine Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
