@@ -127,10 +127,35 @@ async def init_database() -> None:
         "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS call_disposition VARCHAR(100);",
         "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS call_duration_minutes INTEGER DEFAULT 0;",
         "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS customer_response TEXT;",
-        "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();",
-        "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
-        "ALTER TABLE crm_lead_activities ALTER COLUMN lead_id DROP NOT NULL;",
-        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS addresses JSONB DEFAULT '[]'::jsonb;"
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS addresses JSONB DEFAULT '[]'::jsonb;",
+        # Branches geolocation & geofencing
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS latitude NUMERIC(10, 7);",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS longitude NUMERIC(10, 7);",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS geofence_radius_meters INTEGER DEFAULT 500;",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS enforce_geofence BOOLEAN DEFAULT TRUE;",
+
+        # Live notifications user isolation
+        "ALTER TABLE live_notifications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;",
+
+        # HRMS employees extra fields
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS punch_method VARCHAR(50) DEFAULT 'GPS';",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS biometric_pin VARCHAR(50);",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS nfc_card_number VARCHAR(50);",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS basic_salary NUMERIC(12, 2);",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
+
+        # Attendance records verification & photos
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS ip_address VARCHAR(50);",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS check_in_selfie_url TEXT;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS check_out_selfie_url TEXT;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS is_face_verified BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS is_geofence_verified BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS is_wfh BOOLEAN DEFAULT FALSE;",
+
+        # HRMS sales commissions & slabs
+        "ALTER TABLE hrms_sales_commissions ADD COLUMN IF NOT EXISTS slab_tier VARCHAR(50);",
+        "ALTER TABLE hrms_sales_commissions ADD COLUMN IF NOT EXISTS calculation_mode VARCHAR(30) DEFAULT 'progressive';",
+        "ALTER TABLE hrms_sales_commissions ADD COLUMN IF NOT EXISTS slab_breakdown JSONB;",
     ]
 
     for stmt in migration_statements:

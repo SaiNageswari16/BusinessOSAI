@@ -1325,6 +1325,18 @@ export const payrollApi = {
     request<{ message: string; id: string }>("POST", "/hrms/payroll/commissions", data),
   updateCommissionStatus: (id: string, status: string) =>
     request<{ message: string; status: string }>("PATCH", `/hrms/payroll/commissions/${id}/status`, { status }),
+  getCommissionSlabPlan: () =>
+    request<{
+      id: string;
+      name: string;
+      calculation_mode: string;
+      slabs: any[];
+      milestone_bonus_enabled: boolean;
+      milestone_bonus_amount: number;
+      notes?: string;
+    }>("GET", "/hrms/payroll/commission-slabs"),
+  saveCommissionSlabPlan: (data: any) =>
+    request<{ message: string }>("PUT", "/hrms/payroll/commission-slabs", data),
 
   getAttendanceSheet: (month = 7, year = 2026) =>
     request<{ month: number; year: number; days_in_month: number; total_employees: number; records: any[] }>(

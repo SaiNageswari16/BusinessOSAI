@@ -1178,6 +1178,18 @@ class SalesCommission(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     employee: Mapped["Employee"] = relationship()
 
 
+class CommissionSlabPlan(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "hrms_commission_slab_plans"
+
+    name: Mapped[str] = mapped_column(String(100), default="Standard Corporate Slabs")
+    calculation_mode: Mapped[str] = mapped_column(String(30), default="progressive")  # progressive | tier | flat
+    is_default: Mapped[bool] = mapped_column(Boolean, default=True)
+    slabs: Mapped[list] = mapped_column(JSONB, default=list)  # list of { tier_name, min_amount, max_amount, rate_pct }
+    milestone_bonus_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    milestone_bonus_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=250.0)
+    notes: Mapped[str | None] = mapped_column(String(255))
+
+
 # -------------------------------------------------------------------------
 # POS MODULE MODELS
 # -------------------------------------------------------------------------

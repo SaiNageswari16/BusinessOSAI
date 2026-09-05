@@ -25,6 +25,7 @@ from src.models import (
     SalaryAdvance,
     EmployeeBonus,
     SalesCommission,
+    CommissionSlabPlan,
     AttendanceRecord,
     LeaveRequest,
 )
@@ -2343,31 +2344,51 @@ async def update_bonus_status(
 
 
 # -------------------------------------------------------------------------
-# SALES COMMISSIONS & SLAB CALCULATOR API
+# SALES COMMISSIONS & DYNAMIC SLAB CALCULATOR API
 # -------------------------------------------------------------------------
+
+DEFAULT_COMMISSION_SLABS = [
+    {"tier": "Slab 1 (Base Tier)", "min": 0.0, "max": 10000.0, "rate": 2.0},
+    {"tier": "Slab 2 (Silver Tier)", "min": 10000.0, "max": 50000.0, "rate": 5.0},
+    {"tier": "Slab 3 (Gold Tier)", "min": 50000.0, "max": 100000.0, "rate": 8.0},
+    {"tier": "Slab 4 (Platinum Tier)", "min": 100000.0, "max": None, "rate": 12.0},
+]
 
 def calculate_slab_commission(
     achieved_amount: float,
     target_amount: float = 0.0,
     calculation_mode: str = "progressive",
     custom_rate: float = 5.0,
+    custom_slabs: list[dict] | None = None,
+    milestone_bonus: float = 250.0,
+    milestone_bonus_enabled: bool = True,
 ) -> tuple[float, str, dict]:
     """
-    Computes commission based on Slab tiers:
-    - progressive (marginal tier brackets: 0-10k@2%, 10k-50k@5%, 50k-100k@8%, >100k@12%)
-    - tier (entire volume computed at the single highest achieved tier rate)
+    Computes commission dynamically based on custom or standard Slab tiers:
+    - progressive (marginal tier brackets: calculates tiered slices across dynamic slabs)
+    - tier (entire volume computed at the single highest achieved dynamic slab tier rate)
     - flat (flat custom_rate %)
     """
-    slabs = [
-        {"tier": "Slab 1 (Base)", "min": 0.0, "max": 10000.0, "rate": 2.0},
-        {"tier": "Slab 2 (Silver)", "min": 10000.0, "max": 50000.0, "rate": 5.0},
-        {"tier": "Slab 3 (Gold)", "min": 50000.0, "max": 100000.0, "rate": 8.0},
-        {"tier": "Slab 4 (Platinum)", "min": 100000.0, "max": float("inf"), "rate": 12.0},
-    ]
+    raw_slabs = custom_slabs if (custom_slabs and len(custom_slabs) > 0) else DEFAULT_COMMISSION_SLABS
+    
+    # Sanitize dynamic slabs
+    slabs = []
+    for s in raw_slabs:
+        s_min = float(s.get("min") or 0.0)
+        s_max = s.get("max")
+        max_val = float(s_max) if (s_max is not None and str(s_max).strip() != "" and str(s_max).lower() != "null") else float("inf")
+        slabs.append({
+            "tier": str(s.get("tier") or f"Tier > ${s_min:,.0f}"),
+            "min": s_min,
+            "max": max_val,
+            "rate": float(s.get("rate") or 5.0),
+        })
+    # Sort slabs by min threshold
+    slabs.sort(key=lambda x: x["min"])
 
     breakdown = []
     total_commission = 0.0
-    active_tier = "Slab 1 (Base)"
+    active_tier = slabs[0]["tier"] if slabs else "Base Tier"
 
     if calculation_mode == "flat":
         total_commission = round((achieved_amount * custom_rate) / 100.0, 2)
@@ -2391,7 +2412,7 @@ def calculate_slab_commission(
         breakdown.append({
             "tier": active_tier,
             "min": highest_slab["min"],
-            "max": highest_slab["max"] if highest_slab["max"] != float("inf") else "Above 100k",
+            "max": highest_slab["max"] if highest_slab["max"] != float("inf") else "Unlimited",
             "applicable_amount": achieved_amount,
             "rate": rate,
             "payout": total_commission,
@@ -2408,7 +2429,7 @@ def calculate_slab_commission(
             breakdown.append({
                 "tier": s["tier"],
                 "min": s["min"],
-                "max": s["max"] if s["max"] != float("inf") else "Above 100k",
+                "max": s["max"] if s["max"] != float("inf") else "Unlimited",
                 "applicable_amount": taxable_in_slab,
                 "rate": s["rate"],
                 "payout": slab_payout,
@@ -2416,10 +2437,10 @@ def calculate_slab_commission(
             active_tier = s["tier"]
             remaining -= taxable_in_slab
 
-    # Target overachievement milestone bonus ($250 if 100%+ target met)
+    # Target overachievement milestone bonus
     bonus = 0.0
-    if target_amount > 0 and achieved_amount >= target_amount:
-        bonus = 250.0
+    if milestone_bonus_enabled and target_amount > 0 and achieved_amount >= target_amount:
+        bonus = float(milestone_bonus or 0.0)
         total_commission += bonus
 
     slab_data = {
@@ -2428,9 +2449,22 @@ def calculate_slab_commission(
         "bonus_amount": bonus,
         "total_payout": round(total_commission, 2),
         "brackets": breakdown,
+        "configured_slabs": [
+            {"tier": s["tier"], "min": s["min"], "max": None if s["max"] == float("inf") else s["max"], "rate": s["rate"]}
+            for s in slabs
+        ],
     }
 
     return round(total_commission, 2), active_tier, slab_data
+
+
+class SlabPlanUpdateRequest(BaseModel):
+    name: str = "Standard Corporate Slabs"
+    calculation_mode: str = "progressive"
+    slabs: list[dict] = Field(default_factory=list)
+    milestone_bonus_enabled: bool = True
+    milestone_bonus_amount: float = 250.0
+    notes: str | None = None
 
 
 class CommissionCreateRequest(BaseModel):
@@ -2441,8 +2475,77 @@ class CommissionCreateRequest(BaseModel):
     achieved_amount: float = Field(default=0.0, ge=0)
     commission_rate: float = Field(default=5.0, ge=0)
     calculation_mode: str = Field(default="progressive")
+    custom_slabs: list[dict] | None = None
+    milestone_bonus_amount: float = Field(default=250.0, ge=0)
+    milestone_bonus_enabled: bool = True
     status: str = "Approved"
     notes: str | None = None
+
+
+@router.get("/payroll/commission-slabs")
+async def get_commission_slab_plan(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Fetch company's active dynamic commission slab configuration."""
+    plan = await db.scalar(
+        select(CommissionSlabPlan)
+        .where(CommissionSlabPlan.tenant_id == ctx.tenant_id, CommissionSlabPlan.is_default == True)
+    )
+    if not plan:
+        plan = CommissionSlabPlan(
+            tenant_id=ctx.tenant_id,
+            name="Standard Corporate Slabs",
+            calculation_mode="progressive",
+            is_default=True,
+            slabs=DEFAULT_COMMISSION_SLABS,
+            milestone_bonus_enabled=True,
+            milestone_bonus_amount=250.0,
+        )
+        db.add(plan)
+        await db.commit()
+        await db.refresh(plan)
+    return {
+        "id": str(plan.id),
+        "name": plan.name,
+        "calculation_mode": plan.calculation_mode or "progressive",
+        "slabs": plan.slabs or DEFAULT_COMMISSION_SLABS,
+        "milestone_bonus_enabled": plan.milestone_bonus_enabled,
+        "milestone_bonus_amount": float(plan.milestone_bonus_amount or 250.0),
+        "notes": plan.notes,
+    }
+
+
+@router.put("/payroll/commission-slabs")
+async def save_commission_slab_plan(
+    payload: SlabPlanUpdateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Save or update company's dynamic commission slab plan."""
+    plan = await db.scalar(
+        select(CommissionSlabPlan)
+        .where(CommissionSlabPlan.tenant_id == ctx.tenant_id, CommissionSlabPlan.is_default == True)
+    )
+    if not plan:
+        plan = CommissionSlabPlan(
+            tenant_id=ctx.tenant_id,
+            is_default=True,
+        )
+        db.add(plan)
+
+    plan.name = payload.name
+    plan.calculation_mode = payload.calculation_mode
+    plan.slabs = payload.slabs
+    plan.milestone_bonus_enabled = payload.milestone_bonus_enabled
+    plan.milestone_bonus_amount = payload.milestone_bonus_amount
+    plan.notes = payload.notes
+
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(plan, "slabs")
+
+    await db.commit()
+    return {"message": "Commission slab plan updated successfully"}
 
 
 @router.get("/payroll/commissions")
@@ -2497,6 +2600,9 @@ async def create_sales_commission(
         target_amount=payload.target_amount,
         calculation_mode=payload.calculation_mode,
         custom_rate=payload.commission_rate,
+        custom_slabs=payload.custom_slabs,
+        milestone_bonus=payload.milestone_bonus_amount,
+        milestone_bonus_enabled=payload.milestone_bonus_enabled,
     )
 
     comm = SalesCommission(
@@ -2524,6 +2630,7 @@ async def create_sales_commission(
         "slab_tier": active_tier,
         "slab_breakdown": slab_data,
     }
+
 
 @router.patch("/payroll/commissions/{commission_id}/status")
 async def update_commission_status(

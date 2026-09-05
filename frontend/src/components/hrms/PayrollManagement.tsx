@@ -5,7 +5,7 @@ import {
   Printer, Sparkles, Zap, CheckCircle2, Edit3, Check, Briefcase, Settings,
   Wallet, Banknote, Award, TrendingUp, Coins, Percent, CalendarCheck,
   CalendarClock, Clock, ArrowUpRight, CheckCheck, AlertCircle, Calendar,
-  List, ChevronLeft, ChevronRight, Search, Filter
+  List, ChevronLeft, ChevronRight, Search, Filter, Sliders, Trash2, Save
 } from "lucide-react";
 import { payrollApi, employeesApi, designationsApi, resolveImageUrl, SalaryStructure, Payslip, Employee, PayGrade, Designation } from "../../lib/api-client";
 import { Button } from "../ui/button";
@@ -116,6 +116,20 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
   const [commCalcMode, setCommCalcMode] = useState<"progressive" | "tier" | "flat">("progressive");
   const [selectedCommissionDetail, setSelectedCommissionDetail] = useState<any | null>(null);
   const [commNotes, setCommNotes] = useState("");
+
+  // Dynamic Slab Settings State
+  const defaultSlabs = [
+    { tier: "Slab 1 (Base Tier)", min: 0, max: 10000, rate: 2.0, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
+    { tier: "Slab 2 (Silver Tier)", min: 10000, max: 50000, rate: 5.0, color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20" },
+    { tier: "Slab 3 (Gold Tier)", min: 50000, max: 100000, rate: 8.0, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
+    { tier: "Slab 4 (Platinum Tier)", min: 100000, max: null, rate: 12.0, color: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
+  ];
+  const [configuredSlabs, setConfiguredSlabs] = useState<any[]>(defaultSlabs);
+  const [milestoneBonusAmt, setMilestoneBonusAmt] = useState<number>(250);
+  const [milestoneBonusActive, setMilestoneBonusActive] = useState<boolean>(true);
+  const [slabConfigModalOpen, setSlabConfigModalOpen] = useState(false);
+  const [savingSlabPlan, setSavingSlabPlan] = useState(false);
+  const [inlineCustomizeSlabs, setInlineCustomizeSlabs] = useState(false);
 
   // Payslips month-wise filtering and calendar view states
   const [payslipFilterMonth, setPayslipFilterMonth] = useState<string>("all");
@@ -243,6 +257,30 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
       if (commsRes.status === "fulfilled" && Array.isArray(commsRes.value)) {
         setCommissionsList(commsRes.value);
       }
+
+      // Load dynamic slab plan
+      try {
+        const slabPlanRes = await payrollApi.getCommissionSlabPlan();
+        if (slabPlanRes && Array.isArray(slabPlanRes.slabs) && slabPlanRes.slabs.length > 0) {
+          const colors = [
+            "text-blue-500 bg-blue-500/10 border-blue-500/20",
+            "text-indigo-500 bg-indigo-500/10 border-indigo-500/20",
+            "text-amber-500 bg-amber-500/10 border-amber-500/20",
+            "text-purple-500 bg-purple-500/10 border-purple-500/20",
+            "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
+            "text-rose-500 bg-rose-500/10 border-rose-500/20",
+          ];
+          setConfiguredSlabs(slabPlanRes.slabs.map((s, idx) => ({
+            ...s,
+            color: s.color || colors[idx % colors.length]
+          })));
+          if (slabPlanRes.milestone_bonus_amount !== undefined) setMilestoneBonusAmt(slabPlanRes.milestone_bonus_amount);
+          if (slabPlanRes.milestone_bonus_enabled !== undefined) setMilestoneBonusActive(slabPlanRes.milestone_bonus_enabled);
+          if (slabPlanRes.calculation_mode) setCommCalcMode(slabPlanRes.calculation_mode as any);
+        }
+      } catch (e) {
+        console.warn("Could not fetch slab plan, using defaults", e);
+      }
     } catch (e) {
       console.error("Failed to load payroll data", e);
     } finally {
@@ -253,6 +291,30 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
   useEffect(() => {
     loadPayrollData();
   }, [loadPayrollData]);
+
+  const handleSaveSlabPlan = async () => {
+    setSavingSlabPlan(true);
+    try {
+      await payrollApi.saveCommissionSlabPlan({
+        name: "Standard Corporate Slabs",
+        calculation_mode: commCalcMode,
+        slabs: configuredSlabs.map(s => ({
+          tier: s.tier,
+          min: parseFloat(s.min) || 0,
+          max: (s.max !== null && s.max !== undefined && String(s.max).trim() !== "" && String(s.max).toLowerCase() !== "infinity") ? parseFloat(s.max) : null,
+          rate: parseFloat(s.rate) || 5,
+        })),
+        milestone_bonus_enabled: milestoneBonusActive,
+        milestone_bonus_amount: parseFloat(String(milestoneBonusAmt)) || 0,
+      });
+      setSlabConfigModalOpen(false);
+      loadPayrollData();
+    } catch (err: any) {
+      alert("Failed to save slab matrix: " + err.message);
+    } finally {
+      setSavingSlabPlan(false);
+    }
+  };
 
   const handleCreateLoan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -359,6 +421,14 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
         achieved_amount: parseFloat(commAchieved) || 0,
         commission_rate: parseFloat(commRate) || 5,
         calculation_mode: commCalcMode,
+        custom_slabs: configuredSlabs.map(s => ({
+          tier: s.tier,
+          min: parseFloat(s.min) || 0,
+          max: (s.max !== null && s.max !== undefined && String(s.max).trim() !== "" && String(s.max).toLowerCase() !== "infinity") ? parseFloat(s.max) : null,
+          rate: parseFloat(s.rate) || 5,
+        })),
+        milestone_bonus_amount: milestoneBonusAmt,
+        milestone_bonus_enabled: milestoneBonusActive,
         status: "Approved",
         notes: commNotes || undefined,
       });
@@ -2232,8 +2302,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
   }
 
   // -------------------------------------------------------------------------
-  // -------------------------------------------------------------------------
-  // 4. COMMISSIONS TAB (SLAB-WISE & PROGRESSIVE PERFORMANCE INCENTIVES)
+  // 4. COMMISSIONS TAB (DYNAMIC SLAB-WISE & PROGRESSIVE PERFORMANCE INCENTIVES)
   // -------------------------------------------------------------------------
   if (tab === "commissions") {
     const totalCommissions = commissionsList.reduce((acc, c) => acc + (parseFloat(c.commission_amount) || 0), 0);
@@ -2243,15 +2312,20 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     const commTgt = parseFloat(commTarget) || 0;
     const commRt = parseFloat(commRate) || 5;
 
-    // Standard Progressive Slabs
-    const slabBrackets = [
-      { tier: "Slab 1 (Base Tier)", min: 0, max: 10000, rate: 2.0, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
-      { tier: "Slab 2 (Silver Tier)", min: 10000, max: 50000, rate: 5.0, color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20" },
-      { tier: "Slab 3 (Gold Tier)", min: 50000, max: 100000, rate: 8.0, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
-      { tier: "Slab 4 (Platinum Tier)", min: 100000, max: Infinity, rate: 12.0, color: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
-    ];
+    // Helper to sanitize dynamic slabs for computation
+    const parsedSlabs = configuredSlabs.map((s, idx) => {
+      const sMin = parseFloat(s.min) || 0;
+      const sMaxVal = (s.max !== null && s.max !== undefined && String(s.max).trim() !== "" && String(s.max).toLowerCase() !== "infinity" && String(s.max).toLowerCase() !== "null") ? parseFloat(s.max) : Infinity;
+      return {
+        tier: s.tier || `Slab ${idx + 1}`,
+        min: sMin,
+        max: sMaxVal,
+        rate: parseFloat(s.rate) || 5.0,
+        color: s.color || "text-primary bg-primary/10 border-primary/20",
+      };
+    }).sort((a, b) => a.min - b.min);
 
-    // Compute live slab preview
+    // Compute live slab preview dynamically
     const computeLiveBreakdown = () => {
       if (commCalcMode === "flat") {
         const payout = Math.round((commAch * commRt) / 100);
@@ -2265,18 +2339,18 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
         };
       }
       if (commCalcMode === "tier") {
-        let highest = slabBrackets[0];
-        for (const s of slabBrackets) {
+        let highest = parsedSlabs[0] || { tier: "Base Tier", min: 0, max: Infinity, rate: 5 };
+        for (const s of parsedSlabs) {
           if (commAch > s.min) highest = s;
         }
         const payout = Math.round((commAch * highest.rate) / 100);
-        const bonus = commTgt > 0 && commAch >= commTgt ? 250 : 0;
+        const bonus = milestoneBonusActive && commTgt > 0 && commAch >= commTgt ? milestoneBonusAmt : 0;
         return {
           tier: highest.tier,
           totalPayout: payout + bonus,
           bonus,
           brackets: [
-            { tier: highest.tier, range: highest.max === Infinity ? "> $100,000" : `$${highest.min.toLocaleString()} - $${highest.max.toLocaleString()}`, applicable: commAch, rate: highest.rate, payout },
+            { tier: highest.tier, range: highest.max === Infinity ? `> ${currency.symbol}${highest.min.toLocaleString()}` : `${currency.symbol}${highest.min.toLocaleString()} - ${currency.symbol}${highest.max.toLocaleString()}`, applicable: commAch, rate: highest.rate, payout },
           ],
         };
       }
@@ -2284,10 +2358,10 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
       // Progressive Marginal Slabs
       let remaining = commAch;
       let total = 0;
-      let activeTier = slabBrackets[0].tier;
+      let activeTier = parsedSlabs[0]?.tier || "Base Tier";
       const brackets: any[] = [];
 
-      for (const s of slabBrackets) {
+      for (const s of parsedSlabs) {
         if (remaining <= 0) break;
         const capacity = s.max - s.min;
         const taxable = Math.min(remaining, capacity);
@@ -2295,7 +2369,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
         total += payout;
         brackets.push({
           tier: s.tier,
-          range: s.max === Infinity ? "> $100,000" : `$${s.min.toLocaleString()} - $${s.max.toLocaleString()}`,
+          range: s.max === Infinity ? `> ${currency.symbol}${s.min.toLocaleString()}` : `${currency.symbol}${s.min.toLocaleString()} - ${currency.symbol}${s.max.toLocaleString()}`,
           applicable: taxable,
           rate: s.rate,
           payout,
@@ -2305,7 +2379,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
         remaining -= taxable;
       }
 
-      const bonus = commTgt > 0 && commAch >= commTgt ? 250 : 0;
+      const bonus = milestoneBonusActive && commTgt > 0 && commAch >= commTgt ? milestoneBonusAmt : 0;
       total += bonus;
 
       return {
@@ -2318,6 +2392,43 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
     const liveBreakdown = computeLiveBreakdown();
 
+    const handleUpdateSlabField = (index: number, field: string, value: any) => {
+      const updated = [...configuredSlabs];
+      updated[index] = { ...updated[index], [field]: value };
+      setConfiguredSlabs(updated);
+    };
+
+    const handleAddSlabBracket = () => {
+      const lastSlab = configuredSlabs[configuredSlabs.length - 1];
+      const newMin = lastSlab ? (parseFloat(lastSlab.max) || (parseFloat(lastSlab.min) + 50000)) : 0;
+      const colors = [
+        "text-blue-500 bg-blue-500/10 border-blue-500/20",
+        "text-indigo-500 bg-indigo-500/10 border-indigo-500/20",
+        "text-amber-500 bg-amber-500/10 border-amber-500/20",
+        "text-purple-500 bg-purple-500/10 border-purple-500/20",
+        "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
+        "text-rose-500 bg-rose-500/10 border-rose-500/20",
+      ];
+      setConfiguredSlabs([
+        ...configuredSlabs,
+        {
+          tier: `Slab ${configuredSlabs.length + 1} (Tier)`,
+          min: newMin,
+          max: null,
+          rate: (parseFloat(lastSlab?.rate) || 5) + 3.0,
+          color: colors[configuredSlabs.length % colors.length],
+        },
+      ]);
+    };
+
+    const handleRemoveSlabBracket = (index: number) => {
+      if (configuredSlabs.length <= 1) {
+        alert("At least one slab bracket is required.");
+        return;
+      }
+      setConfiguredSlabs(configuredSlabs.filter((_, i) => i !== index));
+    };
+
     return (
       <div className="space-y-6">
         {/* Header */}
@@ -2326,52 +2437,74 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
             <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
               Slab-Wise Sales Commissions & Incentives{" "}
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-semibold flex items-center gap-1 border border-emerald-500/20">
-                <Sparkles className="size-3" /> Progressive Slabs Active
+                <Sparkles className="size-3" /> Dynamic Slabs Active
               </span>
             </h2>
             <p className="text-xs text-muted-foreground">
-              Automated multi-tier marginal commission calculation, sales quota tracking, milestone bonuses, and payroll integration.
+              Dynamic multi-tier marginal commission calculation, sales quota tracking, milestone bonuses, and payroll integration.
             </p>
           </div>
-          <button
-            onClick={() => {
-              if (employees.length > 0 && !commEmpId) setCommEmpId(employees[0].id);
-              setCommDialogOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3.5 h-8.5 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity"
-          >
-            <Plus className="size-3.5" /> Calculate & Record Commission
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSlabConfigModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 h-8.5 bg-muted hover:bg-muted/80 text-foreground border border-border/60 rounded-lg text-xs font-semibold shadow-sm transition-colors"
+            >
+              <Sliders className="size-3.5 text-primary" /> Configure Slab Matrix ({configuredSlabs.length} Slabs)
+            </button>
+            <button
+              onClick={() => {
+                if (employees.length > 0 && !commEmpId) setCommEmpId(employees[0].id);
+                setCommDialogOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 h-8.5 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity"
+            >
+              <Plus className="size-3.5" /> Calculate & Record Commission
+            </button>
+          </div>
         </div>
 
-        {/* Slab Tier Structure Visual Banner */}
+        {/* Dynamic Slab Tier Matrix Visual Banner */}
         <div className="glass-panel p-4 rounded-xl border border-border/50 bg-slate-900/5 dark:bg-slate-900/40">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <TrendingUp className="size-3.5 text-primary" /> Active Slab Commission Brackets Matrix
+              <TrendingUp className="size-3.5 text-primary" /> Active Dynamic Slab Matrix ({configuredSlabs.length} Configured Brackets)
             </span>
-            <span className="text-[11px] font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              +$250 Target Overachievement Bonus Included
-            </span>
+            <div className="flex items-center gap-2">
+              {milestoneBonusActive && (
+                <span className="text-[11px] font-semibold text-emerald-500 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                  🎯 +{currency.symbol}{milestoneBonusAmt.toLocaleString()} Quota Milestone Bonus
+                </span>
+              )}
+              <button
+                onClick={() => setSlabConfigModalOpen(true)}
+                className="text-[11px] font-semibold text-primary hover:underline"
+              >
+                Edit Slabs →
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
-            {slabBrackets.map((slab, idx) => (
-              <div key={slab.tier} className="p-3 rounded-lg border border-border/60 bg-background/60 flex flex-col justify-between">
+            {configuredSlabs.map((slab, idx) => (
+              <div key={idx} className="p-3 rounded-lg border border-border/60 bg-background/60 flex flex-col justify-between group hover:border-primary/40 transition-colors">
                 <div className="flex items-center justify-between mb-1">
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${slab.color}`}>
-                    {slab.tier.split(" (")[0]}
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${slab.color || 'text-primary bg-primary/10 border-primary/20'}`}>
+                    {slab.tier}
                   </span>
                   <span className="text-xs font-black text-foreground">{slab.rate}% Rate</span>
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Volume: <span className="font-semibold text-foreground">{slab.max === Infinity ? `> ${currency.symbol}100,000` : `${currency.symbol}${slab.min.toLocaleString()} - ${currency.symbol}${slab.max.toLocaleString()}`}</span>
+                <div className="text-xs text-muted-foreground mt-1.5">
+                  Volume: <span className="font-semibold text-foreground">
+                    {slab.max === null || slab.max === undefined || String(slab.max).trim() === "" || String(slab.max).toLowerCase() === "infinity"
+                      ? `> ${currency.symbol}${(parseFloat(slab.min) || 0).toLocaleString()}`
+                      : `${currency.symbol}${(parseFloat(slab.min) || 0).toLocaleString()} - ${currency.symbol}${(parseFloat(slab.max) || 0).toLocaleString()}`}
+                  </span>
                 </div>
-                <p className="text-[10px] text-muted-foreground/80 mt-1">
-                  {idx === 0 && "Entry baseline sales bracket"}
-                  {idx === 1 && "Mid-tier volume accelerator"}
-                  {idx === 2 && "Senior rep high-performance bracket"}
-                  {idx === 3 && "Elite rainmaker multiplier"}
-                </p>
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-border/40 text-[10px] text-muted-foreground">
+                  <span>Bracket #{idx + 1}</span>
+                  <button onClick={() => setSlabConfigModalOpen(true)} className="text-primary opacity-0 group-hover:opacity-100 transition-opacity font-semibold">
+                    Customize
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -2401,7 +2534,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <Shield className="size-4 text-indigo-500" />
             </div>
             <p className="text-2xl font-black text-indigo-500">{commissionsList.length} Reps</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Graduated tier commission plans</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Dynamic graduated tier plans</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
@@ -2469,7 +2602,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                         <td className="px-6 py-4 text-center">
                           <div className="flex flex-col items-center gap-0.5">
                             <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-primary/10 text-primary border border-primary/20">
-                              {comm.slab_tier || "Slab 1 (Base)"}
+                              {comm.slab_tier || "Base Tier"}
                             </span>
                             <span className="text-[10px] text-muted-foreground uppercase font-semibold">
                               {modeLabel}
@@ -2501,14 +2634,153 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
           </div>
         </div>
 
+        {/* Dynamic Slab Matrix Configurator Modal */}
+        {slabConfigModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl rounded-2xl bg-card border p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b pb-3">
+                <div>
+                  <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                    <Sliders className="size-5 text-primary" /> Dynamic Commission Slab Rules Matrix
+                  </h3>
+                  <p className="text-xs text-muted-foreground">Add, edit, or remove progressive sales tiers, rate percentages, and milestone bonuses.</p>
+                </div>
+                <button onClick={() => setSlabConfigModalOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Slabs List */}
+                <div className="space-y-2">
+                  <div className="grid grid-cols-12 gap-2 text-[11px] font-bold text-muted-foreground uppercase px-1">
+                    <div className="col-span-4">Tier Name</div>
+                    <div className="col-span-3">Min Volume ({currency.symbol})</div>
+                    <div className="col-span-3">Max Volume ({currency.symbol})</div>
+                    <div className="col-span-1 text-center">Rate %</div>
+                    <div className="col-span-1 text-right">Action</div>
+                  </div>
+
+                  {configuredSlabs.map((slab, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg bg-background/80 border border-border/60">
+                      <div className="col-span-4">
+                        <input
+                          type="text"
+                          value={slab.tier}
+                          onChange={e => handleUpdateSlabField(idx, "tier", e.target.value)}
+                          placeholder="Tier Name"
+                          className="w-full h-8.5 px-2.5 text-xs rounded-md border bg-card font-semibold text-foreground"
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <input
+                          type="number"
+                          value={slab.min}
+                          onChange={e => handleUpdateSlabField(idx, "min", e.target.value)}
+                          placeholder="0"
+                          className="w-full h-8.5 px-2 text-xs rounded-md border bg-card"
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <input
+                          type="text"
+                          value={slab.max === null || slab.max === undefined ? "" : slab.max}
+                          onChange={e => handleUpdateSlabField(idx, "max", e.target.value === "" ? null : e.target.value)}
+                          placeholder="Leave empty for ∞"
+                          className="w-full h-8.5 px-2 text-xs rounded-md border bg-card"
+                        />
+                      </div>
+                      <div className="col-span-1">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={slab.rate}
+                          onChange={e => handleUpdateSlabField(idx, "rate", e.target.value)}
+                          placeholder="5"
+                          className="w-full h-8.5 px-1 text-xs rounded-md border bg-card text-center font-bold text-primary"
+                        />
+                      </div>
+                      <div className="col-span-1 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSlabBracket(idx)}
+                          className="p-1.5 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                          title="Remove Slab"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={handleAddSlabBracket}
+                    className="w-full py-2 border border-dashed rounded-lg text-xs font-bold text-primary hover:bg-primary/5 flex items-center justify-center gap-1.5 transition-colors mt-2"
+                  >
+                    <Plus className="size-3.5" /> + Add Dynamic Slab Bracket
+                  </button>
+                </div>
+
+                {/* Milestone Bonus Setting */}
+                <div className="p-3.5 bg-muted/40 rounded-xl border border-border/50 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-foreground flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={milestoneBonusActive}
+                        onChange={e => setMilestoneBonusActive(e.target.checked)}
+                        className="rounded border-border text-primary size-4"
+                      />
+                      Enable Target Quota Overachievement Milestone Bonus
+                    </label>
+                    {milestoneBonusActive && (
+                      <span className="text-[11px] font-bold text-emerald-500">Active</span>
+                    )}
+                  </div>
+                  {milestoneBonusActive && (
+                    <div className="flex items-center gap-3 pt-1">
+                      <span className="text-xs text-muted-foreground">Milestone Bonus Fixed Payout:</span>
+                      <div className="relative w-40">
+                        <span className="absolute left-3 top-2 text-xs text-muted-foreground font-bold">{currency.symbol}</span>
+                        <input
+                          type="number"
+                          value={milestoneBonusAmt}
+                          onChange={e => setMilestoneBonusAmt(parseFloat(e.target.value) || 0)}
+                          className="w-full h-8 pl-7 pr-2 text-xs rounded-md border bg-background font-bold text-emerald-500"
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">Awarded whenever achieved volume &ge; 100% target quota</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <button type="button" onClick={() => setSlabConfigModalOpen(false)} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={handleSaveSlabPlan}
+                    disabled={savingSlabPlan}
+                    className="px-4 py-2 gradient-brand text-white rounded-md text-sm font-semibold shadow-elegant hover:opacity-90 flex items-center gap-1.5"
+                  >
+                    {savingSlabPlan ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                    Save Dynamic Slab Plan
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Commission Calculator & Record Dialog */}
         {commDialogOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="w-full max-w-lg rounded-2xl bg-card border p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b pb-3">
-                <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
-                  <Percent className="size-5 text-emerald-500" /> Slab-Wise Commission Calculator
-                </h3>
+                <div>
+                  <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                    <Percent className="size-5 text-emerald-500" /> Slab-Wise Commission Calculator
+                  </h3>
+                  <p className="text-xs text-muted-foreground">Calculates multi-tier marginal commission with dynamic customizable entries.</p>
+                </div>
                 <button onClick={() => setCommDialogOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
               </div>
 
@@ -2529,7 +2801,16 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
                 {/* Calculation Mode Tabs */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground uppercase">Commission Calculation Engine</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Commission Calculation Engine</label>
+                    <button
+                      type="button"
+                      onClick={() => setInlineCustomizeSlabs(!inlineCustomizeSlabs)}
+                      className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1"
+                    >
+                      <Sliders className="size-3" /> {inlineCustomizeSlabs ? "Hide Custom Slabs" : "⚡ Customize Slabs for this Entry"}
+                    </button>
+                  </div>
                   <div className="grid grid-cols-3 gap-1.5 p-1 bg-muted/50 rounded-lg border border-border/50 text-xs">
                     <button
                       type="button"
@@ -2554,6 +2835,56 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                     </button>
                   </div>
                 </div>
+
+                {/* Inline Dynamic Slab Customizer if toggled */}
+                {inlineCustomizeSlabs && commCalcMode !== "flat" && (
+                  <div className="p-3 bg-muted/30 rounded-xl border border-border/60 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-foreground">Dynamic Slab Entries (Live Editable)</span>
+                      <button
+                        type="button"
+                        onClick={handleAddSlabBracket}
+                        className="text-[10px] font-bold text-primary hover:underline"
+                      >
+                        + Add Slab Bracket
+                      </button>
+                    </div>
+                    {configuredSlabs.map((s, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={s.tier}
+                          onChange={e => handleUpdateSlabField(idx, "tier", e.target.value)}
+                          className="w-1/3 h-7 px-2 text-[11px] rounded border bg-background font-semibold"
+                        />
+                        <input
+                          type="number"
+                          value={s.min}
+                          onChange={e => handleUpdateSlabField(idx, "min", e.target.value)}
+                          placeholder="Min"
+                          className="w-1/4 h-7 px-1.5 text-[11px] rounded border bg-background"
+                        />
+                        <input
+                          type="text"
+                          value={s.max === null || s.max === undefined ? "" : s.max}
+                          onChange={e => handleUpdateSlabField(idx, "max", e.target.value === "" ? null : e.target.value)}
+                          placeholder="∞"
+                          className="w-1/4 h-7 px-1.5 text-[11px] rounded border bg-background"
+                        />
+                        <div className="flex items-center gap-0.5 w-1/5">
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={s.rate}
+                            onChange={e => handleUpdateSlabField(idx, "rate", e.target.value)}
+                            className="w-full h-7 px-1 text-[11px] rounded border bg-background text-center font-bold text-primary"
+                          />
+                          <span className="text-[10px]">%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Quota and Achieved Sales Inputs */}
                 <div className="grid grid-cols-2 gap-3">
@@ -2618,9 +2949,13 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                         <option value="7">July</option>
                         <option value="8">August</option>
                         <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
                       </select>
                       <select value={commYear} onChange={e => setCommYear(e.target.value)} className="w-1/2 h-10 px-2 text-xs rounded-md border bg-background">
                         <option value="2026">2026</option>
+                        <option value="2027">2027</option>
                       </select>
                     </div>
                   </div>
@@ -2631,7 +2966,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <div className="p-3.5 bg-slate-900/5 dark:bg-slate-900/50 rounded-xl border border-border/70 space-y-2.5">
                     <div className="flex justify-between items-center text-xs font-bold text-foreground">
                       <span className="flex items-center gap-1.5">
-                        <Sparkles className="size-3.5 text-emerald-500" /> Tiered Slab Breakdown Calculation
+                        <Sparkles className="size-3.5 text-emerald-500" /> Dynamic Tiered Breakdown ({liveBreakdown.brackets.length} Slabs Applied)
                       </span>
                       <span className="text-emerald-500 text-sm font-black">
                         Total: {currency.symbol}{liveBreakdown.totalPayout.toLocaleString()}
@@ -2650,7 +2985,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                       ))}
                       {liveBreakdown.bonus > 0 && (
                         <div className="flex justify-between items-center p-2 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-500">
-                          <span className="font-bold flex items-center gap-1">🎯 Quota Met Milestone Bonus</span>
+                          <span className="font-bold flex items-center gap-1">🎯 100%+ Quota Milestone Bonus</span>
                           <span className="font-black">+{currency.symbol}{liveBreakdown.bonus.toLocaleString()}</span>
                         </div>
                       )}
@@ -2699,7 +3034,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   </div>
                   <div>
                     <span className="text-muted-foreground font-semibold">Max Slab Reached:</span>
-                    <p className="text-sm font-bold text-foreground">{selectedCommissionDetail.slab_tier || "Slab 1 (Base)"}</p>
+                    <p className="text-sm font-bold text-foreground">{selectedCommissionDetail.slab_tier || "Base Tier"}</p>
                   </div>
                 </div>
 
