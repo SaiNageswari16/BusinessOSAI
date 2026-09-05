@@ -842,6 +842,85 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+async function requestBlob(
+  method: string,
+  path: string,
+  params?: Record<string, string | number | boolean | undefined | null>,
+): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  try {
+    const storedTenant = localStorage.getItem("bos-tenant");
+    if (storedTenant) {
+      const parsed = JSON.parse(storedTenant);
+      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
+      if (targetTenantId) {
+        headers["X-Impersonate-Tenant"] = targetTenantId;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  let url = `${API_BASE_URL}${path}`;
+  if (params) {
+    const sp = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== "") sp.set(k, String(v));
+    }
+    const qs = sp.toString();
+    if (qs) url += `?${qs}`;
+  }
+
+  let res = await fetch(url, {
+    method,
+    headers,
+  });
+
+  if (!res.ok && path.includes("/hrms/payslips/")) {
+    const publicPath = path.replace("/hrms/payslips/", "/hrms/public/payslips/");
+    let pubUrl = `${API_BASE_URL}${publicPath}`;
+    if (params) {
+      const sp = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined && v !== null && v !== "") sp.set(k, String(v));
+      }
+      const qs = sp.toString();
+      if (qs) pubUrl += `?${qs}`;
+    }
+    try {
+      const pubRes = await fetch(pubUrl, { method, headers });
+      if (pubRes.ok) {
+        res = pubRes;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem("bos-auth");
+      window.location.href = "/login";
+    }
+    const msg = await parseError(res);
+    const error: any = new Error(msg || "Failed to download document");
+    error.status = res.status;
+    throw error;
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition");
+  let filename = "Payslip.pdf";
+  if (disposition && disposition.includes("filename=")) {
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    if (match?.[1]) filename = match[1];
+  }
+  return { blob, filename };
+}
+
 // â”€â”€â”€ ERP â€” Companies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const companiesApi = {
@@ -1288,6 +1367,8 @@ export const payrollApi = {
     request<Payslip[]>("POST", "/hrms/payslips/process-batch", data),
   getPayslip: (id: string) =>
     request<Payslip>("GET", `/hrms/payslips/${id}`),
+  downloadPayslipPdf: (id: string, tenantId?: string) =>
+    requestBlob("GET", `/hrms/payslips/${id}/pdf`, tenantId ? { tenant_id: tenantId } : undefined),
   getPublicPayslip: (id: string) =>
     request<Payslip>("GET", `/hrms/public/payslips/${id}`),
   listTemplates: () =>
