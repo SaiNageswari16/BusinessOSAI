@@ -44,6 +44,10 @@ async def main():
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS longitude NUMERIC(10, 7);",
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS geofence_radius_meters INTEGER DEFAULT 500;",
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS enforce_geofence BOOLEAN DEFAULT TRUE;",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS district VARCHAR(150);",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS district_code VARCHAR(50);",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS region_name VARCHAR(100);",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS zone_name VARCHAR(100);",
     ]
     
     for stmt in alter_statements:

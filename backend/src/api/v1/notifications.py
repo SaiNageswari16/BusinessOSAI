@@ -228,6 +228,36 @@ async def mark_all_as_read(
     return {"message": "All notifications marked as read."}
 
 
+@router.patch("/{notification_id}/read")
+async def mark_notification_as_read(
+    notification_id: uuid.UUID,
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db)
+):
+    """Marks a single live notification as read."""
+    notif = await db.get(LiveNotification, notification_id)
+    if not notif or notif.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notif.unread = False
+    await db.commit()
+    return {"message": "Notification marked as read.", "id": str(notification_id)}
+
+
+@router.delete("/{notification_id}")
+async def delete_notification(
+    notification_id: uuid.UUID,
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db)
+):
+    """Deletes/dismisses a notification for the current user."""
+    notif = await db.get(LiveNotification, notification_id)
+    if not notif or notif.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    await db.delete(notif)
+    await db.commit()
+    return {"message": "Notification dismissed.", "id": str(notification_id)}
+
+
 @router.get("/settings")
 async def get_notification_settings(
     ctx: CurrentUserContext = Depends(get_current_user_context),

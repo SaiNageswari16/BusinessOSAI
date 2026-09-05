@@ -200,18 +200,26 @@ class BranchBase(BaseModel):
     company_id: uuid.UUID
     region_id: uuid.UUID | None = None
     zone_id: uuid.UUID | None = None
-    code: str = Field(min_length=2, max_length=30)
+    code: str = Field(min_length=2, max_length=50)
     name: str = Field(min_length=2, max_length=255)
     manager_user_id: uuid.UUID | None = None
     address: str | None = None
+    district: str | None = None
+    district_code: str | None = None
+    region_name: str | None = None
+    zone_name: str | None = None
     city: str | None = None
     state: str | None = None
-    country: str | None = None
+    country: str | None = "India"
     phone: str | None = None
     email: EmailStr | None = None
     has_warehouse: bool = False
     working_hours: str | None = None
     opening_date: date | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    geofence_radius_meters: int | None = 500
+    enforce_geofence: bool | None = True
     status: str = "active"
 
 
@@ -226,6 +234,10 @@ class BranchUpdate(BaseModel):
     name: str | None = None
     manager_user_id: uuid.UUID | None = None
     address: str | None = None
+    district: str | None = None
+    district_code: str | None = None
+    region_name: str | None = None
+    zone_name: str | None = None
     city: str | None = None
     state: str | None = None
     country: str | None = None
@@ -234,6 +246,10 @@ class BranchUpdate(BaseModel):
     has_warehouse: bool | None = None
     working_hours: str | None = None
     opening_date: date | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    geofence_radius_meters: int | None = None
+    enforce_geofence: bool | None = None
     status: str | None = None
 
 
@@ -241,21 +257,29 @@ class BranchResponse(ORMModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     company_id: uuid.UUID
-    region_id: uuid.UUID | None
-    zone_id: uuid.UUID | None
+    region_id: uuid.UUID | None = None
+    zone_id: uuid.UUID | None = None
     code: str
     name: str
-    manager_user_id: uuid.UUID | None
-    address: str | None
-    city: str | None
-    state: str | None
-    country: str | None
-    phone: str | None
-    email: str | None
-    has_warehouse: bool
-    working_hours: str | None
-    opening_date: date | None
-    status: str
+    manager_user_id: uuid.UUID | None = None
+    address: str | None = None
+    district: str | None = None
+    district_code: str | None = None
+    region_name: str | None = None
+    zone_name: str | None = None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    has_warehouse: bool = False
+    working_hours: str | None = None
+    opening_date: date | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    geofence_radius_meters: int | None = 500
+    enforce_geofence: bool | None = True
+    status: str = "active"
     created_at: datetime
     updated_at: datetime
 

@@ -128,11 +128,15 @@ async def init_database() -> None:
         "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS call_duration_minutes INTEGER DEFAULT 0;",
         "ALTER TABLE crm_lead_activities ADD COLUMN IF NOT EXISTS customer_response TEXT;",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS addresses JSONB DEFAULT '[]'::jsonb;",
-        # Branches geolocation & geofencing
+        # Branches geolocation, geofencing & India administrative hierarchy
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS latitude NUMERIC(10, 7);",
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS longitude NUMERIC(10, 7);",
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS geofence_radius_meters INTEGER DEFAULT 500;",
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS enforce_geofence BOOLEAN DEFAULT TRUE;",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS district VARCHAR(150);",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS district_code VARCHAR(50);",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS region_name VARCHAR(100);",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS zone_name VARCHAR(100);",
 
         # Live notifications user isolation
         "ALTER TABLE live_notifications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;",

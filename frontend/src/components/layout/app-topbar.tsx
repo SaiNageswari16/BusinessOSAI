@@ -5,7 +5,9 @@ import {
   ChevronDown, Building2, ShieldCheck, Globe, Coins,
   Component, Archive, Layers, Terminal, ShoppingCart,
   ShoppingBag, Receipt, UsersRound, BarChart3, Settings,
-  LayoutDashboard, RadioTower,
+  LayoutDashboard, RadioTower, ExternalLink, Trash2,
+  CheckCheck, Search, Filter, Clock, Sparkles, Inbox,
+  Eye, X, ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -217,6 +219,10 @@ export function AppTopbar() {
   }, []);
 
   const [liveNotifications, setLiveNotifications] = useState<LiveNotification[]>([]);
+  const [selectedNotif, setSelectedNotif] = useState<any | null>(null);
+  const [centerOpen, setCenterOpen] = useState(false);
+  const [notifFilterCategory, setNotifFilterCategory] = useState<string>("all");
+  const [notifSearchQuery, setNotifSearchQuery] = useState<string>("");
 
   const fetchLiveNotifications = async (isFirst = false) => {
     try {
@@ -254,6 +260,53 @@ export function AppTopbar() {
     }
   };
 
+  const handleSelectNotification = async (notif: any) => {
+    setSelectedNotif(notif);
+    if (notif.unread) {
+      try {
+        await liveNotificationsApi.markAsRead(notif.id);
+        setLiveNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, unread: false } : n));
+      } catch (err) {
+        // Fallback local update
+        setLiveNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, unread: false } : n));
+      }
+    }
+  };
+
+  const handleDeleteNotification = async (notifId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      await liveNotificationsApi.delete(notifId);
+      setLiveNotifications(prev => prev.filter(n => n.id !== notifId));
+      if (selectedNotif?.id === notifId) setSelectedNotif(null);
+      toast.success("Notification dismissed");
+    } catch (err) {
+      setLiveNotifications(prev => prev.filter(n => n.id !== notifId));
+      if (selectedNotif?.id === notifId) setSelectedNotif(null);
+    }
+  };
+
+  const getActionRoute = (notif: any): { url: string; label: string } | null => {
+    const text = `${notif.title || ''} ${notif.body || ''}`.toLowerCase();
+    if (text.includes("lead") || text.includes("crm lead")) return { url: "/crm?tab=leads", label: "Open CRM Leads" };
+    if (text.includes("opportunity") || text.includes("deal")) return { url: "/crm?tab=opportunities", label: "Open Deals" };
+    if (text.includes("attendance") || text.includes("punch")) return { url: "/hrms?tab=ess_attendance", label: "Open Attendance" };
+    if (text.includes("commission") || text.includes("payroll")) return { url: "/hrms?tab=commissions", label: "Open Commissions" };
+    if (text.includes("order") || text.includes("invoice")) return { url: "/crm?tab=orders", label: "Open Sales Orders" };
+    if (text.includes("inventory") || text.includes("batch") || text.includes("stock")) return { url: "/inventory?tab=batches", label: "Open Inventory" };
+    if (text.includes("pos") || text.includes("register")) return { url: "/pos", label: "Open POS Register" };
+    return { url: "/settings?tab=company_profile", label: "Open Workspace Settings" };
+  };
+
+  const handleNavigateFromNotif = (notif: any) => {
+    const action = getActionRoute(notif);
+    if (action) {
+      setSelectedNotif(null);
+      setCenterOpen(false);
+      handleNavigateModule(action.url);
+    }
+  };
+
   const activeNotifs = liveNotifications.length > 0 ? liveNotifications : notifications.map(n => ({
     id: n.id,
     title: n.title,
@@ -263,7 +316,7 @@ export function AppTopbar() {
     category: "system"
   }));
 
-  const unreadCount = activeNotifs.filter((n) => n.unread).length || 1;
+  const unreadCount = activeNotifs.filter((n) => n.unread).length;
 
   // Determine active group based on current URL
   const currentPath = location.pathname;
@@ -488,28 +541,84 @@ export function AppTopbar() {
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-80 p-0 shadow-lg">
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div className="font-semibold text-sm">Notifications</div>
+          <PopoverContent align="end" className="w-84 p-0 shadow-xl rounded-xl border">
+            <div className="px-4 py-3 border-b flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/50 rounded-t-xl">
+              <div className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                <Bell className="size-3.5 text-purple-700" /> Notifications
+                {unreadCount > 0 && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.2 bg-purple-100 text-purple-700 rounded-full">
+                    {unreadCount} new
+                  </span>
+                )}
+              </div>
               <button 
                 onClick={handleMarkAllRead}
-                className="text-xs text-purple-700 font-semibold hover:underline bg-transparent border-none cursor-pointer"
+                className="text-[11px] text-purple-700 font-semibold hover:underline bg-transparent border-none cursor-pointer flex items-center gap-1"
               >
-                Mark all read
+                <CheckCheck className="size-3" /> Mark all read
               </button>
             </div>
-            <div className="max-h-80 overflow-y-auto">
-              {activeNotifs.map((n) => (
-                <div key={n.id} className={cn("px-4 py-3 border-b last:border-0 hover:bg-slate-50 cursor-pointer", n.unread && "bg-purple-50/40")}>
-                  <div className="flex items-start gap-2">
-                    {n.unread && <div className="size-1.5 rounded-full bg-purple-700 mt-1.5 shrink-0" />}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate">{n.title}</div>
-                      <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.body}</div>
+            <div className="max-h-80 overflow-y-auto divide-y divide-border/40">
+              {activeNotifs.length === 0 ? (
+                <div className="py-8 text-center text-xs text-muted-foreground">
+                  <Inbox className="size-6 mx-auto mb-1 text-slate-400" />
+                  No notifications yet.
+                </div>
+              ) : (
+                activeNotifs.map((n) => (
+                  <div
+                    key={n.id}
+                    onClick={() => handleSelectNotification(n)}
+                    className={cn(
+                      "px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition-colors group relative",
+                      n.unread && "bg-purple-50/40 dark:bg-purple-950/20"
+                    )}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      {n.unread ? (
+                        <div className="size-2 rounded-full bg-purple-700 mt-1.5 shrink-0 animate-pulse" />
+                      ) : (
+                        <div className="size-2 rounded-full bg-slate-300 mt-1.5 shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0 pr-6">
+                        <div className="text-xs font-bold text-slate-900 truncate flex items-center gap-1.5">
+                          {n.title}
+                          {n.category && (
+                            <span className="text-[9px] font-semibold uppercase px-1 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-600 rounded">
+                              {n.category}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-600 line-clamp-2 mt-0.5 leading-snug">
+                          {n.body}
+                        </div>
+                        <div className="text-[9.5px] text-slate-400 mt-1 flex items-center gap-1">
+                          <Clock className="size-2.5" />
+                          {n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => handleDeleteNotification(n.id, e)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-2.5 top-3 p-1 text-slate-400 hover:text-destructive hover:bg-slate-100 rounded"
+                        title="Dismiss"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
+            </div>
+            <div className="p-2.5 border-t bg-slate-50/80 dark:bg-slate-900/60 rounded-b-xl flex items-center justify-between text-xs">
+              <span className="text-[11px] text-slate-500 font-medium">
+                {activeNotifs.length} total notifications
+              </span>
+              <button
+                onClick={() => setCenterOpen(true)}
+                className="font-bold text-[11px] text-purple-700 hover:text-purple-900 flex items-center gap-1 cursor-pointer hover:underline"
+              >
+                View in Notification Center <ArrowRight className="size-3" />
+              </button>
             </div>
           </PopoverContent>
         </Popover>
@@ -555,6 +664,232 @@ export function AppTopbar() {
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+
+      {/* ─── Notification Full Message Reader Modal ─── */}
+      {selectedNotif && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-card border p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between border-b pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="size-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                  <Bell className="size-4.5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base text-foreground leading-tight">
+                      {selectedNotif.title}
+                    </h3>
+                    {selectedNotif.category && (
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                        {selectedNotif.category}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                    <Clock className="size-3" />
+                    {selectedNotif.created_at ? new Date(selectedNotif.created_at).toLocaleString() : "Just now"}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedNotif(null)} 
+                className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-muted/40 rounded-xl text-sm leading-relaxed text-foreground whitespace-pre-wrap font-normal border border-border/40 max-h-64 overflow-y-auto">
+              {selectedNotif.body}
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t text-xs">
+              <button
+                type="button"
+                onClick={() => handleDeleteNotification(selectedNotif.id)}
+                className="px-3 py-1.5 text-destructive hover:bg-destructive/10 rounded-lg font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <Trash2 className="size-3.5" /> Dismiss
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedNotif(null)}
+                  className="px-4 py-2 border rounded-lg hover:bg-muted font-medium"
+                >
+                  Close
+                </button>
+                {getActionRoute(selectedNotif) && (
+                  <button
+                    type="button"
+                    onClick={() => handleNavigateFromNotif(selectedNotif)}
+                    className="px-4 py-2 gradient-brand text-white rounded-lg font-semibold shadow-sm hover:opacity-90 flex items-center gap-1.5"
+                  >
+                    <span>{getActionRoute(selectedNotif)?.label}</span>
+                    <ExternalLink className="size-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Full Notification Center Modal ─── */}
+      {centerOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-card border p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b pb-3.5 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="size-9 rounded-xl gradient-brand text-white flex items-center justify-center shadow-xs">
+                  <Bell className="size-4.5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-foreground leading-tight flex items-center gap-2">
+                    Notification Center
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                      {activeNotifs.length} total
+                    </span>
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Complete feed of real-time workspace broadcasts, system alerts, CRM leads, and operations.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleMarkAllRead}
+                  className="px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-lg flex items-center gap-1.5 border border-primary/20 transition-colors"
+                >
+                  <CheckCheck className="size-3.5" /> Mark All as Read
+                </button>
+                <button 
+                  onClick={() => setCenterOpen(false)} 
+                  className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted"
+                >
+                  <X className="size-4.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="flex flex-col sm:flex-row gap-2.5 items-center justify-between shrink-0">
+              <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+                {["all", "unread", "crm", "hrms", "pos", "inventory", "system"].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setNotifFilterCategory(cat)}
+                    className={cn(
+                      "px-3 py-1 rounded-lg text-xs font-bold capitalize transition-colors shrink-0",
+                      notifFilterCategory === cat
+                        ? "bg-primary text-white shadow-xs"
+                        : "bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted"
+                    )}
+                  >
+                    {cat === "all" ? "All" : cat === "unread" ? "Unread" : cat.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-2.5 size-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={notifSearchQuery}
+                  onChange={(e) => setNotifSearchQuery(e.target.value)}
+                  placeholder="Search notifications..."
+                  className="w-full h-8.5 pl-8.5 pr-3 text-xs rounded-lg border bg-background"
+                />
+              </div>
+            </div>
+
+            {/* Notification Stream */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 min-h-[300px]">
+              {(() => {
+                const filtered = activeNotifs.filter((n) => {
+                  if (notifFilterCategory === "unread" && !n.unread) return false;
+                  if (notifFilterCategory !== "all" && notifFilterCategory !== "unread" && (n.category || "system").toLowerCase() !== notifFilterCategory) return false;
+                  if (notifSearchQuery.trim()) {
+                    const q = notifSearchQuery.toLowerCase();
+                    return (n.title || "").toLowerCase().includes(q) || (n.body || "").toLowerCase().includes(q);
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+                      <Inbox className="size-10 text-slate-300 dark:text-slate-700 mb-2" />
+                      <p className="text-sm font-semibold">No notifications found</p>
+                      <p className="text-xs">No records match your selected filter criteria.</p>
+                    </div>
+                  );
+                }
+
+                return filtered.map((n) => (
+                  <div
+                    key={n.id}
+                    className={cn(
+                      "p-4 rounded-xl border transition-all hover:border-primary/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card shadow-xs group",
+                      n.unread ? "border-purple-300 dark:border-purple-800 bg-purple-50/20 dark:bg-purple-950/10" : "border-border/60"
+                    )}
+                  >
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      {n.unread ? (
+                        <div className="size-2.5 rounded-full bg-purple-700 mt-1 shrink-0 animate-pulse" />
+                      ) : (
+                        <div className="size-2.5 rounded-full bg-slate-300 mt-1 shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-sm text-foreground">{n.title}</h4>
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                            {n.category || "system"}
+                          </span>
+                          {n.unread && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 bg-amber-500/10 text-amber-600 rounded">
+                              Unread
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                          {n.body}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground/70 mt-1.5 flex items-center gap-1">
+                          <Clock className="size-3" />
+                          {n.created_at ? new Date(n.created_at).toLocaleString() : "Recently"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      {getActionRoute(n) && (
+                        <button
+                          type="button"
+                          onClick={() => handleNavigateFromNotif(n)}
+                          className="px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg flex items-center gap-1 border border-primary/20 transition-colors"
+                        >
+                          <span>{getActionRoute(n)?.label}</span>
+                          <ArrowRight className="size-3" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteNotification(n.id, e)}
+                        className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                        title="Delete notification"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

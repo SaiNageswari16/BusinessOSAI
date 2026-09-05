@@ -116,6 +116,25 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
   const [commCalcMode, setCommCalcMode] = useState<"progressive" | "tier" | "flat">("progressive");
   const [selectedCommissionDetail, setSelectedCommissionDetail] = useState<any | null>(null);
   const [commNotes, setCommNotes] = useState("");
+  const [fetchingRepStats, setFetchingRepStats] = useState(false);
+  const [repPerfSummary, setRepPerfSummary] = useState<string | null>(null);
+
+  const autoFetchRepPerformance = async (empId: string, monthStr = commMonth, yearStr = commYear) => {
+    if (!empId) return;
+    setFetchingRepStats(true);
+    try {
+      const res = await payrollApi.getRepPerformance(empId, parseInt(monthStr) || 7, parseInt(yearStr) || 2026);
+      if (res) {
+        if (res.target_quota !== undefined) setCommTarget(res.target_quota.toString());
+        if (res.achieved_volume !== undefined) setCommAchieved(res.achieved_volume.toString());
+        setRepPerfSummary(res.summary);
+      }
+    } catch (err) {
+      console.debug("Auto-fetch rep performance:", err);
+    } finally {
+      setFetchingRepStats(false);
+    }
+  };
 
   // Dynamic Slab Settings State
   const defaultSlabs = [
@@ -2785,18 +2804,50 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               </div>
 
               <form onSubmit={handleCreateCommission} className="space-y-4">
-                {/* Employee Selection */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-muted-foreground uppercase">Sales Rep *</label>
+                {/* Employee Selection & Live Auto-Sync Performance */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Sales Rep *</label>
+                    {commEmpId && (
+                      <button
+                        type="button"
+                        onClick={() => autoFetchRepPerformance(commEmpId, commMonth, commYear)}
+                        disabled={fetchingRepStats}
+                        className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1"
+                      >
+                        <RefreshCw className={`size-3 ${fetchingRepStats ? "animate-spin text-primary" : ""}`} />
+                        {fetchingRepStats ? "Syncing..." : "🔄 Sync CRM & POS Sales"}
+                      </button>
+                    )}
+                  </div>
                   <select
                     value={commEmpId}
-                    onChange={e => setCommEmpId(e.target.value)}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setCommEmpId(val);
+                      if (val) autoFetchRepPerformance(val, commMonth, commYear);
+                    }}
                     className="w-full h-10 px-3 text-sm rounded-md border bg-background"
                     required
                   >
                     <option value="">-- Choose Sales Representative --</option>
                     {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code}) - {e.department?.name || 'Sales'}</option>)}
                   </select>
+
+                  {/* Auto-Sync Insights Banner */}
+                  {commEmpId && (
+                    <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="size-4 shrink-0 text-emerald-500" />
+                        <span className="text-[11px] font-medium leading-tight">
+                          {fetchingRepStats ? "Fetching closed CRM deals & POS sales..." : (repPerfSummary || "Auto-calculated Target Quota & Achieved Volume loaded from CRM & POS performance.")}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase bg-emerald-500/20 px-1.5 py-0.5 rounded text-emerald-600 dark:text-emerald-300 shrink-0">
+                        Auto-Synced
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Calculation Mode Tabs */}
@@ -2943,7 +2994,19 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-muted-foreground uppercase">Payroll Period</label>
                     <div className="flex gap-1.5">
-                      <select value={commMonth} onChange={e => setCommMonth(e.target.value)} className="w-1/2 h-10 px-2 text-xs rounded-md border bg-background">
+                      <select
+                        value={commMonth}
+                        onChange={e => {
+                          const m = e.target.value;
+                          setCommMonth(m);
+                          if (commEmpId) autoFetchRepPerformance(commEmpId, m, commYear);
+                        }}
+                        className="w-1/2 h-10 px-2 text-xs rounded-md border bg-background"
+                      >
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
                         <option value="5">May</option>
                         <option value="6">June</option>
                         <option value="7">July</option>
@@ -2953,7 +3016,16 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                         <option value="11">November</option>
                         <option value="12">December</option>
                       </select>
-                      <select value={commYear} onChange={e => setCommYear(e.target.value)} className="w-1/2 h-10 px-2 text-xs rounded-md border bg-background">
+                      <select
+                        value={commYear}
+                        onChange={e => {
+                          const y = e.target.value;
+                          setCommYear(y);
+                          if (commEmpId) autoFetchRepPerformance(commEmpId, commMonth, y);
+                        }}
+                        className="w-1/2 h-10 px-2 text-xs rounded-md border bg-background"
+                      >
+                        <option value="2025">2025</option>
                         <option value="2026">2026</option>
                         <option value="2027">2027</option>
                       </select>

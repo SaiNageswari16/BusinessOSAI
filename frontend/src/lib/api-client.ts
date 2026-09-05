@@ -184,6 +184,10 @@ export interface Branch {
   name: string;
   manager_user_id: string | null;
   address: string | null;
+  district: string | null;
+  district_code: string | null;
+  region_name: string | null;
+  zone_name: string | null;
   city: string | null;
   state: string | null;
   country: string | null;
@@ -192,6 +196,10 @@ export interface Branch {
   has_warehouse: boolean;
   working_hours: string | null;
   opening_date: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geofence_radius_meters: number | null;
+  enforce_geofence: boolean | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -1337,6 +1345,21 @@ export const payrollApi = {
     }>("GET", "/hrms/payroll/commission-slabs"),
   saveCommissionSlabPlan: (data: any) =>
     request<{ message: string }>("PUT", "/hrms/payroll/commission-slabs", data),
+  getRepPerformance: (employeeId: string, month = 7, year = 2026) =>
+    request<{
+      employee_id: string;
+      employee_name: string;
+      employee_code: string;
+      period_month: number;
+      period_year: number;
+      target_quota: number;
+      achieved_volume: number;
+      crm_revenue: number;
+      crm_deals_count: number;
+      pos_revenue: number;
+      pos_tx_count: number;
+      summary: string;
+    }>("GET", `/hrms/payroll/rep-performance/${employeeId}`, undefined, { month, year }),
 
   getAttendanceSheet: (month = 7, year = 2026) =>
     request<{ month: number; year: number; days_in_month: number; total_employees: number; records: any[] }>(
@@ -3339,6 +3362,8 @@ export interface NotificationSettings {
 export const liveNotificationsApi = {
   list: () => request<LiveNotification[]>("GET", "/system/notifications/live"),
   readAll: () => request<{ message: string }>("POST", "/system/notifications/read-all"),
+  markAsRead: (id: string) => request<{ message: string; id: string }>("PATCH", `/system/notifications/${id}/read`),
+  delete: (id: string) => request<{ message: string; id: string }>("DELETE", `/system/notifications/${id}`),
   getSettings: () => request<NotificationSettings>("GET", "/system/notifications/settings"),
   updateSettings: (data: NotificationSettings) => request<{ message: string; settings: NotificationSettings }>("PUT", "/system/notifications/settings", data),
 };
