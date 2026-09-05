@@ -47,22 +47,34 @@ export function RibbonNavigation() {
       .filter((group) => !group.permission || hasPermission(group.permission))
       .map((group) => {
         const filteredItems = group.items
-          .filter((item) => {
-            if (item.permission && !hasPermission(item.permission)) {
-              if (item.subItems && item.subItems.some((s) => !s.permission || hasPermission(s.permission))) {
-                return true;
-              }
-              return false;
-            }
-            return true;
-          })
           .map((item) => {
-            if (!item.subItems) return item;
-            return {
-              ...item,
-              subItems: item.subItems.filter((s) => !s.permission || hasPermission(s.permission)),
-            };
-          });
+            const itemPerm = item.permission || group.permission;
+
+            if (item.subItems && item.subItems.length > 0) {
+              const filteredSubItems = item.subItems.filter((s) => {
+                const subPerm = s.permission || item.permission || group.permission;
+                return !subPerm || hasPermission(subPerm);
+              });
+
+              if (filteredSubItems.length === 0) {
+                return null;
+              }
+
+              return {
+                ...item,
+                subItems: filteredSubItems,
+              };
+            }
+
+            // No subItems, check item permission
+            if (itemPerm && !hasPermission(itemPerm)) {
+              return null;
+            }
+
+            return item;
+          })
+          .filter((item): item is NavItem => item !== null);
+
         return {
           ...group,
           items: filteredItems,
@@ -82,7 +94,8 @@ export function RibbonNavigation() {
       if (itPath === currentPath) return true;
       return it.subItems?.some(sub => sub.to.split("?")[0] === currentPath);
     })
-  ) || visibleNav.find(g => g.group === "Core ERP") || visibleNav[0] || nav[0];
+  ) || visibleNav[0] || nav[0];
+
 
   let activeI: NavItem | undefined;
   let activeS: any;

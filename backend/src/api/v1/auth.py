@@ -102,16 +102,27 @@ async def _build_token_response(
             active_role_id = None
 
     for user_role in user_roles:
+        role_perms = [
+            rp.permission.code
+            for rp in (user_role.role.role_permissions if user_role.role and user_role.role.role_permissions else [])
+            if rp.permission and rp.permission.code
+        ]
         role_summaries.append(
-            RoleSummary(id=user_role.role.id, name=user_role.role.name, is_default=user_role.is_default)
+            RoleSummary(
+                id=user_role.role.id,
+                name=user_role.role.name,
+                is_default=user_role.is_default,
+                permissions=role_perms,
+            )
         )
         if active_role_id:
             if user_role.role.id == active_role_id:
-                for rp in user_role.role.role_permissions:
-                    permissions.add(rp.permission.code)
+                for code in role_perms:
+                    permissions.add(code)
         else:
-            for rp in user_role.role.role_permissions:
-                permissions.add(rp.permission.code)
+            for code in role_perms:
+                permissions.add(code)
+
 
     access_token = create_access_token(
         subject=str(user.id),
@@ -583,11 +594,24 @@ async def get_me(
 ):
     result = await db.execute(
         select(UserRole)
-        .options(selectinload(UserRole.role))
+        .options(
+            selectinload(UserRole.role)
+            .selectinload(Role.role_permissions)
+            .selectinload(RolePermission.permission)
+        )
         .where(UserRole.user_id == ctx.user.id)
     )
     roles = [
-        RoleSummary(id=ur.role.id, name=ur.role.name, is_default=ur.is_default)
+        RoleSummary(
+            id=ur.role.id,
+            name=ur.role.name,
+            is_default=ur.is_default,
+            permissions=[
+                rp.permission.code
+                for rp in (ur.role.role_permissions if ur.role and ur.role.role_permissions else [])
+                if rp.permission and rp.permission.code
+            ],
+        )
         for ur in result.scalars().all()
     ]
     is_god = bool(

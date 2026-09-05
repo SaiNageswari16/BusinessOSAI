@@ -54,6 +54,8 @@ class RoleSummary(ORMModel):
     id: uuid.UUID
     name: str
     is_default: bool = False
+    permissions: list[str] = Field(default_factory=list)
+
 
 
 class UserMeResponse(ORMModel):

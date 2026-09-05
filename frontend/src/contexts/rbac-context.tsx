@@ -49,20 +49,28 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // hasPermission uses the flat permissions list on the user (aggregated across all roles by /auth/me)
+  // hasPermission uses active role permissions or user permissions
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
 
-    // 1. Platform Admins / Tenant Owners / Super Admins bypass all module/permission restrictions
-    const isSuperAdminRole = Boolean(
-      user.roles?.some((r) => {
-        const name = (r.name || "").toLowerCase();
-        return name.includes("admin") || name.includes("owner");
-      }) ||
-      user.permissions?.some((p) => ["all", "*:*", "admin", "super_admin", "manage:all", "manage:erp"].includes(p))
-    );
+    // Determine the active permissions list
+    const perms: string[] =
+      activeRole?.permissions && activeRole.permissions.length > 0
+        ? activeRole.permissions
+        : (user.permissions ?? []);
 
-    if (user.isPlatformAdmin || user.isTenantOwner || isSuperAdminRole || user.email === "venaticfungus@gmail.com") {
+    // 1. Super Admin bypass ONLY if active role is specifically Super Admin / Platform Super Admin
+    // or user is platform admin with no active role selected
+    const activeRoleName = (activeRole?.name || "").toLowerCase();
+    const isSuperAdminRole =
+      activeRoleName === "super admin" ||
+      activeRoleName === "platform super admin" ||
+      perms.includes("all") ||
+      perms.includes("*:*") ||
+      perms.includes("super_admin") ||
+      perms.includes("manage:all");
+
+    if (isSuperAdminRole || (user.isPlatformAdmin && !activeRole)) {
       return true;
     }
 
@@ -85,7 +93,6 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     // Module-level entitlement check for client workspaces
     if (user.enabledModules && user.enabledModules.length > 0) {
       const targetMod = getModuleForPermission(permission);
-      // Core ERP, workspace dashboard, and general settings are standard tenant administration
       if (targetMod && targetMod !== "erp" && targetMod !== "dashboard" && targetMod !== "settings") {
         const isEnabled = user.enabledModules.some((m) => {
           if (m === targetMod) return true;
@@ -99,12 +106,26 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Direct match
-    if (user.permissions.includes(permission)) return true;
+    // Direct exact match
+    if (perms.includes(permission)) return true;
 
-    // Module-group virtual permissions — expand to all related permissions in that module
+    // Direct manage:* or edit:* or delete:* matches view:*
+    if (permission.startsWith("view:")) {
+      const resource = permission.replace("view:", "");
+      if (
+        perms.includes(`manage:${resource}`) ||
+        perms.includes(`*:${resource}`) ||
+        perms.includes(`edit:${resource}`) ||
+        perms.includes(`delete:${resource}`) ||
+        perms.includes(`create:${resource}`)
+      ) {
+        return true;
+      }
+    }
+
+    // Module-group umbrella permissions (for topbar icons and module group visibility)
     if (permission === "view:hrms") {
-      return user.permissions.some(
+      return perms.some(
         (p) =>
           p.startsWith("view:hrms") ||
           p.startsWith("manage:hrms") ||
@@ -113,51 +134,57 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
           p.includes("employee") ||
           p.includes("attendance") ||
           p.includes("leave") ||
-          p.includes("payroll")
+          p.includes("payroll") ||
+          p.includes("recruitment") ||
+          p.includes("learning")
       );
     }
     if (permission === "view:erp") {
-      return user.permissions.some(p =>
+      return perms.some(p =>
         p.startsWith("view:erp_") || p.startsWith("manage:erp_") ||
-        p.startsWith("view:accounting_") || p.startsWith("manage:accounting_") ||
-        p.includes("role") || p.includes("user") || p.includes("company") || p.includes("branch")
+        p.startsWith("view:users") || p.startsWith("manage:users") ||
+        p.startsWith("view:roles") || p.startsWith("manage:roles") ||
+        p.startsWith("view:company") || p.startsWith("manage:company") ||
+        p.startsWith("view:branches") || p.startsWith("manage:branches")
       );
     }
     if (permission === "view:crm") {
-      return user.permissions.some(p => p.startsWith("view:crm_") || p.startsWith("manage:crm_") || p.includes("lead") || p.includes("deal") || p.includes("customer"));
+      return perms.some(p => p.startsWith("view:crm") || p.startsWith("manage:crm") || p.includes("lead") || p.includes("deal") || p.includes("quotation") || p.includes("customer"));
     }
     if (permission === "view:pos") {
-      return user.permissions.some(p => p.startsWith("view:pos_") || p.startsWith("manage:pos_") || p.includes("terminal") || p.includes("cashier"));
+      return perms.some(p => p.startsWith("view:pos") || p.startsWith("manage:pos") || p.includes("terminal") || p.includes("cashier"));
     }
     if (permission === "view:inventory") {
-      return user.permissions.some(p => p.startsWith("view:inventory_") || p.startsWith("manage:inventory_") || p.includes("product") || p.includes("stock") || p.includes("warehouse"));
+      return perms.some(p => p.startsWith("view:inventory") || p.startsWith("manage:inventory") || p.startsWith("view:products") || p.startsWith("manage:products") || p.includes("stock") || p.includes("warehouse"));
     }
     if (permission === "view:procurement") {
-      return user.permissions.some(p => p.startsWith("view:procurement_") || p.startsWith("manage:procurement_") || p.includes("purchase") || p.includes("supplier") || p.includes("vendor"));
+      return perms.some(p => p.startsWith("view:procurement") || p.startsWith("manage:procurement") || p.startsWith("view:rfq") || p.includes("purchase") || p.includes("supplier") || p.includes("vendor"));
     }
     if (permission === "view:settings" || permission === "view:system_config" || permission === "manage:system_config" || permission === "manage:system_admin" || permission === "manage:settings") {
-      return user.permissions.some(p =>
+      return perms.some(p =>
         p.includes("system_config") ||
         p.includes("settings") ||
-        p.includes("system") ||
-        p.includes("webhooks") ||
-        p.startsWith("manage:erp") ||
-        p.startsWith("view:erp")
+        p.includes("system_admin") ||
+        p.includes("webhooks")
       );
     }
     if (permission === "view:marketplace") {
-      return user.permissions.some(p => p.startsWith("view:marketplace") || p.startsWith("manage:marketplace"));
+      return perms.some(p => p.startsWith("view:marketplace") || p.startsWith("manage:marketplace"));
     }
     if (permission === "view:accounting") {
-      return user.permissions.some(p => p.startsWith("view:accounting") || p.startsWith("manage:accounting") ||
-        p.startsWith("view:chart_of_accounts") || p.startsWith("view:journal") || p.startsWith("view:bank") ||
-        p.startsWith("view:fixed_assets") || p.startsWith("view:expense_claims") || p.startsWith("view:budgets") || p.startsWith("view:tax"));
+      return perms.some(p =>
+        p.startsWith("view:accounting") || p.startsWith("manage:accounting") ||
+        p.startsWith("view:chart_of_accounts") || p.startsWith("view:journal") ||
+        p.startsWith("view:bank") || p.startsWith("view:fixed_assets") ||
+        p.startsWith("view:expense_claims") || p.startsWith("view:budgets") ||
+        p.startsWith("view:tax") || p.startsWith("view:invoices")
+      );
     }
     if (permission === "view:iot") {
-      return user.permissions.some(p => p.startsWith("view:iot") || p.startsWith("manage:iot"));
+      return perms.some(p => p.startsWith("view:iot") || p.startsWith("manage:iot"));
     }
     if (permission === "view:reports" || permission === "view:analytics" || permission === "manage:analytics" || permission === "manage:reports") {
-      return user.permissions.some(p =>
+      return perms.some(p =>
         p.includes("analytics") ||
         p.includes("report") ||
         p.includes("ai_insights") ||

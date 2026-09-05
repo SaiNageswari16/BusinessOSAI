@@ -194,7 +194,7 @@ router = APIRouter(prefix="/hrms", tags=["HRMS - Payroll"])
 
 @router.get("/salary-structures", response_model=list[SalaryStructureResponse])
 async def list_salary_structures(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms_salary_structure"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     query = (
@@ -290,7 +290,7 @@ async def list_salary_structures(
 async def create_salary_structure(
     payload: SalaryStructureCreate,
     request: Request,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms_salary_structure"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     emp = await db.scalar(

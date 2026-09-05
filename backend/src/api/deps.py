@@ -32,63 +32,49 @@ class CurrentUserContext:
         self.tenant_slug = tenant_slug
 
     def has_permission(self, permission: str) -> bool:
-        # 1. Tenant Owner or System Platform Admin has UNRESTRICTED full control over all things & users
-        if self.is_tenant_owner:
-            return True
-        if self.tenant_slug == "system":
+        # 1. Unrestricted Wildcards
+        if any(p in self.permissions for p in ("all", "*:*", "super_admin", "manage:all")):
             return True
 
-        # 2. Wildcard & Super Admin permissions
-        if any(p in self.permissions for p in ("all", "*:*", "admin", "super_admin", "manage:all", "manage:erp")):
-            return True
-
-        # 3. Direct match
+        # 2. Direct exact match
         if permission in self.permissions:
             return True
 
-        # 4. HRMS permission matching
-        if permission.startswith("view:hrms") or permission == "view:hrms":
-            if any(p.startswith("view:hrms") or p.startswith("manage:hrms") or p.startswith("view:ess") or p.startswith("manage:ess") or p in ("manage:all", "all", "*:*", "super_admin", "admin") for p in self.permissions):
-                return True
-        if permission.startswith("manage:hrms") or permission == "manage:hrms":
-            if any(p in ("manage:hrms", "manage:all", "all", "*:*", "super_admin", "admin") for p in self.permissions):
+        # 3. Direct manage:* matches view:*
+        if permission.startswith("view:"):
+            resource = permission.replace("view:", "")
+            if f"manage:{resource}" in self.permissions or f"*:{resource}" in self.permissions:
                 return True
 
-        # 5. ERP / General Management matching
-        if permission in ("view:erp", "manage:erp"):
+        # 4. Top-level module umbrella matching (only for top-level view:hrms, view:erp, etc.)
+        if permission == "view:hrms":
             return any(
-                p.startswith("manage:erp")
-                or p.startswith("view:erp")
-                or p.startswith("manage:users")
-                or p.startswith("manage:roles")
-                or p.startswith("manage:company")
-                or p.startswith("view:users")
-                or p.startswith("view:roles")
-                or p.startswith("view:company")
-                or p in ("manage:erp", "view:erp", "manage:all", "all", "super_admin")
+                p.startswith("view:hrms")
+                or p.startswith("manage:hrms")
                 for p in self.permissions
             )
 
-        # 6. Action:Resource wildcard fallback (e.g., permission = "create:inventory", user has "manage:inventory")
+
+        if permission in ("view:erp", "manage:erp"):
+            return any(p.startswith("manage:erp") or p.startswith("view:erp") for p in self.permissions)
+
+        # 5. Resource action wildcard fallback
         if ":" in permission:
             action, resource = permission.split(":", 1)
             if f"manage:{resource}" in self.permissions or f"*:{resource}" in self.permissions or f"manage:{action}" in self.permissions:
                 return True
-            # Customer management access (shared between CRM, POS Billing, and Invoicing)
             if resource in ("crm_customers", "customers"):
                 if any(
                     p in self.permissions
                     for p in (
                         "manage:crm_customers", "view:crm_customers", "manage:crm", "view:crm",
                         "manage:pos_terminal", "manage:pos", "view:pos",
-                        "manage:invoices", "view:invoices", "manage:erp", "view:erp"
+                        "manage:invoices", "view:invoices"
                     )
                 ):
                     return True
-
-            # Inventory / catalog / import matching
             if resource in ("inventory", "master_catalog", "products"):
-                if any(p in self.permissions for p in ("manage:inventory", "create:inventory", "update:inventory", "manage:erp", "view:inventory", "inventory")):
+                if any(p in self.permissions for p in ("manage:inventory", "create:inventory", "update:inventory", "view:inventory")):
                     return True
 
         return False
@@ -221,15 +207,42 @@ async def get_current_user_context(
         except ValueError:
             pass
 
-    permissions: set[str] = set(payload.get("permissions", []))
-    # Always merge real-time permissions from all assigned user roles in DB
-    for user_role in user.user_roles:
-        if user_role.role and user_role.role.role_permissions:
-            for role_perm in user_role.role.role_permissions:
-                if role_perm.permission and role_perm.permission.code:
-                    permissions.add(role_perm.permission.code)
+    permissions: set[str] = set()
+    if active_role_id:
+        for user_role in user.user_roles:
+            if user_role.role_id == active_role_id:
+                if user_role.role and user_role.role.role_permissions:
+                    for role_perm in user_role.role.role_permissions:
+                        if role_perm.permission and role_perm.permission.code:
+                            permissions.add(role_perm.permission.code)
+                break
+    else:
+        for user_role in user.user_roles:
+            if user_role.role and user_role.role.role_permissions:
+                for role_perm in user_role.role.role_permissions:
+                    if role_perm.permission and role_perm.permission.code:
+                        permissions.add(role_perm.permission.code)
 
-    if user.is_tenant_owner or is_platform_admin_user:
+    # Check if active role is Super Admin / Platform Admin
+    is_super_admin_active = False
+    if is_platform_admin_user and not active_role_id:
+        is_super_admin_active = True
+    elif active_role_id:
+        for user_role in user.user_roles:
+            if user_role.role_id == active_role_id:
+                role_name = (user_role.role.name or "").lower() if user_role.role else ""
+                if "super admin" in role_name or "platform super admin" in role_name:
+                    is_super_admin_active = True
+                break
+    elif user.is_tenant_owner:
+        has_super_role = any(
+            "super admin" in (ur.role.name or "").lower() or "platform super admin" in (ur.role.name or "").lower()
+            for ur in user.user_roles if ur.role
+        )
+        if has_super_role:
+            is_super_admin_active = True
+
+    if is_super_admin_active:
         permissions.add("all")
         permissions.add("manage:all")
         permissions.add("manage:erp")

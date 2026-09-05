@@ -202,8 +202,9 @@ function HrmsModule() {
     activeTab = params.get("tab") || "";
   }
 
-  // If no tab is explicitly selected in URL, pick the most appropriate landing tab for the user's role
-  if (!activeTab) {
+  // If no tab is explicitly selected in URL or if current tab is not permitted, pick the most appropriate landing tab
+  const requiredPerm = activeTab ? tabPermissions[activeTab] : undefined;
+  if (!activeTab || (requiredPerm && !hasPermission(requiredPerm))) {
     if (hasPermission("view:hrms_employees")) {
       activeTab = "employees";
     } else if (hasPermission("view:ess_attendance")) {
@@ -212,21 +213,17 @@ function HrmsModule() {
       activeTab = "ess_leaves";
     } else if (hasPermission("view:ess_payroll")) {
       activeTab = "ess_payroll";
+    } else if (hasPermission("view:hrms_recruitment")) {
+      activeTab = "job_openings";
+    } else if (hasPermission("view:hrms_learning")) {
+      activeTab = "training";
     } else {
-      // Find first accessible tab
       const firstAccessible = Object.keys(tabPermissions).find((t) => hasPermission(tabPermissions[t]));
-      activeTab = firstAccessible || "ess_attendance";
-    }
-  }
-
-  // Strict RBAC check for the chosen active tab
-  const requiredPerm = tabPermissions[activeTab];
-  if (requiredPerm && !hasPermission(requiredPerm)) {
-    // If regular employee tries to open admin tabs (like employees directory or payroll processing), gracefully route to ESS
-    if (hasPermission("view:ess_attendance")) {
-      activeTab = "ess_attendance";
-    } else {
-      return <Unauthorized />;
+      if (firstAccessible) {
+        activeTab = firstAccessible;
+      } else {
+        return <Unauthorized />;
+      }
     }
   }
 
