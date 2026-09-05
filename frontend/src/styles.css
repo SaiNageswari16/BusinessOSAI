@@ -365,6 +365,7 @@
     print-color-adjust: exact !important;
   }
 
+  /* A4 Invoice Printing */
   body:has(#a4-invoice-portal) > *:not(#a4-invoice-portal),
   body:has(#a4-invoice-portal) #root,
   body.printing-a4-invoice > *:not(#a4-invoice-portal),
@@ -378,14 +379,54 @@
     visibility: visible !important;
     position: static !important;
     width: 100% !important;
-    background: white !important;
-    color: black !important;
+    height: auto !important;
+    background: #ffffff !important;
+    color: #000000 !important;
     z-index: 999999 !important;
     margin: 0 !important;
     padding: 0 !important;
+    overflow: visible !important;
   }
 
-  #a4-invoice-portal * {
+  #a4-invoice-portal > div {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+
+  #a4-invoice-portal .print\:hidden {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  #a4-invoice-printable-area {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 4mm 6mm !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #a4-invoice-printable-area * {
     visibility: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

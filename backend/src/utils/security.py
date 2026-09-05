@@ -393,3 +393,9 @@ async def create_super_admin_role(db: AsyncSession, tenant_id) -> Role:
         db.add(RolePermission(role_id=role.id, permission_id=permission.id))
     await db.flush()
     return role
+
+
+# Backwards compatibility helper
+async def get_current_user(*args, **kwargs):
+    from src.api.deps import get_current_user_context
+    return await get_current_user_context(*args, **kwargs)

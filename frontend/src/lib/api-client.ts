@@ -5261,5 +5261,175 @@ export const fingerprintsApi = {
   delete: (id: string) => request<{ message: string }>("DELETE", `/auth/fingerprints/${id}`),
 };
 
+// ── Unified Payment Gateways (Razorpay, Pine Labs, Stripe, PhonePe) ──────────
+
+export interface PaymentGatewayConfigDTO {
+  id: string;
+  name: string;
+  category: "domestic" | "international" | "pos_terminal" | "offline";
+  description: string;
+  isEnabled: boolean;
+  isTestMode: boolean;
+  credentials: Record<string, any>;
+  supportedMethods: string[];
+  currencies: string[];
+  docUrl?: string;
+  companyId?: string | null;
+}
+
+export interface RazorpayOrderResponse {
+  id: string;
+  entity: string;
+  amount: number;
+  amount_paid: number;
+  amount_due: number;
+  currency: string;
+  receipt?: string;
+  status: string;
+  key_id?: string;
+  notes?: Record<string, any>;
+}
+
+export interface RazorpayVerificationResult {
+  success: boolean;
+  message: string;
+  order_id: string;
+  payment_id: string;
+  status?: string;
+  method?: string;
+  amount?: number;
+  vpa?: string;
+  bank?: string;
+}
+
+export interface PineLabsTransactionResult {
+  status: "APPROVED" | "DECLINED" | "FAILED" | "PENDING";
+  success: boolean;
+  transaction_id: string;
+  terminal_id: string;
+  merchant_id?: string;
+  amount: number;
+  bill_number: string;
+  rrn?: string;
+  auth_code?: string;
+  card_brand?: string;
+  card_last4?: string;
+  card_type?: string;
+  batch_number?: string;
+  message?: string;
+  response_code?: string;
+}
+
+export const paymentsApi = {
+  getGatewayConfigs: (companyId?: string) =>
+    request<PaymentGatewayConfigDTO[]>("GET", "/payments/gateways/config", undefined, companyId ? { company_id: companyId } : undefined),
+
+  saveGatewayConfig: (
+    gatewayId: string,
+    data: {
+      company_id?: string;
+      is_enabled: boolean;
+      is_test_mode: boolean;
+      credentials: Record<string, any>;
+      settings?: Record<string, any>;
+    }
+  ) => request<{ success: boolean; message: string; config_id: string }>("PUT", `/payments/gateways/${gatewayId}/config`, data),
+
+  testGatewayConnection: (gatewayId: string, credentials?: Record<string, any>) =>
+    request<{ success: boolean; message: string; mode?: string; terminal_id?: string }>(
+      "POST",
+      `/payments/gateways/${gatewayId}/test-connection`,
+      credentials ? { credentials } : {}
+    ),
+
+  createRazorpayOrder: (data: {
+    amount: number;
+    currency?: string;
+    receipt?: string;
+    company_id?: string;
+    notes?: Record<string, any>;
+  }) => request<RazorpayOrderResponse>("POST", "/payments/razorpay/create-order", data),
+
+  verifyRazorpayPayment: (data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    company_id?: string;
+  }) => request<RazorpayVerificationResult>("POST", "/payments/razorpay/verify", data),
+
+  createRazorpayLink: (data: {
+    amount: number;
+    description: string;
+    customer_name?: string;
+    customer_phone?: string;
+    customer_email?: string;
+    notify_sms?: boolean;
+    notify_email?: boolean;
+    company_id?: string;
+    notes?: Record<string, any>;
+  }) => request<any>("POST", "/payments/razorpay/create-link", data),
+
+  checkRazorpayOrderStatus: (orderId: string, companyId?: string) =>
+    request<{ order_id: string; status: string; amount_paid: number; is_paid: boolean; captured_payment_id?: string; payment_method?: string }>(
+      "GET",
+      `/payments/razorpay/orders/${orderId}/status`,
+      undefined,
+      companyId ? { company_id: companyId } : undefined
+    ),
+
+  checkRazorpayLinkStatus: (linkId: string, companyId?: string) =>
+    request<{ link_id: string; status: string; is_paid: boolean; payment_id?: string; amount_paid: number }>(
+      "GET",
+      `/payments/razorpay/links/${linkId}/status`,
+      undefined,
+      companyId ? { company_id: companyId } : undefined
+    ),
+
+  createRazorpayQR: (data: {
+    amount: number;
+    receipt?: string;
+    company_id?: string;
+    notes?: Record<string, any>;
+  }) =>
+    request<{
+      id: string;
+      image_url?: string;
+      upi_intent?: string;
+      amount: number;
+      status: string;
+    }>("POST", "/payments/razorpay/create-qr", data),
+
+  checkRazorpayQRStatus: (qrId: string, companyId?: string) =>
+    request<{ qr_id: string; status: string; is_paid: boolean; amount_paid: number }>(
+      "GET",
+      `/payments/razorpay/qr/${qrId}/status`,
+      undefined,
+      companyId ? { company_id: companyId } : undefined
+    ),
+
+  chargePineLabs: (data: {
+    amount: number;
+    bill_number: string;
+    customer_mobile?: string;
+    payment_mode?: "CARD" | "TAP_NFC" | "UPI_QR";
+    terminal_id?: string;
+    company_id?: string;
+  }) => request<PineLabsTransactionResult>("POST", "/payments/pinelabs/charge", data),
+
+  cancelPineLabs: (data: { transaction_id: string; terminal_id?: string; company_id?: string }) =>
+    request<{ success: boolean; message: string }>("POST", "/payments/pinelabs/cancel", data),
+
+  voidPineLabs: (data: { rrn: string; amount: number; terminal_id?: string; company_id?: string }) =>
+    request<{ success: boolean; message: string }>("POST", "/payments/pinelabs/void", data),
+
+  settlePineLabsBatch: (data?: { terminal_id?: string; company_id?: string }) =>
+    request<{ success: boolean; terminal_id?: string; batch_number?: string; settled_at?: string; message: string }>(
+      "POST",
+      "/payments/pinelabs/settle",
+      data || {}
+    ),
+};
+
+
 
 

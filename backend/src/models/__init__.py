@@ -1955,6 +1955,23 @@ class UserFingerprint(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     user: Mapped["User"] = relationship()
 
 
+class PaymentGatewayConfig(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "payment_gateway_configs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "gateway_id", "company_id", name="uq_tenant_gateway_company"),
+    )
+
+    gateway_id: Mapped[str] = mapped_column(String(50), nullable=False)  # "razorpay", "pinelabs", "stripe", "phonepe", etc.
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_test_mode: Mapped[bool] = mapped_column(Boolean, default=True)
+    credentials: Mapped[dict] = mapped_column(JSONB, default=dict)
+    settings: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    tenant: Mapped["Tenant"] = relationship(foreign_keys="PaymentGatewayConfig.tenant_id")
+    company: Mapped["Company | None"] = relationship(foreign_keys="PaymentGatewayConfig.company_id")
+
+
 from .erp import *
 from .inventory import *
 from .procurement import *

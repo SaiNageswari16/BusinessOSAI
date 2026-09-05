@@ -160,6 +160,23 @@ async def init_database() -> None:
         "ALTER TABLE hrms_sales_commissions ADD COLUMN IF NOT EXISTS slab_tier VARCHAR(50);",
         "ALTER TABLE hrms_sales_commissions ADD COLUMN IF NOT EXISTS calculation_mode VARCHAR(30) DEFAULT 'progressive';",
         "ALTER TABLE hrms_sales_commissions ADD COLUMN IF NOT EXISTS slab_breakdown JSONB;",
+
+        # Multi-Tenant Payment Gateway Configurations (Razorpay, Pine Labs, Stripe, etc.)
+        """
+        CREATE TABLE IF NOT EXISTS payment_gateway_configs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+            gateway_id VARCHAR(50) NOT NULL,
+            is_enabled BOOLEAN DEFAULT TRUE,
+            is_test_mode BOOLEAN DEFAULT TRUE,
+            credentials JSONB DEFAULT '{}'::jsonb,
+            settings JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            CONSTRAINT uq_tenant_gateway_company UNIQUE (tenant_id, gateway_id, company_id)
+        );
+        """,
     ]
 
     for stmt in migration_statements:

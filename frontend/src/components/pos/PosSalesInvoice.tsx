@@ -56,6 +56,8 @@ import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
 import { EWayBillModal } from "./EWayBillModal";
+import { RazorpayPOSModal } from "./RazorpayPOSModal";
+import { PineLabsEDCModal } from "./PineLabsEDCModal";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -150,6 +152,19 @@ export function PosSalesInvoice() {
   const [paymentMode, setPaymentMode] = useState("Cash");
   const [splitCash, setSplitCash] = useState<string>("");
   const [splitOnline, setSplitOnline] = useState<string>("");
+  const [isRazorpayModalOpen, setIsRazorpayModalOpen] = useState(false);
+  const [isPineLabsModalOpen, setIsPineLabsModalOpen] = useState(false);
+  const [razorpayMetadata, setRazorpayMetadata] = useState<{
+    paymentId?: string;
+    orderId?: string;
+  } | null>(null);
+  const [edcMetadata, setEdcMetadata] = useState<{
+    rrn?: string;
+    authCode?: string;
+    cardBrand?: string;
+    cardLast4?: string;
+    batchNumber?: string;
+  } | null>(null);
   const [customerWalletBalance, setCustomerWalletBalance] = useState<number>(0);
   const [bankAccounts, setBankAccounts] = useState<BankAccountRecord[]>([]);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>("");
@@ -1701,6 +1716,8 @@ export function PosSalesInvoice() {
     ]);
     setGstType("cgst_sgst");
     setPaymentMode("Cash");
+    setRazorpayMetadata(null);
+    setEdcMetadata(null);
     setPricingMode("Retail");
     setBarcodeInput("");
     const today = new Date().toISOString().split("T")[0];
@@ -1744,6 +1761,14 @@ export function PosSalesInvoice() {
         ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ")
         : (customer?.shipping_address || null);
 
+      const gatewayPaymentNote = razorpayMetadata?.paymentId
+        ? `Razorpay ID: ${razorpayMetadata.paymentId}`
+        : edcMetadata?.rrn
+        ? `PineLabs EDC RRN: ${edcMetadata.rrn}${edcMetadata.cardBrand ? ` (${edcMetadata.cardBrand} *${edcMetadata.cardLast4 || ""})` : ""}`
+        : "";
+
+      const finalNotes = [notes, gatewayPaymentNote, settlingInvoice ? `Settlement for Invoice #${settlingInvoice.invoice_number}` : ""].filter(Boolean).join(" | ");
+
       // Attempt to save to backend API
       const createResult = await invoicesApi.createInvoice({
         invoice_number: invoiceNumber.trim(),
@@ -1763,7 +1788,7 @@ export function PosSalesInvoice() {
         amount_paid: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
         amount_received: paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid,
         split_payments: paymentMode === "Split" ? splitPaymentsPayload : null,
-        notes: notes || (settlingInvoice ? `Settlement for Invoice #${settlingInvoice.invoice_number}` : undefined),
+        notes: finalNotes || undefined,
         lines: items.map((it) => ({
           product_id: it.product_id && isValidUUID(it.product_id) ? it.product_id : null,
           product_name: it.product_name || "Item",
@@ -3192,12 +3217,18 @@ export function PosSalesInvoice() {
                       setAmountReceived(0);
                     } else if (mode === "Wallet") {
                       setAmountReceived(grandTotal);
+                    } else if (mode === "Razorpay") {
+                      setIsRazorpayModalOpen(true);
+                    } else if (mode === "PineLabs") {
+                      setIsPineLabsModalOpen(true);
                     }
                   }}
-                  className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                 >
                   <option value="Cash">Cash</option>
                   <option value="UPI">UPI / QR</option>
+                  <option value="Razorpay">⚡ Razorpay (Dynamic QR / Checkout / SMS)</option>
+                  <option value="PineLabs">💳 Pine Labs EDC (Handheld POS Terminal)</option>
                   <option value="Card">Credit/Debit Card</option>
                   <option value="NetBanking">Net Banking</option>
                   <option value="Wallet">Wallet (B2B / Store Credit)</option>
@@ -3264,6 +3295,78 @@ export function PosSalesInvoice() {
                     onChange={(e) => setAmountReceived(e.target.value ? Number(e.target.value) : "")}
                     className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                   />
+                </div>
+              )}
+            </div>
+
+            {/* Instant Live Payment Gateways Action Bar */}
+            <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-2.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Zap className="size-3.5 text-indigo-600" />
+                  Live Integrated Gateways
+                </span>
+                <span className="text-[9px] font-bold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
+                  Real-time Sync
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRazorpayModalOpen(true)}
+                  className="py-2 px-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-[11px] flex items-center justify-center gap-1.5 shadow-sm shadow-blue-500/20 transition-all cursor-pointer active:scale-98"
+                >
+                  <span className="size-4 rounded bg-white text-blue-600 text-[9px] font-black flex items-center justify-center">
+                    RZP
+                  </span>
+                  <span>Razorpay QR & SMS</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPineLabsModalOpen(true)}
+                  className="py-2 px-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-extrabold text-[11px] flex items-center justify-center gap-1.5 shadow-sm shadow-emerald-500/20 transition-all cursor-pointer active:scale-98"
+                >
+                  <CreditCard className="size-3.5 text-emerald-200" />
+                  <span>Pine Labs EDC POS</span>
+                </button>
+              </div>
+
+              {/* Gateway Captured Verification Badges */}
+              {razorpayMetadata?.paymentId && (
+                <div className="p-2 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between text-xs text-blue-900">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="size-4 text-blue-600 shrink-0" />
+                    <span className="font-bold text-[11px]">
+                      Razorpay Paid: <span className="font-mono">{razorpayMetadata.paymentId}</span>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRazorpayMetadata(null)}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
+              {edcMetadata?.rrn && (
+                <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-emerald-900">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                    <span className="font-bold text-[11px]">
+                      Pine Labs EDC Approved: <span className="font-mono">RRN {edcMetadata.rrn}</span>
+                      {edcMetadata.cardBrand && ` (${edcMetadata.cardBrand} *${edcMetadata.cardLast4 || ""})`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEdcMetadata(null)}
+                    className="text-[10px] text-emerald-600 hover:text-emerald-800 font-bold hover:underline"
+                  >
+                    Clear
+                  </button>
                 </div>
               )}
             </div>
@@ -4714,6 +4817,48 @@ export function PosSalesInvoice() {
           </div>
         </div>
       )}
+
+      {/* Pine Labs Handheld EDC Terminal Modal */}
+      <PineLabsEDCModal
+        isOpen={isPineLabsModalOpen}
+        amount={Number(amountReceived) > 0 ? Number(amountReceived) : grandTotal}
+        billNumber={invoiceNumber || `INV-${Date.now().toString().slice(-6)}`}
+        customerMobile={activeCustomerObj?.phone || activeCustomerObj?.mobile || ""}
+        onClose={() => setIsPineLabsModalOpen(false)}
+        onSuccess={(payData) => {
+          setPaymentMode("PineLabs");
+          setAmountReceived(payData.amount || grandTotal);
+          setEdcMetadata({
+            rrn: payData.rrn,
+            authCode: payData.authCode,
+            cardBrand: payData.cardBrand,
+            cardLast4: payData.cardLast4,
+            batchNumber: payData.batchNumber,
+          });
+          setIsPineLabsModalOpen(false);
+          toast.success(`Payment captured via PineLabs EDC (RRN: ${payData.rrn})`);
+        }}
+      />
+
+      {/* Razorpay Dynamic UPI QR & SMS Link Modal */}
+      <RazorpayPOSModal
+        isOpen={isRazorpayModalOpen}
+        amount={Number(amountReceived) > 0 ? Number(amountReceived) : grandTotal}
+        billNumber={invoiceNumber || `INV-${Date.now().toString().slice(-6)}`}
+        customerMobile={activeCustomerObj?.phone || activeCustomerObj?.mobile || ""}
+        customerName={activeCustomerObj?.name || ""}
+        onClose={() => setIsRazorpayModalOpen(false)}
+        onSuccess={(payData) => {
+          setPaymentMode("Razorpay");
+          setAmountReceived(payData.amount || grandTotal);
+          setRazorpayMetadata({
+            paymentId: payData.paymentId,
+            orderId: payData.orderId,
+          });
+          setIsRazorpayModalOpen(false);
+          toast.success(`Razorpay Payment verified (${payData.paymentId})`);
+        }}
+      />
     </div>
   );
 }

@@ -27,6 +27,7 @@ import { CurrencyManagement } from "../components/erp/CurrencyManagement";
 import { TaxConfiguration } from "../components/erp/TaxConfiguration";
 import { PaymentTerms } from "../components/erp/PaymentTerms";
 import { NumberSeries } from "../components/erp/NumberSeries";
+import { PaymentGateways } from "../components/erp/PaymentGateways";
 import { PermissionMatrix } from "../components/erp/PermissionMatrix";
 import { ApiKeys } from "../components/erp/ApiKeys";
 import { MfaPolicies } from "../components/erp/MfaPolicies";
@@ -66,6 +67,7 @@ const componentMap: Record<string, React.ElementType> = {
   currencies: CurrencyManagement,
   taxes: TaxConfiguration,
   payment_terms: PaymentTerms,
+  payment_gateways: PaymentGateways,
   number_series: NumberSeries,
 
   // Access & Security
@@ -117,6 +119,7 @@ const tabPermissions: Record<string, string> = {
   currencies: "view:currencies",
   taxes: "view:taxes",
   payment_terms: "view:payment_terms",
+  payment_gateways: "view:erp",
   number_series: "view:number_series",
 
   users: "view:users",

@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { PaymentGateways } from "./PaymentGateways";
 import {
   getActiveBillingGst,
   setActiveBillingGst,
@@ -2219,6 +2220,7 @@ export function CompanyManagement() {
                   "Google Reviews & QR",
                   "Branches",
                   "Tax & Finance",
+                  "Payment Gateways",
                   "Documents"
                 ].map((tab) => (
                   <button
@@ -2871,6 +2873,12 @@ export function CompanyManagement() {
                             ))}
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {activeTab === "Payment Gateways" && (
+                      <div className="space-y-4">
+                        <PaymentGateways initialCompanyId={activeCompany.id} />
                       </div>
                     )}
 

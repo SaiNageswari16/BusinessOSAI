@@ -22,9 +22,17 @@ import {
   X,
   Loader2,
   SlidersHorizontal,
+  Building,
+  Smartphone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import {
+  paymentsApi,
+  companiesApi,
+  type PaymentGatewayConfigDTO,
+  type Company,
+} from "@/lib/api-client";
 
 export interface PaymentGatewayConfig {
   id: string;
@@ -56,13 +64,34 @@ const DEFAULT_GATEWAYS: PaymentGatewayConfig[] = [
     isEnabled: true,
     isTestMode: true,
     credentials: {
-      keyId: "rzp_test_9831948194",
-      keySecret: "••••••••••••••••••••••••",
-      webhookSecret: "whsec_••••••••••••••••••••",
+      keyId: "rzp_test_RCEmjSWmFaZJbN",
+      keySecret: "IGLluMDmPXFRpqDd4MZ7PwBB",
+      webhookSecret: "",
     },
     supportedMethods: ["UPI & QR", "Cards (Visa/MC/RuPay)", "Net Banking (50+ banks)", "Wallets", "EMI"],
     currencies: ["INR", "USD", "EUR", "GBP", "AED"],
     docUrl: "https://razorpay.com/docs",
+  },
+  {
+    id: "pinelabs",
+    name: "PineLabs POS / EDC Swiper",
+    category: "pos_terminal",
+    description: "Physical retail EDC integration for POS counter card swipes, contactless tap, and smart UPI soundboxes.",
+    iconBg: "bg-amber-500/10 text-amber-600 border-amber-200 dark:border-amber-900/30",
+    logoText: "PL",
+    logoColor: "bg-amber-600 text-white",
+    badgeText: "Retail Hardware",
+    isEnabled: true,
+    isTestMode: true,
+    credentials: {
+      terminalId: "TID-882194",
+      merchantId: "MID-PINELABS-01",
+      ipAddress: "192.168.1.150",
+      port: "8082",
+    },
+    supportedMethods: ["EMV Chip Cards", "Contactless NFC / Tap to Pay", "Dynamic QR on EDC Screen", "Plutus Cloud"],
+    currencies: ["INR"],
+    docUrl: "https://developer.pinelabs.com",
   },
   {
     id: "stripe",
@@ -73,12 +102,12 @@ const DEFAULT_GATEWAYS: PaymentGatewayConfig[] = [
     logoText: "STP",
     logoColor: "bg-indigo-600 text-white",
     badgeText: "Global & Cards",
-    isEnabled: true,
+    isEnabled: false,
     isTestMode: true,
     credentials: {
-      publishableKey: "pk_test_51Mz••••••••••••••••••••",
-      secretKey: "sk_test_••••••••••••••••••••••••",
-      webhookSecret: "whsec_••••••••••••••••••••",
+      publishableKey: "",
+      secretKey: "",
+      webhookSecret: "",
     },
     supportedMethods: ["Credit/Debit Cards", "Apple Pay", "Google Pay", "SEPA", "iDEAL"],
     currencies: ["USD", "EUR", "GBP", "CAD", "AUD", "INR", "AED", "SAR"],
@@ -105,85 +134,6 @@ const DEFAULT_GATEWAYS: PaymentGatewayConfig[] = [
     docUrl: "https://developer.phonepe.com",
   },
   {
-    id: "paytm",
-    name: "Paytm PG",
-    category: "domestic",
-    description: "All-in-one payment suite with Paytm Payments Bank, Paytm Wallet, and multi-bank UPI stack.",
-    iconBg: "bg-sky-500/10 text-sky-600 border-sky-200 dark:border-sky-900/30",
-    logoText: "PTM",
-    logoColor: "bg-sky-600 text-white",
-    badgeText: "Paytm Ecosystem",
-    isEnabled: false,
-    isTestMode: true,
-    credentials: {
-      merchantId: "",
-      merchantKey: "",
-      website: "WEBSTAGING",
-    },
-    supportedMethods: ["Paytm Wallet", "UPI Intent & Dynamic QR", "Net Banking", "Cards"],
-    currencies: ["INR"],
-    docUrl: "https://developer.paytm.com",
-  },
-  {
-    id: "cashfree",
-    name: "Cashfree Payments",
-    category: "domestic",
-    description: "Payment gateway with instant refunds, payouts, subscriptions, and buy now pay later (BNPL).",
-    iconBg: "bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:border-emerald-900/30",
-    logoText: "CF",
-    logoColor: "bg-emerald-600 text-white",
-    badgeText: "Instant Refunds",
-    isEnabled: false,
-    isTestMode: true,
-    credentials: {
-      appId: "",
-      secretKey: "",
-    },
-    supportedMethods: ["UPI", "Cards", "Net Banking", "Pay Later", "Wallets"],
-    currencies: ["INR", "USD"],
-    docUrl: "https://docs.cashfree.com",
-  },
-  {
-    id: "paypal",
-    name: "PayPal Express",
-    category: "international",
-    description: "Trusted global checkout brand for international buyers with Buyer & Seller Protection.",
-    iconBg: "bg-blue-500/10 text-blue-800 border-blue-200 dark:border-blue-900/30",
-    logoText: "PP",
-    logoColor: "bg-blue-700 text-white",
-    badgeText: "Cross-Border",
-    isEnabled: false,
-    isTestMode: true,
-    credentials: {
-      clientId: "",
-      clientSecret: "",
-    },
-    supportedMethods: ["PayPal Balance", "Linked Credit Cards", "Pay in 4 (Pay Later)"],
-    currencies: ["USD", "EUR", "GBP", "CAD", "AUD"],
-    docUrl: "https://developer.paypal.com",
-  },
-  {
-    id: "pinelabs",
-    name: "PineLabs POS / EDC Swiper",
-    category: "pos_terminal",
-    description: "Physical retail EDC integration for POS counter card swipes, contactless tap, and smart UPI soundboxes.",
-    iconBg: "bg-amber-500/10 text-amber-600 border-amber-200 dark:border-amber-900/30",
-    logoText: "PL",
-    logoColor: "bg-amber-600 text-white",
-    badgeText: "Retail Hardware",
-    isEnabled: true,
-    isTestMode: false,
-    credentials: {
-      terminalId: "TID-882194",
-      merchantId: "MID-PINELABS-01",
-      ipAddress: "192.168.1.150",
-      port: "8082",
-    },
-    supportedMethods: ["EMV Chip Cards", "Contactless NFC / Tap to Pay", "Dynamic QR on EDC Screen", "Plutus Cloud"],
-    currencies: ["INR"],
-    docUrl: "https://developer.pinelabs.com",
-  },
-  {
     id: "cod",
     name: "Cash on Delivery (COD)",
     category: "offline",
@@ -207,15 +157,18 @@ const DEFAULT_GATEWAYS: PaymentGatewayConfig[] = [
 // ─── Modal: Gateway Configuration ───────────────────────────────────────────
 function PaymentGatewayModal({
   gateway,
+  companyId,
   onClose,
   onSave,
 }: {
   gateway: PaymentGatewayConfig;
+  companyId?: string;
   onClose: () => void;
-  onSave: (updated: PaymentGatewayConfig) => void;
+  onSave: (updated: PaymentGatewayConfig) => Promise<void>;
 }) {
   const [form, setForm] = useState<PaymentGatewayConfig>({ ...gateway });
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
 
   const webhookUrl = `https://api.lazymonkeyai.com/api/v1/payments/webhooks/${gateway.id}`;
@@ -227,19 +180,33 @@ function PaymentGatewayModal({
     setTimeout(() => setCopiedWebhook(false), 2000);
   };
 
-  const handleTestConnection = () => {
+  const handleTestConnection = async () => {
     setTesting(true);
-    setTimeout(() => {
+    try {
+      const res = await paymentsApi.testGatewayConnection(gateway.id, form.credentials);
+      if (res.success) {
+        toast.success(res.message || `Handshake with ${gateway.name} API verified successfully!`);
+      } else {
+        toast.error(res.message || `Connection failed to ${gateway.name}`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to test connection.");
+    } finally {
       setTesting(false);
-      toast.success(`Handshake with ${gateway.name} API verified successfully!`);
-    }, 1200);
+    }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(form);
-    toast.success(`${gateway.name} configuration saved successfully`);
-    onClose();
+    setSaving(true);
+    try {
+      await onSave(form);
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save configuration");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -259,9 +226,11 @@ function PaymentGatewayModal({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="font-bold text-base">{form.name} Integration</h2>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  form.isEnabled ? "bg-emerald-500/10 text-emerald-600 border border-emerald-200" : "bg-muted text-muted-foreground"
-                }`}>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    form.isEnabled ? "bg-emerald-500/10 text-emerald-600 border border-emerald-200" : "bg-muted text-muted-foreground"
+                  }`}
+                >
                   {form.isEnabled ? "Active" : "Disabled"}
                 </span>
               </div>
@@ -277,7 +246,7 @@ function PaymentGatewayModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSave} className="p-6 space-y-5 overflow-y-auto text-xs">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto text-xs">
           {/* Environment & Active Toggles */}
           <div className="grid grid-cols-2 gap-3 bg-muted/30 p-4 rounded-xl border border-border/60">
             <div className="flex items-center justify-between">
@@ -309,7 +278,7 @@ function PaymentGatewayModal({
           {/* Credentials Inputs */}
           <div className="space-y-3">
             <h4 className="font-bold text-foreground flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
-              <KeyRound className="size-3.5 text-primary" /> API Credentials & Secret Keys
+              <KeyRound className="size-3.5 text-primary" /> API Credentials & Terminal Settings (Stored in DB)
             </h4>
 
             {Object.keys(form.credentials).map((key) => (
@@ -318,8 +287,8 @@ function PaymentGatewayModal({
                   {key.replace(/([A-Z])/g, " $1")} *
                 </label>
                 <input
-                  type={key.toLowerCase().includes("secret") || key.toLowerCase().includes("key") ? "password" : "text"}
-                  required
+                  type={key.toLowerCase().includes("secret") || key.toLowerCase().includes("token") ? "password" : "text"}
+                  required={key !== "webhookSecret"}
                   value={form.credentials[key] || ""}
                   onChange={(e) =>
                     setForm((p) => ({
@@ -349,54 +318,57 @@ function PaymentGatewayModal({
                 {copiedWebhook ? "Copied" : "Copy URL"}
               </button>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Paste this URL into your {form.name} Merchant Dashboard under Webhooks to receive instant payment success callbacks.
-            </p>
-            <div className="p-2 bg-background border border-border rounded-lg font-mono text-[10px] text-muted-foreground break-all">
+            <div className="p-2.5 bg-background border border-border rounded-lg font-mono text-[11px] text-muted-foreground break-all select-all">
               {webhookUrl}
             </div>
+            <p className="text-[10px] text-muted-foreground">
+              Add this endpoint into your {form.name} Merchant Dashboard to receive real-time webhook events for order status updates.
+            </p>
           </div>
 
-          {/* Supported Methods Badges */}
-          <div>
-            <h4 className="font-bold text-foreground mb-1.5 uppercase tracking-wider text-[11px]">
-              Supported Payment Methods
-            </h4>
-            <div className="flex flex-wrap gap-1.5">
-              {form.supportedMethods.map((m) => (
-                <span key={m} className="px-2.5 py-1 rounded-lg bg-muted/60 text-muted-foreground text-[11px] font-medium border border-border/50">
-                  {m}
-                </span>
-              ))}
-            </div>
-          </div>
+          {/* Documentation Link & Connection Tester */}
+          <div className="flex items-center justify-between pt-2">
+            {form.docUrl && form.docUrl !== "#" ? (
+              <a
+                href={form.docUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+              >
+                Developer Docs & API Setup <ExternalLink className="size-3" />
+              </a>
+            ) : (
+              <div />
+            )}
 
-          {/* Footer Actions */}
-          <div className="flex items-center justify-between pt-4 border-t border-border/60">
             <button
               type="button"
               onClick={handleTestConnection}
               disabled={testing}
-              className="px-3.5 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted transition-colors flex items-center gap-1.5"
+              className="px-3.5 py-1.5 rounded-xl bg-muted hover:bg-muted/80 text-foreground font-semibold flex items-center gap-1.5 transition-colors"
             >
-              {testing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              {testing ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5 text-amber-500" />}
               Test Connection
             </button>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 text-xs font-semibold rounded-xl gradient-brand text-white shadow-md hover:opacity-90 transition-opacity"
-              >
-                Save Settings
-              </button>
-            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/60">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-border hover:bg-muted font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-5 py-2 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-sm"
+            >
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+              Save Credentials to DB
+            </button>
           </div>
         </form>
       </motion.div>
@@ -405,110 +377,178 @@ function PaymentGatewayModal({
 }
 
 // ─── Main Payment Gateways Component ─────────────────────────────────────────
-export function PaymentGateways() {
-  const { currency, formatCurrency } = useCurrency();
-  const [gateways, setGateways] = useState<PaymentGatewayConfig[]>(() => {
-    const saved = localStorage.getItem("bos-payment-gateways");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return DEFAULT_GATEWAYS;
-      }
-    }
-    return DEFAULT_GATEWAYS;
-  });
-
+export function PaymentGateways({ initialCompanyId }: { initialCompanyId?: string } = {}) {
+  const { currency } = useCurrency();
+  const [gateways, setGateways] = useState<PaymentGatewayConfig[]>(DEFAULT_GATEWAYS);
   const [selectedGateway, setSelectedGateway] = useState<PaymentGatewayConfig | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(initialCompanyId || "");
+  const [loading, setLoading] = useState(true);
 
-  const saveGateways = (updatedList: PaymentGatewayConfig[]) => {
-    setGateways(updatedList);
-    localStorage.setItem("bos-payment-gateways", JSON.stringify(updatedList));
-  };
+  // Load Companies and Gateway Configs from DB
+  const loadGateways = async (companyId?: string) => {
+    try {
+      setLoading(true);
+      const effectiveCompanyId = companyId || initialCompanyId || selectedCompanyId;
+      const [compRes, gwRes] = await Promise.all([
+        companiesApi.list(1, 100).catch(() => ({ items: [] })),
+        paymentsApi.getGatewayConfigs(effectiveCompanyId).catch(() => []),
+      ]);
 
-  const handleToggleGateway = (id: string) => {
-    const updated = gateways.map((g) => {
-      if (g.id === id) {
-        const next = !g.isEnabled;
-        toast.success(`${g.name} ${next ? "Enabled" : "Disabled"}`);
-        return { ...g, isEnabled: next };
+      if (compRes.items && compRes.items.length > 0) {
+        setCompanies(compRes.items);
+        if (!selectedCompanyId && !effectiveCompanyId) {
+          setSelectedCompanyId(compRes.items[0].id);
+        }
       }
-      return g;
+
+      if (gwRes && gwRes.length > 0) {
+        // Merge DB configs with display details
+        const merged = DEFAULT_GATEWAYS.map((def) => {
+          const fromDb = gwRes.find((g) => g.id.toLowerCase() === def.id.toLowerCase());
+          if (fromDb) {
+            return {
+              ...def,
+              isEnabled: fromDb.isEnabled,
+              isTestMode: fromDb.isTestMode,
+              credentials: { ...def.credentials, ...fromDb.credentials },
+              supportedMethods: fromDb.supportedMethods?.length ? fromDb.supportedMethods : def.supportedMethods,
+              currencies: fromDb.currencies?.length ? fromDb.currencies : def.currencies,
+            };
+          }
+          return def;
+        });
+        setGateways(merged);
+      }
+    } catch (err: any) {
+      console.error("Failed to load gateway configurations", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadGateways();
+  }, []);
+
+  const handleCompanyChange = (compId: string) => {
+    setSelectedCompanyId(compId);
+    loadGateways(compId);
+  };
+
+  const handleToggleGateway = async (gatewayId: string) => {
+    const gw = gateways.find((g) => g.id === gatewayId);
+    if (!gw) return;
+
+    const newEnabled = !gw.isEnabled;
+    setGateways((prev) =>
+      prev.map((g) => (g.id === gatewayId ? { ...g, isEnabled: newEnabled } : g))
+    );
+
+    try {
+      await paymentsApi.saveGatewayConfig(gatewayId, {
+        company_id: selectedCompanyId || undefined,
+        is_enabled: newEnabled,
+        is_test_mode: gw.isTestMode,
+        credentials: gw.credentials,
+      });
+      toast.success(`${gw.name} is now ${newEnabled ? "Enabled" : "Disabled"}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update gateway status in database");
+    }
+  };
+
+  const handleSaveModal = async (updated: PaymentGatewayConfig) => {
+    await paymentsApi.saveGatewayConfig(updated.id, {
+      company_id: selectedCompanyId || undefined,
+      is_enabled: updated.isEnabled,
+      is_test_mode: updated.isTestMode,
+      credentials: updated.credentials,
     });
-    saveGateways(updated);
+
+    setGateways((prev) =>
+      prev.map((g) => (g.id === updated.id ? updated : g))
+    );
+    toast.success(`${updated.name} credentials saved successfully to database!`);
   };
 
-  const handleSaveModal = (updated: PaymentGatewayConfig) => {
-    const nextList = gateways.map((g) => (g.id === updated.id ? updated : g));
-    saveGateways(nextList);
-    setSelectedGateway(null);
-  };
-
-  const filteredGateways = gateways.filter((g) => {
-    if (filterCategory === "all") return true;
-    return g.category === filterCategory;
-  });
-
-  const activeCount = gateways.filter((g) => g.isEnabled).length;
+  const filteredGateways = gateways.filter(
+    (g) => filterCategory === "all" || g.category === filterCategory
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Payment Gateways & Integrations</h1>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-200 dark:border-emerald-900/30">
-              {activeCount} Active Gateway{activeCount !== 1 ? "s" : ""}
+            <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2.5">
+              <CreditCard className="size-6 text-primary" /> Payment Gateways & POS Terminals
+            </h1>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
+              Multi-Tenant DB
             </span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure online checkout providers, domestic UPI aggregators, global card processors, and retail EDC swipers.
+          <p className="text-xs text-muted-foreground mt-1">
+            Configure online payment processors (Razorpay, Stripe, UPI) and retail handheld counter card machines (Pine Labs EDC) per company.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-card text-xs font-semibold text-muted-foreground">
-            <Globe className="size-3.5 text-primary" />
-            <span>Store Currency: <strong>{currency.code} ({currency.symbol})</strong></span>
+        {/* Company Selector */}
+        {companies.length > 0 && (
+          <div className="flex items-center gap-2 bg-muted/40 p-1.5 rounded-xl border border-border/60">
+            <Building className="size-4 text-muted-foreground ml-2" />
+            <select
+              value={selectedCompanyId}
+              onChange={(e) => handleCompanyChange(e.target.value)}
+              className="bg-transparent text-xs font-bold text-foreground focus:outline-none pr-3 py-1 cursor-pointer"
+            >
+              {companies.map((c) => (
+                <option key={c.id} value={c.id} className="bg-card text-foreground">
+                  {c.name} ({c.code || "HQ"})
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* KPI Stats Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl border border-border/60 bg-card shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Providers</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Processors</span>
             <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
               <Zap className="size-4" />
             </div>
           </div>
-          <h3 className="text-2xl font-extrabold text-foreground mt-2">{activeCount} / {gateways.length}</h3>
-          <p className="text-[11px] font-medium text-emerald-600 mt-0.5">Ready to process</p>
+          <h3 className="text-2xl font-black text-foreground mt-2">
+            {gateways.filter((g) => g.isEnabled).length} <span className="text-xs text-muted-foreground font-normal">/ {gateways.length}</span>
+          </h3>
+          <p className="text-[11px] font-medium text-emerald-600 mt-0.5">Ready to accept payments</p>
         </div>
 
         <div className="p-4 rounded-2xl border border-border/60 bg-card shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Primary Domestic</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Online UPI & Cards</span>
             <div className="size-7 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
-              <CreditCard className="size-4" />
+              <QrCode className="size-4" />
             </div>
           </div>
-          <h3 className="text-base font-extrabold text-foreground mt-2">Razorpay (UPI + Cards)</h3>
-          <p className="text-[11px] font-medium text-blue-600 mt-0.5">Test Mode Active</p>
+          <h3 className="text-base font-extrabold text-foreground mt-2">Razorpay (Active)</h3>
+          <p className="text-[11px] font-medium text-blue-600 mt-0.5">Instant UPI, QR & Cards</p>
         </div>
 
         <div className="p-4 rounded-2xl border border-border/60 bg-card shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Primary Global</span>
-            <div className="size-7 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
-              <Globe className="size-4" />
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Retail POS EDC</span>
+            <div className="size-7 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
+              <Smartphone className="size-4" />
             </div>
           </div>
-          <h3 className="text-base font-extrabold text-foreground mt-2">Stripe Checkout</h3>
-          <p className="text-[11px] font-medium text-indigo-600 mt-0.5">135+ Currencies</p>
+          <h3 className="text-base font-extrabold text-foreground mt-2">Pine Labs Handheld</h3>
+          <p className="text-[11px] font-medium text-amber-600 mt-0.5">Chip, NFC Tap & Soundbox</p>
         </div>
 
         <div className="p-4 rounded-2xl border border-border/60 bg-card shadow-sm">
@@ -518,8 +558,8 @@ export function PaymentGateways() {
               <ShieldCheck className="size-4" />
             </div>
           </div>
-          <h3 className="text-base font-extrabold text-emerald-600 mt-2">PCI-DSS Level 1</h3>
-          <p className="text-[11px] font-medium text-muted-foreground mt-0.5">End-to-End Encrypted</p>
+          <h3 className="text-base font-extrabold text-emerald-600 mt-2">PCI-DSS Compliant</h3>
+          <p className="text-[11px] font-medium text-muted-foreground mt-0.5">Encrypted DB Storage</p>
         </div>
       </div>
 
@@ -529,8 +569,8 @@ export function PaymentGateways() {
           {[
             { id: "all", label: "All Integrations" },
             { id: "domestic", label: "Domestic (UPI & India)" },
+            { id: "pos_terminal", label: "POS Handheld EDC Terminals" },
             { id: "international", label: "Global / Cross-Border" },
-            { id: "pos_terminal", label: "POS EDC Terminals" },
             { id: "offline", label: "Offline & COD" },
           ].map((cat) => (
             <button
@@ -549,100 +589,108 @@ export function PaymentGateways() {
       </div>
 
       {/* Gateways Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredGateways.map((gw, idx) => (
-          <motion.div
-            key={gw.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.03 }}
-            className={`bg-card rounded-2xl border transition-all shadow-sm flex flex-col justify-between overflow-hidden relative group ${
-              gw.isEnabled ? "border-border/80 shadow-md" : "border-border/50 opacity-80"
-            }`}
-          >
-            {/* Card Header */}
-            <div className="p-5 space-y-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`size-11 rounded-xl font-black text-sm flex items-center justify-center shadow-xs ${gw.logoColor}`}>
-                    {gw.logoText}
+      {loading ? (
+        <div className="p-12 text-center text-muted-foreground">
+          <Loader2 className="size-8 animate-spin mx-auto mb-2 text-primary" />
+          <p className="text-xs">Loading payment configurations from database...</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredGateways.map((gw, idx) => (
+            <motion.div
+              key={gw.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.03 }}
+              className={`bg-card rounded-2xl border transition-all shadow-sm flex flex-col justify-between overflow-hidden relative group ${
+                gw.isEnabled ? "border-border/80 shadow-md" : "border-border/50 opacity-80"
+              }`}
+            >
+              {/* Card Header */}
+              <div className="p-5 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`size-11 rounded-xl font-black text-sm flex items-center justify-center shadow-xs ${gw.logoColor}`}>
+                      {gw.logoText}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+                        {gw.name}
+                      </h3>
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        {gw.badgeText}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
-                      {gw.name}
-                    </h3>
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      {gw.badgeText}
-                    </span>
-                  </div>
-                </div>
 
-                {/* Status Badge & Toggle */}
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      gw.isEnabled
-                        ? gw.isTestMode
-                          ? "bg-amber-500/10 text-amber-600 border border-amber-200 dark:border-amber-900/30"
-                          : "bg-emerald-500/10 text-emerald-600 border border-emerald-200 dark:border-emerald-900/30"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {gw.isEnabled ? (gw.isTestMode ? "Test Mode" : "Live") : "Disabled"}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={gw.isEnabled}
-                    onChange={() => handleToggleGateway(gw.id)}
-                    className="size-4 rounded accent-primary cursor-pointer"
-                    title="Enable / Disable Gateway"
-                  />
-                </div>
-              </div>
-
-              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                {gw.description}
-              </p>
-
-              {/* Supported Payment Methods */}
-              <div className="pt-2 border-t border-border/50">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Methods Supported
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {gw.supportedMethods.map((m) => (
+                  {/* Status Badge & Toggle */}
+                  <div className="flex items-center gap-2">
                     <span
-                      key={m}
-                      className="px-2 py-0.5 rounded-md bg-muted/60 text-muted-foreground text-[10px] font-medium border border-border/40"
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        gw.isEnabled
+                          ? gw.isTestMode
+                            ? "bg-amber-500/10 text-amber-600 border border-amber-200 dark:border-amber-900/30"
+                            : "bg-emerald-500/10 text-emerald-600 border border-emerald-200 dark:border-emerald-900/30"
+                          : "bg-muted text-muted-foreground"
+                      }`}
                     >
-                      {m}
+                      {gw.isEnabled ? (gw.isTestMode ? "Test Mode" : "Live") : "Disabled"}
                     </span>
-                  ))}
+                    <input
+                      type="checkbox"
+                      checked={gw.isEnabled}
+                      onChange={() => handleToggleGateway(gw.id)}
+                      className="size-4 rounded accent-primary cursor-pointer"
+                      title="Enable / Disable Gateway"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                  {gw.description}
+                </p>
+
+                {/* Supported Payment Methods */}
+                <div className="pt-2 border-t border-border/50">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    Methods Supported
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {gw.supportedMethods.map((m) => (
+                      <span
+                        key={m}
+                        className="px-2 py-0.5 rounded-md bg-muted/60 text-muted-foreground text-[10px] font-medium border border-border/40"
+                      >
+                        {m}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Card Footer */}
-            <div className="px-5 py-3 border-t border-border/60 bg-muted/20 flex items-center justify-between text-xs">
-              <span className="text-[11px] text-muted-foreground">
-                {gw.currencies.join(", ")}
-              </span>
-              <button
-                onClick={() => setSelectedGateway(gw)}
-                className="px-3.5 py-1.5 rounded-xl border border-border hover:bg-muted font-semibold text-foreground transition-colors flex items-center gap-1.5"
-              >
-                <Settings2 className="size-3.5 text-primary" /> Configure
-              </button>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+              {/* Card Footer */}
+              <div className="px-5 py-3 border-t border-border/60 bg-muted/20 flex items-center justify-between text-xs">
+                <span className="text-[11px] text-muted-foreground">
+                  {gw.currencies.join(", ")}
+                </span>
+                <button
+                  onClick={() => setSelectedGateway(gw)}
+                  className="px-3.5 py-1.5 rounded-xl border border-border hover:bg-muted font-semibold text-foreground transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <Settings2 className="size-3.5 text-primary" /> Configure Credentials
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {/* Gateway Configuration Modal */}
       <AnimatePresence>
         {selectedGateway && (
           <PaymentGatewayModal
             gateway={selectedGateway}
+            companyId={selectedCompanyId}
             onClose={() => setSelectedGateway(null)}
             onSave={handleSaveModal}
           />

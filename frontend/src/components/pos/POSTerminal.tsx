@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Search, ScanBarcode, Store, Clock, User as UserIcon,
   Trash2, X, ChevronRight, Plus, Minus, CreditCard, Banknote, QrCode, Tag, ShoppingCart,
   Info, Camera, Sparkles, Printer, Database, Boxes, LayoutGrid, List as ListIcon, Combine, ArrowRightLeft, ArrowLeft,
-  Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus, Percent, CheckCircle2
+  Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus, Percent, CheckCircle2, Loader2
 } from "lucide-react";
 import { posApi, inventoryApi, crmApi, invoicesApi, crmWalletApi, procurementApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -24,6 +24,8 @@ import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
 import { useTenant } from "../../contexts/tenant-context";
+import { PineLabsEDCModal } from "./PineLabsEDCModal";
+import { RazorpayPOSModal } from "./RazorpayPOSModal";
 
 export class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -91,6 +93,11 @@ function PosTerminalInner() {
 
   // Free Quantity / Promotional Schemes State
   const [freeItems, setFreeItems] = useState<FreeQtyItem[]>([]);
+
+  // Hardware POS EDC & Online Gateways State
+  const [isPineLabsModalOpen, setIsPineLabsModalOpen] = useState(false);
+  const [isRazorpayModalOpen, setIsRazorpayModalOpen] = useState(false);
+  const [edcMetadata, setEdcMetadata] = useState<{ rrn?: string; authCode?: string; cardBrand?: string; cardLast4?: string; batchNumber?: string } | null>(null);
 
   // Pincode Lookup Hook
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
@@ -257,6 +264,10 @@ function PosTerminalInner() {
   const [heldBillsList, setHeldBillsList] = useState<any[]>([]);
   const [isLoadingHeldBills, setIsLoadingHeldBills] = useState(false);
   const [heldBillsCount, setHeldBillsCount] = useState(0);
+
+  // Strict Duplicate Checkout Protection Lock
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const isProcessingCheckoutRef = useRef(false);
 
   useEffect(() => {
     if (!selectedCustomer || selectedCustomer.id === 'walk-in' || selectedCustomer.id === 'WALK-IN' || !selectedCustomer.id) {
@@ -920,6 +931,11 @@ function PosTerminalInner() {
   const total = Math.max(0, grossTotal - afterTaxDiscount) + previousDueToAdd + posAdditionalChargesTotal;
 
   const handleCheckout = async () => {
+    if (isProcessingCheckoutRef.current || isCheckingOut) return;
+    if (cart.length === 0) {
+      toast.error("Cart is empty.");
+      return;
+    }
     if (paymentMethod === 'Split') {
       setSplitPaymentModalOpen(true);
       return;
@@ -953,7 +969,7 @@ function PosTerminalInner() {
         alert(`Insufficient Wallet Balance (${formatCurrency(selectedCustomer.wallet || 0)} available).`);
         return;
       }
-      executeCheckout([{ payment_method: "wallet", amount: total }]);
+      await executeCheckout([{ payment_method: "wallet", amount: total }]);
     } else {
       await executeCheckout([{ payment_method: paymentMethod.toLowerCase(), amount: total }]);
     }
@@ -1033,12 +1049,23 @@ function PosTerminalInner() {
   };
 
   const executeCheckout = async (paymentsArray: any[]) => {
+    if (isProcessingCheckoutRef.current) {
+      console.warn("[POS] Checkout already in progress, blocking duplicate execution.");
+      return;
+    }
+    if (cart.length === 0) {
+      console.warn("[POS] Cart is empty, blocking checkout.");
+      return;
+    }
+    if (!currentSession) {
+      alert("Please open a register first.");
+      return;
+    }
+
+    isProcessingCheckoutRef.current = true;
+    setIsCheckingOut(true);
+
     try {
-      if (!currentSession) {
-        alert("Please open a register first.");
-        return;
-      }
-      
       const resolvedCart = await resolveCartProvisionalItems(cart);
 
       const payload = {
@@ -1175,6 +1202,11 @@ function PosTerminalInner() {
     } catch (err: any) {
       console.error("Checkout Failed:", err);
       alert("Checkout failed: " + (err.detail || err.message || "Unknown error"));
+    } finally {
+      setIsCheckingOut(false);
+      setTimeout(() => {
+        isProcessingCheckoutRef.current = false;
+      }, 1000);
     }
   };
 
@@ -2628,9 +2660,12 @@ function PosTerminalInner() {
                 <span className="text-xs font-bold uppercase tracking-wider">Cash</span>
               </button>
 
-              {/* Card */}
+              {/* Card (PineLabs EDC) */}
               <button
-                onClick={() => setPaymentMethod('Card')}
+                onClick={() => {
+                  setPaymentMethod('Card');
+                  setIsPineLabsModalOpen(true);
+                }}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 ${
                   paymentMethod === 'Card'
                     ? 'border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-600/30 scale-105'
@@ -2640,12 +2675,18 @@ function PosTerminalInner() {
                 <div className={`p-1 rounded-lg transition-colors ${paymentMethod === 'Card' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'}`}>
                   <CreditCard className="w-4 h-4" />
                 </div>
-                <span className="text-xs font-bold uppercase tracking-wider">Card</span>
+                <div className="text-left">
+                  <span className="text-xs font-bold uppercase tracking-wider block">Card / PineLabs</span>
+                  <span className="text-[9px] opacity-75 font-normal block leading-none">EDC Swiper & NFC</span>
+                </div>
               </button>
 
-              {/* UPI */}
+              {/* Razorpay UPI / QR */}
               <button
-                onClick={() => setPaymentMethod('UPI')}
+                onClick={() => {
+                  setPaymentMethod('UPI');
+                  setIsRazorpayModalOpen(true);
+                }}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 ${
                   paymentMethod === 'UPI'
                     ? 'border-purple-600 bg-purple-600 text-white shadow-md shadow-purple-600/30 scale-105'
@@ -2655,7 +2696,10 @@ function PosTerminalInner() {
                 <div className={`p-1 rounded-lg transition-colors ${paymentMethod === 'UPI' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-700'}`}>
                   <QrCode className="w-4 h-4" />
                 </div>
-                <span className="text-xs font-bold uppercase tracking-wider">UPI</span>
+                <div className="text-left">
+                  <span className="text-xs font-bold uppercase tracking-wider block">Razorpay UPI</span>
+                  <span className="text-[9px] opacity-75 font-normal block leading-none">Smart QR / SMS</span>
+                </div>
               </button>
 
               {/* Wallet */}
@@ -2732,10 +2776,18 @@ function PosTerminalInner() {
             </div>
             <button
               onClick={handleCheckout}
-              disabled={cart.length === 0 || !paymentMethod}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/70 disabled:text-white/90 disabled:cursor-not-allowed text-white font-bold px-7 py-3.5 rounded-2xl shadow-lg shadow-blue-600/30 hover:shadow-blue-600/40 transition-all uppercase tracking-wider text-xs sm:text-sm flex items-center justify-center gap-2 group transform active:scale-[0.98]"
+              disabled={cart.length === 0 || !paymentMethod || isCheckingOut}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/70 disabled:text-white/90 disabled:cursor-not-allowed text-white font-bold px-7 py-3.5 rounded-2xl shadow-lg shadow-blue-600/30 hover:shadow-blue-600/40 transition-all uppercase tracking-wider text-xs sm:text-sm flex items-center justify-center gap-2 group transform active:scale-[0.98] cursor-pointer"
             >
-              Complete Payment <ChevronRight className="w-4 h-4 text-white group-hover:translate-x-1 transition-transform" />
+              {isCheckingOut ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" /> Processing...
+                </>
+              ) : (
+                <>
+                  Complete Payment <ChevronRight className="w-4 h-4 text-white group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -3583,6 +3635,44 @@ function PosTerminalInner() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Pine Labs Handheld EDC Card Terminal Modal */}
+      <PineLabsEDCModal
+        isOpen={isPineLabsModalOpen}
+        amount={total}
+        billNumber={`POS-${Date.now().toString().slice(-6)}`}
+        customerMobile={selectedCustomer?.phone}
+        onClose={() => setIsPineLabsModalOpen(false)}
+        onSuccess={(payData) => {
+          setPaymentMethod(payData.paymentMethod);
+          setEdcMetadata({
+            rrn: payData.rrn,
+            authCode: payData.authCode,
+            cardBrand: payData.cardBrand,
+            cardLast4: payData.cardLast4,
+            batchNumber: payData.batchNumber,
+          });
+          setIsPineLabsModalOpen(false);
+          toast.success(`Payment captured via PineLabs EDC (RRN: ${payData.rrn})`);
+          executeCheckout([{ payment_method: "card", amount: total }]);
+        }}
+      />
+
+      {/* Razorpay Dynamic UPI QR & SMS Link Modal */}
+      <RazorpayPOSModal
+        isOpen={isRazorpayModalOpen}
+        amount={total}
+        billNumber={`POS-${Date.now().toString().slice(-6)}`}
+        customerMobile={selectedCustomer?.phone}
+        customerName={selectedCustomer?.name}
+        onClose={() => setIsRazorpayModalOpen(false)}
+        onSuccess={(payData) => {
+          setPaymentMethod("UPI");
+          setIsRazorpayModalOpen(false);
+          toast.success(`Razorpay Payment verified (${payData.paymentId})`);
+          executeCheckout([{ payment_method: "online", amount: total }]);
+        }}
+      />
 
       {/* Active Checkout Thermal Printer Portal */}
       <ThermalReceiptPrinter bill={completedCheckoutBill} />

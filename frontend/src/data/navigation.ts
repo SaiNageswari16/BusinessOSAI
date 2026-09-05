@@ -65,6 +65,7 @@ export const nav: NavGroup[] = [
           { to: "/erp?tab=currencies", label: "Currency Management", icon: Calculator },
           { to: "/erp?tab=taxes", label: "Tax Configuration", icon: Calculator },
           { to: "/erp?tab=payment_terms", label: "Payment Terms", icon: CreditCard },
+          { to: "/erp?tab=payment_gateways", label: "Payment Gateways", icon: CreditCard },
           { to: "/erp?tab=number_series", label: "Number Series", icon: Calculator },
         ]
       },

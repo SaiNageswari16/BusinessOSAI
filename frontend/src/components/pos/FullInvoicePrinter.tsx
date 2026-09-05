@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer, X } from 'lucide-react';
+import { Printer, X, Download, FileText, CheckCircle2 } from 'lucide-react';
 import { getActiveInvoicePrintTemplate, getActiveBillingGst, getTenantTemplatesKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
@@ -388,18 +388,113 @@ export function FullInvoicePrinter({
   const igstAmount = invoice.igst_amount !== undefined ? Number(invoice.igst_amount) : totalTax;
 
   const handlePrint = () => {
-    document.body.classList.add('printing-a4-invoice');
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    const container = printContainerRef.current;
+    if (typeof window === 'undefined' || !container) {
+      window.print();
+      return;
+    }
+
+    try {
+      // Create isolated printing iframe to prevent background/modal overlay blanking
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.setAttribute('title', 'A4 Invoice Print Frame');
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document || iframe.contentDocument;
+      if (!doc) {
+        window.print();
+        return;
+      }
+
+      const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+        .map((el) => el.outerHTML)
+        .join('\n');
+
+      const invoiceHtml = container.outerHTML;
+
+      doc.open();
+      doc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Invoice - ${invoice?.invoice_number || 'Tax Invoice'}</title>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+            ${styles}
+            <style>
+              @page {
+                size: A4 portrait !important;
+                margin: 6mm 8mm 6mm 8mm !important;
+              }
+              * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                box-sizing: border-box !important;
+              }
+              html, body {
+                width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                overflow: visible !important;
+              }
+              #a4-invoice-printable-area {
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 auto !important;
+                padding: 4mm 6mm !important;
+                background: #ffffff !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                overflow: visible !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+              }
+            </style>
+          </head>
+          <body>
+            ${invoiceHtml}
+          </body>
+        </html>
+      `);
+      doc.close();
+
+      setTimeout(() => {
         try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (e) {
+          console.error("Iframe print error, falling back to window.print:", e);
+          document.body.classList.add('printing-a4-invoice');
           window.print();
+          setTimeout(() => document.body.classList.remove('printing-a4-invoice'), 1500);
         } finally {
           setTimeout(() => {
-            document.body.classList.remove('printing-a4-invoice');
-          }, 1500);
+            try {
+              if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+              }
+            } catch {}
+          }, 3000);
         }
-      });
-    });
+      }, 350);
+    } catch (e) {
+      console.warn("Iframe initialization failed, using standard window.print:", e);
+      document.body.classList.add('printing-a4-invoice');
+      window.print();
+      setTimeout(() => document.body.classList.remove('printing-a4-invoice'), 1500);
+    }
   };
 
   const modalJSX = (
@@ -407,10 +502,13 @@ export function FullInvoicePrinter({
       <style>{`
         @media print {
           @page { size: A4 portrait !important; margin: 6mm 8mm 6mm 8mm !important; }
-          html, body { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          html, body { width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           body > *:not(#a4-invoice-portal), #root, header, nav, footer, .no-print, [data-no-print] { display: none !important; visibility: hidden !important; }
-          #a4-invoice-portal { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: transparent !important; }
-          #a4-invoice-printable-area { width: 100% !important; max-width: 100% !important; height: auto !important; margin: 0 !important; padding: 4mm 6mm !important; background: #ffffff !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; page-break-inside: avoid !important; break-inside: avoid !important; }
+          #a4-invoice-portal { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; }
+          #a4-invoice-portal > div { display: block !important; position: static !important; width: 100% !important; max-width: none !important; max-height: none !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; border: none !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
+          #a4-invoice-portal .print\\:hidden { display: none !important; visibility: hidden !important; }
+          #a4-invoice-printable-area { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; max-width: 100% !important; height: auto !important; margin: 0 !important; padding: 4mm 6mm !important; background: #ffffff !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; page-break-inside: avoid !important; break-inside: avoid !important; }
+          #a4-invoice-printable-area * { visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
 
@@ -460,12 +558,13 @@ export function FullInvoicePrinter({
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <button
                 onClick={handlePrint}
                 className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-600/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+                title="Open system print dialog to Save as PDF or print to physical A4 printer"
               >
-                <Printer className="w-4 h-4" /> Save / Print
+                <Printer className="w-4 h-4" /> Save as PDF / Print
               </button>
               <button
                 onClick={onClose}

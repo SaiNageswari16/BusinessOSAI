@@ -194,6 +194,10 @@ api_router.include_router(copilot_router)
 from src.api.v1.utils import router as utils_router
 api_router.include_router(utils_router)
 
+# Unified Payment Gateways (Razorpay, Pine Labs, Stripe, PhonePe)
+from src.api.v1.payments import router as payments_router
+api_router.include_router(payments_router)
+
 
 # Universal Static / Uploaded Image Serving via API Prefix
 from fastapi.responses import FileResponse, Response
