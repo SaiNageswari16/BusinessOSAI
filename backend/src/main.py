@@ -195,6 +195,41 @@ async def serve_vault_fallback(file_path: str):
         except Exception as e:
             logger.warning(f"On-the-fly PDF generation skipped for {file_path}: {e}")
 
+    # On-the-fly generation for payslips if file not yet cached on disk
+    if "payslips" in file_path and file_path.endswith(".pdf"):
+        slip_id_raw = os.path.basename(file_path).replace(".pdf", "").strip()
+        try:
+            import uuid
+            from src.models import Payslip, Employee, Tenant, Designation, Department
+            from src.database.session import get_db
+            from src.api.v1.hrms.payroll import generate_payslip_pdf
+            
+            slip_uuid = uuid.UUID(slip_id_raw)
+            async for db in get_db():
+                slip = await db.get(Payslip, slip_uuid)
+                if slip:
+                    emp = await db.get(Employee, slip.employee_id)
+                    tenant = await db.get(Tenant, slip.tenant_id) if slip.tenant_id else None
+                    comp_name = tenant.name if tenant else "BusinessOS Enterprise"
+                    desig_name = ""
+                    dept_name = ""
+                    if emp:
+                        if emp.designation_id:
+                            desig = await db.get(Designation, emp.designation_id)
+                            if desig:
+                                desig_name = desig.title
+                        if emp.department_id:
+                            dept = await db.get(Department, emp.department_id)
+                            if dept:
+                                dept_name = dept.name
+                    
+                    pdf_bytes = generate_payslip_pdf(slip, emp, comp_name, desig_name, dept_name)
+                    vault_p.parent.mkdir(parents=True, exist_ok=True)
+                    vault_p.write_bytes(pdf_bytes)
+                    return Response(content=pdf_bytes, media_type="application/pdf")
+        except Exception as e:
+            logger.warning(f"On-the-fly payslip PDF generation skipped for {file_path}: {e}")
+
     raise HTTPException(status_code=404, detail="File not found in compliance vault")
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

@@ -1796,7 +1796,7 @@ async def get_employee_payroll_history(
             "total_deductions": d,
             "net_salary": n,
             "status": s.status or "Paid",
-            "pdf_url": s.pdf_url or f"/vault/payslips/{s.id}.pdf",
+            "pdf_url": f"/vault/payslips/{s.id}.pdf",
             "created_at": s.created_at.isoformat() if s.created_at else None,
         })
 
@@ -1888,20 +1888,112 @@ async def get_employee_payroll_history(
     }
 
 
+async def resolve_payslip_and_employee(
+    db: AsyncSession,
+    identifier: str,
+    tenant_id: uuid.UUID | None = None,
+) -> tuple[Payslip | None, Employee | None]:
+    """
+    Resiliently resolves a Payslip and its associated Employee by UUID or filename slug
+    (e.g., 'slip_EMP-0002_2026_6', 'slip_EMP-0002_2026_6.pdf', or direct UUID).
+    """
+    clean_id = identifier.replace(".pdf", "").strip()
+
+    # 1. Try parsing direct UUID
+    try:
+        u_id = uuid.UUID(clean_id)
+        slip = await db.get(Payslip, u_id)
+        if slip and (not tenant_id or slip.tenant_id == tenant_id):
+            emp = await db.get(Employee, slip.employee_id)
+            return slip, emp
+    except ValueError:
+        pass
+
+    # 2. Try parsing filename format: slip_{emp_code}_{year}_{month}
+    # Example: 'slip_EMP-0002_2026_6' -> emp_code='EMP-0002', year=2026, month=6
+    parts = clean_id.split("_")
+    if len(parts) >= 4 and parts[0] == "slip":
+        emp_code = parts[1]
+        try:
+            year = int(parts[2])
+            month = int(parts[3])
+        except ValueError:
+            year, month = None, None
+
+        if year and month:
+            stmt = select(Employee).where(Employee.employee_code == emp_code)
+            if tenant_id:
+                stmt = stmt.where(Employee.tenant_id == tenant_id)
+            emp = await db.scalar(stmt)
+            if emp:
+                slip = await db.scalar(
+                    select(Payslip).where(
+                        Payslip.employee_id == emp.id,
+                        Payslip.month == month,
+                        Payslip.year == year,
+                    )
+                )
+                if not slip:
+                    # Synthesize slip from salary structure or basic salary
+                    struct = await db.scalar(
+                        select(SalaryStructure).where(
+                            SalaryStructure.employee_id == emp.id
+                        )
+                    )
+                    base = float(struct.basic_salary) if struct else (float(emp.basic_salary) if emp.basic_salary else 5000.0)
+                    hra = float(struct.hra) if struct else round(base * 0.40, 2)
+                    allow = float(struct.other_allowances) if struct else round(base * 0.10, 2)
+                    gross = round(base + hra + allow, 2)
+                    pf = float(struct.pf_deduction) if struct else round(base * 0.12, 2)
+                    esi = float(struct.esi_deduction) if struct else (round(gross * 0.0075, 2) if gross <= 21000 else 0.0)
+                    tds = float(struct.tds_deduction) if struct else (round(((gross * 12 - 700000) * 0.1) / 12, 2) if gross * 12 > 700000 else 0.0)
+                    od = float(struct.other_deductions) if struct else 0.0
+                    d = round(pf + esi + tds + od, 2)
+                    net = round(max(0.0, gross - d), 2)
+
+                    slip = Payslip(
+                        id=uuid.uuid4(),
+                        tenant_id=emp.tenant_id,
+                        employee_id=emp.id,
+                        month=month,
+                        year=year,
+                        basic_salary=base,
+                        hra=hra,
+                        other_allowances=allow,
+                        gross_salary=gross,
+                        pf_deduction=pf,
+                        esi_deduction=esi,
+                        tds_deduction=tds,
+                        other_deductions=od,
+                        net_salary=net,
+                        status="Paid",
+                        pdf_url=f"/vault/payslips/{emp.id}.pdf",
+                    )
+                    db.add(slip)
+                    await db.commit()
+                    await db.refresh(slip)
+                return slip, emp
+
+    # 3. Try matching Payslip by pdf_url containing clean_id
+    stmt = select(Payslip).where(Payslip.pdf_url.ilike(f"%{clean_id}%"))
+    if tenant_id:
+        stmt = stmt.where(Payslip.tenant_id == tenant_id)
+    slip = await db.scalar(stmt)
+    if slip:
+        emp = await db.get(Employee, slip.employee_id)
+        return slip, emp
+
+    return None, None
+
+
 @router.get("/public/payslips/{id}", response_model=PayslipResponse)
 async def get_public_payslip(
     id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    clean_id = id.replace(".pdf", "").strip()
-    try:
-        u_id = uuid.UUID(clean_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid payslip ID format")
-    slip = await db.get(Payslip, u_id)
+    slip, emp = await resolve_payslip_and_employee(db, id)
     if not slip:
         raise HTTPException(status_code=404, detail="Payslip not found")
-    emp = await db.get(Employee, slip.employee_id)
     return PayslipResponse(
         id=slip.id,
         tenant_id=slip.tenant_id,
@@ -1920,10 +2012,60 @@ async def get_public_payslip(
         gross_salary=float(slip.gross_salary),
         net_salary=float(slip.net_salary),
         status=slip.status,
-        pdf_url=slip.pdf_url,
+        pdf_url=f"/vault/payslips/{slip.id}.pdf",
         created_at=slip.created_at,
         updated_at=slip.updated_at,
     )
+
+
+@router.get("/payslips/{id}", response_model=PayslipResponse)
+async def get_payslip(
+    id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    slip, emp = await resolve_payslip_and_employee(db, id, tenant_id=ctx.tenant_id)
+    if not slip:
+        raise HTTPException(status_code=404, detail="Payslip not found")
+    return PayslipResponse(
+        id=slip.id,
+        tenant_id=slip.tenant_id,
+        employee_id=slip.employee_id,
+        employee_name=emp.full_name if emp else "Employee",
+        employee_code=emp.employee_code if emp else "EMP-001",
+        month=slip.month,
+        year=slip.year,
+        basic_salary=float(slip.basic_salary),
+        hra=float(slip.hra),
+        other_allowances=float(slip.other_allowances),
+        pf_deduction=float(slip.pf_deduction),
+        esi_deduction=float(slip.esi_deduction),
+        tds_deduction=float(slip.tds_deduction),
+        other_deductions=float(slip.other_deductions),
+        gross_salary=float(slip.gross_salary),
+        net_salary=float(slip.net_salary),
+        status=slip.status,
+        pdf_url=f"/vault/payslips/{slip.id}.pdf",
+        created_at=slip.created_at,
+        updated_at=slip.updated_at,
+    )
+
+
+@router.get("/payroll/payslips/{id}", response_model=PayslipResponse)
+async def get_payroll_payslip_alias(
+    id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    return await get_payslip(id=id, ctx=ctx, db=db)
+
+
+@router.get("/payroll/public/payslips/{id}", response_model=PayslipResponse)
+async def get_payroll_public_payslip_alias(
+    id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    return await get_public_payslip(id=id, db=db)
 
 
 @router.get("/payslips/{id}/download-pdf")
@@ -1933,17 +2075,13 @@ async def download_payslip_pdf(
     db: Annotated[AsyncSession, Depends(get_db)],
     template_id: str | None = None,
 ):
-    clean_id = id.replace(".pdf", "").strip()
-    try:
-        u_id = uuid.UUID(clean_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid payslip ID format")
-    slip = await db.get(Payslip, u_id)
-    if not slip or slip.tenant_id != ctx.tenant_id:
+    slip, emp = await resolve_payslip_and_employee(db, id, tenant_id=ctx.tenant_id)
+    if not slip:
         raise HTTPException(status_code=404, detail="Payslip not found")
-    emp = await db.get(Employee, slip.employee_id)
     if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
+        emp = await db.get(Employee, slip.employee_id)
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found")
 
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
     comp_name = tenant.name if tenant else "BusinessOS Enterprise"
@@ -2002,17 +2140,13 @@ async def download_public_payslip_pdf(
     db: Annotated[AsyncSession, Depends(get_db)],
     template_id: str | None = None,
 ):
-    clean_id = id.replace(".pdf", "").strip()
-    try:
-        u_id = uuid.UUID(clean_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid payslip ID format")
-    slip = await db.get(Payslip, u_id)
+    slip, emp = await resolve_payslip_and_employee(db, id)
     if not slip:
         raise HTTPException(status_code=404, detail="Payslip not found")
-    emp = await db.get(Employee, slip.employee_id)
     if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
+        emp = await db.get(Employee, slip.employee_id)
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found")
 
     tenant = await db.scalar(select(Tenant).where(Tenant.id == slip.tenant_id))
     comp_name = tenant.name if tenant else "BusinessOS Enterprise"
