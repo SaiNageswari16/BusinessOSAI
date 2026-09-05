@@ -355,6 +355,10 @@ class Branch(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     has_warehouse: Mapped[bool] = mapped_column(Boolean, default=False)
     working_hours: Mapped[str | None] = mapped_column(String(100))
     opening_date: Mapped[date | None] = mapped_column(Date)
+    latitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
+    longitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
+    geofence_radius_meters: Mapped[int | None] = mapped_column(Integer, default=500)
+    enforce_geofence: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[EntityStatus] = mapped_column(
         Enum(EntityStatus, name="entity_status", create_constraint=False),
         default=EntityStatus.ACTIVE,
@@ -937,6 +941,8 @@ class AttendanceRecord(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
     method: Mapped[str] = mapped_column(String(30), default="Biometric")  # Biometric|GPS|Face|Manual
     latitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
     longitude: Mapped[float | None] = mapped_column(Numeric(10, 7))
+    is_geofence_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    ip_address: Mapped[str | None] = mapped_column(String(50))
     notes: Mapped[str | None] = mapped_column(Text)
 
     employee: Mapped["Employee"] = relationship()
@@ -1163,6 +1169,9 @@ class SalesCommission(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     achieved_amount: Mapped[float] = mapped_column(Numeric(14, 2), default=0.0)
     commission_rate: Mapped[float] = mapped_column(Numeric(5, 2), default=5.0)
     commission_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    slab_tier: Mapped[str | None] = mapped_column(String(50))
+    calculation_mode: Mapped[str | None] = mapped_column(String(30), default="progressive")  # progressive | tier | flat
+    slab_breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="Approved")  # Pending | Approved | Paid
     notes: Mapped[str | None] = mapped_column(String(255))
 
@@ -1672,11 +1681,14 @@ class LiveNotification(Base, UUIDPrimaryKeyMixin, TenantScopedMixin):
     """Real-time push notifications of system events / submissions."""
     __tablename__ = "live_notifications"
 
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(String(50), default="system")  # crm|hrms|pos|inventory|system
     unread: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User | None"] = relationship()
 
 
 

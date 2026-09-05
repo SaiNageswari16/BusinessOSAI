@@ -1,6 +1,7 @@
 """
 HRMS — Attendance & Devices Endpoints (GPS Check-In, Biometric Devices, Face Logs, Corrections)
 """
+import math
 import uuid
 from datetime import datetime, date, timezone, timedelta
 from typing import Annotated
@@ -13,6 +14,7 @@ from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import (
+    Branch,
     Employee,
     AttendanceRecord,
     BiometricDevice,
@@ -38,6 +40,17 @@ from src.schemas.erp import (
 from src.utils.pagination import PaginatedResponse, paginate
 
 router = APIRouter(prefix="/hrms", tags=["HRMS - Attendance"])
+
+
+def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate the geodesic distance between two coordinates in meters using Haversine formula."""
+    r = 6371000.0  # Earth's radius in meters
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    return r * c
 
 
 # ─── Attendance Stats & Overview ──────────────────────────────────
@@ -130,6 +143,8 @@ async def list_attendance(
                 method=att.method,
                 latitude=float(att.latitude) if att.latitude is not None else None,
                 longitude=float(att.longitude) if att.longitude is not None else None,
+                is_geofence_verified=getattr(att, "is_geofence_verified", False),
+                ip_address=getattr(att, "ip_address", None),
                 notes=att.notes,
                 created_at=att.created_at,
                 updated_at=att.updated_at,
@@ -217,6 +232,66 @@ async def clock_in(
     if existing:
         raise HTTPException(status_code=400, detail="Already clocked in for today")
 
+    # ─── Geofence & GPS Restriction Enforcement ───
+    is_wfh = False
+    if payload.notes and any(w in payload.notes.lower() for w in ("wfh", "remote", "home", "out-of-office")):
+        is_wfh = True
+
+    method_str = (payload.method or emp.punch_method or "Manual").upper()
+    is_gps_punch = "GPS" in method_str or method_str == "OFFICE"
+
+    target_lat: float = 37.7749
+    target_lng: float = -122.4194
+    target_radius: int = 500  # Default 500 meters
+    target_location_name: str = "Corporate HQ (Innovation Campus)"
+    enforce_geofence: bool = True
+
+    if emp.branch_id:
+        branch = await db.scalar(
+            select(Branch).where(Branch.id == emp.branch_id, Branch.tenant_id == ctx.tenant_id)
+        )
+        if branch:
+            target_location_name = branch.name
+            if branch.latitude is not None and branch.longitude is not None:
+                target_lat = float(branch.latitude)
+                target_lng = float(branch.longitude)
+            if branch.geofence_radius_meters is not None:
+                target_radius = int(branch.geofence_radius_meters)
+            if hasattr(branch, "enforce_geofence") and branch.enforce_geofence is not None:
+                enforce_geofence = bool(branch.enforce_geofence)
+
+    is_geofence_verified = False
+    verified_distance: float | None = None
+
+    if is_gps_punch and not is_wfh and enforce_geofence:
+        if payload.latitude is None or payload.longitude is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GPS Clock-In requires active device coordinates. Please enable location permissions in your browser/device settings."
+            )
+
+        verified_distance = calculate_haversine_distance(
+            float(payload.latitude), float(payload.longitude),
+            target_lat, target_lng
+        )
+
+        if verified_distance > target_radius:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"GPS Geofence Restriction: You are {round(verified_distance)}m away from '{target_location_name}'. Permitted check-in radius is {target_radius}m. Please move within the radius or apply for WFH approval."
+            )
+        is_geofence_verified = True
+    elif is_wfh:
+        is_geofence_verified = True
+
+    verification_note = ""
+    if verified_distance is not None:
+        verification_note = f"GPS Geofence Verified ({round(verified_distance)}m from {target_location_name})"
+    elif is_wfh:
+        verification_note = "WFH Remote Check-In (Location Captured)"
+
+    final_notes = f"{verification_note} • {payload.notes}" if payload.notes and verification_note else (verification_note or payload.notes)
+
     now_tz = datetime.now(timezone.utc)
     att = AttendanceRecord(
         tenant_id=ctx.tenant_id,
@@ -224,10 +299,12 @@ async def clock_in(
         date=today,
         check_in=now_tz,
         status="Present",
-        method=payload.method,
+        method=payload.method or emp.punch_method or "GPS",
         latitude=payload.latitude,
         longitude=payload.longitude,
-        notes=payload.notes,
+        is_geofence_verified=is_geofence_verified,
+        ip_address=request.client.host if request.client else None,
+        notes=final_notes,
     )
     db.add(att)
     await db.flush()
@@ -235,7 +312,14 @@ async def clock_in(
     await write_audit_log(
         db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
         action="check_in", entity_type="attendance_record", entity_id=att.id,
-        new_values={"check_in": now_tz.isoformat()},
+        new_values={
+            "check_in": now_tz.isoformat(),
+            "method": att.method,
+            "latitude": float(att.latitude) if att.latitude else None,
+            "longitude": float(att.longitude) if att.longitude else None,
+            "is_geofence_verified": is_geofence_verified,
+            "distance_meters": round(verified_distance, 1) if verified_distance is not None else None,
+        },
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
@@ -290,14 +374,18 @@ async def clock_out(
     else:
         att.hours_worked = 8.0
 
-    att.latitude = payload.latitude or att.latitude
-    att.longitude = payload.longitude or att.longitude
-    att.notes = payload.notes or att.notes
+    if payload.latitude is not None:
+        att.latitude = payload.latitude
+    if payload.longitude is not None:
+        att.longitude = payload.longitude
+    if payload.notes:
+        att.notes = f"{att.notes} | Out: {payload.notes}" if att.notes else payload.notes
+    att.ip_address = request.client.host if request.client else att.ip_address
 
     await write_audit_log(
         db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
         action="check_out", entity_type="attendance_record", entity_id=att.id,
-        new_values={"check_out": now_tz.isoformat(), "hours_worked": att.hours_worked},
+        new_values={"check_out": now_tz.isoformat(), "hours_worked": float(att.hours_worked)},
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )

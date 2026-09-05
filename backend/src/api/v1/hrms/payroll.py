@@ -2343,8 +2343,95 @@ async def update_bonus_status(
 
 
 # -------------------------------------------------------------------------
-# SALES COMMISSIONS & TARGETS API
+# SALES COMMISSIONS & SLAB CALCULATOR API
 # -------------------------------------------------------------------------
+
+def calculate_slab_commission(
+    achieved_amount: float,
+    target_amount: float = 0.0,
+    calculation_mode: str = "progressive",
+    custom_rate: float = 5.0,
+) -> tuple[float, str, dict]:
+    """
+    Computes commission based on Slab tiers:
+    - progressive (marginal tier brackets: 0-10k@2%, 10k-50k@5%, 50k-100k@8%, >100k@12%)
+    - tier (entire volume computed at the single highest achieved tier rate)
+    - flat (flat custom_rate %)
+    """
+    slabs = [
+        {"tier": "Slab 1 (Base)", "min": 0.0, "max": 10000.0, "rate": 2.0},
+        {"tier": "Slab 2 (Silver)", "min": 10000.0, "max": 50000.0, "rate": 5.0},
+        {"tier": "Slab 3 (Gold)", "min": 50000.0, "max": 100000.0, "rate": 8.0},
+        {"tier": "Slab 4 (Platinum)", "min": 100000.0, "max": float("inf"), "rate": 12.0},
+    ]
+
+    breakdown = []
+    total_commission = 0.0
+    active_tier = "Slab 1 (Base)"
+
+    if calculation_mode == "flat":
+        total_commission = round((achieved_amount * custom_rate) / 100.0, 2)
+        active_tier = f"Flat ({custom_rate}%)"
+        breakdown.append({
+            "tier": active_tier,
+            "min": 0.0,
+            "max": "Unlimited",
+            "applicable_amount": achieved_amount,
+            "rate": custom_rate,
+            "payout": total_commission,
+        })
+    elif calculation_mode == "tier":
+        highest_slab = slabs[0]
+        for s in slabs:
+            if achieved_amount > s["min"]:
+                highest_slab = s
+        rate = highest_slab["rate"]
+        active_tier = highest_slab["tier"]
+        total_commission = round((achieved_amount * rate) / 100.0, 2)
+        breakdown.append({
+            "tier": active_tier,
+            "min": highest_slab["min"],
+            "max": highest_slab["max"] if highest_slab["max"] != float("inf") else "Above 100k",
+            "applicable_amount": achieved_amount,
+            "rate": rate,
+            "payout": total_commission,
+        })
+    else:  # progressive (marginal tier brackets)
+        remaining = achieved_amount
+        for s in slabs:
+            if remaining <= 0:
+                break
+            slab_capacity = s["max"] - s["min"]
+            taxable_in_slab = min(remaining, slab_capacity)
+            slab_payout = round((taxable_in_slab * s["rate"]) / 100.0, 2)
+            total_commission += slab_payout
+            breakdown.append({
+                "tier": s["tier"],
+                "min": s["min"],
+                "max": s["max"] if s["max"] != float("inf") else "Above 100k",
+                "applicable_amount": taxable_in_slab,
+                "rate": s["rate"],
+                "payout": slab_payout,
+            })
+            active_tier = s["tier"]
+            remaining -= taxable_in_slab
+
+    # Target overachievement milestone bonus ($250 if 100%+ target met)
+    bonus = 0.0
+    if target_amount > 0 and achieved_amount >= target_amount:
+        bonus = 250.0
+        total_commission += bonus
+
+    slab_data = {
+        "calculation_mode": calculation_mode,
+        "quota_achieved_pct": round((achieved_amount / target_amount * 100), 1) if target_amount > 0 else 100.0,
+        "bonus_amount": bonus,
+        "total_payout": round(total_commission, 2),
+        "brackets": breakdown,
+    }
+
+    return round(total_commission, 2), active_tier, slab_data
+
 
 class CommissionCreateRequest(BaseModel):
     employee_id: uuid.UUID
@@ -2353,8 +2440,10 @@ class CommissionCreateRequest(BaseModel):
     target_amount: float = Field(default=0.0, ge=0)
     achieved_amount: float = Field(default=0.0, ge=0)
     commission_rate: float = Field(default=5.0, ge=0)
+    calculation_mode: str = Field(default="progressive")
     status: str = "Approved"
     notes: str | None = None
+
 
 @router.get("/payroll/commissions")
 async def list_sales_commissions(
@@ -2383,11 +2472,15 @@ async def list_sales_commissions(
             "achieved_amount": float(c.achieved_amount),
             "commission_rate": float(c.commission_rate),
             "commission_amount": float(c.commission_amount),
+            "slab_tier": c.slab_tier or "Slab 1 (Base)",
+            "calculation_mode": c.calculation_mode or "progressive",
+            "slab_breakdown": c.slab_breakdown or {},
             "status": c.status,
             "notes": c.notes,
             "created_at": c.created_at.isoformat() if c.created_at else None,
         })
     return commissions
+
 
 @router.post("/payroll/commissions", status_code=status.HTTP_201_CREATED)
 async def create_sales_commission(
@@ -2399,7 +2492,13 @@ async def create_sales_commission(
     if not emp or emp.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    comm_amt = round((payload.achieved_amount * payload.commission_rate) / 100, 2)
+    comm_amt, active_tier, slab_data = calculate_slab_commission(
+        achieved_amount=payload.achieved_amount,
+        target_amount=payload.target_amount,
+        calculation_mode=payload.calculation_mode,
+        custom_rate=payload.commission_rate,
+    )
+
     comm = SalesCommission(
         tenant_id=ctx.tenant_id,
         employee_id=payload.employee_id,
@@ -2409,13 +2508,22 @@ async def create_sales_commission(
         achieved_amount=payload.achieved_amount,
         commission_rate=payload.commission_rate,
         commission_amount=comm_amt,
+        slab_tier=active_tier,
+        calculation_mode=payload.calculation_mode,
+        slab_breakdown=slab_data,
         status=payload.status,
         notes=payload.notes,
     )
     db.add(comm)
     await db.commit()
     await db.refresh(comm)
-    return {"message": "Sales commission recorded successfully", "id": str(comm.id)}
+    return {
+        "message": "Sales commission recorded successfully",
+        "id": str(comm.id),
+        "commission_amount": comm_amt,
+        "slab_tier": active_tier,
+        "slab_breakdown": slab_data,
+    }
 
 @router.patch("/payroll/commissions/{commission_id}/status")
 async def update_commission_status(

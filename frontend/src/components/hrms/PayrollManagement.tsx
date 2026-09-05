@@ -113,6 +113,8 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
   const [commTarget, setCommTarget] = useState("500000");
   const [commAchieved, setCommAchieved] = useState("650000");
   const [commRate, setCommRate] = useState("5");
+  const [commCalcMode, setCommCalcMode] = useState<"progressive" | "tier" | "flat">("progressive");
+  const [selectedCommissionDetail, setSelectedCommissionDetail] = useState<any | null>(null);
   const [commNotes, setCommNotes] = useState("");
 
   // Payslips month-wise filtering and calendar view states
@@ -356,6 +358,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
         target_amount: parseFloat(commTarget) || 0,
         achieved_amount: parseFloat(commAchieved) || 0,
         commission_rate: parseFloat(commRate) || 5,
+        calculation_mode: commCalcMode,
         status: "Approved",
         notes: commNotes || undefined,
       });
@@ -2229,24 +2232,106 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
   }
 
   // -------------------------------------------------------------------------
-  // 4. COMMISSIONS TAB
+  // -------------------------------------------------------------------------
+  // 4. COMMISSIONS TAB (SLAB-WISE & PROGRESSIVE PERFORMANCE INCENTIVES)
   // -------------------------------------------------------------------------
   if (tab === "commissions") {
     const totalCommissions = commissionsList.reduce((acc, c) => acc + (parseFloat(c.commission_amount) || 0), 0);
     const totalSalesAchieved = commissionsList.reduce((acc, c) => acc + (parseFloat(c.achieved_amount) || 0), 0);
 
     const commAch = parseFloat(commAchieved) || 0;
+    const commTgt = parseFloat(commTarget) || 0;
     const commRt = parseFloat(commRate) || 5;
-    const liveCommissionPreview = Math.round((commAch * commRt) / 100);
+
+    // Standard Progressive Slabs
+    const slabBrackets = [
+      { tier: "Slab 1 (Base Tier)", min: 0, max: 10000, rate: 2.0, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
+      { tier: "Slab 2 (Silver Tier)", min: 10000, max: 50000, rate: 5.0, color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20" },
+      { tier: "Slab 3 (Gold Tier)", min: 50000, max: 100000, rate: 8.0, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
+      { tier: "Slab 4 (Platinum Tier)", min: 100000, max: Infinity, rate: 12.0, color: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
+    ];
+
+    // Compute live slab preview
+    const computeLiveBreakdown = () => {
+      if (commCalcMode === "flat") {
+        const payout = Math.round((commAch * commRt) / 100);
+        return {
+          tier: `Flat (${commRt}%)`,
+          totalPayout: payout,
+          bonus: 0,
+          brackets: [
+            { tier: `Flat Custom (${commRt}%)`, range: "Total Volume", applicable: commAch, rate: commRt, payout },
+          ],
+        };
+      }
+      if (commCalcMode === "tier") {
+        let highest = slabBrackets[0];
+        for (const s of slabBrackets) {
+          if (commAch > s.min) highest = s;
+        }
+        const payout = Math.round((commAch * highest.rate) / 100);
+        const bonus = commTgt > 0 && commAch >= commTgt ? 250 : 0;
+        return {
+          tier: highest.tier,
+          totalPayout: payout + bonus,
+          bonus,
+          brackets: [
+            { tier: highest.tier, range: highest.max === Infinity ? "> $100,000" : `$${highest.min.toLocaleString()} - $${highest.max.toLocaleString()}`, applicable: commAch, rate: highest.rate, payout },
+          ],
+        };
+      }
+
+      // Progressive Marginal Slabs
+      let remaining = commAch;
+      let total = 0;
+      let activeTier = slabBrackets[0].tier;
+      const brackets: any[] = [];
+
+      for (const s of slabBrackets) {
+        if (remaining <= 0) break;
+        const capacity = s.max - s.min;
+        const taxable = Math.min(remaining, capacity);
+        const payout = Math.round((taxable * s.rate) / 100);
+        total += payout;
+        brackets.push({
+          tier: s.tier,
+          range: s.max === Infinity ? "> $100,000" : `$${s.min.toLocaleString()} - $${s.max.toLocaleString()}`,
+          applicable: taxable,
+          rate: s.rate,
+          payout,
+          color: s.color,
+        });
+        activeTier = s.tier;
+        remaining -= taxable;
+      }
+
+      const bonus = commTgt > 0 && commAch >= commTgt ? 250 : 0;
+      total += bonus;
+
+      return {
+        tier: activeTier,
+        totalPayout: total,
+        bonus,
+        brackets,
+      };
+    };
+
+    const liveBreakdown = computeLiveBreakdown();
 
     return (
       <div className="space-y-6">
+        {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Sales Commissions & Incentives <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-semibold flex items-center gap-1"><TrendingUp className="size-3" /> Target Based</span>
+              Slab-Wise Sales Commissions & Incentives{" "}
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-semibold flex items-center gap-1 border border-emerald-500/20">
+                <Sparkles className="size-3" /> Progressive Slabs Active
+              </span>
             </h2>
-            <p className="text-xs text-muted-foreground">Track sales quota achievements, tier commission calculations, and payroll payouts.</p>
+            <p className="text-xs text-muted-foreground">
+              Automated multi-tier marginal commission calculation, sales quota tracking, milestone bonuses, and payroll integration.
+            </p>
           </div>
           <button
             onClick={() => {
@@ -2255,19 +2340,52 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
             }}
             className="flex items-center gap-1.5 px-3.5 h-8.5 gradient-brand text-white rounded-lg text-xs font-semibold shadow-elegant hover:opacity-90 transition-opacity"
           >
-            <Plus className="size-3.5" /> Record Sales Commission
+            <Plus className="size-3.5" /> Calculate & Record Commission
           </button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Slab Tier Structure Visual Banner */}
+        <div className="glass-panel p-4 rounded-xl border border-border/50 bg-slate-900/5 dark:bg-slate-900/40">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <TrendingUp className="size-3.5 text-primary" /> Active Slab Commission Brackets Matrix
+            </span>
+            <span className="text-[11px] font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              +$250 Target Overachievement Bonus Included
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            {slabBrackets.map((slab, idx) => (
+              <div key={slab.tier} className="p-3 rounded-lg border border-border/60 bg-background/60 flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${slab.color}`}>
+                    {slab.tier.split(" (")[0]}
+                  </span>
+                  <span className="text-xs font-black text-foreground">{slab.rate}% Rate</span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Volume: <span className="font-semibold text-foreground">{slab.max === Infinity ? `> ${currency.symbol}100,000` : `${currency.symbol}${slab.min.toLocaleString()} - ${currency.symbol}${slab.max.toLocaleString()}`}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground/80 mt-1">
+                  {idx === 0 && "Entry baseline sales bracket"}
+                  {idx === 1 && "Mid-tier volume accelerator"}
+                  {idx === 2 && "Senior rep high-performance bracket"}
+                  {idx === 3 && "Elite rainmaker multiplier"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Stats KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
               <span>Total Commission Pool</span>
               <Percent className="size-4 text-emerald-500" />
             </div>
             <p className="text-2xl font-black text-emerald-500">{currency.symbol}{totalCommissions.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Direct performance incentive payout</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Disbursed performance incentives</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
@@ -2275,15 +2393,25 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
               <TrendingUp className="size-4 text-primary" />
             </div>
             <p className="text-2xl font-black text-foreground">{currency.symbol}{totalSalesAchieved.toLocaleString()}</p>
-            <p className="text-[10px] text-primary font-medium mt-1">Revenue pipeline realized</p>
+            <p className="text-[10px] text-primary font-medium mt-1">Revenue realized across slabs</p>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-border/50">
             <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
-              <span>Active Commission Plans</span>
+              <span>Active Reps on Plan</span>
               <Shield className="size-4 text-indigo-500" />
             </div>
             <p className="text-2xl font-black text-indigo-500">{commissionsList.length} Reps</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Tier-based performance schedules</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Graduated tier commission plans</p>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-border/50">
+            <div className="flex items-center justify-between text-muted-foreground text-xs mb-1 font-semibold uppercase">
+              <span>Avg Commission Yield</span>
+              <Sparkles className="size-4 text-amber-500" />
+            </div>
+            <p className="text-2xl font-black text-amber-500">
+              {totalSalesAchieved > 0 ? ((totalCommissions / totalSalesAchieved) * 100).toFixed(1) : "5.0"}%
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-1">Blended marginal payout rate</p>
           </div>
         </div>
 
@@ -2298,17 +2426,23 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                     <th className="px-6 py-4 font-medium">Sales Rep</th>
                     <th className="px-6 py-4 text-right font-medium">Target Quota</th>
                     <th className="px-6 py-4 text-right font-medium">Achieved Revenue</th>
-                    <th className="px-6 py-4 text-center font-medium">Achievement %</th>
-                    <th className="px-6 py-4 text-center font-medium">Commission %</th>
+                    <th className="px-6 py-4 text-center font-medium">Quota Progress</th>
+                    <th className="px-6 py-4 text-center font-medium">Slab Tier & Mode</th>
                     <th className="px-6 py-4 text-right font-medium text-emerald-500">Commission Payout</th>
+                    <th className="px-6 py-4 text-center font-medium">Breakdown</th>
                     <th className="px-6 py-4 text-center font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {commissionsList.length === 0 ? (
-                    <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No commissions recorded for this cycle. Click Record Sales Commission above.</td></tr>
+                    <tr>
+                      <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">
+                        No commissions recorded for this cycle. Click Calculate & Record Commission above.
+                      </td>
+                    </tr>
                   ) : commissionsList.map((comm, i) => {
                     const pct = comm.target_amount > 0 ? Math.round((comm.achieved_amount / comm.target_amount) * 100) : 100;
+                    const modeLabel = comm.calculation_mode === "tier" ? "Top-Tier" : comm.calculation_mode === "flat" ? "Flat %" : "Progressive";
                     return (
                       <motion.tr key={comm.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.05 }}
                         className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
@@ -2316,17 +2450,47 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                           <p className="font-semibold text-foreground leading-tight">{comm.employee_name}</p>
                           <p className="text-[10px] text-muted-foreground">{comm.employee_code} • {comm.department}</p>
                         </td>
-                        <td className="px-6 py-4 text-right text-muted-foreground font-medium">{currency.symbol}{comm.target_amount.toLocaleString()}</td>
-                        <td className="px-6 py-4 text-right font-semibold text-foreground">{currency.symbol}{comm.achieved_amount.toLocaleString()}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${pct >= 100 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                            {pct}%
-                          </span>
+                        <td className="px-6 py-4 text-right text-muted-foreground font-medium">
+                          {currency.symbol}{comm.target_amount.toLocaleString()}
                         </td>
-                        <td className="px-6 py-4 text-center font-semibold text-xs">{comm.commission_rate}%</td>
-                        <td className="px-6 py-4 text-right font-bold text-emerald-500">{currency.symbol}{comm.commission_amount.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right font-semibold text-foreground">
+                          {currency.symbol}{comm.achieved_amount.toLocaleString()}
+                        </td>
                         <td className="px-6 py-4 text-center">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${payslipStatusStyle(comm.status)}`}>{comm.status}</span>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${pct >= 100 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                              {pct}% {pct >= 100 && "🎯"}
+                            </span>
+                            <div className="w-16 bg-muted/60 h-1.5 rounded-full overflow-hidden">
+                              <div className={`h-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-primary/10 text-primary border border-primary/20">
+                              {comm.slab_tier || "Slab 1 (Base)"}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground uppercase font-semibold">
+                              {modeLabel}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right font-black text-emerald-500 text-base">
+                          {currency.symbol}{comm.commission_amount.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            onClick={() => setSelectedCommissionDetail(comm)}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-md bg-muted hover:bg-muted/80 text-foreground border border-border/50 transition-colors"
+                          >
+                            View Slabs
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${payslipStatusStyle(comm.status)}`}>
+                            {comm.status}
+                          </span>
                         </td>
                       </motion.tr>
                     );
@@ -2337,70 +2501,123 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
           </div>
         </div>
 
-        {/* Commission Dialog */}
+        {/* Commission Calculator & Record Dialog */}
         {commDialogOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-2xl bg-card border p-6 space-y-4 shadow-2xl">
-              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
-                <Percent className="size-5 text-emerald-500" /> Record Sales Commission
-              </h3>
+            <div className="w-full max-w-lg rounded-2xl bg-card border p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b pb-3">
+                <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                  <Percent className="size-5 text-emerald-500" /> Slab-Wise Commission Calculator
+                </h3>
+                <button onClick={() => setCommDialogOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
+              </div>
 
-              <form onSubmit={handleCreateCommission} className="space-y-3.5">
+              <form onSubmit={handleCreateCommission} className="space-y-4">
+                {/* Employee Selection */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-muted-foreground uppercase">Choose Sales Rep *</label>
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Sales Rep *</label>
                   <select
                     value={commEmpId}
                     onChange={e => setCommEmpId(e.target.value)}
                     className="w-full h-10 px-3 text-sm rounded-md border bg-background"
                     required
                   >
-                    <option value="">-- Choose Employee --</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code})</option>)}
+                    <option value="">-- Choose Sales Representative --</option>
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} ({e.employee_code}) - {e.department?.name || 'Sales'}</option>)}
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-muted-foreground uppercase">Target Quota</label>
-                    <input
-                      type="number"
-                      value={commTarget}
-                      onChange={e => setCommTarget(e.target.value)}
-                      placeholder="e.g. 500000"
-                      className="w-full h-10 px-3 text-sm rounded-md border bg-background"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-muted-foreground uppercase">Achieved Sales *</label>
-                    <input
-                      type="number"
-                      value={commAchieved}
-                      onChange={e => setCommAchieved(e.target.value)}
-                      placeholder="e.g. 650000"
-                      className="w-full h-10 px-3 text-sm rounded-md border bg-background font-semibold"
-                      required
-                    />
+                {/* Calculation Mode Tabs */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Commission Calculation Engine</label>
+                  <div className="grid grid-cols-3 gap-1.5 p-1 bg-muted/50 rounded-lg border border-border/50 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setCommCalcMode("progressive")}
+                      className={`py-1.5 font-semibold rounded-md transition-all ${commCalcMode === "progressive" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      Progressive Slabs
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCommCalcMode("tier")}
+                      className={`py-1.5 font-semibold rounded-md transition-all ${commCalcMode === "tier" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      Top-Tier Rate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCommCalcMode("flat")}
+                      className={`py-1.5 font-semibold rounded-md transition-all ${commCalcMode === "flat" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      Custom Flat %
+                    </button>
                   </div>
                 </div>
 
+                {/* Quota and Achieved Sales Inputs */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-muted-foreground uppercase">Commission Rate (%)</label>
-                    <input
-                      type="number"
-                      value={commRate}
-                      onChange={e => setCommRate(e.target.value)}
-                      placeholder="5"
-                      className="w-full h-10 px-3 text-sm rounded-md border bg-background"
-                    />
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Target Sales Quota</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs text-muted-foreground font-bold">{currency.symbol}</span>
+                      <input
+                        type="number"
+                        value={commTarget}
+                        onChange={e => setCommTarget(e.target.value)}
+                        placeholder="500000"
+                        className="w-full h-10 pl-7 pr-3 text-sm rounded-md border bg-background"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-muted-foreground uppercase">Period</label>
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Achieved Sales Volume *</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs text-muted-foreground font-bold">{currency.symbol}</span>
+                      <input
+                        type="number"
+                        value={commAchieved}
+                        onChange={e => setCommAchieved(e.target.value)}
+                        placeholder="650000"
+                        className="w-full h-10 pl-7 pr-3 text-sm rounded-md border bg-background font-bold text-emerald-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Flat rate input or period */}
+                <div className="grid grid-cols-2 gap-3">
+                  {commCalcMode === "flat" ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Custom Rate (%)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={commRate}
+                        onChange={e => setCommRate(e.target.value)}
+                        placeholder="5"
+                        className="w-full h-10 px-3 text-sm rounded-md border bg-background"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Achieved Slab Tier</label>
+                      <div className="w-full h-10 px-3 flex items-center bg-muted/40 rounded-md border text-xs font-bold text-primary">
+                        {liveBreakdown.tier}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Payroll Period</label>
                     <div className="flex gap-1.5">
                       <select value={commMonth} onChange={e => setCommMonth(e.target.value)} className="w-1/2 h-10 px-2 text-xs rounded-md border bg-background">
                         <option value="5">May</option>
                         <option value="6">June</option>
                         <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
                       </select>
                       <select value={commYear} onChange={e => setCommYear(e.target.value)} className="w-1/2 h-10 px-2 text-xs rounded-md border bg-background">
                         <option value="2026">2026</option>
@@ -2409,24 +2626,128 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
                   </div>
                 </div>
 
-                {/* Calculated Commission Preview */}
+                {/* Dynamic Slab Breakdown Live Calculation Box */}
                 {commAch > 0 && (
-                  <div className="p-3 bg-muted/40 rounded-xl border border-border/50 flex justify-between items-center">
-                    <div>
-                      <p className="text-xs font-bold text-foreground">Calculated Commission</p>
-                      <p className="text-[10px] text-muted-foreground">{commRt}% on {currency.symbol}{commAch.toLocaleString()} sales</p>
+                  <div className="p-3.5 bg-slate-900/5 dark:bg-slate-900/50 rounded-xl border border-border/70 space-y-2.5">
+                    <div className="flex justify-between items-center text-xs font-bold text-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="size-3.5 text-emerald-500" /> Tiered Slab Breakdown Calculation
+                      </span>
+                      <span className="text-emerald-500 text-sm font-black">
+                        Total: {currency.symbol}{liveBreakdown.totalPayout.toLocaleString()}
+                      </span>
                     </div>
-                    <span className="text-lg font-black text-emerald-500">{currency.symbol}{liveCommissionPreview.toLocaleString()}</span>
+
+                    <div className="space-y-1 text-xs">
+                      {liveBreakdown.brackets.map((b, idx) => (
+                        <div key={idx} className="flex justify-between items-center p-2 rounded-md bg-background/80 border border-border/40">
+                          <div>
+                            <span className="font-semibold text-foreground">{b.tier}</span>
+                            <span className="text-[10px] text-muted-foreground ml-1.5">({currency.symbol}{b.applicable.toLocaleString()} @ {b.rate}%)</span>
+                          </div>
+                          <span className="font-bold text-foreground">+{currency.symbol}{b.payout.toLocaleString()}</span>
+                        </div>
+                      ))}
+                      {liveBreakdown.bonus > 0 && (
+                        <div className="flex justify-between items-center p-2 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-500">
+                          <span className="font-bold flex items-center gap-1">🎯 Quota Met Milestone Bonus</span>
+                          <span className="font-black">+{currency.symbol}{liveBreakdown.bonus.toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setCommDialogOpen(false)} className="px-4 py-2 border rounded-md text-sm">Cancel</button>
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <button type="button" onClick={() => setCommDialogOpen(false)} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">Cancel</button>
                   <button type="submit" className="px-4 py-2 gradient-brand text-white rounded-md text-sm font-semibold shadow-elegant hover:opacity-90">
                     Record Commission
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* View Slab Breakdown Detail Modal */}
+        {selectedCommissionDetail && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl bg-card border p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b pb-3">
+                <div>
+                  <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                    <TrendingUp className="size-5 text-emerald-500" /> Slab Commission Details
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{selectedCommissionDetail.employee_name} ({selectedCommissionDetail.employee_code})</p>
+                </div>
+                <button onClick={() => setSelectedCommissionDetail(null)} className="text-muted-foreground hover:text-foreground">✕</button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3 p-3 bg-muted/40 rounded-xl text-xs">
+                  <div>
+                    <span className="text-muted-foreground font-semibold">Target Quota:</span>
+                    <p className="text-sm font-bold text-foreground">{currency.symbol}{selectedCommissionDetail.target_amount?.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground font-semibold">Achieved Volume:</span>
+                    <p className="text-sm font-bold text-emerald-500">{currency.symbol}{selectedCommissionDetail.achieved_amount?.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground font-semibold">Calculation Mode:</span>
+                    <p className="text-sm font-bold text-primary capitalize">{selectedCommissionDetail.calculation_mode || "Progressive"}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground font-semibold">Max Slab Reached:</span>
+                    <p className="text-sm font-bold text-foreground">{selectedCommissionDetail.slab_tier || "Slab 1 (Base)"}</p>
+                  </div>
+                </div>
+
+                {/* Breakdown items */}
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase">Marginal Tier Audit Trail</h4>
+                  {selectedCommissionDetail.slab_breakdown?.brackets ? (
+                    selectedCommissionDetail.slab_breakdown.brackets.map((b: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center p-2.5 rounded-lg bg-background border text-xs">
+                        <div>
+                          <p className="font-semibold text-foreground">{b.tier}</p>
+                          <p className="text-[10px] text-muted-foreground">Range: {b.min !== undefined ? `${currency.symbol}${b.min} - ${b.max}` : b.range || "Applicable"}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-foreground">+{currency.symbol}{b.payout?.toLocaleString()}</p>
+                          <p className="text-[10px] text-muted-foreground">{b.rate}% on {currency.symbol}{b.applicable_amount?.toLocaleString() || b.applicable?.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-3 bg-background border rounded-lg text-xs text-muted-foreground text-center">
+                      Direct {selectedCommissionDetail.commission_rate}% on {currency.symbol}{selectedCommissionDetail.achieved_amount?.toLocaleString()} = {currency.symbol}{selectedCommissionDetail.commission_amount?.toLocaleString()}
+                    </div>
+                  )}
+
+                  {selectedCommissionDetail.slab_breakdown?.bonus_amount > 0 && (
+                    <div className="flex justify-between items-center p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs">
+                      <span className="font-bold flex items-center gap-1">🎯 100%+ Quota Milestone Bonus</span>
+                      <span className="font-black">+{currency.symbol}{selectedCommissionDetail.slab_breakdown.bonus_amount.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex justify-between items-center">
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Total Net Commission Payout</span>
+                  <span className="text-xl font-black text-emerald-500">{currency.symbol}{selectedCommissionDetail.commission_amount?.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCommissionDetail(null)}
+                  className="px-4 py-2 border rounded-md text-sm hover:bg-muted"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         )}

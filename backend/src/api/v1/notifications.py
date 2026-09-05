@@ -35,6 +35,7 @@ class NotificationSettingsUpdate(BaseModel):
 class LiveNotificationResponse(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
     title: str
     body: str
     category: str
@@ -69,10 +70,13 @@ class PushTemplateResponse(BaseModel):
     title_template: str
     body_template: str
     action_url: Optional[str] = None
-    priority: str = "normal"
+    priority: str
     icon_type: Optional[str] = "bell"
-    is_system: bool = False
+    is_system: bool
     created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 class BroadcastPushRequest(BaseModel):
     template_id: Optional[str] = None
@@ -80,73 +84,81 @@ class BroadcastPushRequest(BaseModel):
     body: str
     category: str = "system"
     target_type: str = "all_org"  # all_org | roles | departments | individual
-    target_filter: List[str] = Field(default_factory=list)  # role IDs/names, department IDs, or user IDs
+    target_filter: Optional[List[str]] = None
     action_url: Optional[str] = None
-    priority: str = "normal"  # normal | high | urgent
-    channels: List[str] = Field(default_factory=lambda: ["in_app", "web_push", "mobile_app"])
+    channels: List[str] = Field(default_factory=lambda: ["in_app", "mobile_push", "web_push"])
 
 class BroadcastResponse(BaseModel):
     id: uuid.UUID
-    sender_name: Optional[str] = None
     title: str
     body: str
     category: str
     target_type: str
     recipients_count: int
+    sent_by: Optional[str] = "System Admin"
     status: str
     created_at: datetime
 
-class DeviceTokenRegisterRequest(BaseModel):
-    device_token: str
-    platform: str = "web"  # web | android | ios | pwa
-    device_name: Optional[str] = None
+    class Config:
+        from_attributes = True
 
 
 # ─── Built-in Default Corporate Templates ───────────────────────────
 
 DEFAULT_PUSH_TEMPLATES: List[dict] = [
     {
-        "id": "tpl-announcement",
-        "name": "Urgent Organization Announcement",
-        "category": "system",
-        "title_template": "📢 Notice from {{org_name}}",
-        "body_template": "Dear {{user_name}}, please review the critical organization update released for {{date}}.",
-        "action_url": "/hrms?tab=ess_announcements",
-        "priority": "high",
-        "icon_type": "megaphone",
-        "is_system": True,
-    },
-    {
-        "id": "tpl-salary-credited",
-        "name": "Monthly Salary Disbursal Notice",
-        "category": "hrms",
-        "title_template": "💰 Salary Slip Available for {{date}}",
-        "body_template": "Hello {{user_name}}, your monthly salary certificate has been generated and disbursed to your registered bank account.",
-        "action_url": "/hrms?tab=ess_payroll",
-        "priority": "high",
-        "icon_type": "banknote",
-        "is_system": True,
-    },
-    {
-        "id": "tpl-maintenance",
-        "name": "Scheduled Platform Maintenance",
+        "id": "tpl-system-maintenance",
+        "name": "System Maintenance Advisory",
         "category": "system",
         "title_template": "🛠️ System Maintenance Advisory",
         "body_template": "The workspace infrastructure will undergo scheduled maintenance on {{date}}. Temporary service interruptions may occur.",
-        "action_url": "/dashboard",
-        "priority": "normal",
-        "icon_type": "settings",
+        "action_url": None,
+        "priority": "high",
+        "icon_type": "alert-triangle",
         "is_system": True,
     },
     {
-        "id": "tpl-festive-greetings",
-        "name": "Festive & Holiday Greetings",
+        "id": "tpl-policy-update",
+        "name": "Quarterly Organization Policy Update",
         "category": "hrms",
-        "title_template": "🎉 Warm Holiday Greetings from {{org_name}}!",
-        "body_template": "Wishing {{user_name}} and your family a joyful holiday season and wonderful celebrations.",
+        "title_template": "📢 Important Announcement: Quarterly General Update",
+        "body_template": "Dear {{user_name}}, please review the latest company-wide policy and operational updates for {{date}}.",
         "action_url": "/hrms?tab=ess_announcements",
         "priority": "normal",
-        "icon_type": "gift",
+        "icon_type": "bell",
+        "is_system": True,
+    },
+    {
+        "id": "tpl-payroll-released",
+        "name": "Monthly Salary & Payslip Disbursement",
+        "category": "hrms",
+        "title_template": "💰 Monthly Salary & Payslip Available",
+        "body_template": "Hello {{user_name}}, your compensation breakdown and tax summary for this pay period is now available for download.",
+        "action_url": "/hrms?tab=ess_payroll",
+        "priority": "high",
+        "icon_type": "dollar-sign",
+        "is_system": True,
+    },
+    {
+        "id": "tpl-pos-closing",
+        "name": "Daily Store Register Closing Alert",
+        "category": "pos",
+        "title_template": "🧾 Store Register Daily Reconciliation Required",
+        "body_template": "Reminder for store managers: please complete end-of-day register drawer reconciliation and float counting.",
+        "action_url": "/pos?tab=register_management",
+        "priority": "normal",
+        "icon_type": "terminal",
+        "is_system": True,
+    },
+    {
+        "id": "tpl-inventory-reorder",
+        "name": "Critical Stock Replenishment Notice",
+        "category": "inventory",
+        "title_template": "📦 Critical Stock Reorder Triggered",
+        "body_template": "Automated warehouse monitors indicate fast-moving items have reached buffer safety thresholds.",
+        "action_url": "/inventory?tab=stock_levels",
+        "priority": "high",
+        "icon_type": "package",
         "is_system": True,
     },
     {
@@ -160,17 +172,6 @@ DEFAULT_PUSH_TEMPLATES: List[dict] = [
         "icon_type": "clock",
         "is_system": True,
     },
-    {
-        "id": "tpl-sales-milestone",
-        "name": "Sales Target & Milestone Celebration",
-        "category": "crm",
-        "title_template": "🚀 New Sales Revenue Milestone Achieved!",
-        "body_template": "Kudos to the team! We have officially crossed the quarterly revenue target. Thank you for your extraordinary efforts!",
-        "action_url": "/crm",
-        "priority": "normal",
-        "icon_type": "trending-up",
-        "is_system": True,
-    },
 ]
 
 
@@ -182,10 +183,16 @@ async def get_live_notifications(
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Fetches the latest live notifications for the current tenant and user."""
+    """Fetches the latest live notifications addressed to the current user or general tenant broadcasts."""
     stmt = (
         select(LiveNotification)
-        .where(LiveNotification.tenant_id == ctx.tenant_id)
+        .where(
+            LiveNotification.tenant_id == ctx.tenant_id,
+            or_(
+                LiveNotification.user_id == ctx.user.id,
+                LiveNotification.user_id.is_(None)
+            )
+        )
         .order_by(desc(LiveNotification.created_at))
         .limit(limit)
     )
@@ -198,11 +205,15 @@ async def mark_all_as_read(
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Marks all live notifications for this tenant as read."""
+    """Marks all live notifications for this user as read."""
     stmt = (
         update(LiveNotification)
         .where(
             LiveNotification.tenant_id == ctx.tenant_id,
+            or_(
+                LiveNotification.user_id == ctx.user.id,
+                LiveNotification.user_id.is_(None)
+            ),
             LiveNotification.unread == True
         )
         .values(unread=False)
@@ -527,6 +538,7 @@ async def send_broadcast_push(
 
         live_notif = LiveNotification(
             tenant_id=ctx.tenant_id,
+            user_id=user.id,
             title=rendered_title,
             body=rendered_body,
             category=payload.category,
@@ -568,7 +580,7 @@ async def list_broadcast_history(
         items.append(
             BroadcastResponse(
                 id=bc.id,
-                sender_name=user.full_name if user else "System Automated",
+                sent_by=user.full_name if user else "System Admin",
                 title=bc.title,
                 body=bc.body,
                 category=bc.category,

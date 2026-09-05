@@ -314,72 +314,98 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
     loadMe();
   }, [loadMe]);
 
-  // Geolocation clock in
+  // Real-time Geolocation Clock In
   const handleClockIn = async () => {
     if (!emp) return;
     setLoading(true);
-    try {
-      let lat = 37.7749, lng = -122.4194;
-      if (navigator.geolocation) {
+
+    const executePunch = async (lat?: number, lng?: number, accuracy?: number) => {
+      try {
+        const accuracyNote = accuracy ? ` (Accuracy ±${Math.round(accuracy)}m)` : "";
+        await attendanceApi.checkIn({
+          latitude: lat,
+          longitude: lng,
+          notes: `Clock-In via ${assignedPunchMethod} Verified Punch${accuracyNote}`,
+          method: assignedPunchMethod,
+        });
+        toast.success("Clock-in recorded successfully!");
+        await loadMe();
+      } catch (err: any) {
+        toast.error("Clock-in failed: " + (err.message || "Unknown error"));
+        alert("Clock-in failed: " + (err.message || "Unknown error"));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (assignedPunchMethod === "GPS" || assignedPunchMethod === "Web") {
+      if ("geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(
           async (pos) => {
-            await attendanceApi.checkIn({ 
-              latitude: pos.coords.latitude, 
-              longitude: pos.coords.longitude, 
-              notes: `Clock-In via ${assignedPunchMethod} Verified Punch`, 
-              method: assignedPunchMethod 
-            });
-            loadMe();
+            await executePunch(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
           },
-          async () => {
-            await attendanceApi.checkIn({ 
-              latitude: lat, 
-              longitude: lng, 
-              notes: `Clock-In via ${assignedPunchMethod} Web Punch`, 
-              method: assignedPunchMethod 
-            });
-            loadMe();
-          }
+          async (geoErr) => {
+            console.warn("Geolocation warning:", geoErr);
+            if (assignedPunchMethod === "GPS") {
+              setLoading(false);
+              const errMsg = "Location permission denied or unavailable. GPS Clock-In requires active location permissions to verify your office geofence. Please allow location access in your browser settings.";
+              toast.error(errMsg);
+              alert(errMsg);
+            } else {
+              await executePunch();
+            }
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
       } else {
-        await attendanceApi.checkIn({ 
-          latitude: lat, 
-          longitude: lng, 
-          notes: `Clock-In via ${assignedPunchMethod} Web Punch`, 
-          method: assignedPunchMethod 
-        });
-        loadMe();
+        if (assignedPunchMethod === "GPS") {
+          setLoading(false);
+          const errMsg = "Your device/browser does not support GPS Geolocation.";
+          toast.error(errMsg);
+          alert(errMsg);
+        } else {
+          await executePunch();
+        }
       }
-    } catch (e: any) {
-      alert("Clock-in failed: " + e.message);
-      setLoading(false);
+    } else {
+      await executePunch();
     }
   };
 
-  // Clock out
+  // Real-time Geolocation Clock Out
   const handleClockOut = async () => {
     if (!emp) return;
     setLoading(true);
-    try {
-      let lat = 37.7749, lng = -122.4194;
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            await attendanceApi.checkOut({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, notes: `Clock-Out via ${assignedPunchMethod} Verified Punch` });
-            loadMe();
-          },
-          async () => {
-            await attendanceApi.checkOut({ latitude: lat, longitude: lng, notes: `Clock-Out via ${assignedPunchMethod} Web Punch` });
-            loadMe();
-          }
-        );
-      } else {
-        await attendanceApi.checkOut({ latitude: lat, longitude: lng, notes: `Clock-Out via ${assignedPunchMethod} Web Punch` });
-        loadMe();
+
+    const executePunchOut = async (lat?: number, lng?: number) => {
+      try {
+        await attendanceApi.checkOut({
+          latitude: lat,
+          longitude: lng,
+          notes: `Clock-Out via ${assignedPunchMethod} Verified Punch`,
+        });
+        toast.success("Clock-out recorded successfully!");
+        await loadMe();
+      } catch (err: any) {
+        toast.error("Clock-out failed: " + (err.message || "Unknown error"));
+        alert("Clock-out failed: " + (err.message || "Unknown error"));
+      } finally {
+        setLoading(false);
       }
-    } catch (e: any) {
-      alert("Clock-out failed: " + e.message);
-      setLoading(false);
+    };
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          await executePunchOut(pos.coords.latitude, pos.coords.longitude);
+        },
+        async () => {
+          await executePunchOut();
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    } else {
+      await executePunchOut();
     }
   };
 

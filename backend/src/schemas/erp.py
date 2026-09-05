@@ -1356,6 +1356,8 @@ class AttendanceRecordResponse(ORMModel):
     method: str
     latitude: float | None
     longitude: float | None
+    is_geofence_verified: bool | None = False
+    ip_address: str | None = None
     notes: str | None
     created_at: datetime
     updated_at: datetime

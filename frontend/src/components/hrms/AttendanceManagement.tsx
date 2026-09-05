@@ -970,6 +970,36 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   </select>
                 </div>
 
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-muted-foreground uppercase">Coordinates</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if ("geolocation" in navigator) {
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => {
+                            setGpsPunchForm(p => ({
+                              ...p,
+                              latitude: parseFloat(pos.coords.latitude.toFixed(6)),
+                              longitude: parseFloat(pos.coords.longitude.toFixed(6)),
+                              preset: `Device Real-time GPS (±${Math.round(pos.coords.accuracy)}m)`
+                            }));
+                          },
+                          (err) => {
+                            alert("Location access denied or unavailable: " + err.message);
+                          },
+                          { enableHighAccuracy: true, timeout: 10000 }
+                        );
+                      } else {
+                        alert("Geolocation is not supported by your browser.");
+                      }
+                    }}
+                    className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <MapPin className="size-3" /> Detect Device Live GPS
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-muted-foreground uppercase">Latitude</label>
