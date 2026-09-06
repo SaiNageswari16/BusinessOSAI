@@ -169,11 +169,7 @@ async def serve_image_fallback(file_path: str):
 
 @app.get("/vault/{file_path:path}")
 async def serve_vault_fallback(file_path: str):
-    vault_p = STATIC_DIR / "vault" / file_path
-    if vault_p.is_file():
-        return FileResponse(str(vault_p), media_type="application/pdf" if file_path.endswith(".pdf") else None)
-    
-    # On-the-fly generation for offer letters if file not yet cached on disk
+    # Dynamic live generation for offer letters matching the exact ID
     if "offers" in file_path and file_path.endswith(".pdf"):
         offer_id_raw = os.path.basename(file_path).replace(".pdf", "").strip()
         try:
@@ -181,22 +177,36 @@ async def serve_vault_fallback(file_path: str):
             from src.models import OfferLetter, Tenant, Company
             from src.database.session import get_db
             from src.api.v1.hrms.recruitment import generate_offer_letter_pdf
+            from sqlalchemy import select
             
             offer_uuid = uuid.UUID(offer_id_raw)
             async for db in get_db():
                 offer = await db.get(OfferLetter, offer_uuid)
                 if offer:
-                    tenant = await db.scalar(Tenant.__table__.select().where(Tenant.id == offer.tenant_id)) if hasattr(Tenant, '__table__') else None
+                    tenant = await db.scalar(select(Tenant).where(Tenant.id == offer.tenant_id))
                     company = None
                     if offer.company_id:
                         company = await db.get(Company, offer.company_id)
+                    if not company:
+                        company = await db.scalar(
+                            select(Company).where(Company.tenant_id == offer.tenant_id, Company.status == "active").order_by(Company.created_at.asc())
+                        )
                     comp_name = company.name if company and company.name else (tenant.name if tenant else "BusinessOS AI Global Technologies")
                     pdf_bytes = generate_offer_letter_pdf(offer, comp_name, tenant, company)
+                    vault_p = STATIC_DIR / "vault" / file_path
                     vault_p.parent.mkdir(parents=True, exist_ok=True)
                     vault_p.write_bytes(pdf_bytes)
-                    return Response(content=pdf_bytes, media_type="application/pdf")
+                    return Response(
+                        content=pdf_bytes,
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="Official_Offer_Letter_{(offer.candidate or "Candidate").replace(" ", "_")}.pdf"'}
+                    )
         except Exception as e:
             logger.warning(f"On-the-fly PDF generation skipped for {file_path}: {e}")
+
+    vault_p = STATIC_DIR / "vault" / file_path
+    if vault_p.is_file():
+        return FileResponse(str(vault_p), media_type="application/pdf" if file_path.endswith(".pdf") else None)
 
     # On-the-fly generation for payslips if file not yet cached on disk
     if "payslips" in file_path and file_path.endswith(".pdf"):
