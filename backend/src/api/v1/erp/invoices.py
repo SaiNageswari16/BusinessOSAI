@@ -96,6 +96,8 @@ async def list_invoices(
     search: str | None = None,
 ):
     query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((Invoice.company_id == ctx.active_company_id) | (Invoice.company_id == None))
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if invoice_type:
@@ -128,6 +130,8 @@ async def get_customer_invoice_summary(
     phone: str | None = None,
 ):
     query_conds = [Invoice.tenant_id == ctx.tenant_id]
+    if ctx.active_company_id:
+        query_conds.append((Invoice.company_id == ctx.active_company_id) | (Invoice.company_id == None))
     try:
         c_uuid = uuid.UUID(str(customer_id))
         if phone:
@@ -290,6 +294,7 @@ async def create_invoice(
 
     inv_kwargs.update({
         "tenant_id": ctx.tenant_id,
+        "company_id": getattr(payload, "company_id", None) or ctx.active_company_id,
         "invoice_number": invoice_number,
         **totals,
         "status": initial_status,

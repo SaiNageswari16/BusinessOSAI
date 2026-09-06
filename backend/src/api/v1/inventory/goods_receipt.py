@@ -20,7 +20,10 @@ async def list_goods_receipts(
     db: AsyncSession = Depends(get_db),
     ctx: CurrentUserContext = Depends(require_any_permission("view:erp", "view:pos"))
 ):
-    stmt = select(GoodsReceipt).where(GoodsReceipt.tenant_id == ctx.tenant_id).options(selectinload(GoodsReceipt.items)).offset(skip).limit(limit)
+    stmt = select(GoodsReceipt).where(GoodsReceipt.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        stmt = stmt.where((GoodsReceipt.company_id == ctx.active_company_id) | (GoodsReceipt.company_id == None))
+    stmt = stmt.options(selectinload(GoodsReceipt.items)).offset(skip).limit(limit)
     res = await db.execute(stmt)
     return res.scalars().all()
 
@@ -52,6 +55,7 @@ async def create_goods_receipt(
 ):
     new_receipt = GoodsReceipt(
         tenant_id=ctx.tenant_id,
+        company_id=getattr(data, "company_id", None) or ctx.active_company_id,
         receipt_number=data.receipt_number,
         supplier=data.supplier,
         reference_number=data.reference_number,

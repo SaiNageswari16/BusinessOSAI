@@ -60,23 +60,32 @@ async def get_attendance_stats(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    emp_base = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        emp_base = emp_base.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
+
     total_employees = await db.scalar(
-        select(func.count()).where(Employee.tenant_id == ctx.tenant_id)
+        select(func.count()).select_from(emp_base.subquery())
     ) or 0
     active_employees = await db.scalar(
-        select(func.count()).where(Employee.tenant_id == ctx.tenant_id, Employee.status == "Active")
+        select(func.count()).select_from(emp_base.where(Employee.status == "Active").subquery())
     ) or 0
     on_leave = await db.scalar(
-        select(func.count()).where(Employee.tenant_id == ctx.tenant_id, Employee.status == "On Leave")
+        select(func.count()).select_from(emp_base.where(Employee.status == "On Leave").subquery())
     ) or 0
     today = date.today()
     thirty_days_ago = today - timedelta(days=30)
     new_joinees = await db.scalar(
-        select(func.count()).where(Employee.tenant_id == ctx.tenant_id, Employee.date_of_joining >= thirty_days_ago)
+        select(func.count()).select_from(emp_base.where(Employee.date_of_joining >= thirty_days_ago).subquery())
     ) or 0
     
+    today_rec_q = select(AttendanceRecord).join(Employee, AttendanceRecord.employee_id == Employee.id).where(
+        AttendanceRecord.tenant_id == ctx.tenant_id, AttendanceRecord.date == today
+    )
+    if ctx.active_company_id:
+        today_rec_q = today_rec_q.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
     today_records = await db.scalar(
-        select(func.count()).where(AttendanceRecord.tenant_id == ctx.tenant_id, AttendanceRecord.date == today)
+        select(func.count()).select_from(today_rec_q.subquery())
     ) or 0
     avg_attendance = round((today_records / total_employees * 100), 1) if total_employees > 0 else 95.0
 
@@ -107,6 +116,9 @@ async def list_attendance(
         .join(Employee, AttendanceRecord.employee_id == Employee.id)
         .where(AttendanceRecord.tenant_id == ctx.tenant_id)
     )
+
+    if ctx.active_company_id:
+        query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
 
     # If the user does not have company-wide attendance permission, strictly isolate to their own records
     if not (ctx.has_permission("view:hrms_attendance") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):

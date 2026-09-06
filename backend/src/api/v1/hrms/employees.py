@@ -196,6 +196,8 @@ async def list_employees(
         logging.getLogger("hrms.employees").warning(f"Auto-link user to employee skipped: {sync_err}")
 
     query = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
 
     # If the user does not have company-wide employee viewing permissions, strictly isolate to their own profile
     user_id = getattr(ctx.user, "id", None)
@@ -227,9 +229,11 @@ async def list_employees(
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     
-    # If role filter produced 0 results, fallback to returning all active employees for this workspace
+    # If role filter produced 0 results, fallback to returning active employees for this workspace
     if (total or 0) == 0 and role:
         query = select(Employee).where(Employee.tenant_id == ctx.tenant_id, Employee.status.ilike("Active"))
+        if ctx.active_company_id:
+            query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
         total = await db.scalar(select(func.count()).select_from(query.subquery()))
 
     result = await db.execute(
@@ -382,6 +386,8 @@ async def create_employee(
                     ))
 
     emp_data = payload.model_dump(exclude={"user_id", "role_id", "role_name"})
+    if not emp_data.get("company_id") and ctx.active_company_id:
+        emp_data["company_id"] = ctx.active_company_id
     emp = Employee(
         tenant_id=ctx.tenant_id,
         user_id=linked_user_id,
@@ -456,9 +462,12 @@ async def bulk_create_employees(
             skipped_count += 1
             continue
 
+        emp_in_data = item.model_dump()
+        if not emp_in_data.get("company_id") and ctx.active_company_id:
+            emp_in_data["company_id"] = ctx.active_company_id
         emp = Employee(
             tenant_id=ctx.tenant_id,
-            **item.model_dump()
+            **emp_in_data
         )
         db.add(emp)
         created_count += 1

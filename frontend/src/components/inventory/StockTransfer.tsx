@@ -11,6 +11,7 @@ import { ProductPicker } from "./ProductPicker";
 import { useTenant } from "@/contexts/tenant-context";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { cn } from "@/lib/utils";
 
 interface TransferItemInput {
   product_id: string;

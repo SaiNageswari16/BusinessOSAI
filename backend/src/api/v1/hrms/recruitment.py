@@ -818,6 +818,8 @@ async def list_jobs(
     search: str | None = None,
 ):
     query = select(JobOpening).where(JobOpening.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((JobOpening.company_id == ctx.active_company_id) | (JobOpening.company_id == None))
     if status_filter:
         query = query.where(JobOpening.status.ilike(status_filter))
     if search:
@@ -842,6 +844,7 @@ async def create_job(
 ):
     new_job = JobOpening(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         title=payload.title,
         department=payload.department,
         location=payload.location,
@@ -1375,6 +1378,8 @@ async def list_applicants(
     search: str | None = None,
 ):
     query = select(Applicant).where(Applicant.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((Applicant.company_id == ctx.active_company_id) | (Applicant.company_id == None))
     if job_id:
         query = query.where(Applicant.job_id == job_id)
     if stage:
@@ -1413,6 +1418,7 @@ async def create_manual_applicant(
 
     new_applicant = Applicant(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         name=payload.name,
         email=payload.email,
         phone=payload.phone,
@@ -1655,6 +1661,7 @@ async def schedule_interview(
 
     new_int = Interview(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         applicant_id=payload.applicant_id,
         candidate=applicant.name,
         job_title=applicant.job_title,
@@ -1732,6 +1739,8 @@ async def list_offers(
     page_size: int = Query(50, ge=1, le=100),
 ):
     query = select(OfferLetter).where(OfferLetter.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((OfferLetter.company_id == ctx.active_company_id) | (OfferLetter.company_id == None))
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
         query.order_by(OfferLetter.offer_date.desc()).offset((page - 1) * page_size).limit(page_size)
@@ -1815,6 +1824,7 @@ async def create_offer(
 
     new_offer = OfferLetter(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         applicant_id=payload.applicant_id,
         employee_id=payload.employee_id,
         candidate=candidate_name or "Candidate",
@@ -2314,6 +2324,7 @@ async def _sync_accepted_offer_onboarding(
         seq = str(count + 1).zfill(4)
         emp = Employee(
             tenant_id=tenant_id,
+            company_id=offer.company_id,
             employee_code=f"EMP-{seq}",
             full_name=cand_name,
             email=cand_email,
@@ -2506,6 +2517,8 @@ async def list_onboardings(
             await _sync_accepted_offer_onboarding(db, acc_offer, app, ctx.tenant_id)
 
     query = select(OnboardingRecord).where(OnboardingRecord.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((OnboardingRecord.company_id == ctx.active_company_id) | (OnboardingRecord.company_id == None))
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
         query.order_by(OnboardingRecord.start_date.desc()).offset((page - 1) * page_size).limit(page_size)

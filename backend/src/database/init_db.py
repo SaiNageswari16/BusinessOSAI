@@ -162,6 +162,22 @@ async def init_database() -> None:
         "ALTER TABLE live_notifications ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
         "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE crm_quotations ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE crm_sales_orders ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE delivery_challans ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE job_openings ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE recruitment_applicants ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE recruitment_interviews ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE recruitment_offer_letters ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE recruitment_onboardings ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_accounts ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_journal_entries ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE ar_expense_claims ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE ar_bank_accounts ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE ar_fixed_assets ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE ar_vouchers ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE employees ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         # Backfill legacy records to tenant's first company
         """
@@ -213,6 +229,41 @@ async def init_database() -> None:
         UPDATE activity_logs act
         SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = act.tenant_id ORDER BY c.created_at ASC LIMIT 1)
         WHERE act.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = act.tenant_id);
+        """,
+        """
+        UPDATE ar_invoices inv
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = inv.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE inv.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = inv.tenant_id);
+        """,
+        """
+        UPDATE delivery_challans dc
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = dc.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE dc.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = dc.tenant_id);
+        """,
+        """
+        UPDATE employees emp
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = emp.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE emp.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = emp.tenant_id);
+        """,
+        """
+        UPDATE crm_customers c
+        SET company_id = (SELECT comp.id FROM companies comp WHERE comp.tenant_id = c.tenant_id ORDER BY comp.created_at ASC LIMIT 1)
+        WHERE c.company_id IS NULL AND EXISTS (SELECT 1 FROM companies comp WHERE comp.tenant_id = c.tenant_id);
+        """,
+        """
+        UPDATE crm_leads l
+        SET company_id = (SELECT comp.id FROM companies comp WHERE comp.tenant_id = l.tenant_id ORDER BY comp.created_at ASC LIMIT 1)
+        WHERE l.company_id IS NULL AND EXISTS (SELECT 1 FROM companies comp WHERE comp.tenant_id = l.tenant_id);
+        """,
+        """
+        UPDATE erp_goods_receipts gr
+        SET company_id = (SELECT comp.id FROM companies comp WHERE comp.tenant_id = gr.tenant_id ORDER BY comp.created_at ASC LIMIT 1)
+        WHERE gr.company_id IS NULL AND EXISTS (SELECT 1 FROM companies comp WHERE comp.tenant_id = gr.tenant_id);
+        """,
+        """
+        UPDATE erp_goods_issues gi
+        SET company_id = (SELECT comp.id FROM companies comp WHERE comp.tenant_id = gi.tenant_id ORDER BY comp.created_at ASC LIMIT 1)
+        WHERE gi.company_id IS NULL AND EXISTS (SELECT 1 FROM companies comp WHERE comp.tenant_id = gi.tenant_id);
         """,
         # Live notifications user isolation
         "ALTER TABLE live_notifications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;",

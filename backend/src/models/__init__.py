@@ -1299,6 +1299,9 @@ class POSSession(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class JobOpening(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "job_openings"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(150), nullable=False)
     department: Mapped[str] = mapped_column(String(200), nullable=False)
     location: Mapped[str] = mapped_column(String(150), nullable=False)
@@ -1325,6 +1328,9 @@ class JobOpening(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class Applicant(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "recruitment_applicants"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     email: Mapped[str] = mapped_column(String(150), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -1353,6 +1359,9 @@ class Applicant(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class Interview(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "recruitment_interviews"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     applicant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("recruitment_applicants.id", ondelete="CASCADE"), nullable=False)
     candidate: Mapped[str] = mapped_column(String(150), nullable=False)
     job_title: Mapped[str] = mapped_column(String(150), nullable=False)
@@ -1376,6 +1385,9 @@ class Interview(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class OfferLetter(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "recruitment_offer_letters"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     applicant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("recruitment_applicants.id", ondelete="CASCADE"), nullable=True)
     employee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("employees.id", ondelete="CASCADE"), nullable=True)
     candidate: Mapped[str] = mapped_column(String(150), nullable=False)
@@ -1397,6 +1409,9 @@ class OfferLetter(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class OnboardingRecord(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "recruitment_onboardings"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     applicant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("recruitment_applicants.id", ondelete="CASCADE"), nullable=False)
     new_hire: Mapped[str] = mapped_column(String(150), nullable=False)
     role: Mapped[str] = mapped_column(String(150), nullable=False)
@@ -1629,6 +1644,9 @@ class CRMSupportTicket(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
 class CRMQuotation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "crm_quotations"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False)
     quote_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     items: Mapped[dict | None] = mapped_column(JSONB, default=dict)  # [{"product_id": ..., "qty": ..., "price": ...}]
@@ -1641,6 +1659,9 @@ class CRMQuotation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin)
 class CRMSalesOrder(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "crm_sales_orders"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False)
     order_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     items: Mapped[dict | None] = mapped_column(JSONB, default=dict)
@@ -1652,6 +1673,9 @@ class CRMSalesOrder(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
 class CRMOpportunity(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "crm_opportunities"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="SET NULL"), index=True)
     lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_leads.id", ondelete="SET NULL"), index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)

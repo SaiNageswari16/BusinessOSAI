@@ -48,6 +48,8 @@ async def list_accounts(
     is_active: bool | None = None,
 ):
     query = select(ChartOfAccount).where(ChartOfAccount.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((ChartOfAccount.company_id == ctx.active_company_id) | (ChartOfAccount.company_id == None))
     if account_type:
         query = query.where(ChartOfAccount.account_type == account_type)
     if search:
@@ -95,7 +97,10 @@ async def create_account(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:chart_of_accounts"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    account = ChartOfAccount(tenant_id=ctx.tenant_id, **payload.model_dump())
+    acc_data = payload.model_dump()
+    if not acc_data.get("company_id") and ctx.active_company_id:
+        acc_data["company_id"] = ctx.active_company_id
+    account = ChartOfAccount(tenant_id=ctx.tenant_id, **acc_data)
     db.add(account)
     await db.flush()
     await write_audit_log(
@@ -201,6 +206,8 @@ async def list_journal_entries(
     search: str | None = None,
 ):
     query = select(JournalEntry).where(JournalEntry.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((JournalEntry.company_id == ctx.active_company_id) | (JournalEntry.company_id == None))
     if status_filter:
         query = query.where(JournalEntry.status == status_filter)
     if entry_type:
@@ -266,6 +273,7 @@ async def create_journal_entry(
 
     entry = JournalEntry(
         tenant_id=ctx.tenant_id,
+        company_id=payload.company_id or ctx.active_company_id,
         entry_number=entry_number,
         total_debit=total_debit,
         total_credit=total_credit,

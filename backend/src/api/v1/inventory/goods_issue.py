@@ -19,7 +19,10 @@ async def list_goods_issues(
     db: AsyncSession = Depends(get_db),
     ctx: CurrentUserContext = Depends(require_any_permission("view:erp", "view:pos"))
 ):
-    stmt = select(GoodsIssue).where(GoodsIssue.tenant_id == ctx.tenant_id).options(selectinload(GoodsIssue.items)).offset(skip).limit(limit)
+    stmt = select(GoodsIssue).where(GoodsIssue.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        stmt = stmt.where((GoodsIssue.company_id == ctx.active_company_id) | (GoodsIssue.company_id == None))
+    stmt = stmt.options(selectinload(GoodsIssue.items)).offset(skip).limit(limit)
     res = await db.execute(stmt)
     return res.scalars().all()
 
@@ -51,6 +54,7 @@ async def create_goods_issue(
 ):
     new_issue = GoodsIssue(
         tenant_id=ctx.tenant_id,
+        company_id=getattr(data, "company_id", None) or ctx.active_company_id,
         issue_number=data.issue_number,
         recipient=data.recipient,
         reference_number=data.reference_number,

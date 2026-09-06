@@ -67,6 +67,8 @@ async def _lead_or_404(db: AsyncSession, lead_id: uuid.UUID, tenant_id: uuid.UUI
 @router.get("/customers", response_model=PaginatedResponse[CustomerResponse])
 async def list_customers(ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))], db: Annotated[AsyncSession, Depends(get_db)], page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200), search: str | None = None, customer_type: str | None = None):
     query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((Customer.company_id == ctx.active_company_id) | (Customer.company_id == None))
     if search:
         term = f"%{search}%"
         query = query.where(or_(Customer.name.ilike(term), Customer.email.ilike(term), Customer.phone.ilike(term), Customer.company_name.ilike(term)))
@@ -79,7 +81,10 @@ async def list_customers(ctx: Annotated[CurrentUserContext, Depends(require_perm
 
 @router.post("/customers", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
 async def create_customer(payload: CustomerCreate, request: Request, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))], db: Annotated[AsyncSession, Depends(get_db)]):
-    customer = Customer(tenant_id=ctx.tenant_id, **payload.model_dump())
+    cust_data = payload.model_dump()
+    if not cust_data.get("company_id") and ctx.active_company_id:
+        cust_data["company_id"] = ctx.active_company_id
+    customer = Customer(tenant_id=ctx.tenant_id, **cust_data)
     db.add(customer); await db.flush()
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="customer_created", entity_type="customer", entity_id=customer.id, new_values=payload.model_dump(mode="json"), ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     return customer
@@ -154,6 +159,8 @@ async def list_leads(
 ):
     is_mgr = _is_crm_manager(ctx)
     query = select(Lead).where(Lead.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((Lead.company_id == ctx.active_company_id) | (Lead.company_id == None))
 
     # Role-based visibility:
     if not is_mgr:
@@ -476,7 +483,10 @@ async def bulk_import_customers(
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead(payload: LeadCreate, request: Request, ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))], db: Annotated[AsyncSession, Depends(get_db)]):
     if payload.status not in LEAD_STATUSES: raise HTTPException(status_code=400, detail="Invalid lead status")
-    lead = Lead(tenant_id=ctx.tenant_id, **payload.model_dump())
+    lead_data = payload.model_dump()
+    if not lead_data.get("company_id") and ctx.active_company_id:
+        lead_data["company_id"] = ctx.active_company_id
+    lead = Lead(tenant_id=ctx.tenant_id, **lead_data)
     if not lead.owner_user_id and not _is_crm_manager(ctx):
         lead.owner_user_id = ctx.user.id
     db.add(lead); await db.flush()
@@ -672,6 +682,8 @@ async def list_opportunities(
 ):
     is_mgr = _is_crm_manager(ctx)
     query = select(CRMOpportunity).where(CRMOpportunity.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((CRMOpportunity.company_id == ctx.active_company_id) | (CRMOpportunity.company_id == None))
     if not is_mgr:
         query = query.where(CRMOpportunity.owner_user_id == ctx.user.id)
     elif assigned_to == "me":
@@ -836,7 +848,10 @@ async def create_opportunity(payload: OpportunityCreate, request: Request, ctx: 
         raise HTTPException(status_code=400, detail="Invalid opportunity stage")
     if not payload.customer_id and not payload.lead_id:
         raise HTTPException(status_code=400, detail="An opportunity must be linked to a customer or lead")
-    opportunity = CRMOpportunity(tenant_id=ctx.tenant_id, **payload.model_dump())
+    opp_data = payload.model_dump()
+    if not opp_data.get("company_id") and ctx.active_company_id:
+        opp_data["company_id"] = ctx.active_company_id
+    opportunity = CRMOpportunity(tenant_id=ctx.tenant_id, **opp_data)
     db.add(opportunity); await db.flush()
     await add_system_notification(db, ctx.tenant_id, f"New Opportunity: {opportunity.name}", f"Deal/Opportunity '{opportunity.name}' worth ${opportunity.expected_revenue or 0:,.2f} created by {ctx.user.full_name}", "crm")
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="opportunity_created", entity_type="opportunity", entity_id=opportunity.id, new_values=payload.model_dump(mode="json"), ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
@@ -2395,7 +2410,10 @@ async def list_quotations(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(select(CRMQuotation).where(CRMQuotation.tenant_id == ctx.tenant_id).order_by(CRMQuotation.created_at.desc()))
+    query = select(CRMQuotation).where(CRMQuotation.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((CRMQuotation.company_id == ctx.active_company_id) | (CRMQuotation.company_id == None))
+    res = await db.execute(query.order_by(CRMQuotation.created_at.desc()))
     return res.scalars().all()
 
 @router.post("/quotations")
@@ -2406,6 +2424,7 @@ async def create_quotation(
 ):
     quote = CRMQuotation(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         customer_id=payload.customer_id,
         quote_number=payload.quote_number,
         items=payload.items,
@@ -2432,7 +2451,10 @@ async def list_sales_orders(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    res = await db.execute(select(CRMSalesOrder).where(CRMSalesOrder.tenant_id == ctx.tenant_id).order_by(CRMSalesOrder.created_at.desc()))
+    query = select(CRMSalesOrder).where(CRMSalesOrder.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((CRMSalesOrder.company_id == ctx.active_company_id) | (CRMSalesOrder.company_id == None))
+    res = await db.execute(query.order_by(CRMSalesOrder.created_at.desc()))
     return res.scalars().all()
 
 @router.post("/sales-orders")
@@ -2443,6 +2465,7 @@ async def create_sales_order(
 ):
     order = CRMSalesOrder(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         customer_id=payload.customer_id,
         order_number=payload.order_number,
         items=payload.items,

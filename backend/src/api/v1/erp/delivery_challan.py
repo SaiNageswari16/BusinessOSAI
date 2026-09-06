@@ -33,6 +33,7 @@ async def create_delivery_challan(
 ):
     challan = DeliveryChallan(
         tenant_id=ctx.tenant_id,
+        company_id=getattr(payload, "company_id", None) or ctx.active_company_id,
         invoice_id=payload.invoice_id,
         customer_id=payload.customer_id,
         reference_number=payload.reference_number,
@@ -78,6 +79,8 @@ async def list_delivery_challans(
     search: str | None = None,
 ):
     q = select(DeliveryChallan).where(DeliveryChallan.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        q = q.where((DeliveryChallan.company_id == ctx.active_company_id) | (DeliveryChallan.company_id == None))
 
     if status_filter:
         q = q.where(DeliveryChallan.status == status_filter)

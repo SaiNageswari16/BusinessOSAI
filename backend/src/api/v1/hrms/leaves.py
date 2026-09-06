@@ -37,6 +37,9 @@ async def list_leave_requests(
         .where(LeaveRequest.tenant_id == ctx.tenant_id)
     )
 
+    if ctx.active_company_id:
+        query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
+
     # If the user does not have company-wide leave viewing permissions, strictly isolate to their own leave requests
     if not (ctx.has_permission("view:hrms_leaves") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
         query = query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
@@ -51,6 +54,8 @@ async def list_leave_requests(
         .join(Employee, LeaveRequest.employee_id == Employee.id)
         .where(LeaveRequest.tenant_id == ctx.tenant_id)
     )
+    if ctx.active_company_id:
+        count_query = count_query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
     if not (ctx.has_permission("view:hrms_leaves") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
         count_query = count_query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
     if employee_id:
@@ -101,6 +106,8 @@ async def get_leave_balances(
         .join(Employee, LeaveBalance.employee_id == Employee.id)
         .where(LeaveBalance.tenant_id == ctx.tenant_id)
     )
+    if ctx.active_company_id:
+        query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
     if employee_id:
         query = query.where(LeaveBalance.employee_id == employee_id)
 
