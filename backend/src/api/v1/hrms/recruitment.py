@@ -580,13 +580,390 @@ def _generate_reportlab_offer_pdf(offer: OfferLetter, company_name: str, tenant:
     return buffer.getvalue()
 
 
+try:
+    from xhtml2pdf import pisa
+    HAS_XHTML2PDF = True
+except ImportError:
+    HAS_XHTML2PDF = False
+
+
+def _generate_html_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None, company: Company | None = None) -> bytes:
+    """Renders the pixel-perfect HTML/CSS offer letterhead matching OfferLetterStudioModal directly to PDF via xhtml2pdf."""
+    from html import escape
+    tpl_info = _parse_offer_template_data(offer.custom_template, offer, company_name, company)
+    raw_data = tpl_info.get("data") or {}
+
+    org_name = escape(tpl_info["header_org"])
+    org_address = escape(tpl_info.get("header_address") or "Official Corporate Headquarters")
+    org_email = escape(tpl_info.get("header_email") or "careers@businessos.ai")
+    org_phone = escape(tpl_info.get("header_phone") or "+91 98493 44919")
+    org_gstin = escape(tpl_info.get("header_gstin") or "")
+    org_cin = escape(tpl_info.get("header_cin") or "")
+    org_logo = tpl_info.get("org_logo") or ""
+    org_initials = escape(tpl_info.get("org_initials") or org_name[:2].upper())
+
+    accent_color = raw_data.get("accent_color") or "#4f46e5"
+    primary_color = raw_data.get("primary_color") or "#1e1b4b"
+    font_size = raw_data.get("font_size") or 9
+    heading_size = raw_data.get("heading_size") or 14
+
+    probation_months = int(raw_data.get("probation_months") or 3)
+    notice_days = int(raw_data.get("notice_days") or 30)
+
+    ctc = float(offer.ctc or 0)
+    split = _parse_offer_custom_split(offer.custom_template, ctc)
+    b_m, b_a = split["b_m"], split["b_a"]
+    h_m, h_a = split["h_m"], split["h_a"]
+    s_m, s_a = split["s_m"], split["s_a"]
+    p_m, p_a = split["p_m"], split["p_a"]
+    tot_m, tot_a = split["tot_m"], split["tot_a"]
+
+    candidate = escape(offer.candidate or "Candidate")
+    cand_email = escape(offer.candidate_email or "N/A")
+    role_name = escape(offer.role or "Team Member")
+    join_str = offer.joining_date.strftime("%b %d, %Y") if offer.joining_date else "Immediate / Mutually Agreed"
+    offer_date_str = offer.offer_date.strftime("%B %d, %Y") if offer.offer_date else date.today().strftime("%B %d, %Y")
+    exp_date_str = offer.expiry_date.strftime("%B %d, %Y") if offer.expiry_date else (date.today() + timedelta(days=7)).strftime("%B %d, %Y")
+    ref_id = f"BOS-OFFER-{str(offer.id)[:6].upper()}" if offer.id else "BOS-OFFER-970562"
+    tpl_title = escape(raw_data.get("template_name") or tpl_info.get("header_badge") or "OFFICIAL OFFER")
+    subject = escape(tpl_info.get("subject") or f"Formal Offer of Employment &mdash; {role_name}")
+    opening_text = escape(tpl_info.get("opening_text") or f"On behalf of {org_name}, we are pleased to extend this formal offer of employment for the position of {role_name}. We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.")
+    closing_text = escape(tpl_info.get("closing_text") or f"Please review this offer letter and indicate your acceptance by signing below and returning a duplicate copy on or before {exp_date_str}.")
+    signer = escape(tpl_info["signer"])
+    signer_title = escape(tpl_info["signer_title"])
+    footer_text = escape(tpl_info["footer_text"])
+    foot_token = f"BOS-SIGN-{abs(hash(str(offer.id))) % 900000 + 100000}"
+
+    contact_parts = [f"Email: {org_email}", f"Phone: {org_phone}"]
+    if org_gstin:
+        contact_parts.append(f"GSTIN: {org_gstin}")
+    if org_cin:
+        contact_parts.append(f"CIN: {org_cin}")
+    contact_line = " &bull; ".join(contact_parts)
+
+    clauses_html = ""
+    for line in tpl_info["clauses"].split('\n'):
+        cl = line.strip()
+        if cl:
+            clauses_html += f"<div style='margin-bottom: 5px;'>{escape(cl)}</div>"
+    if not clauses_html:
+        clauses_html = "<div>Standard terms and confidentiality covenants apply as per organizational handbook.</div>"
+
+    logo_markup = f"<div style='width: 38px; height: 38px; border-radius: 6px; background-color: {accent_color}; color: #ffffff; text-align: center; line-height: 38px; font-weight: bold; font-size: 12pt;'>{org_initials}</div>"
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@page {{
+    size: A4 portrait;
+    margin: 12mm 15mm;
+}}
+* {{
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: Helvetica, Arial, sans-serif;
+}}
+body {{
+    background-color: #ffffff;
+    color: #0f172a;
+    font-size: {font_size}pt;
+    line-height: 1.45;
+}}
+.header-banner {{
+    width: 100%;
+    border-bottom: 2px solid {accent_color};
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+}}
+.org-name {{
+    font-size: {heading_size}pt;
+    font-weight: bold;
+    color: {primary_color};
+    margin-bottom: 1px;
+}}
+.org-sub {{
+    font-size: 7.5pt;
+    color: #64748b;
+    line-height: 1.35;
+}}
+.doc-tag {{
+    display: inline-block;
+    background-color: {accent_color};
+    color: #ffffff;
+    font-size: 7.5pt;
+    font-weight: bold;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: right;
+}}
+.meta-date {{
+    font-size: 7.5pt;
+    color: #64748b;
+    margin-top: 3px;
+    text-align: right;
+}}
+.meta-ref {{
+    font-size: 7.5pt;
+    color: #64748b;
+    text-align: right;
+    font-family: monospace;
+}}
+.recipient-block {{
+    background-color: #f8fafc;
+    border-left: 4px solid {accent_color};
+    border-top: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+}}
+.recipient-tag {{
+    font-size: 7pt;
+    font-weight: bold;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}}
+.recipient-name {{
+    font-size: 11pt;
+    font-weight: bold;
+    color: {primary_color};
+    margin-bottom: 2px;
+}}
+.recipient-sub {{
+    font-size: 8pt;
+    color: #475569;
+}}
+.subject-line {{
+    font-size: 10pt;
+    font-weight: bold;
+    color: {primary_color};
+    margin-bottom: 8px;
+}}
+.salutation {{
+    font-size: 9.5pt;
+    font-weight: bold;
+    color: {primary_color};
+    margin-bottom: 6px;
+}}
+.body-p {{
+    font-size: 8.5pt;
+    color: #334155;
+    margin-bottom: 12px;
+    line-height: 1.5;
+}}
+.table-title {{
+    font-size: 9pt;
+    font-weight: bold;
+    color: {primary_color};
+    border-bottom: 1.5px solid #e2e8f0;
+    padding-bottom: 3px;
+    margin-top: 14px;
+    margin-bottom: 8px;
+}}
+.comp-table {{
+    width: 100%;
+    margin-bottom: 14px;
+    font-size: 8pt;
+}}
+.comp-table th {{
+    background-color: #f1f5f9;
+    color: {primary_color};
+    font-weight: bold;
+    border: 1px solid #cbd5e1;
+    padding: 5px 8px;
+    text-align: left;
+}}
+.comp-table td {{
+    border: 1px solid #e2e8f0;
+    padding: 4px 8px;
+    color: #334155;
+}}
+.total-row {{
+    background-color: #eff6ff;
+    font-weight: bold;
+    color: {accent_color};
+}}
+.clauses-box {{
+    background-color: #fcfcfc;
+    border-left: 3px solid {accent_color};
+    border-top: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 8px 12px;
+    margin-bottom: 14px;
+    font-size: 8pt;
+    color: #334155;
+    line-height: 1.55;
+}}
+.sig-table {{
+    width: 100%;
+    margin-top: 14px;
+    margin-bottom: 10px;
+}}
+.sig-line {{
+    border-bottom: 1px dashed #94a3b8;
+    width: 85%;
+    height: 25px;
+    margin-bottom: 4px;
+}}
+.sig-name {{
+    font-size: 9pt;
+    font-weight: bold;
+    color: {primary_color};
+}}
+.sig-sub {{
+    font-size: 7.5pt;
+    color: #64748b;
+}}
+.footer-table {{
+    width: 100%;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 6px;
+    margin-top: 12px;
+    font-size: 7.5pt;
+    color: #94a3b8;
+}}
+</style>
+</head>
+<body>
+<table class="header-banner">
+<tr>
+<td style="width: 46px; vertical-align: middle;">
+{logo_markup}
+</td>
+<td style="vertical-align: middle; padding-left: 10px;">
+<div class="org-name">{org_name}</div>
+<div class="org-sub">{org_address}</div>
+<div class="org-sub">{contact_line}</div>
+</td>
+<td style="width: 180px; vertical-align: middle; text-align: right;">
+<div class="doc-tag">{tpl_title}</div>
+<div class="meta-date">Date: {offer_date_str}</div>
+<div class="meta-ref">REF: {ref_id}</div>
+</td>
+</tr>
+</table>
+
+<div class="recipient-block">
+<div class="recipient-tag">PRIVATE &amp; CONFIDENTIAL &bull; APPOINTMENT OFFER</div>
+<div class="recipient-name">{candidate}</div>
+<div class="recipient-sub">Email: {cand_email}</div>
+<div class="recipient-sub">Position: <b>{role_name}</b> | Joining Date: <b>{join_str}</b></div>
+</div>
+
+<div class="subject-line">{subject}</div>
+<div class="salutation">Dear {candidate},</div>
+<div class="body-p">{opening_text}</div>
+
+<div class="table-title">Annexure A: Annual &amp; Monthly Compensation Structure</div>
+<table class="comp-table">
+<thead>
+<tr>
+<th>Salary Component</th>
+<th style="text-align: right; width: 90px;">Distribution (%)</th>
+<th style="text-align: right; width: 110px;">Monthly Value (&#8377;)</th>
+<th style="text-align: right; width: 110px;">Annual Value (&#8377;)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Basic Salary</td>
+<td style="text-align: right;">{split["basic_pct"]}%</td>
+<td style="text-align: right;">&#8377;{int(round(b_m)):,}</td>
+<td style="text-align: right;">&#8377;{int(round(b_a)):,}</td>
+</tr>
+<tr>
+<td>House Rent Allowance (HRA)</td>
+<td style="text-align: right;">{split["hra_pct"]}%</td>
+<td style="text-align: right;">&#8377;{int(round(h_m)):,}</td>
+<td style="text-align: right;">&#8377;{int(round(h_a)):,}</td>
+</tr>
+<tr>
+<td>Special / Flexi Allowance</td>
+<td style="text-align: right;">{split["special_pct"]}%</td>
+<td style="text-align: right;">&#8377;{int(round(s_m)):,}</td>
+<td style="text-align: right;">&#8377;{int(round(s_a)):,}</td>
+</tr>
+<tr>
+<td>Employer PF Contribution (Statutory)</td>
+<td style="text-align: right;">{split["pf_pct"]}%</td>
+<td style="text-align: right;">&#8377;{int(round(p_m)):,}</td>
+<td style="text-align: right;">&#8377;{int(round(p_a)):,}</td>
+</tr>
+<tr class="total-row">
+<td><strong>Total Cost to Company (CTC)</strong></td>
+<td style="text-align: right;"><strong>100%</strong></td>
+<td style="text-align: right; font-weight: bold;">&#8377;{int(round(tot_m)):,}</td>
+<td style="text-align: right; font-weight: bold;">&#8377;{int(round(tot_a)):,}</td>
+</tr>
+</tbody>
+</table>
+
+<div class="table-title">Annexure B: Standard Terms, Conditions &amp; Covenants</div>
+<div class="clauses-box">
+<p style="margin-bottom: 3px;"><strong>Probation Period:</strong> {f'{probation_months} months from joining.' if probation_months > 0 else 'Direct appointment (No probation).'}</p>
+<p style="margin-bottom: 6px;"><strong>Notice Period:</strong> {notice_days} days written notice or gross salary in lieu thereof.</p>
+{clauses_html}
+</div>
+
+<div class="body-p" style="margin-top: 10px;">{closing_text}</div>
+
+<table class="sig-table">
+<tr>
+<td style="width: 50%; vertical-align: top;">
+<div style="font-size: 7.5pt; font-weight: bold; color: #64748b; text-transform: uppercase;">Authorized Signatory:</div>
+<div class="sig-line"></div>
+<div class="sig-name">{signer}</div>
+<div class="sig-sub">{signer_title}</div>
+<div class="sig-sub">{org_name}</div>
+</td>
+<td style="width: 50%; vertical-align: top; text-align: right;">
+<div style="font-size: 7.5pt; font-weight: bold; color: #64748b; text-transform: uppercase;">Candidate Acceptance:</div>
+<div class="sig-line" style="margin-left: auto;"></div>
+<div class="sig-name">{candidate}</div>
+<div class="sig-sub">Acceptance Date: _________________</div>
+<div class="sig-sub" style="color: {accent_color}; font-weight: bold;">Valid Until: {exp_date_str}</div>
+</td>
+</tr>
+</table>
+
+<table class="footer-table">
+<tr>
+<td style="text-align: left;">Secure Verification: {foot_token}</td>
+<td style="text-align: right;">{footer_text}</td>
+</tr>
+</table>
+</body>
+</html>
+"""
+    dest = io.BytesIO()
+    pisa_status = pisa.CreatePDF(html, dest=dest)
+    if pisa_status.err:
+        raise RuntimeError(f"xhtml2pdf rendering error: {pisa_status.err}")
+    return dest.getvalue()
+
+
 def generate_offer_letter_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None, company: Company | None = None) -> bytes:
-    """Generates an official Offer Letter PDF using ReportLab when available, with resilient pure-Python fallback."""
+    """Generates an official Offer Letter PDF matching the application's letterhead template."""
+    if HAS_XHTML2PDF:
+        try:
+            return _generate_html_offer_pdf(offer, company_name, tenant, company)
+        except Exception as err:
+            print(f"[XHTML2PDF RENDERING NOTICE, FALLING BACK TO REPORTLAB]: {err}")
+
     if HAS_REPORTLAB:
         try:
             return _generate_reportlab_offer_pdf(offer, company_name, tenant, company)
         except Exception as err:
-            print(f"[REPORTLAB RENDERING NOTICE, USING PURE-PYTHON ENGINE]: {err}")
+            print(f"[REPORTLAB RENDERING NOTICE, FALLING BACK TO PURE-PYTHON]: {err}")
+
     return _generate_pure_python_offer_pdf(offer, company_name, tenant, company)
 
 
@@ -1854,7 +2231,7 @@ async def list_offers(
         query = query.where((OfferLetter.company_id == ctx.active_company_id) | (OfferLetter.company_id == None))
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
-        query.order_by(OfferLetter.offer_date.desc()).offset((page - 1) * page_size).limit(page_size)
+        query.order_by(OfferLetter.created_at.desc(), OfferLetter.offer_date.desc()).offset((page - 1) * page_size).limit(page_size)
     )
     return paginate(result.scalars().all(), total or 0, page, page_size)
 

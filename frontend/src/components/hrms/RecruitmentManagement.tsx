@@ -2412,7 +2412,9 @@ ${customClausesText || offerForm.customTemplate}`;
                         const bCand = b.candidate?.toLowerCase().includes(q) ? 1 : 0;
                         if (aCand !== bCand) return bCand - aCand;
                       }
-                      return 0;
+                      const dateA = new Date(a.created_at || a.offer_date || 0).getTime();
+                      const dateB = new Date(b.created_at || b.offer_date || 0).getTime();
+                      return dateB - dateA;
                     });
 
                   if (filtered.length === 0) {
@@ -4113,6 +4115,7 @@ ${customClausesText || offerForm.customTemplate}`;
             signer_name: `${payload.signing_authority} (${payload.signing_title})`,
             custom_template: JSON.stringify(payload)
           });
+          setOffers(prev => [res, ...prev.filter(o => o.id !== res.id)]);
           try {
             await handleEmailOffer(res.id);
           } catch (err: any) {
@@ -4120,7 +4123,7 @@ ${customClausesText || offerForm.customTemplate}`;
           }
         }}
         handleUpdateOfferApi={async (offerId, payload) => {
-          await recruitmentApi.updateOffer(offerId, {
+          const updated = await recruitmentApi.updateOffer(offerId, {
             applicant_id: payload.applicant_id || undefined,
             employee_id: payload.employee_id || undefined,
             candidate: payload.candidate,
@@ -4132,6 +4135,7 @@ ${customClausesText || offerForm.customTemplate}`;
             signer_name: `${payload.signing_authority} (${payload.signing_title})`,
             custom_template: JSON.stringify(payload)
           });
+          setOffers(prev => prev.map(o => o.id === offerId ? updated : o));
         }}
       />
 
