@@ -587,6 +587,18 @@ except ImportError:
     HAS_XHTML2PDF = False
 
 
+def _clean_html_text(text: str) -> str:
+    """Cleans up rich text tags ensuring valid xhtml for xhtml2pdf without double-escaping valid markup."""
+    if not text:
+        return ""
+    # Replace non-standard currency symbols that render as missing glyph black boxes in Helvetica
+    t = text.replace("₹", "Rs. ").replace("&#8377;", "Rs. ").replace("\u20b9", "Rs. ")
+    import re
+    # Escape lone ampersands that are not already entities
+    t = re.sub(r"&(?!(amp|lt|gt|quot|apos|bull|mdash|ndash|#\d+|#x[0-9a-fA-F]+);)", "&amp;", t)
+    return t
+
+
 def _generate_html_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None, company: Company | None = None) -> bytes:
     """Renders the pixel-perfect HTML/CSS offer letterhead matching OfferLetterStudioModal directly to PDF via xhtml2pdf."""
     from html import escape
@@ -600,7 +612,7 @@ def _generate_html_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tena
     org_gstin = escape(tpl_info.get("header_gstin") or "")
     org_cin = escape(tpl_info.get("header_cin") or "")
     org_logo = tpl_info.get("org_logo") or ""
-    org_initials = escape(tpl_info.get("org_initials") or org_name[:2].upper())
+    org_initials = escape(tpl_info.get("org_initials") or (org_name[:2].upper() if org_name else "IO"))
 
     accent_color = raw_data.get("accent_color") or "#4f46e5"
     primary_color = raw_data.get("primary_color") or "#1e1b4b"
@@ -626,12 +638,12 @@ def _generate_html_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tena
     exp_date_str = offer.expiry_date.strftime("%B %d, %Y") if offer.expiry_date else (date.today() + timedelta(days=7)).strftime("%B %d, %Y")
     ref_id = f"BOS-OFFER-{str(offer.id)[:6].upper()}" if offer.id else "BOS-OFFER-970562"
     tpl_title = escape(raw_data.get("template_name") or tpl_info.get("header_badge") or "OFFICIAL OFFER")
-    subject = escape(tpl_info.get("subject") or f"Formal Offer of Employment &mdash; {role_name}")
-    opening_text = escape(tpl_info.get("opening_text") or f"On behalf of {org_name}, we are pleased to extend this formal offer of employment for the position of {role_name}. We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.")
-    closing_text = escape(tpl_info.get("closing_text") or f"Please review this offer letter and indicate your acceptance by signing below and returning a duplicate copy on or before {exp_date_str}.")
+    subject = _clean_html_text(tpl_info.get("subject") or f"Formal Offer of Employment &mdash; {role_name}")
+    opening_text = _clean_html_text(tpl_info.get("opening_text") or f"On behalf of <strong>{org_name}</strong>, we are pleased to extend this formal offer of employment for the position of <strong>{role_name}</strong>. We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.")
+    closing_text = _clean_html_text(tpl_info.get("closing_text") or f"This offer remains valid until <strong>{exp_date_str}</strong>. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.")
     signer = escape(tpl_info["signer"])
     signer_title = escape(tpl_info["signer_title"])
-    footer_text = escape(tpl_info["footer_text"])
+    footer_text = _clean_html_text(tpl_info["footer_text"])
     foot_token = f"BOS-SIGN-{abs(hash(str(offer.id))) % 900000 + 100000}"
 
     contact_parts = [f"Email: {org_email}", f"Phone: {org_phone}"]
@@ -645,11 +657,14 @@ def _generate_html_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tena
     for line in tpl_info["clauses"].split('\n'):
         cl = line.strip()
         if cl:
-            clauses_html += f"<div style='margin-bottom: 5px;'>{escape(cl)}</div>"
+            clauses_html += f"<div style='margin-bottom: 3.5px;'>{_clean_html_text(cl)}</div>"
     if not clauses_html:
         clauses_html = "<div>Standard terms and confidentiality covenants apply as per organizational handbook.</div>"
 
-    logo_markup = f"<div style='width: 38px; height: 38px; border-radius: 6px; background-color: {accent_color}; color: #ffffff; text-align: center; line-height: 38px; font-weight: bold; font-size: 12pt;'>{org_initials}</div>"
+    if org_logo and (org_logo.startswith("data:image") or org_logo.startswith("http") or os.path.exists(org_logo)):
+        logo_markup = f'<img src="{org_logo}" style="max-height: 42px; max-width: 140px;" />'
+    else:
+        logo_markup = f'<table style="width: 40px; height: 40px; background-color: {accent_color}; border-collapse: collapse;"><tr><td style="text-align: center; vertical-align: middle; color: #ffffff; font-weight: bold; font-size: 13pt;">{org_initials}</td></tr></table>'
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -676,7 +691,7 @@ body {{
     width: 100%;
     border-bottom: 2px solid {accent_color};
     padding-bottom: 10px;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
 }}
 .org-name {{
     font-size: {heading_size}pt;
@@ -693,10 +708,9 @@ body {{
     display: inline-block;
     background-color: {accent_color};
     color: #ffffff;
-    font-size: 7.5pt;
+    font-size: 7pt;
     font-weight: bold;
     padding: 3px 8px;
-    border-radius: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     text-align: right;
@@ -713,15 +727,17 @@ body {{
     text-align: right;
     font-family: monospace;
 }}
-.recipient-block {{
+.recipient-table {{
+    width: 100%;
     background-color: #f8fafc;
     border-left: 4px solid {accent_color};
     border-top: 1px solid #e2e8f0;
     border-right: 1px solid #e2e8f0;
     border-bottom: 1px solid #e2e8f0;
-    border-radius: 4px;
-    padding: 10px 14px;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
+}}
+.recipient-cell {{
+    padding: 8px 12px;
 }}
 .recipient-tag {{
     font-size: 7pt;
@@ -744,32 +760,32 @@ body {{
     font-size: 10pt;
     font-weight: bold;
     color: {primary_color};
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }}
 .salutation {{
-    font-size: 9.5pt;
+    font-size: 9pt;
     font-weight: bold;
     color: {primary_color};
-    margin-bottom: 6px;
+    margin-bottom: 4px;
 }}
 .body-p {{
     font-size: 8.5pt;
     color: #334155;
-    margin-bottom: 12px;
-    line-height: 1.5;
+    margin-bottom: 10px;
+    line-height: 1.45;
 }}
 .table-title {{
-    font-size: 9pt;
+    font-size: 8.5pt;
     font-weight: bold;
     color: {primary_color};
     border-bottom: 1.5px solid #e2e8f0;
     padding-bottom: 3px;
-    margin-top: 14px;
-    margin-bottom: 8px;
+    margin-top: 10px;
+    margin-bottom: 6px;
 }}
 .comp-table {{
     width: 100%;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
     font-size: 8pt;
 }}
 .comp-table th {{
@@ -777,44 +793,48 @@ body {{
     color: {primary_color};
     font-weight: bold;
     border: 1px solid #cbd5e1;
-    padding: 5px 8px;
+    padding: 4px 8px;
     text-align: left;
 }}
 .comp-table td {{
     border: 1px solid #e2e8f0;
-    padding: 4px 8px;
+    padding: 3.5px 8px;
     color: #334155;
 }}
-.total-row {{
+.total-row td {{
     background-color: #eff6ff;
     font-weight: bold;
     color: {accent_color};
+    border-top: 1.5px solid #cbd5e1;
 }}
-.clauses-box {{
+.clauses-table {{
+    width: 100%;
     background-color: #fcfcfc;
-    border-left: 3px solid {accent_color};
+    border-left: 3.5px solid {accent_color};
     border-top: 1px solid #e2e8f0;
     border-right: 1px solid #e2e8f0;
     border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 10px;
+}}
+.clauses-cell {{
     padding: 8px 12px;
-    margin-bottom: 14px;
     font-size: 8pt;
     color: #334155;
-    line-height: 1.55;
+    line-height: 1.45;
 }}
 .sig-table {{
     width: 100%;
-    margin-top: 14px;
-    margin-bottom: 10px;
+    margin-top: 10px;
+    margin-bottom: 8px;
 }}
 .sig-line {{
     border-bottom: 1px dashed #94a3b8;
     width: 85%;
-    height: 25px;
+    height: 20px;
     margin-bottom: 4px;
 }}
 .sig-name {{
-    font-size: 9pt;
+    font-size: 8.5pt;
     font-weight: bold;
     color: {primary_color};
 }}
@@ -825,9 +845,9 @@ body {{
 .footer-table {{
     width: 100%;
     border-top: 1px solid #e2e8f0;
-    padding-top: 6px;
-    margin-top: 12px;
-    font-size: 7.5pt;
+    padding-top: 4px;
+    margin-top: 8px;
+    font-size: 7pt;
     color: #94a3b8;
 }}
 </style>
@@ -835,7 +855,7 @@ body {{
 <body>
 <table class="header-banner">
 <tr>
-<td style="width: 46px; vertical-align: middle;">
+<td style="width: 48px; vertical-align: middle;">
 {logo_markup}
 </td>
 <td style="vertical-align: middle; padding-left: 10px;">
@@ -843,7 +863,7 @@ body {{
 <div class="org-sub">{org_address}</div>
 <div class="org-sub">{contact_line}</div>
 </td>
-<td style="width: 180px; vertical-align: middle; text-align: right;">
+<td style="width: 190px; vertical-align: middle; text-align: right;">
 <div class="doc-tag">{tpl_title}</div>
 <div class="meta-date">Date: {offer_date_str}</div>
 <div class="meta-ref">REF: {ref_id}</div>
@@ -851,12 +871,16 @@ body {{
 </tr>
 </table>
 
-<div class="recipient-block">
+<table class="recipient-table">
+<tr>
+<td class="recipient-cell">
 <div class="recipient-tag">PRIVATE &amp; CONFIDENTIAL &bull; APPOINTMENT OFFER</div>
 <div class="recipient-name">{candidate}</div>
 <div class="recipient-sub">Email: {cand_email}</div>
 <div class="recipient-sub">Position: <b>{role_name}</b> | Joining Date: <b>{join_str}</b></div>
-</div>
+</td>
+</tr>
+</table>
 
 <div class="subject-line">{subject}</div>
 <div class="salutation">Dear {candidate},</div>
@@ -867,65 +891,69 @@ body {{
 <thead>
 <tr>
 <th>Salary Component</th>
-<th style="text-align: right; width: 90px;">Distribution (%)</th>
-<th style="text-align: right; width: 110px;">Monthly Value (&#8377;)</th>
-<th style="text-align: right; width: 110px;">Annual Value (&#8377;)</th>
+<th style="text-align: right; width: 95px;">Distribution (%)</th>
+<th style="text-align: right; width: 115px;">Monthly Value (Rs.)</th>
+<th style="text-align: right; width: 115px;">Annual Value (Rs.)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Basic Salary</td>
 <td style="text-align: right;">{split["basic_pct"]}%</td>
-<td style="text-align: right;">&#8377;{int(round(b_m)):,}</td>
-<td style="text-align: right;">&#8377;{int(round(b_a)):,}</td>
+<td style="text-align: right;">Rs. {int(round(b_m)):,}</td>
+<td style="text-align: right;">Rs. {int(round(b_a)):,}</td>
 </tr>
 <tr>
 <td>House Rent Allowance (HRA)</td>
 <td style="text-align: right;">{split["hra_pct"]}%</td>
-<td style="text-align: right;">&#8377;{int(round(h_m)):,}</td>
-<td style="text-align: right;">&#8377;{int(round(h_a)):,}</td>
+<td style="text-align: right;">Rs. {int(round(h_m)):,}</td>
+<td style="text-align: right;">Rs. {int(round(h_a)):,}</td>
 </tr>
 <tr>
 <td>Special / Flexi Allowance</td>
 <td style="text-align: right;">{split["special_pct"]}%</td>
-<td style="text-align: right;">&#8377;{int(round(s_m)):,}</td>
-<td style="text-align: right;">&#8377;{int(round(s_a)):,}</td>
+<td style="text-align: right;">Rs. {int(round(s_m)):,}</td>
+<td style="text-align: right;">Rs. {int(round(s_a)):,}</td>
 </tr>
 <tr>
 <td>Employer PF Contribution (Statutory)</td>
 <td style="text-align: right;">{split["pf_pct"]}%</td>
-<td style="text-align: right;">&#8377;{int(round(p_m)):,}</td>
-<td style="text-align: right;">&#8377;{int(round(p_a)):,}</td>
+<td style="text-align: right;">Rs. {int(round(p_m)):,}</td>
+<td style="text-align: right;">Rs. {int(round(p_a)):,}</td>
 </tr>
 <tr class="total-row">
 <td><strong>Total Cost to Company (CTC)</strong></td>
 <td style="text-align: right;"><strong>100%</strong></td>
-<td style="text-align: right; font-weight: bold;">&#8377;{int(round(tot_m)):,}</td>
-<td style="text-align: right; font-weight: bold;">&#8377;{int(round(tot_a)):,}</td>
+<td style="text-align: right; font-weight: bold;">Rs. {int(round(tot_m)):,}</td>
+<td style="text-align: right; font-weight: bold;">Rs. {int(round(tot_a)):,}</td>
 </tr>
 </tbody>
 </table>
 
 <div class="table-title">Annexure B: Standard Terms, Conditions &amp; Covenants</div>
-<div class="clauses-box">
-<p style="margin-bottom: 3px;"><strong>Probation Period:</strong> {f'{probation_months} months from joining.' if probation_months > 0 else 'Direct appointment (No probation).'}</p>
-<p style="margin-bottom: 6px;"><strong>Notice Period:</strong> {notice_days} days written notice or gross salary in lieu thereof.</p>
+<table class="clauses-table">
+<tr>
+<td class="clauses-cell">
+<div style="margin-bottom: 3px;"><strong>Probation Period:</strong> {f'{probation_months} months from joining.' if probation_months > 0 else 'Direct appointment (No probation).'}</div>
+<div style="margin-bottom: 6px;"><strong>Notice Period:</strong> {notice_days} days written notice or gross salary in lieu thereof.</div>
 {clauses_html}
-</div>
+</td>
+</tr>
+</table>
 
-<div class="body-p" style="margin-top: 10px;">{closing_text}</div>
+<div class="body-p" style="margin-top: 8px;">{closing_text}</div>
 
 <table class="sig-table">
 <tr>
 <td style="width: 50%; vertical-align: top;">
-<div style="font-size: 7.5pt; font-weight: bold; color: #64748b; text-transform: uppercase;">Authorized Signatory:</div>
+<div style="font-size: 7pt; font-weight: bold; color: #64748b; text-transform: uppercase;">Authorized Signatory:</div>
 <div class="sig-line"></div>
 <div class="sig-name">{signer}</div>
 <div class="sig-sub">{signer_title}</div>
 <div class="sig-sub">{org_name}</div>
 </td>
 <td style="width: 50%; vertical-align: top; text-align: right;">
-<div style="font-size: 7.5pt; font-weight: bold; color: #64748b; text-transform: uppercase;">Candidate Acceptance:</div>
+<div style="font-size: 7pt; font-weight: bold; color: #64748b; text-transform: uppercase;">Candidate Acceptance:</div>
 <div class="sig-line" style="margin-left: auto;"></div>
 <div class="sig-name">{candidate}</div>
 <div class="sig-sub">Acceptance Date: _________________</div>
@@ -936,7 +964,7 @@ body {{
 
 <table class="footer-table">
 <tr>
-<td style="text-align: left;">Secure Verification: {foot_token}</td>
+<td style="text-align: left;">Secure Digital Verification: {foot_token}</td>
 <td style="text-align: right;">{footer_text}</td>
 </tr>
 </table>
@@ -944,7 +972,7 @@ body {{
 </html>
 """
     dest = io.BytesIO()
-    pisa_status = pisa.CreatePDF(html, dest=dest)
+    pisa_status = pisa.CreatePDF(html, dest=dest, encoding="utf-8")
     if pisa_status.err:
         raise RuntimeError(f"xhtml2pdf rendering error: {pisa_status.err}")
     return dest.getvalue()
