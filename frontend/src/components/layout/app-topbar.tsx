@@ -179,6 +179,7 @@ export function AppTopbar() {
   const { user, logout } = useAuth();
   const { language, setLanguage } = useI18n();
   const {
+    tenant,
     tenant: company,
     setTenant: setCompany,
     companiesList,

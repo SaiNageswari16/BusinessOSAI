@@ -86,12 +86,8 @@ function Dashboard() {
 
   const activeTab = searchParams.get("tab") || visibleTabs[0]?.id || "overview";
 
-  if (activeTab === "lazymonkey_ai" || activeTab === "copilot" || activeTab === "ai") {
-    return <LazyMonkeyAiWorkspace />;
-  }
-
   const { user } = useAuth();
-  const { tenant: company } = useTenant();
+  const { tenant, tenant: company } = useTenant();
   const { language, t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const [loading, setLoading] = useState(true);
@@ -107,6 +103,10 @@ function Dashboard() {
 
   useEffect(() => { setLoading(false); }, []);
   const isActuallyLoading = loading || kpisLoading;
+
+  if (activeTab === "lazymonkey_ai" || activeTab === "copilot" || activeTab === "ai") {
+    return <LazyMonkeyAiWorkspace />;
+  }
 
   const hour = new Date().getHours();
   const greeting = language === "ar" ? (hour < 12 ? "صباح الخير" : "مساء الخير") : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
