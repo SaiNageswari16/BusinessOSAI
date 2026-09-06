@@ -26,28 +26,31 @@ async def get_dashboard_kpis(
 ):
     today = date.today()
 
+    cid = ctx.active_company_id
+
     # 1. Today's Revenue & Sales
     # Revenue from Invoices
-    inv_revenue_q = select(func.sum(Invoice.total_amount)).where(
+    inv_rev_filter = [
         Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
         cast(Invoice.created_at, Date) == today
-    )
-    inv_sales_q = select(func.count(Invoice.id)).where(
-        Invoice.tenant_id == ctx.tenant_id,
-        cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
-        cast(Invoice.created_at, Date) == today
-    )
+    ]
+    if cid:
+        inv_rev_filter.append(Invoice.company_id == cid)
+
+    inv_revenue_q = select(func.sum(Invoice.total_amount)).where(*inv_rev_filter)
+    inv_sales_q = select(func.count(Invoice.id)).where(*inv_rev_filter)
     
     # Revenue from POS
-    pos_revenue_q = select(func.sum(POSTransaction.total_amount)).where(
+    pos_rev_filter = [
         POSTransaction.tenant_id == ctx.tenant_id,
         cast(POSTransaction.created_at, Date) == today
-    )
-    pos_sales_q = select(func.count(POSTransaction.id)).where(
-        POSTransaction.tenant_id == ctx.tenant_id,
-        cast(POSTransaction.created_at, Date) == today
-    )
+    ]
+    if cid:
+        pos_rev_filter.append(POSTransaction.company_id == cid)
+
+    pos_revenue_q = select(func.sum(POSTransaction.total_amount)).where(*pos_rev_filter)
+    pos_sales_q = select(func.count(POSTransaction.id)).where(*pos_rev_filter)
 
     inv_rev = await db.scalar(inv_revenue_q) or 0.0
     pos_rev = await db.scalar(pos_revenue_q) or 0.0
@@ -62,18 +65,29 @@ async def get_dashboard_kpis(
         CRMSalesOrder.tenant_id == ctx.tenant_id,
         CRMSalesOrder.status.in_(["PENDING", "PROCESSING", "Draft"])
     )
+    if cid:
+        pending_orders_q = pending_orders_q.where(CRMSalesOrder.company_id == cid)
     orders_pending = await db.scalar(pending_orders_q) or 0
 
     # 3. Active Customers
     active_customers_q = select(func.count(Customer.id)).where(Customer.tenant_id == ctx.tenant_id)
+    if cid:
+        active_customers_q = active_customers_q.where(Customer.company_id == cid)
     active_customers = await db.scalar(active_customers_q) or 0
 
     # 4. Employees Present
+    emp_q = select(Employee.id).where(Employee.tenant_id == ctx.tenant_id)
+    if cid:
+        emp_q = emp_q.where(Employee.company_id == cid)
+    
     employees_present_q = select(func.count(AttendanceRecord.id)).where(
         AttendanceRecord.tenant_id == ctx.tenant_id,
         AttendanceRecord.date == today
     )
-    total_employees_q = select(func.count(Employee.id)).where(Employee.tenant_id == ctx.tenant_id)
+    if cid:
+        employees_present_q = employees_present_q.where(AttendanceRecord.employee_id.in_(emp_q))
+    
+    total_employees_q = select(func.count()).select_from(emp_q.subquery())
     
     employees_present = await db.scalar(employees_present_q) or 0
     total_employees = await db.scalar(total_employees_q) or 0
@@ -81,6 +95,8 @@ async def get_dashboard_kpis(
 
     # 5. Inventory Value
     inv_value_q = select(func.sum(Product.initial_stock * Product.selling_price)).where(Product.tenant_id == ctx.tenant_id)
+    if cid:
+        inv_value_q = inv_value_q.where(Product.company_id == cid)
     inventory_value = await db.scalar(inv_value_q) or 0.0
 
     # 6. Pending Deliveries
@@ -88,14 +104,19 @@ async def get_dashboard_kpis(
         GoodsIssue.tenant_id == ctx.tenant_id,
         GoodsIssue.status.in_(["PENDING", "DRAFT"])
     )
+    if cid:
+        pending_deliveries_q = pending_deliveries_q.where(GoodsIssue.company_id == cid)
     pending_deliveries = await db.scalar(pending_deliveries_q) or 0
 
     # 7. Pending Payments (AR overdue/unpaid)
-    pending_payments_q = select(func.sum(Invoice.balance_due)).where(
+    pending_payments_filter = [
         Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
         cast(Invoice.status, String).in_([InvoiceStatus.SENT.value, InvoiceStatus.VIEWED.value, InvoiceStatus.PARTIALLY_PAID.value, InvoiceStatus.OVERDUE.value])
-    )
+    ]
+    if cid:
+        pending_payments_filter.append(Invoice.company_id == cid)
+    pending_payments_q = select(func.sum(Invoice.balance_due)).where(*pending_payments_filter)
     pending_payments = await db.scalar(pending_payments_q) or 0.0
 
     # Construct the KPIs array to match frontend mock structure
@@ -297,18 +318,54 @@ async def get_dashboard_widgets(
     db: AsyncSession = Depends(get_db)
 ):
     today = date.today()
+    cid = ctx.active_company_id
     
-    pr_count = await db.scalar(select(func.count(PurchaseRequest.id)).where(PurchaseRequest.tenant_id == ctx.tenant_id)) or 0
-    exp_pend = await db.scalar(select(func.count(ExpenseClaim.id)).where(ExpenseClaim.tenant_id == ctx.tenant_id, cast(ExpenseClaim.status, String) == 'PENDING')) or 0
-    leave_pend = await db.scalar(select(func.count(LeaveRequest.id)).where(LeaveRequest.tenant_id == ctx.tenant_id, cast(LeaveRequest.status, String) == 'PENDING')) or 0
+    pr_q = select(func.count(PurchaseRequest.id)).where(PurchaseRequest.tenant_id == ctx.tenant_id)
+    if cid:
+        pr_q = pr_q.where(PurchaseRequest.company_id == cid)
+    pr_count = await db.scalar(pr_q) or 0
+
+    exp_q = select(func.count(ExpenseClaim.id)).where(ExpenseClaim.tenant_id == ctx.tenant_id, cast(ExpenseClaim.status, String) == 'PENDING')
+    if cid:
+        exp_q = exp_q.where(ExpenseClaim.company_id == cid)
+    exp_pend = await db.scalar(exp_q) or 0
+
+    leave_q = select(func.count(LeaveRequest.id)).where(LeaveRequest.tenant_id == ctx.tenant_id, cast(LeaveRequest.status, String) == 'PENDING')
+    if cid:
+        leave_q = leave_q.where(LeaveRequest.company_id == cid)
+    leave_pend = await db.scalar(leave_q) or 0
     pending_approvals = exp_pend + leave_pend
-    warehouse_count = await db.scalar(select(func.count(Warehouse.id)).where(Warehouse.tenant_id == ctx.tenant_id)) or 0
-    low_stock = await db.scalar(select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id, Product.initial_stock < Product.reorder_level)) or 0
+
+    wh_q = select(func.count(Warehouse.id)).where(Warehouse.tenant_id == ctx.tenant_id)
+    if cid:
+        wh_q = wh_q.where(Warehouse.company_id == cid)
+    warehouse_count = await db.scalar(wh_q) or 0
+
+    low_q = select(func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id, Product.initial_stock < Product.reorder_level)
+    if cid:
+        low_q = low_q.where(Product.company_id == cid)
+    low_stock = await db.scalar(low_q) or 0
+
     thirty_days_later = today + timedelta(days=30)
-    expiring = await db.scalar(select(func.count(InventoryBatch.id)).where(InventoryBatch.tenant_id == ctx.tenant_id, cast(InventoryBatch.expiry_date, Date) <= thirty_days_later)) or 0
-    delivery_status = await db.scalar(select(func.count(GoodsIssue.id)).where(GoodsIssue.tenant_id == ctx.tenant_id)) or 0
-    open_returns = await db.scalar(select(func.count(InvoiceReturn.id)).where(InvoiceReturn.tenant_id == ctx.tenant_id, cast(InvoiceReturn.status, String) == 'PENDING')) or 0
-    prod_orders = await db.scalar(select(func.count(PurchaseOrder.id)).where(PurchaseOrder.tenant_id == ctx.tenant_id)) or 0
+    exp_b_q = select(func.count(InventoryBatch.id)).where(InventoryBatch.tenant_id == ctx.tenant_id, cast(InventoryBatch.expiry_date, Date) <= thirty_days_later)
+    if cid:
+        exp_b_q = exp_b_q.where(InventoryBatch.company_id == cid)
+    expiring = await db.scalar(exp_b_q) or 0
+
+    gi_q = select(func.count(GoodsIssue.id)).where(GoodsIssue.tenant_id == ctx.tenant_id)
+    if cid:
+        gi_q = gi_q.where(GoodsIssue.company_id == cid)
+    delivery_status = await db.scalar(gi_q) or 0
+
+    ret_q = select(func.count(InvoiceReturn.id)).where(InvoiceReturn.tenant_id == ctx.tenant_id, cast(InvoiceReturn.status, String) == 'PENDING')
+    if cid:
+        ret_q = ret_q.where(InvoiceReturn.company_id == cid)
+    open_returns = await db.scalar(ret_q) or 0
+
+    po_q = select(func.count(PurchaseOrder.id)).where(PurchaseOrder.tenant_id == ctx.tenant_id)
+    if cid:
+        po_q = po_q.where(PurchaseOrder.company_id == cid)
+    prod_orders = await db.scalar(po_q) or 0
     
     operationsWidgets = [
         {'label': 'Purchase Requests', 'count': int(pr_count), 'progress': min(100, pr_count * 5), 'status': 'awaiting approval', 'tone': 'blue'},
@@ -321,7 +378,10 @@ async def get_dashboard_widgets(
         {'label': 'Production Orders', 'count': int(prod_orders), 'progress': min(100, prod_orders * 5), 'status': 'Active POs', 'tone': 'green'}
     ]
     
-    branches = (await db.execute(select(Branch).where(Branch.tenant_id == ctx.tenant_id))).scalars().all()
+    branch_q = select(Branch).where(Branch.tenant_id == ctx.tenant_id)
+    if cid:
+        branch_q = branch_q.where(Branch.company_id == cid)
+    branches = (await db.execute(branch_q)).scalars().all()
     branchPerformance = []
     for b in branches:
         seed = int(hashlib.md5(str(b.id).encode()).hexdigest(), 16)
@@ -332,8 +392,11 @@ async def get_dashboard_widgets(
     if not branchPerformance:
         branchPerformance = [{'branch': 'HQ', 'revenue': 800, 'profit': 200, 'employees': 40, 'growth': 10.5}]
         
+    low_prods_q = select(Product.name, Product.sku, Product.initial_stock).where(Product.tenant_id == ctx.tenant_id, Product.initial_stock < Product.reorder_level)
+    if cid:
+        low_prods_q = low_prods_q.where(Product.company_id == cid)
     low_stock_prods = (await db.execute(
-        select(Product.name, Product.sku, Product.initial_stock).where(Product.tenant_id == ctx.tenant_id, Product.initial_stock < Product.reorder_level).order_by(Product.initial_stock.asc()).limit(3)
+        low_prods_q.order_by(Product.initial_stock.asc()).limit(3)
     )).all()
     
     inventoryAlerts = []
@@ -346,8 +409,10 @@ async def get_dashboard_widgets(
             'status': 'critical' if (stock or 0) == 0 else 'warn'
         })
         
-    recent_q = select(ActivityLog, User.full_name).join(User, User.id == ActivityLog.user_id, isouter=True).where(ActivityLog.tenant_id == ctx.tenant_id).order_by(desc(ActivityLog.created_at)).limit(6)
-    recent_logs = (await db.execute(recent_q)).all()
+    recent_q = select(ActivityLog, User.full_name).join(User, User.id == ActivityLog.user_id, isouter=True).where(ActivityLog.tenant_id == ctx.tenant_id)
+    if cid:
+        recent_q = recent_q.where(ActivityLog.company_id == cid)
+    recent_logs = (await db.execute(recent_q.order_by(desc(ActivityLog.created_at)).limit(6))).all()
     recentActivity = []
     for log, user_name in recent_logs:
         recentActivity.append({
@@ -359,8 +424,11 @@ async def get_dashboard_widgets(
             'type': 'info'
         })
         
+    notifs_q = select(LiveNotification).where(LiveNotification.tenant_id == ctx.tenant_id)
+    if cid:
+        notifs_q = notifs_q.where(or_(LiveNotification.company_id == cid, LiveNotification.company_id == None))
     notifs = (await db.execute(
-        select(LiveNotification).where(LiveNotification.tenant_id == ctx.tenant_id).order_by(desc(LiveNotification.created_at)).limit(5)
+        notifs_q.order_by(desc(LiveNotification.created_at)).limit(5)
     )).scalars().all()
     notifications = []
     for n in notifs:
@@ -402,14 +470,17 @@ async def get_dashboard_feeds(
     db: AsyncSession = Depends(get_db)
 ):
     today = date.today()
+    cid = ctx.active_company_id
     feeds = {}
 
     # 1. POS Feed
     try:
         pos_txs_q = select(POSTransaction).where(
             POSTransaction.tenant_id == ctx.tenant_id
-        ).order_by(desc(POSTransaction.created_at)).limit(5)
-        pos_txs = (await db.execute(pos_txs_q)).scalars().all()
+        )
+        if cid:
+            pos_txs_q = pos_txs_q.where(POSTransaction.company_id == cid)
+        pos_txs = (await db.execute(pos_txs_q.order_by(desc(POSTransaction.created_at)).limit(5))).scalars().all()
         pos_items = []
         for tx in pos_txs:
             created_str = tx.created_at.strftime("%H:%M") if tx.created_at else "Recently"
@@ -432,8 +503,10 @@ async def get_dashboard_feeds(
     try:
         leads_q = select(Lead).where(
             Lead.tenant_id == ctx.tenant_id
-        ).order_by(desc(Lead.created_at)).limit(5)
-        leads = (await db.execute(leads_q)).scalars().all()
+        )
+        if cid:
+            leads_q = leads_q.where(Lead.company_id == cid)
+        leads = (await db.execute(leads_q.order_by(desc(Lead.created_at)).limit(5))).scalars().all()
         lead_items = []
         for l in leads:
             created_str = l.created_at.strftime("%H:%M") if l.created_at else "Today"
@@ -450,8 +523,10 @@ async def get_dashboard_feeds(
                 "navigateTo": "/crm?tab=leads"
             })
         feeds["sales_crm"] = lead_items
+        feeds["crm"] = lead_items
     except Exception:
         feeds["sales_crm"] = []
+        feeds["crm"] = []
 
     # 3. Marketplace Orders
     try:
@@ -480,7 +555,10 @@ async def get_dashboard_feeds(
         inv_due_q = select(Invoice).where(
             Invoice.tenant_id == ctx.tenant_id,
             Invoice.balance_due > 0
-        ).order_by(Invoice.due_date.asc().nulls_last()).limit(5)
+        )
+        if cid:
+            inv_due_q = inv_due_q.where(Invoice.company_id == cid)
+        inv_due_q = inv_due_q.order_by(Invoice.due_date.asc().nulls_last()).limit(5)
         due_invoices = (await db.execute(inv_due_q)).scalars().all()
         acc_items = []
         for inv in due_invoices:
@@ -507,7 +585,10 @@ async def get_dashboard_feeds(
             Employee, Employee.id == LeaveRequest.employee_id, isouter=True
         ).where(
             LeaveRequest.tenant_id == ctx.tenant_id
-        ).order_by(desc(LeaveRequest.created_at)).limit(5)
+        )
+        if cid:
+            leave_q = leave_q.where(Employee.company_id == cid)
+        leave_q = leave_q.order_by(desc(LeaveRequest.created_at)).limit(5)
         leaves = (await db.execute(leave_q)).all()
         hrm_items = []
         for lr, emp_name, dept in leaves:
@@ -532,7 +613,10 @@ async def get_dashboard_feeds(
         low_stock_q = select(Product).where(
             Product.tenant_id == ctx.tenant_id,
             Product.initial_stock <= Product.reorder_level
-        ).order_by(Product.initial_stock.asc()).limit(5)
+        )
+        if cid:
+            low_stock_q = low_stock_q.where(Product.company_id == cid)
+        low_stock_q = low_stock_q.order_by(Product.initial_stock.asc()).limit(5)
         low_prods = (await db.execute(low_stock_q)).scalars().all()
         inv_items = []
         for p in low_prods:
@@ -555,7 +639,10 @@ async def get_dashboard_feeds(
     try:
         issues_q = select(GoodsIssue).where(
             GoodsIssue.tenant_id == ctx.tenant_id
-        ).order_by(desc(GoodsIssue.created_at)).limit(5)
+        )
+        if cid:
+            issues_q = issues_q.where(GoodsIssue.company_id == cid)
+        issues_q = issues_q.order_by(desc(GoodsIssue.created_at)).limit(5)
         issues = (await db.execute(issues_q)).scalars().all()
         op_items = []
         for issue in issues:

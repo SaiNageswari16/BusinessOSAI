@@ -9,6 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from datetime import datetime, date, timedelta
+from decimal import Decimal
 from typing import Annotated
 from pathlib import Path
 
@@ -2215,10 +2216,7 @@ async def public_offer_response(
     company_name = tenant.name if tenant else "LazyMonkeyAI"
 
     if action.lower() == "accept":
-        offer.status = "Accepted"
-        if applicant:
-            applicant.stage = "Hired"
-        await db.commit()
+        await _sync_accepted_offer_onboarding(db, offer, applicant, offer.tenant_id)
 
         return HTMLResponse(content=f"""
         <!DOCTYPE html>
@@ -2283,6 +2281,147 @@ async def public_offer_response(
         """)
 
 
+async def _sync_accepted_offer_onboarding(
+    db: AsyncSession,
+    offer: OfferLetter,
+    applicant: Applicant | None,
+    tenant_id: uuid.UUID
+) -> OnboardingRecord:
+    """Helper to ensure Employee, Document Vault, and Onboarding Checklist records exist for accepted offers."""
+    offer.status = "Accepted"
+    
+    cand_email = offer.candidate_email or (applicant.email if applicant else "")
+    cand_name = offer.candidate or (applicant.name if applicant else "New Hire")
+    role_name = offer.role or (applicant.job_title if applicant else "Team Member")
+    start_dt = offer.joining_date or date.today()
+
+    if applicant:
+        applicant.stage = "Hired"
+
+    # 1. Provision Employee in core employees table if not present
+    emp = None
+    if cand_email:
+        emp = await db.scalar(
+            select(Employee).where(
+                Employee.email == cand_email,
+                Employee.tenant_id == tenant_id
+            )
+        )
+    if not emp:
+        count = await db.scalar(
+            select(func.count()).select_from(Employee).where(Employee.tenant_id == tenant_id)
+        ) or 0
+        seq = str(count + 1).zfill(4)
+        emp = Employee(
+            tenant_id=tenant_id,
+            employee_code=f"EMP-{seq}",
+            full_name=cand_name,
+            email=cand_email,
+            date_of_joining=start_dt,
+            employment_type="Full-Time",
+            status="Active",
+            basic_salary=Decimal(str(offer.ctc)) if offer.ctc else Decimal("0"),
+        )
+        db.add(emp)
+        await db.flush()
+
+    # 2. Archive offer letter in EmployeeDocument
+    if emp:
+        existing_doc = await db.scalar(
+            select(EmployeeDocument).where(
+                EmployeeDocument.employee_id == emp.id,
+                EmployeeDocument.document_type == "Offer Letter",
+                EmployeeDocument.tenant_id == tenant_id
+            )
+        )
+        if not existing_doc:
+            doc = EmployeeDocument(
+                tenant_id=tenant_id,
+                employee_id=emp.id,
+                document_name=f"Official_Offer_Letter_{cand_name.replace(' ', '_')}.pdf",
+                document_type="Offer Letter",
+                file_path=f"/hrms/documents/offer_{offer.id}.pdf",
+                upload_date=date.today()
+            )
+            db.add(doc)
+
+    # 3. Provision Onboarding Checklist record if not present
+    app_id = offer.applicant_id
+    if not app_id and applicant:
+        app_id = applicant.id
+
+    onb = None
+    if app_id:
+        onb = await db.scalar(
+            select(OnboardingRecord).where(
+                OnboardingRecord.tenant_id == tenant_id,
+                OnboardingRecord.applicant_id == app_id
+            )
+        )
+    if not onb:
+        # Check by hire name as fallback
+        onb = await db.scalar(
+            select(OnboardingRecord).where(
+                OnboardingRecord.tenant_id == tenant_id,
+                OnboardingRecord.new_hire == cand_name
+            )
+        )
+
+    if not onb:
+        # If applicant_id is missing, create a temporary applicant or link
+        if not app_id:
+            new_app = Applicant(
+                tenant_id=tenant_id,
+                name=cand_name,
+                email=cand_email or f"{cand_name.lower().replace(' ', '.')}@example.com",
+                job_title=role_name,
+                stage="Hired",
+                source="Offer Letter",
+            )
+            db.add(new_app)
+            await db.flush()
+            app_id = new_app.id
+            offer.applicant_id = app_id
+
+        onb = OnboardingRecord(
+            tenant_id=tenant_id,
+            applicant_id=app_id,
+            new_hire=cand_name,
+            role=role_name,
+            start_date=start_dt,
+            progress=15,
+            tasks_json=[
+                {"task": "IT Workspace Hardware Allocation", "assignedTo": "IT", "status": "In Progress"},
+                {"task": "Corporate Email & Active Directory Setup", "assignedTo": "IT", "status": "Pending"},
+                {"task": "Signed Offer & Identity Document Verification", "assignedTo": "HR", "status": "Done"},
+                {"task": "Background Authentication Check", "assignedTo": "HR", "status": "Pending"},
+                {"task": "Introductory Department Orientation", "assignedTo": "Manager", "status": "Pending"},
+                {"task": "Core Compliance & Security Training", "assignedTo": "HR", "status": "Pending"}
+            ]
+        )
+        db.add(onb)
+
+    await db.commit()
+    await db.refresh(offer)
+    if onb:
+        await db.refresh(onb)
+
+    # 4. Push Live Notification
+    try:
+        await add_system_notification(
+            db=db,
+            tenant_id=tenant_id,
+            title="🎉 Offer Letter Accepted!",
+            message=f"{cand_name} accepted the offer for {role_name}. Onboarding checklist initialized.",
+            notification_type="recruitment_offer_accepted",
+            metadata={"offer_id": str(offer.id), "candidate": cand_name, "role": role_name}
+        )
+    except Exception:
+        pass
+
+    return onb
+
+
 @router.patch("/offers/{id}", response_model=OfferLetterResponse)
 async def update_offer_status(
     id: uuid.UUID,
@@ -2297,89 +2436,36 @@ async def update_offer_status(
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(offer, k, v)
 
-    await db.commit()
-    await db.refresh(offer)
-
-    if payload.status == "Accepted":
+    applicant = None
+    if offer.applicant_id:
         applicant = await db.get(Applicant, offer.applicant_id)
-        if applicant:
-            applicant.stage = "Hired"
-            
-            # Auto-create or link Employee in EmployeeManagement
-            emp = await db.scalar(
-                select(Employee).where(
-                    Employee.email == applicant.email,
-                    Employee.tenant_id == ctx.tenant_id
-                )
-            )
-            if not emp:
-                count = await db.scalar(
-                    select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
-                ) or 0
-                seq = str(count + 1).zfill(4)
-                emp = Employee(
-                    tenant_id=ctx.tenant_id,
-                    employee_code=f"EMP-{seq}",
-                    full_name=applicant.name,
-                    email=applicant.email,
-                    date_of_joining=offer.joining_date,
-                    employment_type="Full-Time",
-                    status="Active",
-                    basic_salary=Decimal(str(offer.ctc)),
-                )
-                db.add(emp)
-                await db.flush()
 
-            # Save Offer Letter into Employee Document Vault
-            existing_doc = await db.scalar(
-                select(EmployeeDocument).where(
-                    EmployeeDocument.employee_id == emp.id,
-                    EmployeeDocument.document_type == "Offer Letter",
-                    EmployeeDocument.tenant_id == ctx.tenant_id
-                )
-            )
-            if not existing_doc:
-                doc = EmployeeDocument(
-                    tenant_id=ctx.tenant_id,
-                    employee_id=emp.id,
-                    document_name=f"Official_Offer_Letter_{offer.candidate.replace(' ', '_')}.pdf",
-                    document_type="Offer Letter",
-                    file_path=f"/hrms/documents/offer_{offer.id}.pdf",
-                    upload_date=date.today()
-                )
-                db.add(doc)
-
-            # Auto-create Onboarding Checklist if not exists
-            stmt = select(OnboardingRecord).where(
-                and_(
-                    OnboardingRecord.tenant_id == ctx.tenant_id,
-                    OnboardingRecord.applicant_id == offer.applicant_id
-                )
-            )
-            existing_onb = await db.scalar(stmt)
-            
-            if not existing_onb:
-                new_onb = OnboardingRecord(
-                    tenant_id=ctx.tenant_id,
-                    applicant_id=offer.applicant_id,
-                    new_hire=offer.candidate,
-                    role=offer.role,
-                    start_date=offer.joining_date,
-                    progress=15,
-                    tasks_json=[
-                        {"task": "IT Workspace Hardware Allocation", "assignedTo": "IT", "status": "In Progress"},
-                        {"task": "Corporate Email & Active Directory Setup", "assignedTo": "IT", "status": "Pending"},
-                        {"task": "Signed Offer & Identity Document Verification", "assignedTo": "HR", "status": "Done"},
-                        {"task": "Background Authentication Check", "assignedTo": "HR", "status": "Pending"},
-                        {"task": "Introductory Department Orientation", "assignedTo": "Manager", "status": "Pending"},
-                        {"task": "Core Compliance & Security Training", "assignedTo": "HR", "status": "Pending"}
-                    ]
-                )
-                db.add(new_onb)
-                
+    if payload.status == "Accepted" or offer.status == "Accepted":
+        await _sync_accepted_offer_onboarding(db, offer, applicant, ctx.tenant_id)
+    else:
         await db.commit()
+        await db.refresh(offer)
 
     return offer
+
+
+@router.post("/offers/{id}/start-onboarding", response_model=OnboardingResponse)
+async def start_onboarding_from_offer(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Explicitly initiates or retrieves the onboarding checklist for an accepted or ready offer letter."""
+    offer = await db.get(OfferLetter, id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+
+    applicant = None
+    if offer.applicant_id:
+        applicant = await db.get(Applicant, offer.applicant_id)
+
+    onb = await _sync_accepted_offer_onboarding(db, offer, applicant, ctx.tenant_id)
+    return onb
 
 
 # ─── Onboarding Records ────────────────────────────────────────────────────────
@@ -2391,6 +2477,34 @@ async def list_onboardings(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
 ):
+    # Auto-heal: Ensure all accepted offer letters have corresponding onboarding records
+    accepted_offers_res = await db.execute(
+        select(OfferLetter).where(
+            OfferLetter.tenant_id == ctx.tenant_id,
+            OfferLetter.status == "Accepted"
+        )
+    )
+    accepted_offers = accepted_offers_res.scalars().all()
+    for acc_offer in accepted_offers:
+        existing_onb = None
+        if acc_offer.applicant_id:
+            existing_onb = await db.scalar(
+                select(OnboardingRecord).where(
+                    OnboardingRecord.tenant_id == ctx.tenant_id,
+                    OnboardingRecord.applicant_id == acc_offer.applicant_id
+                )
+            )
+        if not existing_onb:
+            existing_onb = await db.scalar(
+                select(OnboardingRecord).where(
+                    OnboardingRecord.tenant_id == ctx.tenant_id,
+                    OnboardingRecord.new_hire == acc_offer.candidate
+                )
+            )
+        if not existing_onb:
+            app = await db.get(Applicant, acc_offer.applicant_id) if acc_offer.applicant_id else None
+            await _sync_accepted_offer_onboarding(db, acc_offer, app, ctx.tenant_id)
+
     query = select(OnboardingRecord).where(OnboardingRecord.tenant_id == ctx.tenant_id)
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(

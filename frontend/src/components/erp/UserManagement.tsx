@@ -33,6 +33,8 @@ interface RoleSummary {
   id: string;
   name: string;
   is_default: boolean;
+  company_id?: string | null;
+  company_name?: string | null;
 }
 
 interface User {
@@ -44,6 +46,8 @@ interface User {
   must_change_password: boolean;
   avatar_initials: string | null;
   is_tenant_owner?: boolean;
+  company_id?: string | null;
+  company_name?: string | null;
 }
 
 interface PaginatedResponse<T> {
@@ -60,6 +64,7 @@ interface UserFormPayload {
   status: string;
   role_ids: string[];
   default_role_id: string | null;
+  company_id?: string | null;
   must_change_password?: boolean;
   password?: string;
   send_invite?: boolean;
@@ -85,12 +90,16 @@ function UserFormModal({
   user,
   roles,
   canAssignSuperAdminRole,
+  companiesList = [],
+  activeTenantId,
   onClose,
   onSave,
 }: {
   user?: User;
   roles: Role[];
   canAssignSuperAdminRole: boolean;
+  companiesList?: any[];
+  activeTenantId?: string;
   onClose: () => void;
   onSave: (payload: UserFormPayload) => Promise<void>;
 }) {
@@ -100,6 +109,7 @@ function UserFormModal({
   const [status, setStatus] = useState<UserStatus>(user?.status ?? "Active");
   const [selectedRoles, setSelectedRoles] = useState<string[]>(user?.roles.map((role) => role.id) ?? []);
   const [defaultRoleId, setDefaultRoleId] = useState<string>(user?.roles.find((role) => role.is_default)?.id ?? "");
+  const [assignedCompanyId, setAssignedCompanyId] = useState<string>(user?.company_id || activeTenantId || "");
   const [sendInvite, setSendInvite] = useState(!isEdit);
   const [password, setPassword] = useState("");
   const [mustChangePassword, setMustChangePassword] = useState(user?.must_change_password ?? true);
@@ -144,6 +154,7 @@ function UserFormModal({
       status: status.toLowerCase(),
       role_ids: selectedRoles,
       default_role_id: defaultRoleId || null,
+      company_id: assignedCompanyId || null,
       must_change_password: mustChangePassword,
       is_tenant_owner: isTenantOwner,
       ...(sendInvite ? { send_invite: true } : {}),
@@ -167,8 +178,8 @@ function UserFormModal({
               <h2 className="text-lg font-bold">{isEdit ? "Edit User" : "Invite New User"}</h2>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {isEdit
-                  ? "Update existing user details, status, and role assignments."
-                  : "Create a user account and optionally send an invite email with a temporary password."}
+                  ? "Update existing user details, status, workspace company, and role assignments."
+                  : "Create a user account and assign them to a workspace company."}
               </p>
             </div>
             <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition">
@@ -179,7 +190,7 @@ function UserFormModal({
           <div className="p-6 space-y-6">
             <div>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                <Mail className="size-4 text-primary" /> Identity
+                <Mail className="size-4 text-primary" /> Identity & Workspace
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -203,6 +214,27 @@ function UserFormModal({
                   />
                 </div>
               </div>
+
+              {/* Workspace Assignment */}
+              <div className="mt-3">
+                <label className="text-xs text-muted-foreground mb-1 block">Assigned Workspace / Company</label>
+                <select
+                  className="w-full h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                  value={assignedCompanyId}
+                  onChange={(e) => setAssignedCompanyId(e.target.value)}
+                >
+                  <option value="">🏢 Organization-wide (All Workspaces)</option>
+                  {companiesList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.industry || "Workspace"})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Assign this user to a specific workspace to isolate data and privileges.
+                </p>
+              </div>
+
               <div className="mt-3">
                 <label className="text-xs text-muted-foreground mb-1 block">Status</label>
                 <div className="flex gap-2">
@@ -351,17 +383,18 @@ function UserFormModal({
 }
 
 export function UserManagement({ tab = "users" }: { tab?: string }) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   const { accessToken, user: currentUser } = useAuth();
   const { hasPermission } = useRbac();
   const canManageUsers = hasPermission("manage:users");
-  const { tenant } = useTenant();
+  const { tenant, companiesList } = useTenant();
   const canAssignSuperAdminRole = canAssignSuperAdmin(currentUser);
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
+  const [filterCompany, setFilterCompany] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [editUser, setEditUser] = useState<User | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -378,7 +411,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
     setError(null);
 
     try {
-      const userRes = await fetch(`${API_BASE_URL}/erp/users`, {
+      const userRes = await fetch(`${API_BASE_URL}/erp/users?all_workspaces=true`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!userRes.ok) {
@@ -430,6 +463,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
             status: payload.status,
             role_ids: payload.role_ids,
             default_role_id: payload.default_role_id,
+            company_id: payload.company_id,
             must_change_password: payload.must_change_password,
             is_tenant_owner: payload.is_tenant_owner,
           }),
@@ -484,9 +518,13 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
         user.email.toLowerCase().includes(searchTerm.toLowerCase());
       const statusMatch = filterStatus === "All" || user.status === filterStatus;
       const roleMatch = filterRole === "All" || user.roles.some((role) => role.id === filterRole);
-      return searchMatch && statusMatch && roleMatch;
+      const companyMatch =
+        filterCompany === "All" ||
+        (filterCompany === "org" && !user.company_id) ||
+        user.company_id === filterCompany;
+      return searchMatch && statusMatch && roleMatch && companyMatch;
     });
-  }, [users, searchTerm, filterRole, filterStatus]);
+  }, [users, searchTerm, filterRole, filterStatus, filterCompany]);
 
   const pendingInvites = users.filter((user) => user.must_change_password).length;
 
@@ -494,8 +532,10 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-bold">User Management</h1>
-          <p className="text-sm text-muted-foreground mt-1">Create users, assign roles, and manage access for your tenant.</p>
+          <h1 className="text-base font-bold">User Management & Workspace Staff</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Assign staff across separate workspace companies, configure roles, and isolate privileges.
+          </p>
         </div>
         {canManageUsers && (
           <button
@@ -503,7 +543,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
               setEditUser(undefined);
               setShowModal(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition cursor-pointer shadow-xs"
           >
             <UserPlus className="size-3.5" /> New User
           </button>
@@ -512,10 +552,10 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
 
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total Users", value: users.length, sub: "across your tenant" },
-          { label: "Active", value: users.filter((user) => user.status === "Active").length, sub: "currently active" },
+          { label: "Total Users", value: users.length, sub: "across organization" },
+          { label: "Active in Workspace", value: users.filter((user) => !user.company_id || user.company_id === tenant.id).length, sub: `${tenant.name || "Active Workspace"}` },
           { label: "Roles Configured", value: roles.length, sub: "role profiles" },
-          { label: "Pending Invites", value: pendingInvites, sub: "awaiting password setup" },
+          { label: "Pending Invites", value: pendingInvites, sub: "awaiting setup" },
         ].map((stat, index) => (
           <motion.div
             key={stat.label}
@@ -542,6 +582,19 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           />
         </div>
         <select
+          className="h-10 px-3 rounded-xl border bg-background text-sm font-medium outline-none"
+          value={filterCompany}
+          onChange={(event) => setFilterCompany(event.target.value)}
+        >
+          <option value="All">All Workspaces</option>
+          {companiesList.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+          <option value="org">Organization-wide Only</option>
+        </select>
+        <select
           className="h-10 px-3 rounded-xl border bg-background text-sm outline-none"
           value={filterStatus}
           onChange={(event) => setFilterStatus(event.target.value)}
@@ -564,11 +617,12 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
         </select>
       </div>
 
-      <div className="rounded-xl border overflow-hidden bg-card">
+      <div className="rounded-xl border overflow-hidden bg-card shadow-xs">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
-              <tr>
+            <tr>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">User</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workspace Company</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Roles</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions</th>
@@ -577,14 +631,14 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-sm text-center text-muted-foreground">
+                <td colSpan={5} className="px-4 py-6 text-sm text-center text-muted-foreground">
                   Loading users…
                 </td>
               </tr>
             ) : filteredUsers.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-sm text-center text-muted-foreground">
-                  No users found.
+                <td colSpan={5} className="px-4 py-6 text-sm text-center text-muted-foreground">
+                  No users found matching filters.
                 </td>
               </tr>
             ) : (
@@ -612,8 +666,18 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
                         </div>
                         <div className="text-xs text-muted-foreground">{user.email}</div>
                       </div>
-
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {user.company_name ? (
+                      <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-200/60 font-semibold">
+                        🏢 {user.company_name}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 font-medium">
+                        🌐 All Workspaces
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
@@ -694,6 +758,8 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
             user={editUser}
             roles={roles}
             canAssignSuperAdminRole={canAssignSuperAdminRole}
+            companiesList={companiesList}
+            activeTenantId={tenant?.id}
             onClose={() => setShowModal(false)}
             onSave={saveUser}
           />

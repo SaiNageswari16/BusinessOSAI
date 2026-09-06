@@ -19,14 +19,24 @@ router = APIRouter()
 @router.get("/warehouses", response_model=List[WarehouseResponse])
 async def get_warehouses(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
+    all_workspaces: bool = Query(False, description="Whether to include warehouses from all workspaces in the tenant"),
+    company_id: Optional[UUID] = Query(None, description="Optional specific company/workspace ID"),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(
+    stmt = (
         select(Warehouse)
         .where(Warehouse.tenant_id == ctx.tenant_id)
         .options(selectinload(Warehouse.locations))
-        .order_by(Warehouse.created_at.desc())
     )
+    if not all_workspaces:
+        target_company_id = company_id or ctx.active_company_id
+        if target_company_id:
+            stmt = stmt.where(Warehouse.company_id == target_company_id)
+    elif company_id:
+        stmt = stmt.where(Warehouse.company_id == company_id)
+
+    stmt = stmt.order_by(Warehouse.created_at.desc())
+    result = await db.execute(stmt)
     return result.scalars().all()
 
 @router.post("/warehouses", response_model=WarehouseResponse)
@@ -35,8 +45,12 @@ async def create_warehouse(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:erp"))],
     db: AsyncSession = Depends(get_db)
 ):
+    wh_data = warehouse_in.model_dump()
+    if not wh_data.get("company_id") and ctx.active_company_id:
+        wh_data["company_id"] = ctx.active_company_id
+
     warehouse = Warehouse(
-        **warehouse_in.model_dump(),
+        **wh_data,
         tenant_id=ctx.tenant_id
     )
     db.add(warehouse)

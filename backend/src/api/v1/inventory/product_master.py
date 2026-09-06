@@ -313,6 +313,8 @@ async def list_product_categories(
     search: str | None = None,
 ):
     query = select(ProductCategory).where(ProductCategory.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(ProductCategory.company_id == ctx.active_company_id, ProductCategory.company_id == None))
     if search:
         query = query.where(ProductCategory.name.ilike(f"%{search}%"))
         
@@ -344,6 +346,7 @@ async def create_product_category(
 
     cat = ProductCategory(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         name=payload.name,
         category_code=cat_code,
         description=payload.description,
@@ -352,7 +355,6 @@ async def create_product_category(
     )
     db.add(cat)
     await db.flush()
-    await db.commit()
     await db.commit()
     # Invalidate categories cache
     await invalidate_cache_by_prefix("pos_categories")
@@ -491,6 +493,8 @@ async def list_brands(
     search: str | None = None,
 ):
     query = select(Brand).where(Brand.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(Brand.company_id == ctx.active_company_id, Brand.company_id == None))
     if search:
         query = query.where(Brand.name.ilike(f"%{search}%"))
         
@@ -523,6 +527,7 @@ async def create_brand(
 ):
     brand = Brand(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         name=payload.name,
         description=payload.description,
         manufacturer=payload.manufacturer,
@@ -640,6 +645,8 @@ async def list_uoms(
     search: str | None = None,
 ):
     query = select(UnitOfMeasure).where(UnitOfMeasure.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where(or_(UnitOfMeasure.company_id == ctx.active_company_id, UnitOfMeasure.company_id == None))
     if search:
         query = query.where(UnitOfMeasure.name.ilike(f"%{search}%") | UnitOfMeasure.abbreviation.ilike(f"%{search}%"))
         
@@ -647,6 +654,8 @@ async def list_uoms(
     if (total or 0) == 0 and not search:
         await auto_seed_default_uoms(db, ctx.tenant_id)
         query = select(UnitOfMeasure).where(UnitOfMeasure.tenant_id == ctx.tenant_id)
+        if ctx.active_company_id:
+            query = query.where(or_(UnitOfMeasure.company_id == ctx.active_company_id, UnitOfMeasure.company_id == None))
         total = await db.scalar(select(func.count()).select_from(query.subquery()))
 
     result = await db.execute(
@@ -656,11 +665,10 @@ async def list_uoms(
     
     if uoms:
         uom_ids = [u.id for u in uoms]
-        counts_res = await db.execute(
-            select(Product.uom_id, func.count(Product.id))
-            .where(Product.tenant_id == ctx.tenant_id, Product.uom_id.in_(uom_ids))
-            .group_by(Product.uom_id)
-        )
+        prod_q = select(Product.uom_id, func.count(Product.id)).where(Product.tenant_id == ctx.tenant_id, Product.uom_id.in_(uom_ids))
+        if ctx.active_company_id:
+            prod_q = prod_q.where(Product.company_id == ctx.active_company_id)
+        counts_res = await db.execute(prod_q.group_by(Product.uom_id))
         counts_map = {row[0]: row[1] for row in counts_res.all()}
         for u in uoms:
             u.products_count = counts_map.get(u.id, 0)
@@ -678,6 +686,7 @@ async def create_uom(
 ):
     uom = UnitOfMeasure(
         tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
         name=payload.name,
         abbreviation=payload.abbreviation,
         description=payload.description,
@@ -726,6 +735,8 @@ async def list_products(
         .options(selectinload(Product.category), selectinload(Product.brand), selectinload(Product.uom))
         .where(Product.tenant_id == ctx.tenant_id)
     )
+    if ctx.active_company_id:
+        query = query.where(Product.company_id == ctx.active_company_id)
     
     if search:
         words = [w.strip() for w in search.strip().split() if w.strip()]
@@ -769,7 +780,6 @@ async def list_products(
     )
     products = result.scalars().all()
 
-    
     out = []
     for p in products:
         d = ProductResponse.model_validate(p)
@@ -801,7 +811,7 @@ async def create_product(
         if existing_brand:
             brand_id = existing_brand.id
         else:
-            new_brand = Brand(id=uuid.uuid4(), tenant_id=ctx.tenant_id, name=b_name, status=EntityStatus.ACTIVE)
+            new_brand = Brand(id=uuid.uuid4(), tenant_id=ctx.tenant_id, company_id=ctx.active_company_id, name=b_name, status=EntityStatus.ACTIVE)
             db.add(new_brand)
             await db.flush()
             brand_id = new_brand.id
@@ -815,11 +825,15 @@ async def create_product(
     existing_prod = None
     if barcode:
         stmt = select(Product).where(Product.tenant_id == ctx.tenant_id, Product.barcode == barcode)
+        if ctx.active_company_id:
+            stmt = stmt.where(Product.company_id == ctx.active_company_id)
         res = await db.execute(stmt)
         existing_prod = res.scalars().first()
 
     if not existing_prod and name:
         stmt = select(Product).where(Product.tenant_id == ctx.tenant_id, func.lower(Product.name) == name.lower())
+        if ctx.active_company_id:
+            stmt = stmt.where(Product.company_id == ctx.active_company_id)
         res = await db.execute(stmt)
         existing_prod = res.scalars().first()
 
@@ -854,6 +868,7 @@ async def create_product(
 
         product = Product(
             tenant_id=ctx.tenant_id,
+            company_id=ctx.active_company_id,
             **product_data
         )
         db.add(product)

@@ -85,13 +85,33 @@ async def _role_to_response(db: AsyncSession, role: Role) -> RoleResponse:
 
 async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
     from src.schemas.erp import RoleSummary
+    from src.models import Company
 
     result = await db.execute(
         select(UserRole).options(selectinload(UserRole.role)).where(UserRole.user_id == user.id)
     )
+    user_roles = result.scalars().all()
+    user_company_id = None
+    for ur in user_roles:
+        if ur.company_id:
+            user_company_id = ur.company_id
+            break
+
+    company_name = None
+    if user_company_id:
+        c_obj = await db.get(Company, user_company_id)
+        if c_obj:
+            company_name = c_obj.name
+
     roles = [
-        RoleSummary(id=ur.role.id, name=ur.role.name, is_default=ur.is_default)
-        for ur in result.scalars().all()
+        RoleSummary(
+            id=ur.role.id,
+            name=ur.role.name,
+            is_default=ur.is_default,
+            company_id=ur.company_id,
+            company_name=company_name if ur.company_id == user_company_id else None
+        )
+        for ur in user_roles
     ]
     return UserResponse(
         id=user.id,
@@ -106,6 +126,8 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
         must_change_password=user.must_change_password,
         is_tenant_owner=user.is_tenant_owner,
         last_login_at=user.last_login_at,
+        company_id=user_company_id,
+        company_name=company_name,
         roles=roles,
         created_at=user.created_at,
         updated_at=user.updated_at,
@@ -214,10 +236,18 @@ async def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
+    company_id: uuid.UUID | None = Query(None, description="Filter by company / workspace"),
+    all_workspaces: bool = Query(False, description="Whether to include users from all workspaces"),
 ):
     query = select(User).where(User.tenant_id == ctx.tenant_id)
     if search:
         query = query.where(User.full_name.ilike(f"%{search}%") | User.email.ilike(f"%{search}%"))
+
+    target_cid = company_id or (None if all_workspaces else ctx.active_company_id)
+    if target_cid:
+        # Include users assigned to target_cid or tenant owners
+        subq = select(UserRole.user_id).where(UserRole.company_id == target_cid)
+        query = query.where((User.id.in_(subq)) | (User.is_tenant_owner == True))
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(query.order_by(User.full_name).offset((page - 1) * page_size).limit(page_size))
@@ -279,6 +309,7 @@ async def create_user(
     db.add(user)
     await db.flush()
 
+    assigned_cid = payload.company_id or ctx.active_company_id
 
     for role_id in payload.role_ids:
         role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == ctx.tenant_id))
@@ -287,6 +318,7 @@ async def create_user(
                 UserRole(
                     user_id=user.id,
                     role_id=role.id,
+                    company_id=assigned_cid,
                     is_default=payload.default_role_id == role_id,
                 )
             )
@@ -315,11 +347,12 @@ async def create_user(
         db,
         tenant_id=ctx.tenant_id,
         user_id=ctx.user.id,
+        company_id=assigned_cid,
         module="erp",
         action="created",
         entity_type="user",
         entity_id=user.id,
-        new_values={"email": user.email, "full_name": user.full_name},
+        new_values={"email": user.email, "full_name": user.full_name, "company_id": str(assigned_cid) if assigned_cid else None},
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
@@ -341,7 +374,7 @@ async def update_user(
 
     actor_can_grant_admin = ctx.user.is_tenant_owner or (ctx.user.tenant and ctx.user.tenant.slug == "system")
 
-    updates = payload.model_dump(exclude_unset=True, exclude={"role_ids", "branch_ids", "password"})
+    updates = payload.model_dump(exclude_unset=True, exclude={"role_ids", "branch_ids", "password", "company_id"})
     if "is_tenant_owner" in updates and not actor_can_grant_admin:
         updates.pop("is_tenant_owner", None)
 
@@ -356,6 +389,8 @@ async def update_user(
 
     if payload.must_change_password is not None:
         user.must_change_password = payload.must_change_password
+
+    assigned_cid = payload.company_id if payload.company_id is not None else ctx.active_company_id
 
     if payload.role_ids is not None:
         await validate_role_assignment(
@@ -382,9 +417,14 @@ async def update_user(
                 UserRole(
                     user_id=user.id,
                     role_id=role_id,
+                    company_id=assigned_cid,
                     is_default=payload.default_role_id == role_id,
                 )
             )
+    elif payload.company_id is not None:
+        existing_roles = (await db.execute(select(UserRole).where(UserRole.user_id == user.id))).scalars().all()
+        for ur in existing_roles:
+            ur.company_id = assigned_cid
 
     if payload.branch_ids is not None:
         existing_branches = await db.execute(select(UserBranch).where(UserBranch.user_id == user.id))

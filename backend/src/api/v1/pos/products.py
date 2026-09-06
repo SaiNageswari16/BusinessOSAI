@@ -26,11 +26,14 @@ async def list_categories(
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
+    stmt = (
         select(ProductCategory)
         .where(ProductCategory.tenant_id == ctx.user.tenant_id, ProductCategory.status == EntityStatus.ACTIVE)
-        .order_by(ProductCategory.name)
     )
+    if ctx.active_company_id:
+        stmt = stmt.where(or_(ProductCategory.company_id == ctx.active_company_id, ProductCategory.company_id == None))
+    stmt = stmt.order_by(ProductCategory.name)
+    result = await db.execute(stmt)
     categories = result.scalars().all()
     
     out = []
@@ -55,7 +58,7 @@ async def create_category(
     if "is_active" in data:
         data["status"] = "active" if data.pop("is_active") else "inactive"
     
-    cat = ProductCategory(tenant_id=ctx.user.tenant_id, **data)
+    cat = ProductCategory(tenant_id=ctx.user.tenant_id, company_id=ctx.active_company_id, **data)
     db.add(cat)
     await db.commit()
     await db.refresh(cat)
@@ -104,6 +107,8 @@ async def list_products(
         .options(selectinload(Product.category), selectinload(Product.brand))
         .where(Product.tenant_id == ctx.user.tenant_id)
     )
+    if ctx.active_company_id:
+        stmt = stmt.where(Product.company_id == ctx.active_company_id)
     if active_only:
         stmt = stmt.where(or_(Product.status == EntityStatus.ACTIVE, Product.status == None))
     if category_id:
@@ -161,13 +166,15 @@ async def create_product(
     barcode = (data.get("barcode") or "").strip()
     name = (data.get("name") or "").strip()
 
-    # Search for existing product by barcode or by name
+    # Search for existing product by barcode or by name within active workspace
     existing_prod = None
     if barcode:
         stmt = select(Product).where(
             Product.tenant_id == ctx.user.tenant_id,
             Product.barcode == barcode
         )
+        if ctx.active_company_id:
+            stmt = stmt.where(Product.company_id == ctx.active_company_id)
         res = await db.execute(stmt)
         existing_prod = res.scalars().first()
 
@@ -176,6 +183,8 @@ async def create_product(
             Product.tenant_id == ctx.user.tenant_id,
             func.lower(Product.name) == name.lower()
         )
+        if ctx.active_company_id:
+            stmt = stmt.where(Product.company_id == ctx.active_company_id)
         res = await db.execute(stmt)
         existing_prod = res.scalars().first()
 
@@ -197,7 +206,7 @@ async def create_product(
         await db.refresh(existing_prod, ["category", "brand"])
         product = existing_prod
     else:
-        product = Product(tenant_id=ctx.user.tenant_id, **data)
+        product = Product(tenant_id=ctx.user.tenant_id, company_id=ctx.active_company_id, **data)
         db.add(product)
         await db.commit()
         await db.refresh(product, ["category", "brand"])
@@ -237,15 +246,17 @@ async def bulk_create_products(
         # Check duplicate
         exists = None
         if barcode:
-            res = await db.execute(
-                select(Product.id).where(Product.tenant_id == ctx.user.tenant_id, Product.barcode == barcode)
-            )
+            dup_stmt = select(Product.id).where(Product.tenant_id == ctx.user.tenant_id, Product.barcode == barcode)
+            if ctx.active_company_id:
+                dup_stmt = dup_stmt.where(Product.company_id == ctx.active_company_id)
+            res = await db.execute(dup_stmt)
             exists = res.scalar_one_or_none()
 
         if not exists and name:
-            res = await db.execute(
-                select(Product.id).where(Product.tenant_id == ctx.user.tenant_id, func.lower(Product.name) == name.lower())
-            )
+            dup_stmt = select(Product.id).where(Product.tenant_id == ctx.user.tenant_id, func.lower(Product.name) == name.lower())
+            if ctx.active_company_id:
+                dup_stmt = dup_stmt.where(Product.company_id == ctx.active_company_id)
+            res = await db.execute(dup_stmt)
             exists = res.scalar_one_or_none()
 
         if exists:
@@ -259,7 +270,7 @@ async def bulk_create_products(
         if "discount" in data:
             data["discount_limit"] = data.pop("discount")
 
-        prod = Product(tenant_id=ctx.user.tenant_id, **data)
+        prod = Product(tenant_id=ctx.user.tenant_id, company_id=ctx.active_company_id, **data)
         new_products.append(prod)
 
     if new_products:

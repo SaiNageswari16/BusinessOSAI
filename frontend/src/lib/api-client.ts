@@ -797,14 +797,19 @@ async function request<T>(
   }
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  // Automatically attach tenant impersonation header for Platform Owner
+  // Automatically attach tenant impersonation and workspace header
   try {
     const storedTenant = localStorage.getItem("bos-tenant");
     if (storedTenant) {
       const parsed = JSON.parse(storedTenant);
-      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
+      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id;
       if (targetTenantId) {
         headers["X-Impersonate-Tenant"] = targetTenantId;
+      }
+      const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
+      if (companyId) {
+        headers["X-Company-Id"] = companyId;
+        headers["X-Workspace-Id"] = companyId;
       }
     }
   } catch {
@@ -855,9 +860,14 @@ async function requestBlob(
     const storedTenant = localStorage.getItem("bos-tenant");
     if (storedTenant) {
       const parsed = JSON.parse(storedTenant);
-      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
+      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id;
       if (targetTenantId) {
         headers["X-Impersonate-Tenant"] = targetTenantId;
+      }
+      const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
+      if (companyId) {
+        headers["X-Company-Id"] = companyId;
+        headers["X-Workspace-Id"] = companyId;
       }
     }
   } catch {
@@ -1677,6 +1687,8 @@ export const recruitmentApi = {
     request<{ status: string; message: string }>("POST", `/hrms/recruitment/offers/${id}/send-email`),
   updateOfferStatus: (id: string, data: Record<string, unknown>) =>
     request<Offer>("PATCH", `/hrms/recruitment/offers/${id}`, data),
+  startOnboarding: (id: string) =>
+    request<Onboarding>("POST", `/hrms/recruitment/offers/${id}/start-onboarding`),
 
   // Onboardings
   listOnboardings: (page = 1, pageSize = 50) =>

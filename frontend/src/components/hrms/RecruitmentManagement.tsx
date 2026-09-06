@@ -506,6 +506,37 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
     }
   };
 
+  // ─── Filter & Search States ──────────────────────────────────────────────────
+  const [offerStatusFilter, setOfferStatusFilter] = useState<"all" | "awaiting" | "accepted" | "declined" | "onboarded">("all");
+  const [offerSearchQuery, setOfferSearchQuery] = useState("");
+
+  const [onboardingFilter, setOnboardingFilter] = useState<"all" | "in_progress" | "completed">("all");
+  const [onboardingSearchQuery, setOnboardingSearchQuery] = useState("");
+
+  const navigateTab = (targetTab: string) => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", targetTab);
+      window.history.pushState({}, "", url.toString());
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleStartOnboarding = async (offer: Offer) => {
+    try {
+      showNotification(`Initializing onboarding checklist for ${offer.candidate}...`, "info");
+      const onb = await recruitmentApi.startOnboarding(offer.id);
+      await loadAllData();
+      setSelectedOnboardingId(onb.id);
+      showNotification(`Onboarding checklist active for ${offer.candidate}!`);
+      navigateTab("onboarding");
+    } catch (err: any) {
+      showNotification(err.message || "Failed to start onboarding", "error");
+    }
+  };
+
   const handleSelectPredefinedTemplate = (tplId: string) => {
     setSelectedOfferTemplateId(tplId);
     const tpl = allOfferBlueprints.find(t => t.id === tplId);
@@ -2184,15 +2215,106 @@ ${customClausesText || offerForm.customTemplate}`;
           {/* TAB 4: OFFER LETTERS */}
           {tab === "offer_letters" && (
             <div className="space-y-6">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h2 className="text-2xl font-bold tracking-tight text-foreground">Offer Letters & Predefined Contracts</h2>
-                  <p className="text-xs text-muted-foreground">Draft customized offer letters with dynamic CTC structures, legal covenants, and letterhead previews.</p>
+                  <p className="text-xs text-muted-foreground">Draft customized offer letters, manage candidate response status, and initiate onboarding checklists.</p>
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={() => { setOfferStudioTab("templates"); setCreateOfferOpen(true); }} className="h-8 text-xs font-semibold gradient-brand text-white gap-1.5 shadow-md">
                     <Plus className="size-3.5" /> Offer Letter Studio
                   </Button>
+                </div>
+              </div>
+
+              {/* Offer Status Filter Pills & Search Bar */}
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 bg-muted/20 p-3 rounded-xl border border-border/50">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    onClick={() => setOfferStatusFilter("all")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      offerStatusFilter === "all"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+                    }`}
+                  >
+                    <span>All Offers</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-primary-foreground/20 text-current font-extrabold">{offers.length}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setOfferStatusFilter("accepted")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      offerStatusFilter === "accepted"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+                    }`}
+                  >
+                    <CheckCircle className="size-3.5 text-emerald-500" />
+                    <span>Accepted</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 font-extrabold">
+                      {offers.filter(o => o.status === "Accepted").length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setOfferStatusFilter("awaiting")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      offerStatusFilter === "awaiting"
+                        ? "bg-amber-600 text-white shadow-sm"
+                        : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+                    }`}
+                  >
+                    <Clock className="size-3.5 text-amber-500" />
+                    <span>Awaiting Response</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-extrabold">
+                      {offers.filter(o => o.status !== "Accepted" && o.status !== "Declined" && o.status !== "Rejected").length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setOfferStatusFilter("declined")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      offerStatusFilter === "declined"
+                        ? "bg-rose-600 text-white shadow-sm"
+                        : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+                    }`}
+                  >
+                    <XCircle className="size-3.5 text-rose-500" />
+                    <span>Declined / Rejected</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-700 dark:text-rose-300 font-extrabold">
+                      {offers.filter(o => o.status === "Declined" || o.status === "Rejected").length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setOfferStatusFilter("onboarded")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      offerStatusFilter === "onboarded"
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+                    }`}
+                  >
+                    <UserCheck className="size-3.5 text-indigo-500" />
+                    <span>Onboarded / Active</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-extrabold">
+                      {offers.filter(o => {
+                        const onb = onboardings.find(ob => ob.applicant_id === o.applicant_id || ob.new_hire === o.candidate);
+                        return (onb && onb.progress >= 100) || o.employee_id !== null;
+                      }).length}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="relative w-full md:w-64">
+                  <Search className="size-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search candidate, role, signer..."
+                    value={offerSearchQuery}
+                    onChange={(e) => setOfferSearchQuery(e.target.value)}
+                    className="h-8 pl-8 text-xs bg-background"
+                  />
                 </div>
               </div>
 
@@ -2250,27 +2372,75 @@ ${customClausesText || offerForm.customTemplate}`;
                 })}
               </div>
 
+              {/* Offer Letters List */}
               <div className="space-y-4">
-                {offers.length === 0 ? (
-                  <div className="glass-panel p-12 text-center border rounded-xl text-muted-foreground">
-                    <FileText className="size-10 mx-auto mb-2 opacity-40 text-primary" />
-                    <p className="font-semibold text-sm">No offer letters drafted yet.</p>
-                    <p className="text-xs mt-1">Select a candidate in 'Interview' or 'Offer' stage or click 'Offer Letter Studio' to draft your first offer letter.</p>
-                  </div>
-                ) : (
-                  offers.map((offer) => {
-                    const applicant = applicants.find(a => a.id === offer.applicant_id);
+                {(() => {
+                  const filtered = offers.filter((o) => {
+                    const q = offerSearchQuery.toLowerCase().trim();
+                    const matchesSearch = !q ||
+                      o.candidate?.toLowerCase().includes(q) ||
+                      o.role?.toLowerCase().includes(q) ||
+                      o.candidate_email?.toLowerCase().includes(q) ||
+                      o.signer_name?.toLowerCase().includes(q);
+
+                    if (!matchesSearch) return false;
+
+                    if (offerStatusFilter === "all") return true;
+                    if (offerStatusFilter === "accepted") return o.status === "Accepted";
+                    if (offerStatusFilter === "declined") return o.status === "Declined" || o.status === "Rejected";
+                    if (offerStatusFilter === "awaiting") return o.status !== "Accepted" && o.status !== "Declined" && o.status !== "Rejected";
+                    if (offerStatusFilter === "onboarded") {
+                      const onb = onboardings.find(ob => ob.applicant_id === o.applicant_id || ob.new_hire === o.candidate);
+                      return (onb && onb.progress >= 100) || o.employee_id !== null;
+                    }
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
                     return (
-                      <div key={offer.id} className="glass-panel p-6 rounded-xl border border-border/60 hover:shadow-md transition-shadow">
+                      <div className="glass-panel p-12 text-center border rounded-xl text-muted-foreground">
+                        <FileText className="size-10 mx-auto mb-2 opacity-40 text-primary" />
+                        <p className="font-semibold text-sm">No offer letters match this filter.</p>
+                        <p className="text-xs mt-1">Adjust your search or filter pills above to view other offer records.</p>
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((offer) => {
+                    const applicant = applicants.find(a => a.id === offer.applicant_id);
+                    const matchedOnboarding = onboardings.find(ob => ob.applicant_id === offer.applicant_id || ob.new_hire === offer.candidate);
+                    const isAccepted = offer.status === "Accepted";
+                    const isDeclined = offer.status === "Declined" || offer.status === "Rejected";
+
+                    return (
+                      <div key={offer.id} className={`glass-panel p-6 rounded-xl border transition-all ${
+                        isAccepted ? "border-emerald-500/40 bg-emerald-500/[0.02]" : "border-border/60 hover:shadow-md"
+                      }`}>
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                           <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                offer.status === "Accepted" ? "bg-emerald-500/15 text-emerald-500 border border-emerald-500/20" :
-                                offer.status === "Declined" ? "bg-red-500/15 text-red-500 border border-red-500/20" : "bg-amber-500/15 text-amber-500 border border-amber-500/20"
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${
+                                isAccepted ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" :
+                                isDeclined ? "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30" : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
                               }`}>
+                                {isAccepted && <CheckCircle className="size-3" />}
+                                {isDeclined && <XCircle className="size-3" />}
+                                {!isAccepted && !isDeclined && <Clock className="size-3" />}
                                 {offer.status}
                               </span>
+
+                              {isAccepted && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold border border-emerald-500/20">
+                                  <CheckSquare className="size-3" /> Ready for Onboarding
+                                </span>
+                              )}
+
+                              {matchedOnboarding && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold border border-primary/20">
+                                  <Clipboard className="size-3" /> Onboarding: {matchedOnboarding.progress}%
+                                </span>
+                              )}
+
                               {offer.employee_id ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 text-[10px] font-bold border border-indigo-500/20">
                                   <UserCheck className="size-3" /> Existing Employee
@@ -2280,6 +2450,7 @@ ${customClausesText || offerForm.customTemplate}`;
                                   <User className="size-3" /> Candidate Applicant
                                 </span>
                               )}
+
                               <span className="text-xs text-muted-foreground font-medium">Extended: {offer.offer_date}</span>
                               {offer.email_sent && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-bold">
@@ -2287,6 +2458,7 @@ ${customClausesText || offerForm.customTemplate}`;
                                 </span>
                               )}
                             </div>
+
                             <h3 className="font-bold text-foreground text-lg">{offer.candidate}</h3>
                             <p className="text-sm text-muted-foreground">
                               {offer.role} · Annual CTC: <span className="font-bold text-foreground font-mono">{currency.symbol}{offer.ctc.toLocaleString()}/yr</span>
@@ -2297,6 +2469,39 @@ ${customClausesText || offerForm.customTemplate}`;
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2">
+                            {/* START / VIEW ONBOARDING (Highlighted for Accepted Offers) */}
+                            {isAccepted && (
+                              <Button
+                                size="sm"
+                                className="gradient-brand text-white gap-1.5 h-8 text-xs font-bold shadow-md animate-pulse"
+                                onClick={() => handleStartOnboarding(offer)}
+                              >
+                                <CheckSquare className="size-3.5" /> Start / View Onboarding
+                              </Button>
+                            )}
+
+                            {/* Manual status override for pending offers */}
+                            {!isAccepted && !isDeclined && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 gap-1 h-8 text-xs font-bold"
+                                  onClick={() => handleSimulateOfferResponse(offer.id, "Accepted")}
+                                >
+                                  <Check className="size-3" /> Mark Accepted
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-rose-500/40 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 gap-1 h-8 text-xs font-bold"
+                                  onClick={() => handleSimulateOfferResponse(offer.id, "Declined")}
+                                >
+                                  <XCircle className="size-3" /> Mark Declined
+                                </Button>
+                              </>
+                            )}
+
                             {/* Edit Offer Action */}
                             <Button
                               size="sm"
@@ -2366,7 +2571,8 @@ ${customClausesText || offerForm.customTemplate}`;
                             {offer.applicant_id && (
                               <Button
                                 size="sm"
-                                className="gradient-brand text-white gap-1.5 h-8 text-xs font-bold shadow-md"
+                                variant="outline"
+                                className="border-indigo-500/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 gap-1.5 h-8 text-xs font-bold shadow-sm"
                                 onClick={() => {
                                   const app = applicants.find((a) => a.id === offer.applicant_id);
                                   if (app) {
@@ -2376,15 +2582,15 @@ ${customClausesText || offerForm.customTemplate}`;
                                   }
                                 }}
                               >
-                                <UserPlus className="size-3.5" /> Convert to Employee & Assign Role
+                                <UserPlus className="size-3.5" /> Convert to Employee
                               </Button>
                             )}
                           </div>
                         </div>
                       </div>
                     );
-                  })
-                )}
+                  });
+                })()}
               </div>
             </div>
           )}
@@ -2392,43 +2598,187 @@ ${customClausesText || offerForm.customTemplate}`;
           {/* TAB 5: ONBOARDING */}
           {tab === "onboarding" && (
             <div className="space-y-6">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h2 className="text-2xl font-bold tracking-tight text-foreground">Onboarding Orchestration</h2>
-                  <p className="text-xs text-muted-foreground">Monitor candidate checklist integration, assign compliance tasks, and configure hardware allocations.</p>
+                  <p className="text-xs text-muted-foreground">Monitor candidate checklist progression, assign departmental compliance tasks, and configure hardware integrations.</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => navigateTab("offer_letters")}
+                    variant="outline"
+                    className="h-8 text-xs font-semibold border-primary/30 text-primary gap-1.5"
+                  >
+                    <FileText className="size-3.5" /> View Offer Letters
+                  </Button>
+                  <Button
+                    onClick={() => loadAllData()}
+                    variant="outline"
+                    className="h-8 text-xs font-semibold gap-1.5"
+                  >
+                    <Sparkles className="size-3.5 text-primary" /> Sync Pipeline
+                  </Button>
+                </div>
+              </div>
+
+              {/* Accepted Offers Ready for Onboarding Banner */}
+              {(() => {
+                const acceptedOffers = offers.filter(o => o.status === "Accepted");
+                if (acceptedOffers.length === 0) return null;
+
+                return (
+                  <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="size-9 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold">
+                        <CheckCircle className="size-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-xs text-foreground">
+                          {acceptedOffers.length} Accepted Offer{acceptedOffers.length > 1 ? "s" : ""} in Pipeline
+                        </h4>
+                        <p className="text-[11px] text-muted-foreground">
+                          Candidates who accepted their offer letters are automatically integrated into onboarding workflows.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {acceptedOffers.map(o => (
+                        <Button
+                          key={o.id}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleStartOnboarding(o)}
+                          className="h-7 text-[11px] font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 gap-1 bg-background"
+                        >
+                          <CheckSquare className="size-3" /> {o.candidate} ({o.role})
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Onboarding Filter Tabs & Search */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-muted/20 p-3 rounded-xl border border-border/50">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    onClick={() => setOnboardingFilter("all")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      onboardingFilter === "all"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+                    }`}
+                  >
+                    <span>All New Hires</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-primary-foreground/20 text-current font-extrabold">{onboardings.length}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setOnboardingFilter("in_progress")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      onboardingFilter === "in_progress"
+                        ? "bg-amber-600 text-white shadow-sm"
+                        : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+                    }`}
+                  >
+                    <Clock className="size-3.5 text-amber-500" />
+                    <span>In Progress</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-extrabold">
+                      {onboardings.filter(o => o.progress < 100).length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setOnboardingFilter("completed")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      onboardingFilter === "completed"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "bg-background text-muted-foreground hover:text-foreground border border-border/60"
+                    }`}
+                  >
+                    <CheckCircle className="size-3.5 text-emerald-500" />
+                    <span>Fully Onboarded</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-extrabold">
+                      {onboardings.filter(o => o.progress >= 100).length}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <Search className="size-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search candidate name, role..."
+                    value={onboardingSearchQuery}
+                    onChange={(e) => setOnboardingSearchQuery(e.target.value)}
+                    className="h-8 pl-8 text-xs bg-background"
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 space-y-3">
                   <h3 className="font-bold text-sm text-foreground uppercase tracking-wider mb-2">New Hires</h3>
-                  {onboardings.map(onb => (
-                    <div
-                      key={onb.id}
-                      onClick={() => setSelectedOnboardingId(onb.id)}
-                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                        (selectedOnboardingId === onb.id || (!selectedOnboardingId && activeOnboarding?.id === onb.id))
-                          ? "border-primary bg-primary/5 shadow-md"
-                          : "border-border hover:bg-muted/15"
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-bold text-foreground text-sm">{onb.new_hire}</h4>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteOnboarding(onb.id); }}
-                          className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                  {(() => {
+                    const filteredOnb = onboardings.filter(o => {
+                      const q = onboardingSearchQuery.toLowerCase().trim();
+                      const matchesSearch = !q || o.new_hire?.toLowerCase().includes(q) || o.role?.toLowerCase().includes(q);
+                      if (!matchesSearch) return false;
+
+                      if (onboardingFilter === "all") return true;
+                      if (onboardingFilter === "in_progress") return o.progress < 100;
+                      if (onboardingFilter === "completed") return o.progress >= 100;
+                      return true;
+                    });
+
+                    if (filteredOnb.length === 0) {
+                      return (
+                        <div className="text-center py-12 px-4 text-muted-foreground border border-dashed rounded-xl bg-card">
+                          <Users className="size-8 mx-auto mb-2 opacity-40 text-primary" />
+                          <p className="font-semibold text-xs">No onboarding records found.</p>
+                          <p className="text-[11px] mt-1 text-muted-foreground">Candidates will appear here automatically when their offer letters are accepted.</p>
+                        </div>
+                      );
+                    }
+
+                    return filteredOnb.map(onb => {
+                      const isDone = onb.progress >= 100;
+                      return (
+                        <div
+                          key={onb.id}
+                          onClick={() => setSelectedOnboardingId(onb.id)}
+                          className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                            (selectedOnboardingId === onb.id || (!selectedOnboardingId && activeOnboarding?.id === onb.id))
+                              ? "border-primary bg-primary/5 shadow-md ring-1 ring-primary/20"
+                              : "border-border hover:bg-muted/15"
+                          }`}
                         >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{onb.role}</p>
-                      <div className="mt-3 flex items-center justify-between gap-4 text-[11px]">
-                        <span className="text-muted-foreground">Start: {onb.start_date}</span>
-                        <span className="font-bold text-primary">{onb.progress}% Done</span>
-                      </div>
-                      <Progress value={onb.progress} className="h-1.5 mt-1.5" />
-                    </div>
-                  ))}
+                          <div className="flex justify-between items-start mb-1">
+                            <div>
+                              <h4 className="font-bold text-foreground text-sm flex items-center gap-1.5">
+                                {onb.new_hire}
+                                {isDone && <CheckCircle className="size-3 text-emerald-500" />}
+                              </h4>
+                              <p className="text-xs text-muted-foreground">{onb.role}</p>
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteOnboarding(onb.id); }}
+                              className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                              title="Delete Checklist"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
+                          
+                          <div className="mt-3 flex items-center justify-between gap-4 text-[11px]">
+                            <span className="text-muted-foreground">Start: {onb.start_date}</span>
+                            <span className={`font-bold ${isDone ? "text-emerald-500" : "text-primary"}`}>{onb.progress}% Done</span>
+                          </div>
+                          <Progress value={onb.progress} className="h-1.5 mt-1.5" />
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
 
                 <div className="lg:col-span-2">
@@ -2436,17 +2786,30 @@ ${customClausesText || offerForm.customTemplate}`;
                     <div className="glass-panel p-6 rounded-xl border border-border/50 space-y-6">
                       <div className="flex justify-between items-start border-b pb-4 border-border/50">
                         <div>
-                          <h3 className="text-lg font-bold text-foreground">{activeOnboarding.new_hire}</h3>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-lg font-bold text-foreground">{activeOnboarding.new_hire}</h3>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              activeOnboarding.progress >= 100
+                                ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
+                                : "bg-amber-500/15 text-amber-600 border border-amber-500/30"
+                            }`}>
+                              {activeOnboarding.progress >= 100 ? "Fully Onboarded" : "In Progress"}
+                            </span>
+                          </div>
                           <p className="text-xs text-muted-foreground">{activeOnboarding.role} · Joining: {activeOnboarding.start_date}</p>
                         </div>
                         <div className="text-right">
-                          <span className="text-3xl font-extrabold text-primary">{activeOnboarding.progress}%</span>
+                          <span className={`text-3xl font-extrabold ${activeOnboarding.progress >= 100 ? "text-emerald-500" : "text-primary"}`}>
+                            {activeOnboarding.progress}%
+                          </span>
                           <p className="text-[10px] text-muted-foreground uppercase font-semibold">Integrations Completed</p>
                         </div>
                       </div>
 
                       <div className="space-y-4">
-                        <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5"><CheckSquare className="size-4 text-primary" /> Onboarding Checklist</h4>
+                        <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                          <CheckSquare className="size-4 text-primary" /> Onboarding Checklist & Compliance Tasks
+                        </h4>
                         
                         <div className="space-y-2.5">
                           {activeOnboarding.tasks_json.map((task, idx) => (
@@ -2509,7 +2872,7 @@ ${customClausesText || offerForm.customTemplate}`;
                     </div>
                   ) : (
                     <div className="text-center py-20 text-muted-foreground border border-dashed rounded-xl glass-panel">
-                      Select a new hire onboarding record to view checklist parameters.
+                      Select a new hire onboarding record from the list to view and manage checklist parameters.
                     </div>
                   )}
                 </div>

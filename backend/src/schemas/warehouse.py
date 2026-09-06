@@ -35,6 +35,8 @@ class WarehouseBase(BaseModel):
     employees: int = 0
     temperature_control: Optional[str] = None
     status: str = "Active"
+    company_id: Optional[UUID] = None
+    is_default: bool = False
 
 class WarehouseCreate(WarehouseBase):
     pass
@@ -45,6 +47,8 @@ class WarehouseUpdate(WarehouseBase):
 class WarehouseResponse(WarehouseBase, TimestampSchema):
     id: UUID
     tenant_id: UUID
+    company_id: Optional[UUID] = None
+    is_default: bool = False
     locations: List[StorageLocationResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

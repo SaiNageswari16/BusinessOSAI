@@ -4,10 +4,11 @@ import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { 
   Search, Plus, FileDown, Trash2, Loader2, Package, ArrowLeft, 
-  CheckCircle2, Building2, Calendar, FileText, ShoppingBag, PlusCircle, MinusCircle, ScanLine, Tag, ArrowRightLeft, Truck, Eye, ChevronDown, ChevronUp, Printer
+  CheckCircle2, Building2, Calendar, FileText, ShoppingBag, PlusCircle, MinusCircle, ScanLine, Tag, ArrowRightLeft, Truck, Eye, ChevronDown, ChevronUp, Printer, Globe
 } from "lucide-react";
 import { inventoryApi, StockMovement as StockMovementType, Warehouse, InventoryProduct } from "../../lib/api-client";
 import { ProductPicker } from "./ProductPicker";
+import { useTenant } from "@/contexts/tenant-context";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -20,15 +21,24 @@ interface TransferItemInput {
 }
 
 export function StockTransfer() {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
+  const { tenant, companiesList } = useTenant();
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [transfers, setTransfers] = useState<StockMovementType[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [allTenantWarehouses, setAllTenantWarehouses] = useState<Warehouse[]>([]);
   const [productsList, setProductsList] = useState<InventoryProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Inter-Workspace Transfer Mode
+  const [isInterWorkspace, setIsInterWorkspace] = useState(false);
+  const [sourceCompanyId, setSourceCompanyId] = useState(tenant?.id || "");
+  const [targetCompanyId, setTargetCompanyId] = useState("");
+  const [sourceWarehouseId, setSourceWarehouseId] = useState("");
+  const [targetWarehouseId, setTargetWarehouseId] = useState("");
 
   const [form, setForm] = useState({
     movement_number: "",
@@ -36,7 +46,7 @@ export function StockTransfer() {
     destination_location: "",
     notes: "",
     transfer_date: new Date().toISOString().slice(0, 10),
-    status: "In Transit",
+    status: "Completed",
   });
 
   const [items, setItems] = useState<TransferItemInput[]>([]);
@@ -44,13 +54,19 @@ export function StockTransfer() {
   const fetchAll = async () => {
     try {
       setLoading(true);
-      const [m, w, prods] = await Promise.all([
+      const [m, w, prods, allWh] = await Promise.all([
         inventoryApi.getStockMovements(),
         inventoryApi.getWarehouses().catch(() => []),
-        inventoryApi.getProducts({ page: 1, page_size: 200 }).then(r => r.items).catch(() => [])
+        inventoryApi.getProducts({ page: 1, page_size: 200 }).then(r => r.items).catch(() => []),
+        fetch(`${import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1"}/inventory/warehouses?all_workspaces=true`, {
+          headers: {
+            Authorization: `Bearer ${JSON.parse(localStorage.getItem("bos-auth") || "{}").accessToken || ""}`
+          }
+        }).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
       setTransfers(m);
       setWarehouses(w);
+      setAllTenantWarehouses(allWh.length > 0 ? allWh : w);
       setProductsList(prods);
     } catch (error) {
       console.error("Failed to fetch transfers:", error);
@@ -60,19 +76,31 @@ export function StockTransfer() {
     }
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchAll(); }, [tenant?.id]);
 
-  const openCreateView = () => {
+  const openCreateView = (interWs = false) => {
     const autoNumber = `TR-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const srcWh = warehouses[0]?.name || "Main Warehouse";
-    const destWh = warehouses[1]?.name || warehouses[0]?.name || "Secondary Depot";
+    const otherCompany = companiesList.find(c => c.id !== tenant?.id) || companiesList[0];
+    
+    setIsInterWorkspace(interWs);
+    setSourceCompanyId(tenant?.id || "");
+    setTargetCompanyId(otherCompany?.id || tenant?.id || "");
+
+    const srcWh = warehouses[0]?.name || "Main Store";
+    const destWh = interWs 
+      ? `Main Store (${otherCompany?.name || "Workspace 2"})`
+      : (warehouses[1]?.name || warehouses[0]?.name || "Secondary Warehouse");
+
+    setSourceWarehouseId(warehouses[0]?.id || "");
+    setTargetWarehouseId("");
+
     setForm({
       movement_number: autoNumber,
       source_location: srcWh,
       destination_location: destWh,
-      notes: "",
+      notes: interWs ? `Inter-workspace stock transfer to ${otherCompany?.name || "Target Workspace"}` : "",
       transfer_date: new Date().toISOString().slice(0, 10),
-      status: "In Transit",
+      status: "Completed",
     });
     setItems([]);
     setViewMode("create");
@@ -127,8 +155,8 @@ export function StockTransfer() {
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!form.movement_number.trim()) { toast.error("Transfer number is required"); return; }
-    if (!form.source_location || !form.destination_location) { toast.error("Select both source and destination warehouses"); return; }
-    if (form.source_location === form.destination_location) { toast.error("Source and destination warehouses cannot be the same"); return; }
+    if (!form.source_location || !form.destination_location) { toast.error("Select both source and destination locations"); return; }
+    if (!isInterWorkspace && form.source_location === form.destination_location) { toast.error("Source and destination warehouses cannot be the same"); return; }
     if (items.length === 0) { toast.error("Add at least one product line item"); return; }
     if (items.some((it) => !it.product_id)) { toast.error("Select a product for all line items"); return; }
 
@@ -143,9 +171,13 @@ export function StockTransfer() {
           quantity: Number(item.quantity) || 0,
           notes: form.notes || undefined,
           status: form.status,
+          source_company_id: isInterWorkspace ? (sourceCompanyId || tenant?.id) : tenant?.id,
+          target_company_id: isInterWorkspace ? (targetCompanyId || tenant?.id) : tenant?.id,
+          source_warehouse_id: sourceWarehouseId || undefined,
+          target_warehouse_id: targetWarehouseId || undefined,
         });
       }
-      toast.success("Stock Transfer voucher successfully posted!");
+      toast.success(isInterWorkspace ? "Inter-Workspace Stock Transfer completed!" : "Stock Transfer voucher successfully posted!");
       setViewMode("list");
       fetchAll();
     } catch (error: any) {
@@ -177,18 +209,31 @@ export function StockTransfer() {
       {viewMode === "list" ? (
         <>
           {/* List Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Stock Transfer Vouchers
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">Stock Transfers & Inter-Workspace Movement</h2>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold border border-purple-200">
+                  {tenant?.name || "Active Workspace"}
+                </span>
+              </div>
               <p className="text-sm text-slate-500 mt-1">
-                Transfer stock seamlessly between warehouses, distribution hubs, and retail stores.
+                Transfer stock seamlessly between warehouses, distribution hubs, and cross-workspace companies.
               </p>
             </div>
-            <div className="flex gap-2 w-full sm:w-auto">
+            <div className="flex gap-2 w-full sm:w-auto flex-wrap">
               <Button variant="outline" className="rounded-xl"><FileDown className="size-4 mr-2" /> Export</Button>
-              <Button onClick={openCreateView} className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-sm rounded-xl font-semibold">
-                <Plus className="size-4 mr-2" /> Create New Transfer
+              <Button
+                onClick={() => openCreateView(true)}
+                className="gradient-brand text-white border-0 shadow-sm rounded-xl font-bold"
+              >
+                <Globe className="size-4 mr-2" /> Inter-Workspace Transfer
+              </Button>
+              <Button
+                onClick={() => openCreateView(false)}
+                className="bg-purple-700 hover:bg-purple-800 text-white border-0 shadow-sm rounded-xl font-semibold"
+              >
+                <Plus className="size-4 mr-2" /> Internal Transfer
               </Button>
             </div>
           </div>
@@ -213,8 +258,9 @@ export function StockTransfer() {
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
                   <tr>
                     <th className="px-6 py-4 text-left whitespace-nowrap">Transfer #</th>
-                    <th className="px-6 py-4 text-left whitespace-nowrap">Source Warehouse</th>
-                    <th className="px-6 py-4 text-left whitespace-nowrap">Destination Warehouse</th>
+                    <th className="px-6 py-4 text-left whitespace-nowrap">Type / Route</th>
+                    <th className="px-6 py-4 text-left whitespace-nowrap">Source Location</th>
+                    <th className="px-6 py-4 text-left whitespace-nowrap">Destination Location</th>
                     <th className="px-6 py-4 text-right whitespace-nowrap">Quantity</th>
                     <th className="px-6 py-4 text-left whitespace-nowrap">Date</th>
                     <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
@@ -224,70 +270,95 @@ export function StockTransfer() {
                 <tbody className="divide-y divide-border/30 font-medium">
                   {filtered.length === 0 && !loading ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-16 text-center text-slate-400">
-                        No Stock Transfers found. Click "Create New Transfer" to transfer stock.
+                      <td colSpan={8} className="px-6 py-16 text-center text-slate-400">
+                        No Stock Transfers found. Click "Inter-Workspace Transfer" or "Internal Transfer" to move stock.
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((tr) => (
-                      <tr key={tr.id} className="hover:bg-muted/30 transition-colors group">
-                        <td className="px-6 py-4 font-mono font-bold text-purple-700 text-sm">
-                          {tr.movement_number}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="font-bold text-slate-900">{tr.source_location}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="font-bold text-slate-900">{tr.destination_location}</span>
-                        </td>
-                        <td className="px-6 py-4 text-right font-bold text-slate-900">
-                          {tr.quantity} Units
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground">
-                          {(tr as any).created_at ? (tr as any).created_at.slice(0, 10) : "—"}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                            tr.status === "Completed"
-                              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                              : "bg-purple-500/10 text-purple-700 border-purple-500/20"
-                          }`}>
-                            <Truck className="size-3" /> {tr.status || "In Transit"}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => {
-                                setForm({
-                                  movement_number: tr.movement_number,
-                                  source_location: tr.source_location || "",
-                                  destination_location: tr.destination_location || "",
-                                  notes: (tr as any).reference_note || (tr as any).notes || "",
-                                  transfer_date: (tr as any).created_at ? (tr as any).created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
-                                  status: tr.status || "In Transit",
-                                });
-                                setItems([{
-                                  product_id: tr.product_id,
-                                  product_name: (tr as any).product_name || tr.product_id,
-                                  quantity: Number(tr.quantity) || 1,
-                                  unit_price: 150
-                                }]);
-                                setViewMode("create");
-                              }}
-                              className="h-8 text-xs font-semibold hover:bg-purple-50 hover:text-purple-700 rounded-lg"
-                            >
-                              <Eye className="size-3.5 mr-1" /> View / Edit
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(tr.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                    filtered.map((tr) => {
+                      const isCrossCompany = Boolean(
+                        (tr as any).source_company_id && 
+                        (tr as any).target_company_id && 
+                        (tr as any).source_company_id !== (tr as any).target_company_id
+                      );
+
+                      return (
+                        <tr key={tr.id} className="hover:bg-muted/30 transition-colors group">
+                          <td className="px-6 py-4 font-mono font-bold text-purple-700 text-sm">
+                            {tr.movement_number}
+                          </td>
+                          <td className="px-6 py-4">
+                            {isCrossCompany ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                <Globe className="size-3" /> Cross-Workspace
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                <Building2 className="size-3" /> Internal Warehouse
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-slate-900">{tr.source_location}</div>
+                            {(tr as any).source_company_name && (
+                              <div className="text-[10px] text-purple-600 font-semibold">🏢 {(tr as any).source_company_name}</div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-slate-900">{tr.destination_location}</div>
+                            {(tr as any).target_company_name && (
+                              <div className="text-[10px] text-purple-600 font-semibold">🏢 {(tr as any).target_company_name}</div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right font-bold text-slate-900">
+                            {tr.quantity} Units
+                          </td>
+                          <td className="px-6 py-4 text-muted-foreground">
+                            {(tr as any).created_at ? (tr as any).created_at.slice(0, 10) : "—"}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                              tr.status === "Completed"
+                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                : "bg-purple-500/10 text-purple-700 border-purple-500/20"
+                            }`}>
+                              <Truck className="size-3" /> {tr.status || "Completed"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => {
+                                  setForm({
+                                    movement_number: tr.movement_number,
+                                    source_location: tr.source_location || "",
+                                    destination_location: tr.destination_location || "",
+                                    notes: (tr as any).reference_note || (tr as any).notes || "",
+                                    transfer_date: (tr as any).created_at ? (tr as any).created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+                                    status: tr.status || "Completed",
+                                  });
+                                  setItems([{
+                                    product_id: tr.product_id,
+                                    product_name: (tr as any).product_name || tr.product_id,
+                                    quantity: Number(tr.quantity) || 1,
+                                    unit_price: 150
+                                  }]);
+                                  setViewMode("create");
+                                }}
+                                className="h-8 text-xs font-semibold hover:bg-purple-50 hover:text-purple-700 rounded-lg"
+                              >
+                                <Eye className="size-3.5 mr-1" /> View / Edit
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleDelete(tr.id)} className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg">
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -296,7 +367,7 @@ export function StockTransfer() {
         </>
       ) : (
         /* ══════════════════════════════════════════════════════════════════════ */
-        /*  DEDICATED SALES-STYLE STOCK TRANSFER DOCUMENT CREATOR                */
+        /*  DEDICATED STOCK TRANSFER ORDER & INTER-WORKSPACE CREATOR             */
         /* ══════════════════════════════════════════════════════════════════════ */
         <div className="space-y-6">
           {/* Top Navigation & Status Banner */}
@@ -307,10 +378,13 @@ export function StockTransfer() {
               </Button>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-md">
-                    New Stock Transfer Order
+                  <span className={cn(
+                    "text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md",
+                    isInterWorkspace ? "bg-purple-100 text-purple-700" : "bg-emerald-50 text-emerald-600"
+                  )}>
+                    {isInterWorkspace ? "🏢 Inter-Workspace Transfer" : "Internal Stock Transfer"}
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">Transit Mode</span>
+                  <span className="text-xs text-slate-400 font-mono">Stock Movement</span>
                 </div>
                 <h2 className="text-xl lg:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
                   {form.movement_number}
@@ -318,10 +392,28 @@ export function StockTransfer() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            {/* Mode Toggle & Actions */}
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold mr-2">
+                <button
+                  type="button"
+                  onClick={() => openCreateView(false)}
+                  className={cn("px-3 py-1.5 rounded-lg transition-all", !isInterWorkspace ? "bg-white text-purple-700 shadow-xs" : "text-slate-600")}
+                >
+                  Internal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openCreateView(true)}
+                  className={cn("px-3 py-1.5 rounded-lg transition-all flex items-center gap-1", isInterWorkspace ? "bg-white text-purple-700 shadow-xs" : "text-slate-600")}
+                >
+                  <Globe className="size-3" /> Inter-Workspace
+                </button>
+              </div>
+
               <Button variant="outline" onClick={() => setViewMode("list")} className="rounded-xl">Cancel</Button>
-              <Button onClick={() => handleSubmit()} disabled={isSubmitting} className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-lg shadow-emerald-500/20 rounded-xl px-6 font-bold">
-                {isSubmitting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Dispatching...</> : <><CheckCircle2 className="size-4 mr-2" /> Post Transfer Order</>}
+              <Button onClick={() => handleSubmit()} disabled={isSubmitting} className="gradient-brand text-white border-0 shadow-lg shadow-purple-500/20 rounded-xl px-6 font-bold">
+                {isSubmitting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Transferring...</> : <><CheckCircle2 className="size-4 mr-2" /> Post Transfer Order</>}
               </Button>
             </div>
           </div>
@@ -331,53 +423,125 @@ export function StockTransfer() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Tag className="size-3.5 text-emerald-500" /> Transfer Voucher #
+                  <Tag className="size-3.5 text-purple-600" /> Transfer Voucher #
                 </label>
                 <input type="text" value={form.movement_number} onChange={(e) => setForm({ ...form, movement_number: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50" />
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-purple-500 bg-slate-50" />
               </div>
 
+              {/* Source Warehouse / Company */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Building2 className="size-3.5 text-emerald-500" /> From Source Warehouse
+                  <Building2 className="size-3.5 text-purple-600" /> Source Workspace & Warehouse
                 </label>
-                <select value={form.source_location} onChange={(e) => setForm({ ...form, source_location: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
-                  {warehouses.length > 0 ? (
-                    warehouses.map(w => <option key={w.id} value={w.name}>{w.name}</option>)
-                  ) : (
-                    <option value="Main Warehouse">Main Warehouse</option>
-                  )}
-                </select>
+                {isInterWorkspace ? (
+                  <div className="space-y-1.5">
+                    <select
+                      value={sourceCompanyId}
+                      onChange={(e) => {
+                        setSourceCompanyId(e.target.value);
+                        const srcName = companiesList.find(c => c.id === e.target.value)?.name || tenant?.name;
+                        setForm(prev => ({ ...prev, source_location: `Main Store (${srcName})` }));
+                      }}
+                      className="w-full border border-purple-200 bg-purple-50/50 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    >
+                      {companiesList.map(c => (
+                        <option key={c.id} value={c.id}>
+                          🏢 {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={form.source_location}
+                      onChange={(e) => {
+                        setForm({ ...form, source_location: e.target.value });
+                        const match = warehouses.find(w => w.name === e.target.value);
+                        if (match) setSourceWarehouseId(match.id);
+                      }}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold outline-none"
+                    >
+                      {warehouses.length > 0 ? (
+                        warehouses.map(w => <option key={w.id} value={w.name}>{w.name} {w.is_default ? "(Default Main Store)" : ""}</option>)
+                      ) : (
+                        <option value="Main Store">Main Store</option>
+                      )}
+                    </select>
+                  </div>
+                ) : (
+                  <select value={form.source_location} onChange={(e) => {
+                    setForm({ ...form, source_location: e.target.value });
+                    const match = warehouses.find(w => w.name === e.target.value);
+                    if (match) setSourceWarehouseId(match.id);
+                  }}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-purple-500 bg-white">
+                    {warehouses.length > 0 ? (
+                      warehouses.map(w => <option key={w.id} value={w.name}>{w.name} {w.is_default ? "(Default Main Store)" : ""}</option>)
+                    ) : (
+                      <option value="Main Store">Main Store</option>
+                    )}
+                  </select>
+                )}
               </div>
 
+              {/* Destination Warehouse / Company */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Building2 className="size-3.5 text-emerald-500" /> To Destination Warehouse
+                  <Building2 className="size-3.5 text-purple-600" /> Destination Workspace & Warehouse
                 </label>
-                <select value={form.destination_location} onChange={(e) => setForm({ ...form, destination_location: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
-                  {warehouses.length > 0 ? (
-                    warehouses.map(w => <option key={w.id} value={w.name}>{w.name}</option>)
-                  ) : (
-                    <option value="Secondary Depot">Secondary Depot</option>
-                  )}
-                </select>
+                {isInterWorkspace ? (
+                  <div className="space-y-1.5">
+                    <select
+                      value={targetCompanyId}
+                      onChange={(e) => {
+                        setTargetCompanyId(e.target.value);
+                        const tgtName = companiesList.find(c => c.id === e.target.value)?.name || "Target Workspace";
+                        setForm(prev => ({ ...prev, destination_location: `Main Store (${tgtName})` }));
+                      }}
+                      className="w-full border border-purple-200 bg-purple-50/50 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    >
+                      {companiesList.map(c => (
+                        <option key={c.id} value={c.id}>
+                          🏢 {c.name} {c.id === tenant?.id ? "(Current Workspace)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={form.destination_location}
+                      onChange={(e) => setForm({ ...form, destination_location: e.target.value })}
+                      placeholder="Destination Warehouse / Shelf"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold outline-none"
+                    />
+                  </div>
+                ) : (
+                  <select value={form.destination_location} onChange={(e) => {
+                    setForm({ ...form, destination_location: e.target.value });
+                    const match = warehouses.find(w => w.name === e.target.value);
+                    if (match) setTargetWarehouseId(match.id);
+                  }}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-purple-500 bg-white">
+                    {warehouses.length > 0 ? (
+                      warehouses.map(w => <option key={w.id} value={w.name}>{w.name}</option>)
+                    ) : (
+                      <option value="Secondary Warehouse">Secondary Warehouse</option>
+                    )}
+                  </select>
+                )}
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Calendar className="size-3.5 text-emerald-500" /> Transfer Date
+                  <Calendar className="size-3.5 text-purple-600" /> Transfer Date
                 </label>
                 <input type="date" value={form.transfer_date} onChange={(e) => setForm({ ...form, transfer_date: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500" />
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-purple-500" />
               </div>
             </div>
 
             <div className="mt-4 pt-4 border-t border-slate-100">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Transfer Notes / Driver Details</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Transfer Notes & Dispatch Reference</label>
               <input type="text" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500" placeholder="e.g. Inter-branch delivery via Vehicle KA-01-AB-1234..." />
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500" placeholder="e.g. Cross-workspace inventory replenishment via Dispatch Truck KA-01-9876..." />
             </div>
           </Card>
 

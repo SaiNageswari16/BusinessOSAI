@@ -7,7 +7,7 @@ import {
   ShoppingBag, Receipt, UsersRound, BarChart3, Settings,
   LayoutDashboard, RadioTower, ExternalLink, Trash2,
   CheckCheck, Search, Filter, Clock, Sparkles, Inbox,
-  Eye, X, ArrowRight,
+  Eye, X, ArrowRight, Send, Megaphone, Bot, MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -224,6 +224,73 @@ export function AppTopbar() {
   const [notifFilterCategory, setNotifFilterCategory] = useState<string>("all");
   const [notifSearchQuery, setNotifSearchQuery] = useState<string>("");
 
+  // Messages Center State
+  const [activeMessageTab, setActiveMessageTab] = useState<"team" | "broadcasts" | "assistant">("team");
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>("t1");
+  const [messageInput, setMessageInput] = useState("");
+  const [aiAssistantInput, setAiAssistantInput] = useState("");
+  const [aiChatHistory, setAiChatHistory] = useState<Array<{ sender: "user" | "ai"; text: string; time: string }>>([
+    { sender: "ai", text: "Hello! I am your BusinessOS AI Assistant. Ask me anything about stock movement, workspace invoices, or inventory status.", time: "Just now" }
+  ]);
+  const [teamThreads, setTeamThreads] = useState([
+    {
+      id: "t1",
+      name: "Operations & Logistics",
+      avatar: "OP",
+      lastMsg: "Inter-workspace stock transfer REC-809 dispatched successfully.",
+      time: "10m ago",
+      unread: 1,
+      messages: [
+        { id: "m1", sender: "Priya Sharma", role: "Logistics Lead", text: "Stock transfer requested from Main Store to Warehouse 2.", time: "10:15 AM", isSelf: false },
+        { id: "m2", sender: "You", role: "Manager", text: "Approved. Please ensure goods receipt note is tagged.", time: "10:20 AM", isSelf: true },
+        { id: "m3", sender: "Priya Sharma", role: "Logistics Lead", text: "Inter-workspace stock transfer REC-809 dispatched successfully.", time: "10:25 AM", isSelf: false }
+      ]
+    },
+    {
+      id: "t2",
+      name: "Finance & Accounts",
+      avatar: "FA",
+      lastMsg: "GST e-invoices reconciled for current active workspace.",
+      time: "1h ago",
+      unread: 0,
+      messages: [
+        { id: "m4", sender: "Rahul Verma", role: "Chief Accountant", text: "GST e-invoices reconciled for current active workspace.", time: "09:30 AM", isSelf: false }
+      ]
+    },
+    {
+      id: "t3",
+      name: "POS Retail Counter",
+      avatar: "POS",
+      lastMsg: "Terminal 01 cash register opened with opening float ₹5,000.",
+      time: "2h ago",
+      unread: 0,
+      messages: [
+        { id: "m5", sender: "Cashier Desk", role: "POS Operator", text: "Terminal 01 cash register opened with opening float ₹5,000.", time: "08:00 AM", isSelf: false }
+      ]
+    }
+  ]);
+
+  const [broadcasts, setBroadcasts] = useState([
+    {
+      id: "b1",
+      title: "Workspace Inventory Audit Tomorrow",
+      author: "System Administrator",
+      date: "Today at 09:00 AM",
+      body: "All department managers must finalize pending stock adjustments before 6 PM.",
+      tag: "Notice",
+      tagColor: "bg-purple-100 text-purple-700"
+    },
+    {
+      id: "b2",
+      title: "New Inter-Workspace Stock Transfer Enabled",
+      author: "Supply Chain HQ",
+      date: "Yesterday",
+      body: "You can now seamlessly transfer inventory and raw materials between separate company workspaces with instant real-time synchronization.",
+      tag: "Feature",
+      tagColor: "bg-emerald-100 text-emerald-700"
+    }
+  ]);
+
   const fetchLiveNotifications = async (isFirst = false) => {
     try {
       const data = await liveNotificationsApi.list();
@@ -248,7 +315,92 @@ export function AppTopbar() {
 
   useEffect(() => {
     fetchLiveNotifications(true);
+    // Poll for notifications every 12 seconds
+    const interval = setInterval(() => {
+      fetchLiveNotifications(false);
+    }, 12000);
+    return () => clearInterval(interval);
   }, []);
+
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!messageInput.trim() || !selectedThreadId) return;
+
+    const newMsgText = messageInput.trim();
+    setMessageInput("");
+
+    setTeamThreads(prev => prev.map(t => {
+      if (t.id === selectedThreadId) {
+        const updatedMsgs = [
+          ...t.messages,
+          { id: `msg-${Date.now()}`, sender: "You", role: "Manager", text: newMsgText, time: "Just now", isSelf: true }
+        ];
+        return {
+          ...t,
+          lastMsg: newMsgText,
+          time: "Just now",
+          messages: updatedMsgs
+        };
+      }
+      return t;
+    }));
+
+    toast.success("Message sent to team channel!");
+
+    // Simulate auto-acknowledgement after 1.5s
+    setTimeout(() => {
+      setTeamThreads(prev => prev.map(t => {
+        if (t.id === selectedThreadId) {
+          const ackMsg = {
+            id: `msg-${Date.now()}`,
+            sender: t.name.split(" ")[0] + " Bot",
+            role: "Automated ACK",
+            text: `Received: "${newMsgText.slice(0, 30)}..." - updating workspace records.`,
+            time: "Just now",
+            isSelf: false
+          };
+          return {
+            ...t,
+            lastMsg: ackMsg.text,
+            time: "Just now",
+            messages: [...t.messages, ackMsg]
+          };
+        }
+        return t;
+      }));
+    }, 1500);
+  };
+
+  const handleSendAiAssistant = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!aiAssistantInput.trim()) return;
+
+    const query = aiAssistantInput.trim();
+    setAiAssistantInput("");
+
+    setAiChatHistory(prev => [
+      ...prev,
+      { sender: "user", text: query, time: "Just now" }
+    ]);
+
+    // Intelligent context response
+    setTimeout(() => {
+      let reply = `In ${tenant.name || "your active workspace"}, inventory and stock movement operations are synchronized with the backend. You can initiate inter-workspace transfers directly from the Stock Movement tab.`;
+      const qLower = query.toLowerCase();
+      if (qLower.includes("stock") || qLower.includes("warehouse") || qLower.includes("transfer")) {
+        reply = `To transfer stock between workspaces, go to Inventory > Stock Movement > 'Inter-Workspace Transfer'. Choose your source warehouse in ${tenant.name} and destination warehouse in your other company.`;
+      } else if (qLower.includes("user") || qLower.includes("role") || qLower.includes("split")) {
+        reply = `Users can be split across specific workspaces from Core ERP > User Management. You can filter and assign staff to ${tenant.name} or keep them organization-wide.`;
+      } else if (qLower.includes("pos") || qLower.includes("bill") || qLower.includes("sale")) {
+        reply = `POS transactions are scoped to ${tenant.name}. Receipts and stock deductions take effect in your default Main Store warehouse.`;
+      }
+
+      setAiChatHistory(prev => [
+        ...prev,
+        { sender: "ai", text: reply, time: "Just now" }
+      ]);
+    }, 600);
+  };
 
   const handleMarkAllRead = async () => {
     try {
@@ -523,11 +675,233 @@ export function AppTopbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Messages */}
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600 hover:text-slate-900 hover:bg-slate-100 relative rounded-lg" title="Messages">
-          <MessageSquare className="size-3.5" />
-          <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-purple-700" />
-        </Button>
+        {/* Interactive Workspace Messages Popover */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-slate-600 hover:text-slate-900 hover:bg-slate-100 relative rounded-lg cursor-pointer transition-transform active:scale-95"
+              title="Workspace Messages & Communications"
+            >
+              <MessageSquare className="size-3.5" />
+              <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-purple-600 ring-2 ring-white animate-pulse" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-[380px] sm:w-[420px] p-0 shadow-2xl rounded-2xl border bg-card overflow-hidden">
+            {/* Popover Header */}
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-purple-50/80 via-white to-indigo-50/80 dark:from-purple-950/40 dark:to-slate-900/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="size-7 rounded-lg gradient-brand text-white flex items-center justify-center shadow-xs">
+                  <MessageCircle className="size-3.5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-xs text-slate-900 dark:text-white leading-tight">
+                    Workspace Hub
+                  </h4>
+                  <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                    {tenant.name || "Active Company"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[10.5px]">
+                <button
+                  type="button"
+                  onClick={() => setActiveMessageTab("team")}
+                  className={cn(
+                    "px-2 py-1 rounded-md font-semibold transition-all",
+                    activeMessageTab === "team" ? "bg-white dark:bg-slate-900 shadow-xs text-purple-700 font-bold" : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  Team
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveMessageTab("broadcasts")}
+                  className={cn(
+                    "px-2 py-1 rounded-md font-semibold transition-all",
+                    activeMessageTab === "broadcasts" ? "bg-white dark:bg-slate-900 shadow-xs text-purple-700 font-bold" : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  Notices
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveMessageTab("assistant")}
+                  className={cn(
+                    "px-2 py-1 rounded-md font-semibold transition-all flex items-center gap-1",
+                    activeMessageTab === "assistant" ? "bg-white dark:bg-slate-900 shadow-xs text-purple-700 font-bold" : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  <Bot className="size-2.5 text-purple-600" /> AI
+                </button>
+              </div>
+            </div>
+
+            {/* TAB 1: Team Chat */}
+            {activeMessageTab === "team" && (
+              <div className="flex flex-col h-[380px]">
+                {/* Threads horizontal selector */}
+                <div className="flex items-center gap-1.5 p-2 border-b bg-slate-50/50 dark:bg-slate-900/30 overflow-x-auto shrink-0">
+                  {teamThreads.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setSelectedThreadId(t.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all border",
+                        selectedThreadId === t.id
+                          ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                          : "bg-background text-slate-700 dark:text-slate-300 border-border hover:bg-muted"
+                      )}
+                    >
+                      <span className="text-[10px] uppercase font-bold">{t.avatar}</span>
+                      <span className="truncate max-w-[110px]">{t.name}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Conversation Body */}
+                <div className="flex-1 p-3 overflow-y-auto space-y-2.5 bg-slate-50/30 dark:bg-slate-950/20 text-xs">
+                  {(() => {
+                    const currentThread = teamThreads.find(t => t.id === selectedThreadId) || teamThreads[0];
+                    return currentThread.messages.map((m) => (
+                      <div
+                        key={m.id}
+                        className={cn(
+                          "flex flex-col max-w-[85%] rounded-2xl p-2.5 shadow-2xs",
+                          m.isSelf
+                            ? "ml-auto bg-purple-600 text-white rounded-br-xs"
+                            : "mr-auto bg-white dark:bg-slate-800 border text-slate-800 dark:text-slate-100 rounded-bl-xs"
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                          <span className={cn("font-bold text-[10px]", m.isSelf ? "text-purple-100" : "text-purple-600")}>
+                            {m.sender} <span className="opacity-70 font-normal">({m.role})</span>
+                          </span>
+                          <span className={cn("text-[9px]", m.isSelf ? "text-purple-200" : "text-slate-400")}>
+                            {m.time}
+                          </span>
+                        </div>
+                        <p className="leading-snug text-xs">{m.text}</p>
+                      </div>
+                    ));
+                  })()}
+                </div>
+
+                {/* Send Message Input */}
+                <form onSubmit={handleSendMessage} className="p-2.5 border-t bg-background flex items-center gap-1.5 shrink-0">
+                  <input
+                    type="text"
+                    value={messageInput}
+                    onChange={(e) => setMessageInput(e.target.value)}
+                    placeholder="Type a team message..."
+                    className="flex-1 text-xs px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border-none outline-hidden focus:ring-1 focus:ring-purple-500"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="h-8 px-3 rounded-xl gradient-brand text-white text-xs font-semibold shadow-xs"
+                  >
+                    <Send className="size-3" />
+                  </Button>
+                </form>
+              </div>
+            )}
+
+            {/* TAB 2: Workspace Broadcasts */}
+            {activeMessageTab === "broadcasts" && (
+              <div className="p-3 space-y-2.5 max-h-[380px] overflow-y-auto">
+                {broadcasts.map((b) => (
+                  <div key={b.id} className="p-3 rounded-xl border bg-background hover:bg-slate-50/70 transition-colors space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className={cn("text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border", b.tagColor)}>
+                        {b.tag}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{b.date}</span>
+                    </div>
+                    <h5 className="font-bold text-xs text-foreground">{b.title}</h5>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{b.body}</p>
+                    <div className="text-[9.5px] text-purple-700 font-semibold pt-1 flex items-center gap-1">
+                      <Megaphone className="size-2.5" /> Posted by {b.author}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* TAB 3: AI Assistant */}
+            {activeMessageTab === "assistant" && (
+              <div className="flex flex-col h-[380px]">
+                <div className="flex-1 p-3 overflow-y-auto space-y-2 text-xs">
+                  {aiChatHistory.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className={cn(
+                        "p-2.5 rounded-2xl max-w-[90%] leading-relaxed shadow-2xs",
+                        item.sender === "user"
+                          ? "ml-auto bg-purple-600 text-white rounded-br-xs"
+                          : "mr-auto bg-purple-50/70 dark:bg-slate-800 border border-purple-100 text-slate-800 dark:text-slate-100 rounded-bl-xs"
+                      )}
+                    >
+                      <div className="flex items-center gap-1 mb-1 font-bold text-[10px]">
+                        {item.sender === "ai" ? (
+                          <>
+                            <Sparkles className="size-3 text-purple-600" />
+                            <span className="text-purple-700">BusinessOS AI</span>
+                          </>
+                        ) : (
+                          <span className="text-purple-100">You</span>
+                        )}
+                      </div>
+                      <p>{item.text}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Quick Prompts */}
+                <div className="px-3 py-1.5 flex items-center gap-1 overflow-x-auto border-t bg-slate-50/60 dark:bg-slate-900/40 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiAssistantInput("How do I transfer stock between workspaces?");
+                    }}
+                    className="text-[10px] font-medium px-2 py-0.5 bg-background border rounded-full text-slate-600 hover:text-purple-700 whitespace-nowrap cursor-pointer"
+                  >
+                    🔄 Inter-workspace transfer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiAssistantInput("How to split staff per company?");
+                    }}
+                    className="text-[10px] font-medium px-2 py-0.5 bg-background border rounded-full text-slate-600 hover:text-purple-700 whitespace-nowrap cursor-pointer"
+                  >
+                    👥 Assign workspace users
+                  </button>
+                </div>
+
+                {/* AI input */}
+                <form onSubmit={handleSendAiAssistant} className="p-2.5 border-t bg-background flex items-center gap-1.5 shrink-0">
+                  <input
+                    type="text"
+                    value={aiAssistantInput}
+                    onChange={(e) => setAiAssistantInput(e.target.value)}
+                    placeholder="Ask AI anything about this workspace..."
+                    className="flex-1 text-xs px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border-none outline-hidden focus:ring-1 focus:ring-purple-500"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="h-8 px-3 rounded-xl gradient-brand text-white text-xs font-semibold shadow-xs"
+                  >
+                    <Send className="size-3" />
+                  </Button>
+                </form>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
 
         {/* Notifications */}
         <Popover>

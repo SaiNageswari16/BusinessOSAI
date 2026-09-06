@@ -590,6 +590,9 @@ class Workspace(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class AuditLog(Base, UUIDPrimaryKeyMixin, TenantScopedMixin):
     __tablename__ = "audit_logs"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -614,6 +617,9 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, TenantScopedMixin):
 class ActivityLog(Base, UUIDPrimaryKeyMixin, TenantScopedMixin):
     __tablename__ = "activity_logs"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -1211,6 +1217,9 @@ class POSTransactionStatus(str, enum.Enum):
 class POSTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "pos_transactions"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     cashier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pos_sessions.id", ondelete="RESTRICT"), nullable=False)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
@@ -1272,6 +1281,9 @@ class POSSessionStatus(str, enum.Enum):
 class POSSession(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "pos_sessions"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     starting_cash: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
     status: Mapped[POSSessionStatus] = mapped_column(Enum(POSSessionStatus, name="pos_session_status"), default=POSSessionStatus.OPEN)
@@ -1541,6 +1553,9 @@ class Customer(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "crm_customers"
     __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_crm_customers_tenant_email"),)
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     email: Mapped[str | None] = mapped_column(String(255), index=True)
     phone: Mapped[str | None] = mapped_column(String(100))
@@ -1559,6 +1574,9 @@ class Customer(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class Lead(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "crm_leads"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     company_name: Mapped[str | None] = mapped_column(String(255), index=True)
     email: Mapped[str | None] = mapped_column(String(255), index=True)
@@ -1697,6 +1715,9 @@ class LiveNotification(Base, UUIDPrimaryKeyMixin, TenantScopedMixin):
     """Real-time push notifications of system events / submissions."""
     __tablename__ = "live_notifications"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)

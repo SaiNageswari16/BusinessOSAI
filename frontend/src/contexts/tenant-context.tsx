@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { companies as mockCompanies } from "@/data/mock";
 import { companiesApi, branchesApi, type Company as RealCompany, type Branch as RealBranch } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
@@ -124,12 +125,23 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     return null;
   });
 
+  let queryClient: any = null;
+  try {
+    queryClient = useQueryClient();
+  } catch {}
+
   const setTenant = useCallback((c: TenantCompany) => {
     setTenantState(c);
     localStorage.setItem("bos-tenant", JSON.stringify(c));
     // Trigger storage event so other tabs/components listen
     window.dispatchEvent(new Event("storage"));
-  }, []);
+    window.dispatchEvent(new CustomEvent("bos-tenant-changed", { detail: c }));
+    if (queryClient) {
+      try {
+        queryClient.invalidateQueries();
+      } catch {}
+    }
+  }, [queryClient]);
 
   const setActiveBranch = useCallback((b: TenantBranch | null) => {
     setActiveBranchState(b);

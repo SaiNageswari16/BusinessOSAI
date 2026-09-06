@@ -49,6 +49,7 @@ async def checkout(
     transaction = POSTransaction(
         cashier_id=ctx.user.id,
         tenant_id=ctx.user.tenant_id,
+        company_id=ctx.active_company_id,
         session_id=payload.session_id,
         customer_id=payload.customer_id,
         receipt_number=generate_receipt_number(),
@@ -391,6 +392,8 @@ async def get_transaction_history(
     from sqlalchemy import or_
 
     query_filters = [POSTransaction.tenant_id == ctx.user.tenant_id]
+    if ctx.active_company_id:
+        query_filters.append(POSTransaction.company_id == ctx.active_company_id)
     if status_filter:
         query_filters.append(POSTransaction.status == status_filter)
 

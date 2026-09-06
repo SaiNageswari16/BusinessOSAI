@@ -136,8 +136,84 @@ async def init_database() -> None:
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS district VARCHAR(150);",
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS district_code VARCHAR(50);",
         "ALTER TABLE branches ADD COLUMN IF NOT EXISTS region_name VARCHAR(100);",
-        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS zone_name VARCHAR(100);",
-
+        # Multi-Workspace / Multi-Company isolation columns
+        "ALTER TABLE erp_products ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_product_categories ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_brands ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_uoms ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_warehouses ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_warehouses ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_inventory_serials ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_goods_receipts ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_goods_issues ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_stock_movements ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_stock_movements ADD COLUMN IF NOT EXISTS source_company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_stock_movements ADD COLUMN IF NOT EXISTS target_company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_stock_movements ADD COLUMN IF NOT EXISTS source_warehouse_id UUID REFERENCES erp_warehouses(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_stock_movements ADD COLUMN IF NOT EXISTS target_warehouse_id UUID REFERENCES erp_warehouses(id) ON DELETE SET NULL;",
+        "ALTER TABLE erp_stock_adjustments ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_cycle_counts ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_master_catalog ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE pos_transactions ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE pos_sessions ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE live_notifications ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        # Backfill legacy records to tenant's first company
+        """
+        UPDATE erp_products p
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = p.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE p.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = p.tenant_id);
+        """,
+        """
+        UPDATE erp_product_categories cat
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = cat.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE cat.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = cat.tenant_id);
+        """,
+        """
+        UPDATE erp_brands b
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = b.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE b.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = b.tenant_id);
+        """,
+        """
+        UPDATE erp_uoms u
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = u.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE u.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = u.tenant_id);
+        """,
+        """
+        UPDATE erp_warehouses w
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = w.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE w.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = w.tenant_id);
+        """,
+        """
+        UPDATE erp_inventory_batches ib
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = ib.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE ib.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = ib.tenant_id);
+        """,
+        """
+        UPDATE pos_transactions pt
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = pt.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE pt.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = pt.tenant_id);
+        """,
+        """
+        UPDATE pos_sessions ps
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = ps.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE ps.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = ps.tenant_id);
+        """,
+        """
+        UPDATE audit_logs al
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = al.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE al.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = al.tenant_id);
+        """,
+        """
+        UPDATE activity_logs act
+        SET company_id = (SELECT c.id FROM companies c WHERE c.tenant_id = act.tenant_id ORDER BY c.created_at ASC LIMIT 1)
+        WHERE act.company_id IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.tenant_id = act.tenant_id);
+        """,
         # Live notifications user isolation
         "ALTER TABLE live_notifications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;",
 
@@ -307,6 +383,66 @@ async def bootstrap_defaults(db: AsyncSession) -> None:
     await seed_hrms_features(db)
     await seed_crm_features(db)
     await seed_accounting_features(db)
+    await ensure_default_warehouses(db)
+
+
+async def ensure_default_warehouses(db: AsyncSession) -> None:
+    """Ensure every onboarded company / organization has at least one default retail store warehouse."""
+    try:
+        from src.models import Company
+        from src.models.inventory import Warehouse, StorageLocation
+
+        companies = (await db.execute(select(Company))).scalars().all()
+        for comp in companies:
+            wh_exists = await db.scalar(
+                select(Warehouse.id).where(
+                    Warehouse.tenant_id == comp.tenant_id,
+                    Warehouse.company_id == comp.id
+                )
+            )
+            if not wh_exists:
+                default_wh = Warehouse(
+                    tenant_id=comp.tenant_id,
+                    company_id=comp.id,
+                    name=f"{comp.name} - Main Store",
+                    warehouse_type="Store / Front-Desk Retail",
+                    capacity="10,000 Units",
+                    manager_name="Store Manager",
+                    employees=5,
+                    temperature_control="Ambient",
+                    status="Active",
+                    is_default=True,
+                )
+                db.add(default_wh)
+                await db.flush()
+
+                # Add default storage locations
+                loc1 = StorageLocation(
+                    tenant_id=comp.tenant_id,
+                    warehouse_id=default_wh.id,
+                    zone="Sales Floor",
+                    aisle="Aisle 1",
+                    rack="Rack A",
+                    shelf="Shelf 1",
+                    bin="Bin 01",
+                    barcode=f"LOC-{comp.name[:3].upper()}-A1-01",
+                    status="Available",
+                )
+                loc2 = StorageLocation(
+                    tenant_id=comp.tenant_id,
+                    warehouse_id=default_wh.id,
+                    zone="Back Storage",
+                    aisle="Aisle 2",
+                    rack="Rack B",
+                    shelf="Shelf 1",
+                    bin="Bin 02",
+                    barcode=f"LOC-{comp.name[:3].upper()}-A2-02",
+                    status="Available",
+                )
+                db.add_all([loc1, loc2])
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Error ensuring default warehouses: {e}")
 
 
 def slugify(value: str) -> str:
@@ -318,6 +454,7 @@ async def write_audit_log(
     db: AsyncSession,
     *,
     tenant_id: uuid.UUID,
+    company_id: uuid.UUID | None = None,
     user_id: uuid.UUID | None,
     module: str,
     action: str,
@@ -333,6 +470,7 @@ async def write_audit_log(
     db.add(
         AuditLog(
             tenant_id=tenant_id,
+            company_id=company_id,
             user_id=user_id,
             module=module,
             action=action,

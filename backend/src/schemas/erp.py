@@ -54,6 +54,8 @@ class RoleSummary(ORMModel):
     id: uuid.UUID
     name: str
     is_default: bool = False
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
     permissions: list[str] = Field(default_factory=list)
 
 
@@ -399,6 +401,7 @@ class UserCreate(BaseModel):
     role_ids: list[uuid.UUID] = Field(default_factory=list)
     branch_ids: list[uuid.UUID] = Field(default_factory=list)
     default_role_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     status: str = "active"
     is_tenant_owner: bool = False
 
@@ -411,6 +414,7 @@ class UserUpdate(BaseModel):
     role_ids: list[uuid.UUID] | None = None
     branch_ids: list[uuid.UUID] | None = None
     default_role_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     status: str | None = None
     must_change_password: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
@@ -430,6 +434,8 @@ class UserResponse(ORMModel):
     must_change_password: bool
     is_tenant_owner: bool = False
     last_login_at: datetime | None
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
     roles: list[RoleSummary] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

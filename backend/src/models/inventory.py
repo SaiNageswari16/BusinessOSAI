@@ -9,6 +9,9 @@ from src.database.base import Base, EntityStatus, TenantScopedMixin, TimestampMi
 class ProductCategory(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_product_categories"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     category_code: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text)
@@ -24,6 +27,9 @@ class ProductCategory(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
 class Brand(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_brands"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     manufacturer: Mapped[str | None] = mapped_column(String(150))
@@ -40,6 +46,9 @@ class Brand(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 class UnitOfMeasure(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_uoms"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     abbreviation: Mapped[str] = mapped_column(String(20), nullable=False)
     unit_type: Mapped[str | None] = mapped_column(String(50))
@@ -58,6 +67,9 @@ class UnitOfMeasure(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
 class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_products"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     barcode: Mapped[str | None] = mapped_column(String(100), index=True)
@@ -204,6 +216,9 @@ class ProductImage(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin)
 class Warehouse(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_warehouses"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     warehouse_type: Mapped[str] = mapped_column(String(50), default="Distribution Center")
     capacity: Mapped[str | None] = mapped_column(String(100))
@@ -211,6 +226,7 @@ class Warehouse(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     employees: Mapped[int] = mapped_column(Integer, default=0)
     temperature_control: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(50), default="Active")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     
     locations: Mapped[list["StorageLocation"]] = relationship(back_populates="warehouse", cascade="all, delete-orphan")
 
@@ -237,6 +253,9 @@ class StorageLocation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
 class GoodsReceipt(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_goods_receipts"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     receipt_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     supplier: Mapped[str | None] = mapped_column(String(255))
     reference_number: Mapped[str | None] = mapped_column(String(100)) # PO number or invoice
@@ -260,6 +279,9 @@ class GoodsReceiptItem(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
 class GoodsIssue(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_goods_issues"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     issue_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     recipient: Mapped[str | None] = mapped_column(String(255))
     reference_number: Mapped[str | None] = mapped_column(String(100)) # SO number
@@ -282,10 +304,25 @@ class GoodsIssueItem(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
 class StockMovement(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_stock_movements"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     movement_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     product_id = mapped_column(ForeignKey("erp_products.id", ondelete="RESTRICT"), nullable=False)
     source_location: Mapped[str] = mapped_column(String(150), nullable=False)
     destination_location: Mapped[str] = mapped_column(String(150), nullable=False)
+    source_company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    target_company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    source_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True
+    )
+    target_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True
+    )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(50), default="Completed")
@@ -294,6 +331,9 @@ class StockMovement(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
 class StockAdjustment(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_stock_adjustments"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     adjustment_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     product_id = mapped_column(ForeignKey("erp_products.id", ondelete="RESTRICT"), nullable=False)
     adjustment_type: Mapped[str] = mapped_column(String(50), nullable=False) # e.g. "Write-Off", "Found"
@@ -305,6 +345,9 @@ class StockAdjustment(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
 class CycleCount(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_cycle_counts"
     
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     count_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     location: Mapped[str | None] = mapped_column(String(150))
     auditor: Mapped[str | None] = mapped_column(String(150))
@@ -332,6 +375,12 @@ class MasterCatalogProduct(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -403,6 +452,9 @@ from datetime import date
 class InventoryBatch(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_inventory_batches"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     batch_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="CASCADE"), nullable=False, index=True)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -430,6 +482,9 @@ class InventoryBatch(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
 class InventorySerial(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_inventory_serials"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     serial_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="SET NULL"), nullable=True, index=True)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)

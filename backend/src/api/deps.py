@@ -23,6 +23,8 @@ class CurrentUserContext:
         active_role_id: uuid.UUID | None = None,
         is_tenant_owner: bool = False,
         tenant_slug: str = "",
+        active_company_id: uuid.UUID | None = None,
+        allowed_company_ids: set[uuid.UUID] | None = None,
     ):
         self.user = user
         self.tenant_id = tenant_id
@@ -30,6 +32,8 @@ class CurrentUserContext:
         self.active_role_id = active_role_id
         self.is_tenant_owner = is_tenant_owner
         self.tenant_slug = tenant_slug
+        self.active_company_id = active_company_id
+        self.allowed_company_ids = allowed_company_ids or set()
 
     def has_permission(self, permission: str) -> bool:
         # 1. Unrestricted Wildcards
@@ -295,6 +299,46 @@ async def get_current_user_context(
         except ValueError:
             pass
 
+    # Resolve Active Workspace / Company
+    from src.models import Company
+
+    company_header = request.headers.get("X-Company-Id") or request.headers.get("X-Workspace-Id")
+    active_company_id: uuid.UUID | None = None
+    if company_header:
+        try:
+            parsed_cid = uuid.UUID(company_header)
+            # Verify company belongs to resolved tenant
+            comp_exists = await db.scalar(
+                select(Company.id).where(Company.id == parsed_cid, Company.tenant_id == resolved_tenant_id)
+            )
+            if comp_exists:
+                active_company_id = parsed_cid
+        except ValueError:
+            pass
+
+    # If no valid active_company_id from header, fallback to user's assigned company or tenant's primary company
+    if not active_company_id:
+        user_comp = next((ur.company_id for ur in (user.user_roles or []) if ur.company_id), None)
+        if user_comp:
+            active_company_id = user_comp
+        else:
+            first_comp = await db.scalar(
+                select(Company.id).where(Company.tenant_id == resolved_tenant_id).order_by(Company.created_at.asc()).limit(1)
+            )
+            active_company_id = first_comp
+
+    # Collect allowed company IDs for user
+    allowed_company_ids: set[uuid.UUID] = set()
+    user_has_wildcard = is_platform_admin_user or user.is_tenant_owner
+    if not user_has_wildcard:
+        for ur in (user.user_roles or []):
+            if ur.company_id:
+                allowed_company_ids.add(ur.company_id)
+            else:
+                # Role without specific company_id implies access across companies
+                user_has_wildcard = True
+                break
+
     permissions: set[str] = set()
     if active_role_id:
         for user_role in user.user_roles:
@@ -343,6 +387,8 @@ async def get_current_user_context(
         active_role_id=active_role_id,
         is_tenant_owner=bool(getattr(user, "is_tenant_owner", False) or is_platform_admin_user),
         tenant_slug=tenant_slug,
+        active_company_id=active_company_id,
+        allowed_company_ids=allowed_company_ids if not user_has_wildcard else None,
     )
 
 

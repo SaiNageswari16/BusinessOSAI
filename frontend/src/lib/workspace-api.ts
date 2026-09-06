@@ -31,6 +31,17 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  try {
+    const storedTenant = localStorage.getItem("bos-tenant");
+    if (storedTenant) {
+      const parsed = JSON.parse(storedTenant);
+      const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
+      if (companyId) {
+        headers.set("X-Company-Id", companyId);
+        headers.set("X-Workspace-Id", companyId);
+      }
+    }
+  } catch {}
   
   const response = await fetch(url, { ...options, headers });
   if (!response.ok) {

@@ -92,6 +92,11 @@ class StockMovementBase(BaseModel):
     quantity: int
     notes: Optional[str] = None
     status: str = Field(default="Completed", max_length=50)
+    company_id: Optional[uuid.UUID] = None
+    source_company_id: Optional[uuid.UUID] = None
+    target_company_id: Optional[uuid.UUID] = None
+    source_warehouse_id: Optional[uuid.UUID] = None
+    target_warehouse_id: Optional[uuid.UUID] = None
 
 class StockMovementCreate(StockMovementBase):
     pass
@@ -108,6 +113,10 @@ class StockMovementResponse(StockMovementBase, TimestampSchema):
     tenant_id: uuid.UUID
     product_name: Optional[str] = None
     sku: Optional[str] = None
+    source_company_name: Optional[str] = None
+    target_company_name: Optional[str] = None
+    source_warehouse_name: Optional[str] = None
+    target_warehouse_name: Optional[str] = None
     class Config:
         from_attributes = True
 
