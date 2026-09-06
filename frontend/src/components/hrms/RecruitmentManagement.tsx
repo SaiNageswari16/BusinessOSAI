@@ -78,6 +78,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
 import { OfferLetterStudioModal } from "./OfferLetterStudioModal";
 import { downloadOfferLetterWordDoc } from "@/lib/offer-letter-doc-utils";
+import { toast } from "sonner";
 
 export const PREDEFINED_OFFER_TEMPLATES = [
   {
@@ -206,9 +207,13 @@ export function RecruitmentManagement({ tab = "job_openings" }: Props) {
 
   const showNotification = (message: string, type: "success" | "error" | "info" = "success") => {
     setNotification({ message, type });
-    setTimeout(() => {
-      setNotification(null);
-    }, 4000);
+    if (type === "error") {
+      toast.error(message);
+    } else if (type === "info") {
+      toast.info(message);
+    } else {
+      toast.success(message);
+    }
   };
 
   // ─── Load Data from API ─────────────────────────────────────────────────────
@@ -2375,26 +2380,40 @@ ${customClausesText || offerForm.customTemplate}`;
               {/* Offer Letters List */}
               <div className="space-y-4">
                 {(() => {
-                  const filtered = offers.filter((o) => {
-                    const q = offerSearchQuery.toLowerCase().trim();
-                    const matchesSearch = !q ||
-                      o.candidate?.toLowerCase().includes(q) ||
-                      o.role?.toLowerCase().includes(q) ||
-                      o.candidate_email?.toLowerCase().includes(q) ||
-                      o.signer_name?.toLowerCase().includes(q);
+                  const q = offerSearchQuery.toLowerCase().trim();
+                  const filtered = offers
+                    .filter((o) => {
+                      if (q) {
+                        const matchesCandidate = o.candidate?.toLowerCase().includes(q);
+                        const matchesRole = o.role?.toLowerCase().includes(q);
+                        const matchesEmail = o.candidate_email?.toLowerCase().includes(q);
+                        const matchesStatus = o.status?.toLowerCase().includes(q);
+                        const matchesId = o.id?.toLowerCase().includes(q);
+                        const matchesRef = `bos-offer-${o.id?.slice(0, 4)}`.includes(q) || `ofr-${o.id?.slice(0, 8)}`.includes(q);
 
-                    if (!matchesSearch) return false;
+                        if (!matchesCandidate && !matchesRole && !matchesEmail && !matchesStatus && !matchesId && !matchesRef) {
+                          return false;
+                        }
+                      }
 
-                    if (offerStatusFilter === "all") return true;
-                    if (offerStatusFilter === "accepted") return o.status === "Accepted";
-                    if (offerStatusFilter === "declined") return o.status === "Declined" || o.status === "Rejected";
-                    if (offerStatusFilter === "awaiting") return o.status !== "Accepted" && o.status !== "Declined" && o.status !== "Rejected";
-                    if (offerStatusFilter === "onboarded") {
-                      const onb = onboardings.find(ob => ob.applicant_id === o.applicant_id || ob.new_hire === o.candidate);
-                      return (onb && onb.progress >= 100) || o.employee_id !== null;
-                    }
-                    return true;
-                  });
+                      if (offerStatusFilter === "all") return true;
+                      if (offerStatusFilter === "accepted") return o.status === "Accepted";
+                      if (offerStatusFilter === "declined") return o.status === "Declined" || o.status === "Rejected";
+                      if (offerStatusFilter === "awaiting") return o.status !== "Accepted" && o.status !== "Declined" && o.status !== "Rejected";
+                      if (offerStatusFilter === "onboarded") {
+                        const onb = onboardings.find(ob => ob.applicant_id === o.applicant_id || ob.new_hire === o.candidate);
+                        return (onb && onb.progress >= 100) || o.employee_id !== null;
+                      }
+                      return true;
+                    })
+                    .sort((a, b) => {
+                      if (q) {
+                        const aCand = a.candidate?.toLowerCase().includes(q) ? 1 : 0;
+                        const bCand = b.candidate?.toLowerCase().includes(q) ? 1 : 0;
+                        if (aCand !== bCand) return bCand - aCand;
+                      }
+                      return 0;
+                    });
 
                   if (filtered.length === 0) {
                     return (

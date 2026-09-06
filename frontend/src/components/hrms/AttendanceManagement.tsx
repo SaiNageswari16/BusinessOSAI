@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList } from "lucide-react";
+import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList, SlidersHorizontal, Shield, Globe, LocateFixed, Building2, Check, Sparkles, Navigation, Settings } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { attendanceApi, employeesApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, workCalendarsApi } from "../../lib/api-client";
+import { attendanceApi, employeesApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, workCalendarsApi, AttendanceSettings } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -66,6 +66,23 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   const [biometricDevices, setBiometricDevices] = useState<BiometricDevice[]>([]);
   const [faceLogs, setFaceLogs] = useState<FaceRecognitionLog[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
+
+  // Attendance Portal & Geofence Settings State
+  const [settings, setSettings] = useState<AttendanceSettings>({
+    branch_name: "Corporate Headquarters",
+    latitude: 37.7749,
+    longitude: -122.4194,
+    geofence_radius_meters: 500,
+    enforce_geofence: true,
+    allowed_punch_methods: ["GPS", "Biometric", "Face", "Web"],
+    shift_start_time: "09:00",
+    shift_end_time: "18:00",
+    grace_period_minutes: 15,
+    half_day_hours: 4.0,
+    ip_whitelist: "",
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSuccess, setSettingsSuccess] = useState("");
 
   // View Mode: Table vs Interactive Monthly Calendar Grid
   const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
@@ -208,9 +225,62 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     }
   }, []);
 
+  const loadSettings = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const res = await attendanceApi.getSettings();
+      if (res) {
+        setSettings(res);
+      }
+    } catch (e: any) {
+      console.error("Failed to load attendance settings", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    setSettingsSuccess("");
+    try {
+      const updated = await attendanceApi.updateSettings(settings);
+      setSettings(updated);
+      setSettingsSuccess("Attendance portal restrictions & GPS coordinates saved successfully!");
+      setTimeout(() => setSettingsSuccess(""), 4000);
+    } catch (err: any) {
+      alert("Failed to save settings: " + (err.message || "Unknown error"));
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleDetectSettingsGps = () => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setSettings(s => ({
+            ...s,
+            latitude: parseFloat(pos.coords.latitude.toFixed(6)),
+            longitude: parseFloat(pos.coords.longitude.toFixed(6)),
+          }));
+          alert(`GPS Coordinates detected accurately (±${Math.round(pos.coords.accuracy)}m accuracy): ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`);
+        },
+        (err) => {
+          alert("Location access denied or unavailable: " + err.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    } else {
+      alert("Geolocation is not supported by this browser.");
+    }
+  };
+
   useEffect(() => {
     if (tab === "daily_attendance" || tab === "gps_attendance") {
       loadDailyAttendance();
+    } else if (tab === "attendance_settings") {
+      loadSettings();
     } else if (tab === "shift_attendance") {
       loadDailyAttendance();
       loadShiftsData();
@@ -221,7 +291,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     } else if (tab === "attendance_corrections") {
       loadCorrections();
     }
-  }, [tab, loadDailyAttendance, loadShiftsData, loadBiometric, loadFaceLogs, loadCorrections]);
+  }, [tab, loadDailyAttendance, loadSettings, loadShiftsData, loadBiometric, loadFaceLogs, loadCorrections]);
 
   // Load employees list for face simulator dropdown
   const loadEmployeesList = useCallback(async () => {
@@ -875,23 +945,346 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     );
   }
 
+  // ─── Render: Attendance Portal & Geofence Restrictions ─────────
+  if (tab === "attendance_settings") {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance & Geofencing Portal</h2>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${settings.enforce_geofence ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-amber-500/10 text-amber-500 border border-amber-500/20"}`}>
+                {settings.enforce_geofence ? "Geofence Enforcement Active" : "Geofence Enforcement Disabled"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Configure office GPS coordinates, permitted check-in perimeter radius, punch methods, and shift grace period policies for this workspace.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleDetectSettingsGps}
+              className="text-xs font-semibold"
+            >
+              <LocateFixed className="size-3.5 mr-1.5 text-primary" /> Auto-Detect My Coordinates
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveSettings}
+              disabled={savingSettings}
+              className="gradient-brand text-white border-0 text-xs font-semibold h-9 px-4"
+            >
+              {savingSettings ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Check className="size-3.5 mr-1.5" />}
+              Save Restrictions
+            </Button>
+          </div>
+        </div>
+
+        {settingsSuccess && (
+          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 text-xs font-semibold flex items-center gap-2">
+            <CheckCircle className="size-4" />
+            {settingsSuccess}
+          </div>
+        )}
+
+        <form onSubmit={handleSaveSettings} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Card 1: GPS Perimeter & Restrictions */}
+          <div className="lg:col-span-2 space-y-6">
+            <Card className="p-6 space-y-5 glass-panel">
+              <div className="flex items-center justify-between border-b pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-primary/10 rounded-xl text-primary">
+                    <MapPin className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-foreground">Workspace GPS Geofence & Boundary</h3>
+                    <p className="text-xs text-muted-foreground">Define coordinates and allowable distance radius for check-ins.</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-muted-foreground">Strict Restriction:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSettings(s => ({ ...s, enforce_geofence: !s.enforce_geofence }))}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings.enforce_geofence ? 'bg-emerald-500' : 'bg-muted'}`}
+                  >
+                    <span className={`inline-block size-4 transform rounded-full bg-white transition-transform ${settings.enforce_geofence ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Office / Branch Name</label>
+                  <Input
+                    value={settings.branch_name || ""}
+                    onChange={e => setSettings(s => ({ ...s, branch_name: e.target.value }))}
+                    placeholder="e.g. San Francisco HQ / Building 4"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Office IP Whitelist (Optional)</label>
+                  <Input
+                    value={settings.ip_whitelist || ""}
+                    onChange={e => setSettings(s => ({ ...s, ip_whitelist: e.target.value }))}
+                    placeholder="e.g. 192.168.1.1, 203.0.113.5"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">GPS Latitude</label>
+                    <span className="text-[10px] text-muted-foreground">Degrees N/S</span>
+                  </div>
+                  <Input
+                    type="number"
+                    step="0.000001"
+                    value={settings.latitude ?? 37.7749}
+                    onChange={e => setSettings(s => ({ ...s, latitude: parseFloat(e.target.value) || 0 }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">GPS Longitude</label>
+                    <span className="text-[10px] text-muted-foreground">Degrees E/W</span>
+                  </div>
+                  <Input
+                    type="number"
+                    step="0.000001"
+                    value={settings.longitude ?? -122.4194}
+                    onChange={e => setSettings(s => ({ ...s, longitude: parseFloat(e.target.value) || 0 }))}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">
+                    Permitted Check-In Radius: <span className="text-primary font-bold text-sm">{settings.geofence_radius_meters || 500} meters</span>
+                  </label>
+                  <div className="flex gap-1">
+                    {[50, 100, 250, 500, 1000, 2000].map(r => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setSettings(s => ({ ...s, geofence_radius_meters: r }))}
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-colors ${settings.geofence_radius_meters === r ? "bg-primary text-white border-primary" : "bg-secondary text-muted-foreground hover:bg-muted"}`}
+                      >
+                        {r}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="20"
+                  max="5000"
+                  step="10"
+                  value={settings.geofence_radius_meters || 500}
+                  onChange={e => setSettings(s => ({ ...s, geofence_radius_meters: parseInt(e.target.value) || 500 }))}
+                  className="w-full accent-primary cursor-pointer"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {settings.enforce_geofence ? (
+                    <span className="text-amber-600 font-medium">
+                      ⚠️ Employees clocking in via GPS beyond {settings.geofence_radius_meters}m from ({settings.latitude}, {settings.longitude}) will be restricted unless tagged as WFH.
+                    </span>
+                  ) : (
+                    <span>Geofence restriction is relaxed. Coordinates will be logged for audit without blocking punches.</span>
+                  )}
+                </p>
+              </div>
+            </Card>
+
+            {/* Card 2: Shift Timings & Grace Policies */}
+            <Card className="p-6 space-y-5 glass-panel">
+              <div className="flex items-center gap-3 border-b pb-4">
+                <div className="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-500">
+                  <Clock className="size-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Shift Timings & Automated Calculation Policies</h3>
+                  <p className="text-xs text-muted-foreground">Standard working window, grace period before marking late, and half-day thresholds.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Shift Start Time</label>
+                  <Input
+                    type="time"
+                    value={settings.shift_start_time || "09:00"}
+                    onChange={e => setSettings(s => ({ ...s, shift_start_time: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Shift End Time</label>
+                  <Input
+                    type="time"
+                    value={settings.shift_end_time || "18:00"}
+                    onChange={e => setSettings(s => ({ ...s, shift_end_time: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Grace Period (Mins)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="120"
+                    value={settings.grace_period_minutes ?? 15}
+                    onChange={e => setSettings(s => ({ ...s, grace_period_minutes: parseInt(e.target.value) || 0 }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Minimum Half-Day Hours</label>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    max="12"
+                    value={settings.half_day_hours ?? 4.0}
+                    onChange={e => setSettings(s => ({ ...s, half_day_hours: parseFloat(e.target.value) || 4.0 }))}
+                  />
+                </div>
+                <div className="p-3 bg-muted/40 rounded-xl border text-xs text-muted-foreground space-y-1">
+                  <p className="font-bold text-foreground">Rule Preview:</p>
+                  <p>Check-ins after <strong>{settings.shift_start_time || "09:00"} + {settings.grace_period_minutes || 15}m</strong> will be flagged as <strong>Late</strong>. Shifts below <strong>{settings.half_day_hours || 4} hours</strong> automatically count as <strong>Half Day</strong>.</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Card 3: Sidebar Summary & Allowed Punch Methods */}
+          <div className="space-y-6">
+            <Card className="p-6 space-y-5 glass-panel">
+              <div className="flex items-center gap-3 border-b pb-4">
+                <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-500">
+                  <Shield className="size-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Allowed Punch Channels</h3>
+                  <p className="text-xs text-muted-foreground">Enable active verification methods.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {[
+                  { id: "GPS", label: "GPS Mobile & Web Geofencing", desc: "Verifies browser/mobile coordinates within perimeter radius", icon: MapPin },
+                  { id: "Biometric", label: "Biometric Fingerprint Terminals", desc: "ZKTeco & Suprema hardware gate turnstiles", icon: Fingerprint },
+                  { id: "Face", label: "AI Facial Recognition Tablet Kiosk", desc: "High confidence biometric face matching at entrances", icon: Camera },
+                  { id: "Web", label: "Web ESS Self-Service & WFH", desc: "Employee portal clock-in with remote justification", icon: Globe },
+                ].map(method => {
+                  const IconComp = method.icon;
+                  const isChecked = (settings.allowed_punch_methods || []).includes(method.id);
+                  return (
+                    <div
+                      key={method.id}
+                      onClick={() => {
+                        const current = settings.allowed_punch_methods || [];
+                        const next = isChecked
+                          ? current.filter(m => m !== method.id)
+                          : [...current, method.id];
+                        setSettings(s => ({ ...s, allowed_punch_methods: next }));
+                      }}
+                      className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${isChecked ? "bg-primary/5 border-primary/40" : "bg-background border-border/60 opacity-60"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {}}
+                        className="mt-1 accent-primary"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
+                          <IconComp className="size-3.5 text-primary" /> {method.label}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{method.desc}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="pt-3 border-t">
+                <Button
+                  type="submit"
+                  disabled={savingSettings}
+                  className="w-full gradient-brand text-white border-0 font-semibold"
+                >
+                  {savingSettings ? <Loader2 className="size-4 animate-spin mr-2" /> : <Check className="size-4 mr-2" />}
+                  Save All Settings
+                </Button>
+              </div>
+            </Card>
+
+            {/* Quick Live Preview Card */}
+            <div className="glass-panel p-5 rounded-xl border bg-gradient-to-br from-primary/5 via-transparent to-primary/10 space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 text-primary" />
+                <h4 className="text-xs font-bold uppercase text-foreground">Active Policy Summary</h4>
+              </div>
+              <div className="text-xs space-y-1.5 text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>Target Branch:</span>
+                  <span className="font-semibold text-foreground">{settings.branch_name || "Headquarters"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Coordinates:</span>
+                  <span className="font-mono text-foreground">{settings.latitude?.toFixed(4)}, {settings.longitude?.toFixed(4)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Radius:</span>
+                  <span className="font-semibold text-foreground">{settings.geofence_radius_meters}m</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Enforcement:</span>
+                  <span className={`font-bold ${settings.enforce_geofence ? "text-emerald-500" : "text-amber-500"}`}>
+                    {settings.enforce_geofence ? "Strict (403 Rejection)" : "Audit Log Only"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   // ─── Render: GPS Attendance ─────────────────────────────────────
   if (tab === "gps_attendance") {
     // Show entries containing latitude and longitude values
     const gpsRecords = attendance.filter(r => r.latitude || r.longitude);
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-foreground">GPS / Geofenced Attendance</h2>
-            <p className="text-xs text-muted-foreground">Geofenced coordinates recorded for field or remote WFH staff.</p>
+            <p className="text-xs text-muted-foreground">Geofenced coordinates recorded for field or remote staff with live perimeter verification.</p>
           </div>
-          <Button
-            className="h-8 text-xs font-semibold gradient-brand text-white border-0"
-            onClick={() => setGpsPunchDialogOpen(true)}
-          >
-            <MapPin className="size-3.5 mr-1.5" /> Record GPS Geofence Punch
-          </Button>
+          <div className="flex items-center gap-2">
+            <a
+              href="/hrms?tab=attendance_settings"
+              className="inline-flex items-center justify-center px-3 h-8 text-xs font-semibold rounded-md border bg-background hover:bg-muted text-foreground transition-colors"
+            >
+              <SlidersHorizontal className="size-3.5 mr-1.5 text-primary" /> Geofence Settings & GPS Portal
+            </a>
+            <Button
+              className="h-8 text-xs font-semibold gradient-brand text-white border-0"
+              onClick={() => setGpsPunchDialogOpen(true)}
+            >
+              <MapPin className="size-3.5 mr-1.5" /> Record GPS Geofence Punch
+            </Button>
+          </div>
         </div>
 
         {loading && <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>}

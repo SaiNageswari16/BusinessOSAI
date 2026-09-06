@@ -51,6 +51,9 @@ async def init_database() -> None:
 
     # Ensure new columns on existing PostgreSQL tables always runs
     migration_statements = [
+        "ALTER TABLE erp_product_categories ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_brands ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE erp_uoms ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
         "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gst_registrations JSONB DEFAULT '[]'::jsonb;",
         "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gsp_credentials JSONB DEFAULT '{}'::jsonb;",
         "ALTER TABLE erp_inventory_batches ADD COLUMN IF NOT EXISTS uom VARCHAR(50) DEFAULT 'Pcs';",

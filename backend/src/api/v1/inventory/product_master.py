@@ -314,7 +314,7 @@ async def list_product_categories(
 ):
     query = select(ProductCategory).where(ProductCategory.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(ProductCategory.company_id == ctx.active_company_id, ProductCategory.company_id == None))
+        query = query.where(ProductCategory.company_id == ctx.active_company_id)
     if search:
         query = query.where(ProductCategory.name.ilike(f"%{search}%"))
         
@@ -494,7 +494,7 @@ async def list_brands(
 ):
     query = select(Brand).where(Brand.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(or_(Brand.company_id == ctx.active_company_id, Brand.company_id == None))
+        query = query.where(Brand.company_id == ctx.active_company_id)
     if search:
         query = query.where(Brand.name.ilike(f"%{search}%"))
         

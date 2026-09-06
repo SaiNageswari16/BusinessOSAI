@@ -1408,6 +1408,21 @@ class ClockOutRequest(BaseModel):
     employee_id: uuid.UUID | None = None
 
 
+class AttendanceSettingsSchema(BaseModel):
+    branch_id: uuid.UUID | None = None
+    branch_name: str | None = None
+    latitude: float | None = 37.7749
+    longitude: float | None = -122.4194
+    geofence_radius_meters: int = 500
+    enforce_geofence: bool = True
+    allowed_punch_methods: list[str] = ["GPS", "Biometric", "Face", "Web"]
+    shift_start_time: str = "09:00"
+    shift_end_time: str = "18:00"
+    grace_period_minutes: int = 15
+    half_day_hours: float = 4.0
+    ip_whitelist: str | None = ""
+
+
 class BiometricDeviceCreate(BaseModel):
     device_code: str = Field(min_length=1, max_length=50)
     location: str = Field(min_length=1, max_length=150)

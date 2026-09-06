@@ -606,6 +606,7 @@ export const nav: NavGroup[] = [
         permission: "view:hrms_attendance",
         subItems: [
           { to: "/hrms?tab=daily_attendance", label: "Daily Attendance", icon: Clock, permission: "view:hrms_attendance" },
+          { to: "/hrms?tab=attendance_settings", label: "Attendance & Geofence Portal", icon: SlidersHorizontal, permission: "view:hrms_attendance" },
           { to: "/hrms?tab=biometric", label: "Biometric", icon: Fingerprint, permission: "view:hrms_biometric" },
           { to: "/hrms?tab=face_recognition", label: "Face Recognition", icon: Webcam, permission: "view:hrms_face" },
           { to: "/hrms?tab=gps_attendance", label: "GPS Attendance", icon: MapPin, permission: "view:hrms_gps" },

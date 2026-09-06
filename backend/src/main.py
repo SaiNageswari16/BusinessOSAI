@@ -178,7 +178,7 @@ async def serve_vault_fallback(file_path: str):
         offer_id_raw = os.path.basename(file_path).replace(".pdf", "").strip()
         try:
             import uuid
-            from src.models import OfferLetter, Tenant
+            from src.models import OfferLetter, Tenant, Company
             from src.database.session import get_db
             from src.api.v1.hrms.recruitment import generate_offer_letter_pdf
             
@@ -187,8 +187,11 @@ async def serve_vault_fallback(file_path: str):
                 offer = await db.get(OfferLetter, offer_uuid)
                 if offer:
                     tenant = await db.scalar(Tenant.__table__.select().where(Tenant.id == offer.tenant_id)) if hasattr(Tenant, '__table__') else None
-                    comp_name = "BusinessOS Enterprise"
-                    pdf_bytes = generate_offer_letter_pdf(offer, comp_name)
+                    company = None
+                    if offer.company_id:
+                        company = await db.get(Company, offer.company_id)
+                    comp_name = company.name if company and company.name else (tenant.name if tenant else "BusinessOS AI Global Technologies")
+                    pdf_bytes = generate_offer_letter_pdf(offer, comp_name, tenant, company)
                     vault_p.parent.mkdir(parents=True, exist_ok=True)
                     vault_p.write_bytes(pdf_bytes)
                     return Response(content=pdf_bytes, media_type="application/pdf")

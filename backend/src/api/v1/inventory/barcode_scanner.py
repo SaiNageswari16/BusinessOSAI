@@ -735,7 +735,10 @@ async def get_categories(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(ProductCategory).where(ProductCategory.tenant_id == ctx.tenant_id).order_by(ProductCategory.name.asc()).limit(200)
+    stmt = select(ProductCategory).where(ProductCategory.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        stmt = stmt.where(ProductCategory.company_id == ctx.active_company_id)
+    stmt = stmt.order_by(ProductCategory.name.asc()).limit(200)
     res = await db.execute(stmt)
     categories = res.scalars().all()
     return [
@@ -755,7 +758,10 @@ async def get_brands(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(Brand).where(Brand.tenant_id == ctx.tenant_id).order_by(Brand.name.asc()).limit(200)
+    stmt = select(Brand).where(Brand.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        stmt = stmt.where(Brand.company_id == ctx.active_company_id)
+    stmt = stmt.order_by(Brand.name.asc()).limit(200)
     res = await db.execute(stmt)
     brands = res.scalars().all()
     return [

@@ -32,6 +32,7 @@ const componentMap: Record<string, React.ElementType> = {
 
   // Attendance
   daily_attendance:       AttendanceManagement,
+  attendance_settings:    AttendanceManagement,
   biometric:              AttendanceManagement,
   face_recognition:       AttendanceManagement,
   gps_attendance:         AttendanceManagement,
@@ -58,63 +59,57 @@ const componentMap: Record<string, React.ElementType> = {
   advances:           PayrollManagement,
   bonuses:            PayrollManagement,
   commissions:        PayrollManagement,
+  reimbursements:     PayrollManagement,
 
   // Recruitment
-  job_openings:  RecruitmentManagement,
-  applicants:    RecruitmentManagement,
+  job_postings:  RecruitmentManagement,
+  candidates:    RecruitmentManagement,
   interviews:    RecruitmentManagement,
   offer_letters: RecruitmentManagement,
   onboarding:    RecruitmentManagement,
 
   // Performance
-  goals:               PerformanceManagement,
-  kpis:                PerformanceManagement,
-  appraisals:          PerformanceManagement,
-  performance_reviews: PerformanceManagement,
-  incentives:          PerformanceManagement,
+  appraisals: PerformanceManagement,
+  goals:       PerformanceManagement,
+  feedback:    PerformanceManagement,
+  kra:         PerformanceManagement,
 
   // Learning
-  training:    LearningManagement,
-  courses:     LearningManagement,
-  certificates: LearningManagement,
-  assessments: LearningManagement,
+  courses:         LearningManagement,
+  enrollments:     LearningManagement,
+  training_budget: LearningManagement,
 
-  // ESS
-  ess_attendance:    EmployeeSelfService,
-  ess_leaves:        EmployeeSelfService,
-  ess_payroll:       EmployeeSelfService,
-  ess_documents:     EmployeeSelfService,
-  ess_tasks:         EmployeeSelfService,
-  ess_performance:   EmployeeSelfService,
-  ess_learning:      EmployeeSelfService,
-  ess_announcements: EmployeeSelfService,
+  // Employee Self Service
+  my_profile:       EmployeeSelfService,
+  my_attendance:    EmployeeSelfService,
+  apply_leave:      EmployeeSelfService,
+  my_payslips:      EmployeeSelfService,
+  my_claims:        EmployeeSelfService,
+  team_summary:     EmployeeSelfService,
+  rewards_wellness: EmployeeSelfService,
+  organization_chart: EmployeeSelfService,
 
-  // Exit Management
-  resignation:      ExitManagement,
-  clearance:        ExitManagement,
-  final_settlement: ExitManagement,
-  experience_letter: ExitManagement,
+  // Separation
+  resignation: ExitManagement,
+  clearance:   ExitManagement,
+  fnf:         ExitManagement,
 
   // HR Intelligence
-  attendance_analytics:     HRIntelligence,
-  payroll_analytics:        HRIntelligence,
-  attrition_prediction:     HRIntelligence,
-  shift_optimization:       HRIntelligence,
-  productivity_score:       HRIntelligence,
-  training_recommendation:  HRIntelligence,
+  intelligence: HRIntelligence,
 };
 
 const tabPermissions: Record<string, string> = {
-  // Employee Management
+  // Core HR
   employees:        "view:hrms_employees",
   departments:      "view:hrms_departments",
   designations:     "view:hrms_designations",
-  teams:            "view:hrms_teams",
+  org_chart:        "view:hrms_org_chart",
   documents:        "view:hrms_documents",
-  employee_profile: "view:hrms_profiles",
+  employee_profile: "view:hrms_employees",
 
   // Attendance
   daily_attendance:       "view:hrms_attendance",
+  attendance_settings:    "view:hrms_attendance",
   biometric:              "view:hrms_biometric",
   face_recognition:       "view:hrms_face",
   gps_attendance:         "view:hrms_gps",

@@ -43,6 +43,7 @@ from src.models import (
     Employee,
     EmployeeDocument,
     Tenant,
+    Company,
 )
 from src.schemas.erp import (
     JobOpeningCreate,
@@ -75,7 +76,7 @@ settings = _SettingsProxy()
 def _escape_pdf_text(t: str) -> str:
     return t.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
 
-def _parse_offer_template_data(custom_template: str | None, offer: OfferLetter, company_name: str):
+def _parse_offer_template_data(custom_template: str | None, offer: OfferLetter, company_name: str, company: Company | None = None):
     import json
     data = {}
     if custom_template:
@@ -86,6 +87,16 @@ def _parse_offer_template_data(custom_template: str | None, offer: OfferLetter, 
             except Exception:
                 pass
 
+    header_org = data.get("org_name") or (company.name if company and company.name else company_name)
+    header_address = data.get("org_address") or (company.address if company and company.address else "")
+    header_email = data.get("org_email") or (company.email if company and company.email else "")
+    header_phone = data.get("org_phone") or (company.phone if company and company.phone else "")
+    header_gstin = data.get("org_gstin") or (company.gst_number if company and company.gst_number else "")
+    header_cin = data.get("org_cin") or (company.registration_number if company and company.registration_number else "")
+    header_badge = data.get("template_name") or data.get("header_badge_text") or "STANDARD CORPORATE (FULL-TIME)"
+    org_logo = data.get("org_logo") or (company.logo_url if company and company.logo_url else None)
+    org_initials = (company.logo_initials if company and company.logo_initials else (header_org[:2].upper() if header_org else "IO"))
+
     subject = data.get("subject") or f"Formal Offer of Employment — {offer.role}"
     candidate_name = offer.candidate or "Candidate"
     role_name = offer.role or "Team Member"
@@ -93,8 +104,8 @@ def _parse_offer_template_data(custom_template: str | None, offer: OfferLetter, 
     opening_text = data.get("opening_text")
     if not opening_text:
         opening_text = (
-            f"On behalf of <b>{company_name}</b>, we are very pleased to extend this formal offer of employment for the position of <b>{role_name}</b>. "
-            f"Following our comprehensive evaluations, our leadership team is confident that your talent, dedication, and expertise will make a significant impact on our organization."
+            f"On behalf of <b>{header_org}</b>, we are pleased to extend this formal offer of employment for the position of <b>{role_name}</b>. "
+            f"We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization."
         )
     
     closing_text = data.get("closing_text")
@@ -112,17 +123,15 @@ def _parse_offer_template_data(custom_template: str | None, offer: OfferLetter, 
             clauses = custom_template.strip()
         else:
             clauses = (
-                "1. Probation & Confirmation: You will serve a probation period of three (3) months from your date of joining.\n"
-                "2. Notice Period: Either party may terminate with 30 days notice during probation, and 60 days notice post-confirmation.\n"
-                "3. Confidentiality & IP: You agree to protect all company proprietary information and assign intellectual property created during employment to the Company."
+                "1. PROBATION & CONFIRMATION: You will be on probation for a period of 3 months from the date of joining. Upon successful evaluation, your employment will be confirmed in writing.\n"
+                "2. NOTICE PERIOD: Either party may terminate the employment by giving 30 days written notice or basic gross salary in lieu thereof.\n"
+                "3. CONFIDENTIALITY & IP: All proprietary information, customer records, source code, and intellectual property developed during your employment belong exclusively to the organization.\n"
+                "4. STATUTORY COMPLIANCE: Deductions for Provident Fund (PF), Professional Tax, and Income Tax (TDS) will be made as per applicable statutory laws."
             )
             
-    header_org = data.get("org_name") or company_name
-    header_address = data.get("org_address") or ""
-    footer_text = data.get("footer_text") or f"{header_org} • Private & Confidential"
-    signer = data.get("signing_authority") or offer.signer_name or "Authorized Signatory"
-    signer_title = data.get("signing_title") or "Head of Talent & People Operations"
-    org_logo = data.get("org_logo") or data.get("logo_url")
+    footer_text = data.get("footer_text") or f"{header_org} • Confidential"
+    signer = data.get("signing_authority") or offer.signer_name or "Authorized HR Signatory"
+    signer_title = data.get("signing_title") or "HR Signatory"
     
     return {
         "subject": subject,
@@ -131,10 +140,16 @@ def _parse_offer_template_data(custom_template: str | None, offer: OfferLetter, 
         "clauses": clauses,
         "header_org": header_org,
         "header_address": header_address,
+        "header_email": header_email,
+        "header_phone": header_phone,
+        "header_gstin": header_gstin,
+        "header_cin": header_cin,
+        "header_badge": header_badge,
         "footer_text": footer_text,
         "signer": signer,
         "signer_title": signer_title,
         "org_logo": org_logo,
+        "org_initials": org_initials,
         "watermark_text": data.get("watermark_text") or "CONFIDENTIAL",
         "data": data
     }
@@ -188,8 +203,10 @@ def _parse_offer_custom_split(custom_template: str | None, ctc: float):
         "tot_m": ctc / 12.0, "tot_a": ctc
     }
 
-def _generate_pure_python_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None) -> bytes:
+def _generate_pure_python_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None, company: Company | None = None) -> bytes:
     """Zero-dependency pure Python PDF 1.4 generator for official Offer Letters."""
+    tpl_info = _parse_offer_template_data(offer.custom_template, offer, company_name, company)
+    org_display_name = tpl_info["header_org"]
     ctc = float(offer.ctc or 0)
     split = _parse_offer_custom_split(offer.custom_template, ctc)
     b_m, b_a = split["b_m"], split["b_a"]
@@ -201,70 +218,72 @@ def _generate_pure_python_offer_pdf(offer: OfferLetter, company_name: str, tenan
     offer_date_str = str(offer.offer_date or date.today())
     expiry_date_str = str(offer.expiry_date or "7 Days from Issuance")
     joining_date_str = str(offer.joining_date or "Mutually Agreed")
-    signer_name = offer.signer_name or "Authorized HR Signatory"
+    signer_name = tpl_info["signer"]
+    signer_title = tpl_info["signer_title"]
     candidate_name = offer.candidate or "Candidate"
     role_name = offer.role or "Team Member"
-    ref_id = f"OFR-{offer.id.hex[:8].upper()}" if hasattr(offer.id, 'hex') else f"OFR-{str(offer.id)[:8].upper()}"
+    ref_id = f"BOS-OFFER-{str(offer.id)[:4].upper()}" if offer.id else "BOS-OFFER-9173"
 
     lines = [
-        ('F2', 18, 50, 780, company_name),
-        ('F2', 8.5, 50, 762, 'TALENT ACQUISITION & PEOPLE OPERATIONS - FORMAL APPOINTMENT LETTER'),
-        ('LINE', 0, 50, 752, 545, 752),
-        ('F2', 9.5, 50, 730, f'Candidate: {candidate_name}'),
-        ('F1', 9.5, 50, 715, f'Position: {role_name}'),
-        ('F1', 9.5, 50, 700, f'Target Joining Date: {joining_date_str}'),
-        ('F2', 9.5, 360, 730, f'Date: {offer_date_str}'),
-        ('F1', 9.5, 360, 715, f'Valid Until: {expiry_date_str}'),
-        ('F1', 9.5, 360, 700, f'Ref No: {ref_id}'),
-        ('LINE', 0, 50, 688, 545, 688),
-        ('F2', 11, 50, 668, f'Subject: Formal Offer of Employment - {role_name}'),
-        ('F1', 9.5, 50, 648, f'Dear {candidate_name},'),
-        ('F1', 9.5, 50, 632, f'On behalf of {company_name}, we are pleased to offer you the position of {role_name}.'),
-        ('F1', 9.5, 50, 616, 'Our leadership team believes your dedication and expertise will be a vital asset to our growth.'),
-        ('F2', 10.5, 50, 585, 'Annexure A: Annual Compensation Breakdown (INR)'),
-        ('LINE', 0, 50, 575, 545, 575),
-        ('F2', 9, 55, 560, 'Component'),
-        ('F2', 9, 260, 560, 'Monthly (INR)'),
-        ('F2', 9, 390, 560, 'Annual (INR)'),
-        ('F2', 9, 490, 560, 'Split'),
-        ('LINE', 0, 50, 552, 545, 552),
-        ('F1', 9, 55, 538, f'Basic Salary ({split["basic_pct"]}%)'),
-        ('F1', 9, 260, 538, f'INR {b_m:,.2f}'),
-        ('F1', 9, 390, 538, f'INR {b_a:,.2f}'),
-        ('F1', 9, 490, 538, f'{split["basic_pct"]}%'),
-        ('F1', 9, 55, 522, f'House Rent Allowance - HRA ({split["hra_pct"]}%)'),
-        ('F1', 9, 260, 522, f'INR {h_m:,.2f}'),
-        ('F1', 9, 390, 522, f'INR {h_a:,.2f}'),
-        ('F1', 9, 490, 522, f'{split["hra_pct"]}%'),
-        ('F1', 9, 55, 506, f'Special / Personal Allowance ({split["special_pct"]}%)'),
-        ('F1', 9, 260, 506, f'INR {s_m:,.2f}'),
-        ('F1', 9, 390, 506, f'INR {s_a:,.2f}'),
-        ('F1', 9, 490, 506, f'{split["special_pct"]}%'),
-        ('F1', 9, 55, 490, f'Employer Provident Fund ({split["pf_pct"]}%)'),
-        ('F1', 9, 260, 490, f'INR {p_m:,.2f}'),
-        ('F1', 9, 390, 490, f'INR {p_a:,.2f}'),
-        ('F1', 9, 490, 490, f'{split["pf_pct"]}%'),
-        ('LINE', 0, 50, 480, 545, 480),
-        ('F2', 9.5, 55, 466, 'Total Gross Cost to Company (Annual CTC)'),
-        ('F2', 9.5, 260, 466, f'INR {tot_m:,.2f}'),
-        ('F2', 9.5, 390, 466, f'INR {tot_a:,.2f}'),
-        ('F2', 9.5, 490, 466, '100%'),
-        ('LINE', 0, 50, 456, 545, 456),
-        ('F2', 10, 50, 430, 'Key Terms & Conditions:'),
-        ('F1', 8.5, 50, 414, '1. Probation: You will be on probation as stipulated in terms from joining.'),
-        ('F1', 8.5, 50, 400, '2. Notice Period: Standard written notice applies as per contract covenants.'),
-        ('F1', 8.5, 50, 386, '3. Confidentiality: You shall maintain complete confidentiality of proprietary information.'),
-        ('F1', 8.5, 50, 372, '4. Intellectual Property: Any invention or work created during employment belongs to the Company.'),
-        ('LINE', 0, 50, 340, 545, 340),
-        ('F2', 9, 50, 320, f'For {company_name}:'),
-        ('F1', 9, 50, 280, f'{signer_name}'),
-        ('F1', 8, 50, 268, 'Head of Talent & People Operations'),
-        ('F1', 8, 50, 256, '[Digitally Authorized Signature]'),
-        ('F2', 9, 340, 320, 'Accepted & Acknowledged:'),
-        ('LINE', 0, 340, 280, 520, 280),
-        ('F1', 8, 340, 268, f'{candidate_name} (Signature)'),
-        ('F1', 8, 340, 256, 'Date: ________________________'),
-        ('F1', 7.5, 120, 50, f'Official Appointment Record - Generated securely via {company_name} Compliance Vault'),
+        ('F2', 16, 50, 780, org_display_name),
+        ('F1', 7.5, 50, 764, tpl_info.get("header_address") or "Official Corporate Headquarters"),
+        ('F1', 7.5, 50, 752, f'Email: {tpl_info.get("header_email") or "careers@businessos.ai"} • Phone: {tpl_info.get("header_phone") or "+91 98493 44919"}{" • GSTIN: " + tpl_info["header_gstin"] if tpl_info.get("header_gstin") else ""}{" • CIN: " + tpl_info["header_cin"] if tpl_info.get("header_cin") else ""}'),
+        ('F2', 8, 400, 780, tpl_info.get("header_badge") or "OFFICIAL APPOINTMENT OFFER"),
+        ('F1', 7.5, 400, 764, f'Date: {offer_date_str}'),
+        ('F1', 7.5, 400, 752, f'REF: {ref_id}'),
+        ('LINE', 0, 50, 742, 545, 742),
+        ('F2', 7.5, 55, 726, 'PRIVATE & CONFIDENTIAL • LETTER OF OFFER'),
+        ('F2', 11, 55, 712, candidate_name),
+        ('F1', 8, 55, 698, f'Email: {offer.candidate_email or "N/A"}'),
+        ('F1', 8, 55, 684, f'Position: {role_name} | Target Joining Date: {joining_date_str}'),
+        ('LINE', 0, 50, 672, 545, 672),
+        ('F2', 10, 50, 654, tpl_info["subject"]),
+        ('F2', 8.5, 50, 636, f'Dear {candidate_name},'),
+        ('F1', 8.5, 50, 620, f'On behalf of {org_display_name}, we are pleased to extend this formal offer of employment for the position of {role_name}.'),
+        ('F1', 8.5, 50, 606, 'We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.'),
+        ('F2', 9, 50, 580, 'ANNEXURE A: ANNUAL & MONTHLY COMPENSATION STRUCTURE'),
+        ('LINE', 0, 50, 570, 545, 570),
+        ('F2', 8, 55, 556, 'Salary Component'),
+        ('F2', 8, 250, 556, 'Distribution (%)'),
+        ('F2', 8, 360, 556, 'Monthly Value (INR)'),
+        ('F2', 8, 470, 556, 'Annual Value (INR)'),
+        ('LINE', 0, 50, 548, 545, 548),
+        ('F1', 7.5, 55, 534, f'Basic Salary ({split["basic_pct"]}%)'),
+        ('F1', 7.5, 250, 534, f'{split["basic_pct"]}%'),
+        ('F1', 7.5, 360, 534, f'INR {b_m:,.2f}'),
+        ('F1', 7.5, 470, 534, f'INR {b_a:,.2f}'),
+        ('F1', 7.5, 55, 518, f'House Rent Allowance (HRA) ({split["hra_pct"]}%)'),
+        ('F1', 7.5, 250, 518, f'{split["hra_pct"]}%'),
+        ('F1', 7.5, 360, 518, f'INR {h_m:,.2f}'),
+        ('F1', 7.5, 470, 518, f'INR {h_a:,.2f}'),
+        ('F1', 7.5, 55, 502, f'Special / Flexi Allowance ({split["special_pct"]}%)'),
+        ('F1', 7.5, 250, 502, f'{split["special_pct"]}%'),
+        ('F1', 7.5, 360, 502, f'INR {s_m:,.2f}'),
+        ('F1', 7.5, 470, 502, f'INR {s_a:,.2f}'),
+        ('F1', 7.5, 55, 486, f'Employer PF Contribution (Statutory) ({split["pf_pct"]}%)'),
+        ('F1', 7.5, 250, 486, f'{split["pf_pct"]}%'),
+        ('F1', 7.5, 360, 486, f'INR {p_m:,.2f}'),
+        ('F1', 7.5, 470, 486, f'INR {p_a:,.2f}'),
+        ('LINE', 0, 50, 476, 545, 476),
+        ('F2', 8, 55, 462, 'Total Annual Cost to Company (CTC)'),
+        ('F2', 8, 250, 462, '100%'),
+        ('F2', 8, 360, 462, f'INR {tot_m:,.2f}'),
+        ('F2', 8, 470, 462, f'INR {tot_a:,.2f}'),
+        ('LINE', 0, 50, 452, 545, 452),
+        ('F2', 9, 50, 432, 'ANNEXURE B: EMPLOYMENT TERMS & STATUTORY COVENANTS'),
+        ('F1', 7.5, 50, 416, '1. PROBATION & CONFIRMATION: You will serve probation for 3 months from joining, confirmed in writing upon appraisal.'),
+        ('F1', 7.5, 50, 402, '2. NOTICE PERIOD: Either party may terminate with 30 days written notice or gross basic in lieu thereof.'),
+        ('F1', 7.5, 50, 388, '3. CONFIDENTIALITY & IP: All proprietary information, customer data, and IP developed belong exclusively to the organization.'),
+        ('F1', 7.5, 50, 374, '4. STATUTORY COMPLIANCE: Statutory deductions (PF, Professional Tax, TDS) apply as per government norms.'),
+        ('LINE', 0, 50, 350, 545, 350),
+        ('F1', 8, 50, 332, f'This offer remains valid until {expiry_date_str}. Please sign and return a duplicate copy as confirmation.'),
+        ('F2', 8.5, 50, 290, signer_name),
+        ('F1', 7.5, 50, 276, f'{signer_title} • {org_display_name}'),
+        ('F2', 8.5, 340, 290, f'Accepted & Acknowledged by: {candidate_name}'),
+        ('F1', 7.5, 340, 276, 'Signature & Date: ________________________'),
+        ('LINE', 0, 50, 250, 545, 250),
+        ('F1', 7, 50, 238, f'Secure Digital Verification Token: BOS-SIGN-{abs(hash(str(offer.id))) % 900000 + 100000}'),
+        ('F1', 7, 360, 238, tpl_info["footer_text"]),
     ]
 
     stream_parts = []
@@ -302,9 +321,9 @@ def _generate_pure_python_offer_pdf(offer: OfferLetter, company_name: str, tenan
     return output
 
 
-def _generate_reportlab_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None) -> bytes:
+def _generate_reportlab_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None, company: Company | None = None) -> bytes:
     """Generates an official, high-resolution A4 PDF Offer Letter with salary annexure, legal clauses & signing block via ReportLab."""
-    tpl_info = _parse_offer_template_data(offer.custom_template, offer, company_name)
+    tpl_info = _parse_offer_template_data(offer.custom_template, offer, company_name, company)
     org_display_name = tpl_info["header_org"]
     
     buffer = io.BytesIO()
@@ -316,87 +335,151 @@ def _generate_reportlab_offer_pdf(offer: OfferLetter, company_name: str, tenant:
         topMargin=36,
         bottomMargin=36,
     )
-    styles = getSampleStyleSheet()
-
-    header_title = ParagraphStyle('H1', fontName='Helvetica-Bold', fontSize=16, leading=20, textColor=colors.HexColor('#0f172a'))
-    header_sub = ParagraphStyle('HSub', fontName='Helvetica-Bold', fontSize=8, leading=11, textColor=colors.HexColor('#64748b'))
-    meta_label = ParagraphStyle('MetaL', fontName='Helvetica-Bold', fontSize=8.5, leading=12, textColor=colors.HexColor('#475569'))
-    meta_val = ParagraphStyle('MetaV', fontName='Helvetica', fontSize=8.5, leading=12, textColor=colors.HexColor('#0f172a'))
-    body_p = ParagraphStyle('BodyP', fontName='Helvetica', fontSize=9, leading=14, textColor=colors.HexColor('#334155'))
-    clause_title = ParagraphStyle('CTitle', fontName='Helvetica-Bold', fontSize=9.5, leading=13, textColor=colors.HexColor('#0f172a'))
-    clause_p = ParagraphStyle('CP', fontName='Helvetica', fontSize=8.5, leading=12, textColor=colors.HexColor('#475569'))
+    
+    h1 = ParagraphStyle('H1', fontName='Helvetica-Bold', fontSize=15, leading=18, textColor=colors.HexColor('#1e1b4b'))
+    h_sub = ParagraphStyle('HSub', fontName='Helvetica', fontSize=7.5, leading=10.5, textColor=colors.HexColor('#475569'))
+    badge_style = ParagraphStyle('Badge', fontName='Helvetica-Bold', fontSize=7.5, leading=9, textColor=colors.white, alignment=2)
+    meta_date = ParagraphStyle('MetaDate', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#64748b'), alignment=2)
+    ref_style = ParagraphStyle('RefCode', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#64748b'), alignment=2)
+    
+    recip_tag = ParagraphStyle('RecipTag', fontName='Helvetica-Bold', fontSize=7, leading=9, textColor=colors.HexColor('#64748b'))
+    recip_name = ParagraphStyle('RecipName', fontName='Helvetica-Bold', fontSize=11, leading=14, textColor=colors.HexColor('#0f172a'))
+    recip_sub = ParagraphStyle('RecipSub', fontName='Helvetica', fontSize=8, leading=11, textColor=colors.HexColor('#334155'))
+    
+    subj_style = ParagraphStyle('Subj', fontName='Helvetica-Bold', fontSize=10, leading=13, textColor=colors.HexColor('#0f172a'))
+    sal_style = ParagraphStyle('Sal', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.HexColor('#0f172a'))
+    body_p = ParagraphStyle('BodyP', fontName='Helvetica', fontSize=8.5, leading=12.5, textColor=colors.HexColor('#334155'))
+    sec_title = ParagraphStyle('SecTitle', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.HexColor('#1e1b4b'))
+    clause_p = ParagraphStyle('ClauseP', fontName='Helvetica', fontSize=8, leading=11.5, textColor=colors.HexColor('#334155'))
+    
+    th_style = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#1e1b4b'))
+    th_r_style = ParagraphStyle('THR', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#1e1b4b'), alignment=2)
+    td_style = ParagraphStyle('TD', fontName='Helvetica', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#0f172a'))
+    td_r_style = ParagraphStyle('TDR', fontName='Helvetica', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#0f172a'), alignment=2)
+    td_tot_style = ParagraphStyle('TDTot', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#0f172a'))
+    td_tot_r = ParagraphStyle('TDTotR', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#0f172a'), alignment=2)
+    
+    sig_title = ParagraphStyle('SigTitle', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.HexColor('#0f172a'))
+    sig_sub = ParagraphStyle('SigSub', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#64748b'))
+    foot_l = ParagraphStyle('FootL', fontName='Helvetica', fontSize=7, leading=9, textColor=colors.HexColor('#94a3b8'))
+    foot_r = ParagraphStyle('FootR', fontName='Helvetica', fontSize=7, leading=9, textColor=colors.HexColor('#94a3b8'), alignment=2)
 
     story = []
 
     # Safe Logo Flowable Resolution
     logo_flowable = None
-    org_logo = tpl_info.get("org_logo") or (tenant.logo_url if tenant else None)
+    org_logo = tpl_info.get("org_logo")
     if org_logo:
         try:
             if org_logo.startswith("data:image"):
                 import base64
-                header, base64_data = org_logo.split(",", 1)
+                _, base64_data = org_logo.split(",", 1)
                 img_bytes = base64.b64decode(base64_data)
-                logo_flowable = RLImage(io.BytesIO(img_bytes), width=48, height=48)
+                logo_flowable = RLImage(io.BytesIO(img_bytes), width=40, height=40)
             elif org_logo.startswith("http://") or org_logo.startswith("https://"):
                 import urllib.request
                 req = urllib.request.Request(org_logo, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=2.0) as response:
                     img_bytes = response.read()
-                    logo_flowable = RLImage(io.BytesIO(img_bytes), width=48, height=48)
+                    logo_flowable = RLImage(io.BytesIO(img_bytes), width=40, height=40)
             elif os.path.exists(org_logo):
-                logo_flowable = RLImage(org_logo, width=48, height=48)
-        except Exception as e:
+                logo_flowable = RLImage(org_logo, width=40, height=40)
+        except Exception:
             logo_flowable = None
 
-    # Company Header Banner
-    header_elements = [Paragraph(org_display_name, header_title)]
-    if tpl_info["header_address"]:
-        header_elements.append(Paragraph(tpl_info["header_address"], header_sub))
-    else:
-        header_elements.append(Paragraph('TALENT ACQUISITION &amp; PEOPLE OPERATIONS • OFFICIAL APPOINTMENT', header_sub))
-
-    if logo_flowable:
-        header_table = Table([[logo_flowable, header_elements]], colWidths=[56, 464])
-        header_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    if not logo_flowable:
+        initials = tpl_info.get("org_initials") or org_display_name[:2].upper()
+        logo_block = Paragraph(f'<font color="white"><b>{initials}</b></font>', ParagraphStyle('Monogram', fontName='Helvetica-Bold', fontSize=12, alignment=1, textColor=colors.white))
+        logo_flowable = Table([[logo_block]], colWidths=[36], rowHeights=[36])
+        logo_flowable.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#1e1b4b')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
         ]))
-        story.append(header_table)
-    else:
-        story.extend(header_elements)
-    story.append(Spacer(1, 8))
-    story.append(HRFlowable(width='100%', thickness=1.5, color=colors.HexColor('#1e1b4b'), spaceAfter=12))
 
-    # Reference Metadata Table
-    ref_id = f"OFR-{offer.id.hex[:8].upper()}" if hasattr(offer.id, 'hex') else f"OFR-{str(offer.id)[:8].upper()}"
-    meta_data = [
-        [Paragraph('<b>To:</b>', meta_label), Paragraph(offer.candidate or 'Candidate', meta_val),
-         Paragraph('<b>Offer Date:</b>', meta_label), Paragraph(str(offer.offer_date or date.today()), meta_val)],
-        [Paragraph('<b>Email:</b>', meta_label), Paragraph(offer.candidate_email or 'N/A', meta_val),
-         Paragraph('<b>Valid Until:</b>', meta_label), Paragraph(str(offer.expiry_date or '7 Days'), meta_val)],
-        [Paragraph('<b>Role:</b>', meta_label), Paragraph(offer.role or 'Team Member', meta_val),
-         Paragraph('<b>Ref No:</b>', meta_label), Paragraph(ref_id, meta_val)],
+    contact_parts = []
+    if tpl_info.get("header_email"):
+        contact_parts.append(f"Email: {tpl_info['header_email']}")
+    if tpl_info.get("header_phone"):
+        contact_parts.append(f"Phone: {tpl_info['header_phone']}")
+    if tpl_info.get("header_gstin"):
+        contact_parts.append(f"GSTIN: {tpl_info['header_gstin']}")
+    if tpl_info.get("header_cin"):
+        contact_parts.append(f"CIN: {tpl_info['header_cin']}")
+    contact_str = " • ".join(contact_parts) if contact_parts else "Official Appointment Letter"
+
+    info_p = [
+        Paragraph(org_display_name, h1),
+        Spacer(1, 2),
     ]
-    meta_table = Table(meta_data, colWidths=[50, 210, 70, 190])
-    meta_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-    ]))
-    story.append(meta_table)
-    story.append(Spacer(1, 14))
+    if tpl_info.get("header_address"):
+        info_p.append(Paragraph(tpl_info["header_address"], h_sub))
+    info_p.append(Paragraph(contact_str, h_sub))
 
-    # Subject & Formal Opening
-    story.append(Paragraph(f'<b>Subject: {tpl_info["subject"]}</b>', clause_title))
-    story.append(Spacer(1, 6))
-    story.append(Paragraph(f'Dear <b>{offer.candidate}</b>,<br/><br/>{tpl_info["opening_text"]}', body_p))
+    badge_text = tpl_info.get("header_badge") or "STANDARD CORPORATE (FULL-TIME)"
+    badge_table = Table([[Paragraph(badge_text.upper(), badge_style)]], colWidths=[180])
+    badge_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#1e1b4b')),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+        ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
+    ]))
+
+    ref_id = f"BOS-OFFER-{str(offer.id)[:4].upper()}" if offer.id else "BOS-OFFER-9173"
+    meta_col = [
+        badge_table,
+        Spacer(1, 3),
+        Paragraph(f'Date: {offer.offer_date.strftime("%d %B %Y") if offer.offer_date else date.today().strftime("%d %B %Y")}', meta_date),
+        Paragraph(f'REF: {ref_id}', ref_style)
+    ]
+
+    head_table = Table([[logo_flowable, info_p, meta_col]], colWidths=[42, 300, 180])
+    head_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+        ('TOPPADDING', (0,0), (-1,-1), 0),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+    ]))
+    story.append(head_table)
+    story.append(Spacer(1, 8))
+    story.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#1e1b4b'), spaceAfter=10))
+
+    # Recipient Box
+    cand_email = offer.candidate_email or "candidate@email.com"
+    join_str = str(offer.joining_date) if offer.joining_date else "Immediate / Mutually Agreed"
+    recip_contents = [
+        Paragraph('PRIVATE &amp; CONFIDENTIAL • LETTER OF OFFER', recip_tag),
+        Spacer(1, 2),
+        Paragraph(offer.candidate or "Candidate", recip_name),
+        Paragraph(f'Email: {cand_email}', recip_sub),
+        Paragraph(f'Position: <b>{offer.role}</b> | Joining Date: <b>{join_str}</b>', recip_sub)
+    ]
+    recip_table = Table([[recip_contents]], colWidths=[522])
+    recip_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+        ('BOX', (0,0), (-1,-1), 0.75, colors.HexColor('#e2e8f0')),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 12),
+        ('RIGHTPADDING', (0,0), (-1,-1), 12),
+    ]))
+    story.append(recip_table)
     story.append(Spacer(1, 10))
 
-    # Compensation Breakdown (Annexure A) with Dynamic Custom Split
+    # Subject & Salutation & Opening
+    story.append(Paragraph(tpl_info["subject"], subj_style))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f'Dear {offer.candidate},', sal_style))
+    story.append(Spacer(1, 3))
+    story.append(Paragraph(tpl_info["opening_text"], body_p))
+    story.append(Spacer(1, 8))
+
+    # Annexure A: Compensation
     ctc = float(offer.ctc or 0)
     split = _parse_offer_custom_split(offer.custom_template, ctc)
     b_m, b_a = split["b_m"], split["b_a"]
@@ -405,78 +488,106 @@ def _generate_reportlab_offer_pdf(offer: OfferLetter, company_name: str, tenant:
     p_m, p_a = split["p_m"], split["p_a"]
     tot_m, tot_a = split["tot_m"], split["tot_a"]
 
-    story.append(Paragraph('<b>Annexure A: Annual Compensation Breakdown</b>', clause_title))
+    story.append(Paragraph('ANNEXURE A: ANNUAL &amp; MONTHLY COMPENSATION STRUCTURE', sec_title))
     story.append(Spacer(1, 4))
-    sal_data = [
-        ['Component', 'Monthly (INR)', 'Annual (INR)', 'Split %'],
-        [f'Basic Salary ({split["basic_pct"]}%)', f'{b_m:,.2f}', f'{b_a:,.2f}', f'{split["basic_pct"]}%'],
-        [f'House Rent Allowance (HRA) ({split["hra_pct"]}%)', f'{h_m:,.2f}', f'{h_a:,.2f}', f'{split["hra_pct"]}%'],
-        [f'Special / Personal Allowance ({split["special_pct"]}%)', f'{s_m:,.2f}', f'{s_a:,.2f}', f'{split["special_pct"]}%'],
-        [f'Provident Fund (Employer PF) ({split["pf_pct"]}%)', f'{p_m:,.2f}', f'{p_a:,.2f}', f'{split["pf_pct"]}%'],
-        ['Total Gross Cost to Company (CTC)', f'{tot_m:,.2f}', f'{tot_a:,.2f}', '100%'],
+    comp_data = [
+        [Paragraph('Salary Component', th_style), Paragraph('Distribution (%)', th_r_style), Paragraph('Monthly Value (INR)', th_r_style), Paragraph('Annual Value (INR)', th_r_style)],
+        [Paragraph('Basic Salary', td_style), Paragraph(f'{split["basic_pct"]}%', td_r_style), Paragraph(f'{b_m:,.2f}', td_r_style), Paragraph(f'{b_a:,.2f}', td_r_style)],
+        [Paragraph('House Rent Allowance (HRA)', td_style), Paragraph(f'{split["hra_pct"]}%', td_r_style), Paragraph(f'{h_m:,.2f}', td_r_style), Paragraph(f'{h_a:,.2f}', td_r_style)],
+        [Paragraph('Special / Flexi Allowance', td_style), Paragraph(f'{split["special_pct"]}%', td_r_style), Paragraph(f'{s_m:,.2f}', td_r_style), Paragraph(f'{s_a:,.2f}', td_r_style)],
+        [Paragraph('Employer PF Contribution (Statutory)', td_style), Paragraph(f'{split["pf_pct"]}%', td_r_style), Paragraph(f'{p_m:,.2f}', td_r_style), Paragraph(f'{p_a:,.2f}', td_r_style)],
+        [Paragraph('Total Annual Cost to Company (CTC)', td_tot_style), Paragraph('100%', td_tot_r), Paragraph(f'{tot_m:,.2f}', td_tot_r), Paragraph(f'{tot_a:,.2f}', td_tot_r)],
     ]
-    sal_table = Table(sal_data, colWidths=[200, 110, 130, 80])
-    sal_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0f172a')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
-        ('BACKGROUND', (0, 1), (-1, -2), colors.HexColor('#f8fafc')),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f1f5f9')),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    comp_table = Table(comp_data, colWidths=[200, 100, 110, 112])
+    comp_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor('#f8fafc')),
+        ('TOPPADDING', (0,0), (-1,-1), 3.5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3.5),
     ]))
-    story.append(sal_table)
-    story.append(Spacer(1, 10))
+    story.append(comp_table)
+    story.append(Spacer(1, 8))
 
-    # Terms & Conditions
-    story.append(Paragraph('<b>Terms &amp; Conditions</b>', clause_title))
-    story.append(Spacer(1, 4))
+    # Annexure B: Covenants
+    story.append(Paragraph('ANNEXURE B: EMPLOYMENT TERMS &amp; STATUTORY COVENANTS', sec_title))
+    story.append(Spacer(1, 3))
+    clause_paragraphs = []
     for line in tpl_info["clauses"].split('\n'):
-        clean_l = line.strip()
-        if clean_l:
-            story.append(Paragraph(clean_l, clause_p))
-    story.append(Spacer(1, 10))
+        cl = line.strip()
+        if cl:
+            clause_paragraphs.append(Paragraph(cl, clause_p))
+            clause_paragraphs.append(Spacer(1, 2))
+    if not clause_paragraphs:
+        clause_paragraphs.append(Paragraph("Standard terms and confidentiality covenants apply as per organizational handbook.", clause_p))
+    else:
+        clause_paragraphs.pop() # remove last spacer
 
-    # Closing Call-to-Action
+    clause_box = Table([[clause_paragraphs]], colWidths=[522])
+    clause_box.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#ffffff')),
+        ('LINELEFT', (0,0), (0,-1), 2.5, colors.HexColor('#4f46e5')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('RIGHTPADDING', (0,0), (-1,-1), 10),
+    ]))
+    story.append(clause_box)
+    story.append(Spacer(1, 6))
+
+    # Closing Call to Action
     story.append(Paragraph(tpl_info["closing_text"], body_p))
-    story.append(Spacer(1, 16))
+    story.append(Spacer(1, 14))
 
-    # Signatures Block
-    signer = tpl_info["signer"]
-    signer_title = tpl_info["signer_title"]
-    sig_data = [
-        [Paragraph(f'<b>For {org_display_name}:</b>', meta_label), Paragraph('<b>Accepted &amp; Acknowledged:</b>', meta_label)],
-        [Spacer(1, 16), Spacer(1, 16)],
-        [Paragraph(f'<b>{signer}</b><br/>{signer_title}<br/><i>Digitally Authorized Document</i>', meta_val),
-         Paragraph(f'<b>{offer.candidate}</b><br/>Signature &amp; Date<br/>Date: ________________________', meta_val)]
+    # Signatures
+    signer_name = tpl_info["signer"]
+    signer_title_str = f"{tpl_info['signer_title']} • {org_display_name}"
+    sig_col_left = [
+        HRFlowable(width='85%', thickness=1, color=colors.HexColor('#0f172a'), spaceAfter=4, hAlign='LEFT'),
+        Paragraph(signer_name, sig_title),
+        Paragraph(signer_title_str, sig_sub)
     ]
-    sig_table = Table(sig_data, colWidths=[260, 260])
+    sig_col_right = [
+        HRFlowable(width='85%', thickness=1, color=colors.HexColor('#0f172a'), spaceAfter=4, hAlign='LEFT'),
+        Paragraph(f'Accepted &amp; Acknowledged by: {offer.candidate}', sig_title),
+        Paragraph('Signature &amp; Date: ________________________', sig_sub)
+    ]
+    sig_table = Table([[sig_col_left, sig_col_right]], colWidths=[261, 261])
     sig_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
     ]))
     story.append(sig_table)
-    
-    # Footer Notice
-    if tpl_info["footer_text"]:
-        story.append(Spacer(1, 14))
-        story.append(Paragraph(f'<font size="7" color="#94a3b8">{tpl_info["footer_text"]}</font>', clause_p))
+    story.append(Spacer(1, 10))
+
+    # Footer Strip
+    foot_token = f"BOS-SIGN-{abs(hash(str(offer.id))) % 900000 + 100000}"
+    foot_table = Table([[
+        Paragraph(f'Secure Digital Verification Token: {foot_token}', foot_l),
+        Paragraph(tpl_info["footer_text"], foot_r)
+    ]], colWidths=[261, 261])
+    foot_table.setStyle(TableStyle([
+        ('LINEABOVE', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+    ]))
+    story.append(foot_table)
 
     doc.build(story)
     return buffer.getvalue()
 
 
-def generate_offer_letter_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None) -> bytes:
+def generate_offer_letter_pdf(offer: OfferLetter, company_name: str, tenant: Tenant | None = None, company: Company | None = None) -> bytes:
     """Generates an official Offer Letter PDF using ReportLab when available, with resilient pure-Python fallback."""
     if HAS_REPORTLAB:
         try:
-            return _generate_reportlab_offer_pdf(offer, company_name, tenant)
+            return _generate_reportlab_offer_pdf(offer, company_name, tenant, company)
         except Exception as err:
             print(f"[REPORTLAB RENDERING NOTICE, USING PURE-PYTHON ENGINE]: {err}")
-    return _generate_pure_python_offer_pdf(offer, company_name, tenant)
+    return _generate_pure_python_offer_pdf(offer, company_name, tenant, company)
 
 
 # ─── SMTP Live Email Dispatch Utility ───────────────────────────────────────────
@@ -1965,8 +2076,18 @@ async def send_offer_email(
     if not target_email:
         raise HTTPException(status_code=400, detail="Candidate email address could not be resolved")
 
+    company = None
+    if offer.company_id:
+        company = await db.get(Company, offer.company_id)
+    if not company and ctx.active_company_id:
+        company = await db.get(Company, ctx.active_company_id)
+    if not company:
+        company = await db.scalar(
+            select(Company).where(Company.tenant_id == ctx.tenant_id, Company.status == "active").order_by(Company.created_at.asc())
+        )
+
     tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
-    company_name = tenant.name if tenant else "LazyMonkeyAI"
+    company_name = company.name if company and company.name else (tenant.name if tenant else "BusinessOS AI Global Technologies")
 
     server_base = getattr(settings, "app_public_url", None) or "https://lazymonkeyai.com"
     if server_base.endswith("/"):
@@ -1999,14 +2120,14 @@ async def send_offer_email(
       <style>
         body {{ margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; }}
         .email-container {{ max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.06); }}
-        .brand-header {{ background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 36px 32px; color: #ffffff; }}
-        .brand-logo {{ font-size: 22px; font-weight: 900; letter-spacing: -0.5px; margin: 0; }}
-        .brand-subtitle {{ margin: 4px 0 0 0; font-size: 13px; opacity: 0.9; }}
+        .brand-header {{ background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); padding: 32px 32px; color: #ffffff; }}
+        .brand-logo {{ font-size: 20px; font-weight: 900; letter-spacing: -0.5px; margin: 0; color: #ffffff; }}
+        .brand-subtitle {{ margin: 4px 0 0 0; font-size: 12px; color: #cbd5e1; }}
         .email-body {{ padding: 36px 32px; }}
         .salutation {{ font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 12px; }}
         .intro-text {{ font-size: 14px; line-height: 1.65; color: #334155; margin-bottom: 24px; }}
         .offer-card {{ background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 28px; }}
-        .offer-card-title {{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }}
+        .offer-card-title {{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #1e1b4b; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }}
         .detail-row {{ display: table; width: 100%; margin-bottom: 10px; font-size: 14px; }}
         .detail-label {{ display: table-cell; width: 45%; color: #64748b; font-weight: 600; vertical-align: top; }}
         .detail-val {{ display: table-cell; width: 55%; color: #0f172a; font-weight: 700; text-align: right; vertical-align: top; }}
@@ -2022,14 +2143,16 @@ async def send_offer_email(
     <body>
       <div class="email-container">
         <div class="brand-header">
-          <div class="brand-logo">🐒 {company_name}</div>
-          <div class="brand-subtitle">Official Employment Offer & Appointment Confirmation</div>
+          <div>
+            <div class="brand-logo">{company_name}</div>
+            <div class="brand-subtitle">Official Employment Offer & Appointment Confirmation</div>
+          </div>
         </div>
         <div class="email-body">
           <div class="salutation">Dear {offer.candidate},</div>
           <div class="intro-text">
-            We are thrilled to extend an offer of employment to join <strong>{company_name}</strong> as <strong>{offer.role}</strong>.
-            Our leadership and team members were deeply impressed by your experience and credentials.
+            We are thrilled to extend this formal offer of employment to join <strong>{company_name}</strong> as <strong>{offer.role}</strong>.
+            Our leadership and team members were deeply impressed by your experience and domain expertise.
           </div>
 
           <div class="offer-card">
@@ -2079,7 +2202,7 @@ async def send_offer_email(
           </div>
         </div>
         <div class="email-footer">
-          &copy; {datetime.now().year} {company_name}. Powered by LazyMonkeyAI BusinessOS.<br>
+          &copy; {datetime.now().year} {company_name}. Confidential Employment Record.<br>
           This is an official automated communication intended solely for {target_email}.
         </div>
       </div>
@@ -2088,7 +2211,7 @@ async def send_offer_email(
     """
 
     # Generate official high-resolution PDF document attachment
-    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant)
+    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant, company)
     pdf_filename = f"Official_Offer_Letter_{(offer.candidate or 'Candidate').replace(' ', '_')}.pdf"
 
     # Persist copy to static vault directory for direct file serving
@@ -2100,15 +2223,14 @@ async def send_offer_email(
         print(f"[VAULT PDF WRITE NOTICE]: {e}")
 
     # Resolve target company for tenant/company SMTP credentials
-    target_company_id = None
-    if offer.employee_id:
+    target_company_id = company.id if company else None
+    if not target_company_id and offer.employee_id:
         from src.models import Employee
         emp = await db.get(Employee, offer.employee_id)
         if emp and emp.company_id:
             target_company_id = emp.company_id
 
     if not target_company_id:
-        from src.models import Company
         primary_comp = await db.scalar(
             select(Company).where(Company.tenant_id == ctx.tenant_id, Company.status == "active").order_by(Company.created_at.asc())
         )
@@ -2161,9 +2283,15 @@ async def download_offer_letter_pdf(
     offer = await db.get(OfferLetter, u_id)
     if not offer or offer.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Offer letter not found")
+    
+    company = None
+    if offer.company_id:
+        company = await db.get(Company, offer.company_id)
+    if not company and ctx.active_company_id:
+        company = await db.get(Company, ctx.active_company_id)
     tenant = await db.scalar(select(Tenant).where(Tenant.id == offer.tenant_id))
-    company_name = tenant.name if tenant else "BusinessOS Enterprise"
-    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant)
+    company_name = company.name if company and company.name else (tenant.name if tenant else "BusinessOS AI Global Technologies")
+    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant, company)
     filename = f"Official_Offer_Letter_{(offer.candidate or 'Candidate').replace(' ', '_')}.pdf"
     return Response(
         content=pdf_bytes,
@@ -2185,9 +2313,13 @@ async def download_public_offer_letter_pdf(
     offer = await db.get(OfferLetter, u_id)
     if not offer:
         raise HTTPException(status_code=404, detail="Offer letter not found")
+    
+    company = None
+    if offer.company_id:
+        company = await db.get(Company, offer.company_id)
     tenant = await db.scalar(select(Tenant).where(Tenant.id == offer.tenant_id))
-    company_name = tenant.name if tenant else "BusinessOS Enterprise"
-    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant)
+    company_name = company.name if company and company.name else (tenant.name if tenant else "BusinessOS AI Global Technologies")
+    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant, company)
     filename = f"Official_Offer_Letter_{(offer.candidate or 'Candidate').replace(' ', '_')}.pdf"
     return Response(
         content=pdf_bytes,

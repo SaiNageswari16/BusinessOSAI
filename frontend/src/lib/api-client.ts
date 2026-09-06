@@ -674,6 +674,21 @@ export interface AttendanceRecord {
   updated_at: string;
 }
 
+export interface AttendanceSettings {
+  branch_id?: string | null;
+  branch_name?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  geofence_radius_meters?: number;
+  enforce_geofence?: boolean;
+  allowed_punch_methods?: string[];
+  shift_start_time?: string;
+  shift_end_time?: string;
+  grace_period_minutes?: number;
+  half_day_hours?: number;
+  ip_whitelist?: string;
+}
+
 export interface LeaveRequest {
   id: string;
   tenant_id: string;
@@ -1330,6 +1345,10 @@ export const attendanceApi = {
     request<AttendanceCorrection>("POST", "/hrms/attendance/corrections", data),
   reviewCorrection: (id: string, status: string) =>
     request<AttendanceCorrection>("PATCH", `/hrms/attendance/corrections/${id}/review`, { status }),
+  getSettings: () =>
+    request<AttendanceSettings>("GET", "/hrms/attendance/settings"),
+  updateSettings: (data: AttendanceSettings) =>
+    request<AttendanceSettings>("POST", "/hrms/attendance/settings", data),
 };
 
 // â”€â”€â”€ HRMS â€” Leaves â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

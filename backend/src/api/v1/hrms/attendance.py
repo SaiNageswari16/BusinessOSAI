@@ -15,6 +15,7 @@ from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import (
     Branch,
+    Company,
     Employee,
     AttendanceRecord,
     BiometricDevice,
@@ -36,6 +37,7 @@ from src.schemas.erp import (
     AttendanceCorrectionResponse,
     CorrectionReviewRequest,
     HrmsDashboardStats,
+    AttendanceSettingsSchema,
 )
 from src.utils.pagination import PaginatedResponse, paginate
 
@@ -51,6 +53,108 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     a = math.sin(delta_phi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
     return r * c
+
+
+# ─── Attendance & Geofence Portal Settings ─────────────────────────
+
+@router.get("/attendance/settings", response_model=AttendanceSettingsSchema)
+async def get_attendance_settings(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    branch_q = select(Branch).where(Branch.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        branch_q = branch_q.where(Branch.company_id == ctx.active_company_id)
+    
+    branch = await db.scalar(branch_q.order_by(Branch.created_at.asc()))
+    if not branch:
+        branch = await db.scalar(select(Branch).where(Branch.tenant_id == ctx.tenant_id).order_by(Branch.created_at.asc()))
+
+    if branch:
+        return AttendanceSettingsSchema(
+            branch_id=branch.id,
+            branch_name=branch.name,
+            latitude=float(branch.latitude) if branch.latitude is not None else 37.7749,
+            longitude=float(branch.longitude) if branch.longitude is not None else -122.4194,
+            geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 500,
+            enforce_geofence=bool(branch.enforce_geofence) if branch.enforce_geofence is not None else True,
+            allowed_punch_methods=["GPS", "Biometric", "Face", "Web"],
+            shift_start_time="09:00",
+            shift_end_time="18:00",
+            grace_period_minutes=15,
+            half_day_hours=4.0,
+            ip_whitelist="",
+        )
+    
+    return AttendanceSettingsSchema()
+
+
+@router.post("/attendance/settings", response_model=AttendanceSettingsSchema)
+async def update_attendance_settings(
+    payload: AttendanceSettingsSchema,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    branch = None
+    if payload.branch_id:
+        branch = await db.scalar(
+            select(Branch).where(Branch.id == payload.branch_id, Branch.tenant_id == ctx.tenant_id)
+        )
+    if not branch and ctx.active_company_id:
+        branch = await db.scalar(
+            select(Branch).where(Branch.company_id == ctx.active_company_id, Branch.tenant_id == ctx.tenant_id)
+        )
+    if not branch:
+        branch = await db.scalar(
+            select(Branch).where(Branch.tenant_id == ctx.tenant_id).order_by(Branch.created_at.asc())
+        )
+    
+    if not branch:
+        comp_id = ctx.active_company_id
+        if not comp_id:
+            comp = await db.scalar(select(Company).where(Company.tenant_id == ctx.tenant_id))
+            if comp:
+                comp_id = comp.id
+            else:
+                raise HTTPException(status_code=400, detail="No Company found to associate branch settings")
+        
+        branch = Branch(
+            tenant_id=ctx.tenant_id,
+            company_id=comp_id,
+            code="HQ",
+            name=payload.branch_name or "Headquarters",
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            geofence_radius_meters=payload.geofence_radius_meters,
+            enforce_geofence=payload.enforce_geofence,
+        )
+        db.add(branch)
+        await db.flush()
+    else:
+        if payload.branch_name:
+            branch.name = payload.branch_name
+        branch.latitude = payload.latitude
+        branch.longitude = payload.longitude
+        branch.geofence_radius_meters = payload.geofence_radius_meters
+        branch.enforce_geofence = payload.enforce_geofence
+
+    await db.commit()
+    await db.refresh(branch)
+
+    return AttendanceSettingsSchema(
+        branch_id=branch.id,
+        branch_name=branch.name,
+        latitude=float(branch.latitude) if branch.latitude is not None else 37.7749,
+        longitude=float(branch.longitude) if branch.longitude is not None else -122.4194,
+        geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 500,
+        enforce_geofence=bool(branch.enforce_geofence) if branch.enforce_geofence is not None else True,
+        allowed_punch_methods=payload.allowed_punch_methods or ["GPS", "Biometric", "Face", "Web"],
+        shift_start_time=payload.shift_start_time or "09:00",
+        shift_end_time=payload.shift_end_time or "18:00",
+        grace_period_minutes=payload.grace_period_minutes or 15,
+        half_day_hours=payload.half_day_hours or 4.0,
+        ip_whitelist=payload.ip_whitelist or "",
+    )
 
 
 # ─── Attendance Stats & Overview ──────────────────────────────────

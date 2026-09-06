@@ -31,7 +31,7 @@ async def list_categories(
         .where(ProductCategory.tenant_id == ctx.user.tenant_id, ProductCategory.status == EntityStatus.ACTIVE)
     )
     if ctx.active_company_id:
-        stmt = stmt.where(or_(ProductCategory.company_id == ctx.active_company_id, ProductCategory.company_id == None))
+        stmt = stmt.where(ProductCategory.company_id == ctx.active_company_id)
     stmt = stmt.order_by(ProductCategory.name)
     result = await db.execute(stmt)
     categories = result.scalars().all()

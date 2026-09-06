@@ -572,7 +572,7 @@ function PosTerminalInner() {
         });
 
         const finalCats = Array.from(catMap.values());
-        setCategories(finalCats.length > 0 ? finalCats : posCategories);
+        setCategories(finalCats);
 
         const mappedProds = allFetchedProds.map((p: any) => {
           const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
@@ -625,8 +625,23 @@ function PosTerminalInner() {
       }
     };
     loadData();
-  }, []);
+  }, [tenant?.id, (tenant as any)?.company_id, (tenant as any)?.raw?.id]);
 
+  useEffect(() => {
+    const handleWorkspaceRefresh = () => {
+      loadData();
+    };
+    window.addEventListener("workspace_changed", handleWorkspaceRefresh);
+    window.addEventListener("company_changed", handleWorkspaceRefresh);
+    window.addEventListener("inventory_updated", handleWorkspaceRefresh);
+    window.addEventListener("pos_invoices_updated", handleWorkspaceRefresh);
+    return () => {
+      window.removeEventListener("workspace_changed", handleWorkspaceRefresh);
+      window.removeEventListener("company_changed", handleWorkspaceRefresh);
+      window.removeEventListener("inventory_updated", handleWorkspaceRefresh);
+      window.removeEventListener("pos_invoices_updated", handleWorkspaceRefresh);
+    };
+  }, []);
 
   useEffect(() => {
     // Attempt to enter fullscreen
@@ -653,11 +668,8 @@ function PosTerminalInner() {
   // Available Main Categories
   const parentCategories = useMemo(() => {
     const mainCats = categories.filter(c => !c.parent_id);
-    const categoriesWithProducts = mainCats.filter(cat => {
-      return products.some(p => isProductInCategory(p, cat.id, categories));
-    });
-    return categoriesWithProducts.length > 0 ? categoriesWithProducts : mainCats;
-  }, [categories, products]);
+    return mainCats;
+  }, [categories]);
 
   const currentSubCategories = useMemo(() => {
     if (activeCategory === "all") return [];
