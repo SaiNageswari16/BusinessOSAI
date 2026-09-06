@@ -56,6 +56,34 @@ export interface OfferLetterExportOptions {
   watermarkOpacity?: number; // 0.05 - 0.3
 }
 
+export function formatDateDDMMYYYY(dateVal: any): string {
+  if (!dateVal) return "";
+  if (typeof dateVal === "string") {
+    const str = dateVal.trim();
+    // Already in DD/MM/YYYY format
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+      return str;
+    }
+    // Standard ISO format YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      const [y, m, d] = str.slice(0, 10).split("-");
+      return `${d}/${m}/${y}`;
+    }
+  }
+  try {
+    const d = new Date(dateVal);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+  } catch {
+    // fallback
+  }
+  return String(dateVal);
+}
+
 /**
  * Downloads a formatted Microsoft Word document (.doc) with letterhead, logo, watermark, typography, and tables.
  */
@@ -117,8 +145,8 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
   const pf = (ctc * salarySplit.pfPct) / 100;
   const monthlyGross = (ctc - pf) / 12;
 
-  const formattedJoinDate = joiningDate ? new Date(joiningDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "[Joining Date]";
-  const formattedExpiryDate = expiryDate ? new Date(expiryDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "[Expiry Date]";
+  const formattedJoinDate = joiningDate ? formatDateDDMMYYYY(joiningDate) : "[Joining Date]";
+  const formattedExpiryDate = expiryDate ? formatDateDDMMYYYY(expiryDate) : "[Expiry Date]";
   const refNumber = `BOS-OFFER-${Math.floor(100000 + Math.random() * 900000)}`;
 
   const substituteVars = (str: string) => {
@@ -265,7 +293,7 @@ export function downloadOfferLetterWordDoc(opts: OfferLetterExportOptions) {
           <td style="text-align: right; vertical-align: top;">
             <span class="badge">${headerBadgeText}</span>
             <div style="font-size: 8.5pt; color: #64748b; margin-top: 4pt; font-family: monospace;">REF: ${refNumber}</div>
-            <div style="font-size: 8.5pt; color: #64748b; margin-top: 2pt;">Date: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</div>
+            <div style="font-size: 8.5pt; color: #64748b; margin-top: 2pt;">Date: ${formatDateDDMMYYYY(new Date())}</div>
           </td>
         </tr>
       </table>

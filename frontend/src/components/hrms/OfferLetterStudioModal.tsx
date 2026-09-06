@@ -15,7 +15,7 @@ import { Applicant, Offer, employeesApi, companiesApi, designationsApi, departme
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
-import { downloadOfferLetterWordDoc } from "@/lib/offer-letter-doc-utils";
+import { downloadOfferLetterWordDoc, formatDateDDMMYYYY } from "@/lib/offer-letter-doc-utils";
 import { parseUploadedOfferDoc, ParsedOfferDoc } from "@/lib/offer-letter-doc-parser";
 import { PREDEFINED_OFFER_TEMPLATES } from "./RecruitmentManagement";
 
