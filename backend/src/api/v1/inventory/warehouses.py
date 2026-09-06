@@ -1,9 +1,9 @@
+from typing import List, Optional, Annotated
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from typing import List
-from uuid import UUID
 
 from src.database.session import get_db
 from src.models.inventory import Warehouse, StorageLocation
@@ -11,7 +11,6 @@ from src.schemas.warehouse import (
     WarehouseCreate, WarehouseUpdate, WarehouseResponse,
     StorageLocationCreate, StorageLocationUpdate, StorageLocationResponse
 )
-from typing import Annotated
 from src.api.deps import CurrentUserContext, require_any_permission, require_permission
 
 router = APIRouter()
