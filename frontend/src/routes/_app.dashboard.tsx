@@ -114,13 +114,7 @@ function Dashboard() {
   
   const firstName = user?.name?.split(" ")[0] || (user as any)?.username || "there";
   
-  const isPlatformSuperAdmin = Boolean(
-    user?.isPlatformAdmin ||
-    hasPermission("manage:system_admin") ||
-    hasPermission("all") ||
-    user?.permissions?.includes("manage:system_admin") ||
-    user?.roles?.some(r => r.name?.toLowerCase().includes("super admin") || r.name?.toLowerCase().includes("platform"))
-  );
+  const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
 
   const totalProducts = Array.isArray(productsData) ? (productsData as any[]).length : 0;
   const totalCustomers = Array.isArray(customersData) && (customersData as any[]).length > 0 ? (customersData as any[]).length : 2;

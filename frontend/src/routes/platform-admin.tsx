@@ -35,13 +35,7 @@ function StandalonePlatformAdminPage() {
     );
   }
 
-  const isPlatformAdmin =
-    Boolean(user?.isPlatformAdmin) ||
-    hasPermission("manage:system_admin") ||
-    hasPermission("view:system_admin") ||
-    hasPermission("all") ||
-    hasPermission("manage:all") ||
-    hasPermission("super_admin");
+  const isPlatformAdmin = Boolean(user?.isPlatformAdmin);
 
   if (!isPlatformAdmin) {
     return <Unauthorized />;

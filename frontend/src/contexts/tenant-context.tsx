@@ -66,16 +66,7 @@ function getAuthIsPlatformAdmin(): boolean {
     const parsed = JSON.parse(stored) as { user?: any };
     const u = parsed.user;
     if (!u) return false;
-    return Boolean(
-      u.isPlatformAdmin ||
-      u.is_platform_admin ||
-      (Array.isArray(u.permissions) && u.permissions.includes("manage:system_admin")) ||
-      (Array.isArray(u.permissions) && u.permissions.includes("all")) ||
-      (Array.isArray(u.roles) && u.roles.some((r: any) => 
-        (typeof r === "string" ? r : r.name)?.toLowerCase().includes("super admin") ||
-        (typeof r === "string" ? r : r.name)?.toLowerCase().includes("platform")
-      ))
-    );
+    return Boolean(u.isPlatformAdmin === true || u.is_platform_admin === true);
   } catch {
     return false;
   }

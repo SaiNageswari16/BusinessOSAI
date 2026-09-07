@@ -123,12 +123,7 @@ function mapUser(json: Record<string, unknown>): AppUser {
     avatar: String(json.avatar_initials || buildAvatar(String(json.full_name ?? json.email ?? ""))),
     status: json.status === "active" ? "Active" : "Inactive",
     isTenantOwner: Boolean(json.is_tenant_owner),
-    isPlatformAdmin: Boolean(
-      json.is_platform_admin ||
-      ((json.permissions as string[]) || []).includes("manage:system_admin") ||
-      ((json.permissions as string[]) || []).includes("all") ||
-      roles.some(r => r.name?.toLowerCase().includes("super admin") || r.name?.toLowerCase().includes("platform"))
-    ),
+    isPlatformAdmin: Boolean(json.is_platform_admin),
     permissions: (json.permissions as string[] | undefined) ?? [],
     roles,
     assignedRoles: roles.map((role) => role.id),

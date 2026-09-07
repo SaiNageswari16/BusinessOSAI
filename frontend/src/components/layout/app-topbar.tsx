@@ -190,13 +190,7 @@ export function AppTopbar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [activeCurrency, setActiveCurrencyState] = useState(getActiveCurrency());
 
-  const isPlatformSuperAdmin = Boolean(
-    user?.isPlatformAdmin ||
-    hasPermission("manage:system_admin") ||
-    hasPermission("all") ||
-    user?.permissions?.includes("manage:system_admin") ||
-    user?.roles?.some(r => r.name?.toLowerCase().includes("super admin") || r.name?.toLowerCase().includes("platform"))
-  );
+  const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
 
   // Filter modules to only those the current user has permission to access
   const visibleModules = useMemo(() => {
