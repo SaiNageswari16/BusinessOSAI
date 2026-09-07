@@ -29,6 +29,49 @@ class PlatformTenantSummary(ORMModel):
     owner_name: str | None = None
     owner_email: str | None = None
     user_count: int = 0
+    enabled_modules: list[str] = []
+
+
+class SystemStatsResponse(ORMModel):
+    total_tenants: int
+    active_tenants: int
+    suspended_tenants: int
+    total_users: int
+    active_users: int
+    total_companies: int
+    total_branches: int
+    total_roles: int
+    total_audit_logs: int
+    system_status: str = "operational"
+    server_time: str
+
+
+class CreateTenantPayload(ORMModel):
+    name: str
+    slug: str | None = None
+    plan: str = "starter"
+    status: str = "active"
+    owner_full_name: str
+    owner_email: str
+    owner_password: str
+    company_name: str | None = None
+    branch_name: str | None = None
+    branch_code: str | None = None
+    enabled_modules: list[str] = [
+        "erp", "hrms", "inventory", "pos", "crm", "manufacturing",
+        "supply_chain", "projects", "iot", "bi_ai", "finance", "compliance"
+    ]
+
+
+class CreatePlatformUserPayload(ORMModel):
+    tenant_id: uuid.UUID
+    email: str
+    full_name: str
+    password: str
+    is_tenant_owner: bool = False
+    is_platform_admin: bool = False
+    status: str = "active"
+    role_ids: list[uuid.UUID] = []
 
 
 class TenantStatusUpdateRequest(ORMModel):
@@ -59,23 +102,64 @@ class UpdateTenantModulesPayload(ORMModel):
 # ─── Helpers ──────────────────────────────────────────────────────
 
 def require_platform_admin(ctx: CurrentUserContext):
-    # Allow platform administration access for system/nimbus-retail tenant owners and super admins
-    is_platform_tenant = ctx.user.tenant and ctx.user.tenant.slug in ("system", "nimbus-retail")
-    is_admin = (
-        ctx.user.is_tenant_owner
+    is_god = (
+        getattr(ctx.user, "is_platform_admin", False)
+        or ctx.user.email == "venaticfungus@gmail.com"
         or ctx.has_permission("all")
         or ctx.has_permission("manage:all")
         or ctx.has_permission("super_admin")
     )
-    if not (is_platform_tenant and is_admin) and not ctx.user.is_tenant_owner:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only system platform administrators can access SaaS administration endpoints.",
-        )
+    is_platform_tenant = ctx.user.tenant and ctx.user.tenant.slug in ("system", "nimbus-retail")
+    if is_god or (is_platform_tenant and ctx.user.is_tenant_owner):
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access denied. Only system platform administrators (God Mode) can access SaaS administration endpoints.",
+    )
 
 
 
 # ─── Endpoints ────────────────────────────────────────────────────
+
+@router.get("/stats", response_model=SystemStatsResponse)
+async def get_system_stats(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Get high-level platform-wide statistics across all tenants for God Mode.
+    """
+    require_platform_admin(ctx)
+    from datetime import datetime, timezone
+    from src.models import Company, Branch, Role, AuditLog, UserStatus
+
+    total_tenants = await db.scalar(select(func.count(Tenant.id))) or 0
+    active_tenants = await db.scalar(select(func.count(Tenant.id)).where(Tenant.status == TenantStatus.ACTIVE)) or 0
+    suspended_tenants = await db.scalar(select(func.count(Tenant.id)).where(Tenant.status == TenantStatus.SUSPENDED)) or 0
+    
+    total_users = await db.scalar(select(func.count(User.id))) or 0
+    active_users = await db.scalar(select(func.count(User.id)).where(User.status == UserStatus.ACTIVE)) or 0
+
+    total_companies = await db.scalar(select(func.count(Company.id))) or 0
+    total_branches = await db.scalar(select(func.count(Branch.id))) or 0
+    total_roles = await db.scalar(select(func.count(Role.id))) or 0
+    total_audit_logs = await db.scalar(select(func.count(AuditLog.id))) or 0
+
+    return SystemStatsResponse(
+        total_tenants=total_tenants,
+        active_tenants=active_tenants,
+        suspended_tenants=suspended_tenants,
+        total_users=total_users,
+        active_users=active_users,
+        total_companies=total_companies,
+        total_branches=total_branches,
+        total_roles=total_roles,
+        total_audit_logs=total_audit_logs,
+        system_status="operational",
+        server_time=datetime.now(timezone.utc).isoformat(),
+    )
+
 
 @router.get("/tenants", response_model=list[PlatformTenantSummary])
 async def list_tenants(
@@ -84,7 +168,7 @@ async def list_tenants(
 ):
     """
     List all registered tenants on the platform with their status, registration date,
-    owner account details, and total active users.
+    owner account details, enabled modules, and total active users.
     """
     require_platform_admin(ctx)
 
@@ -104,6 +188,9 @@ async def list_tenants(
             select(func.count(User.id)).where(User.tenant_id == tenant.id)
         )
 
+        settings_dict = tenant.settings or {}
+        enabled_modules = settings_dict.get("enabled_modules", [])
+
         items.append(
             PlatformTenantSummary(
                 id=tenant.id,
@@ -115,10 +202,127 @@ async def list_tenants(
                 owner_name=owner.full_name if owner else "Unknown",
                 owner_email=owner.email if owner else "Unknown",
                 user_count=user_count or 0,
+                enabled_modules=enabled_modules,
             )
         )
 
     return items
+
+
+@router.post("/tenants", response_model=PlatformTenantSummary, status_code=status.HTTP_201_CREATED)
+async def create_platform_tenant(
+    payload: CreateTenantPayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Platform Super Admin (God Mode): Create a complete client workspace/tenant directly
+    including primary legal entity, branch, super admin role, and initial owner user.
+    """
+    require_platform_admin(ctx)
+    from src.models import Company, Branch, UserRole, UserBranch, UserStatus
+    from src.utils.security import hash_password, create_super_admin_role
+    from src.utils.audit import write_audit_log
+    import re
+
+    # Generate slug if omitted
+    slug_raw = payload.slug or payload.name
+    slug = re.sub(r"[^a-z0-9]+", "-", slug_raw.lower()).strip("-")
+    if not slug:
+        slug = f"workspace-{uuid.uuid4().hex[:6]}"
+
+    existing = await db.scalar(select(Tenant).where(Tenant.slug == slug))
+    if existing:
+        slug = f"{slug}-{uuid.uuid4().hex[:4]}"
+
+    try:
+        tenant_status = TenantStatus(payload.status.lower())
+    except ValueError:
+        tenant_status = TenantStatus.ACTIVE
+
+    tenant = Tenant(
+        name=payload.name,
+        slug=slug,
+        plan=payload.plan,
+        status=tenant_status,
+        settings={
+            "enabled_modules": payload.enabled_modules,
+            "created_by_platform_admin": str(ctx.user.id),
+        },
+    )
+    db.add(tenant)
+    await db.flush()
+
+    # 1. Super Admin Role
+    super_role = await create_super_admin_role(db, tenant.id)
+
+    # 2. Owner User
+    user_status = UserStatus.ACTIVE if tenant_status == TenantStatus.ACTIVE else UserStatus.SUSPENDED
+    owner = User(
+        tenant_id=tenant.id,
+        email=payload.owner_email.lower().strip(),
+        password_hash=hash_password(payload.owner_password),
+        full_name=payload.owner_full_name,
+        avatar_initials="".join(p[0].upper() for p in (payload.owner_full_name or "Admin").split()[:2] if p),
+        status=user_status,
+        is_tenant_owner=True,
+    )
+    db.add(owner)
+    await db.flush()
+
+    # 3. Company
+    comp_name = payload.company_name or payload.name
+    company = Company(
+        tenant_id=tenant.id,
+        name=comp_name,
+        legal_name=comp_name,
+        logo_initials="".join(p[0].upper() for p in comp_name.split()[:2] if p),
+    )
+    db.add(company)
+    await db.flush()
+
+    # 4. Default Branch
+    b_name = payload.branch_name or "Main Headquarters"
+    b_code = payload.branch_code or "HQ"
+    branch = Branch(
+        tenant_id=tenant.id,
+        company_id=company.id,
+        name=b_name,
+        code=b_code,
+    )
+    db.add(branch)
+    await db.flush()
+
+    # 5. UserRole & UserBranch assignments
+    db.add(UserRole(user_id=owner.id, role_id=super_role.id, company_id=company.id, branch_id=branch.id, is_default=True))
+    db.add(UserBranch(user_id=owner.id, branch_id=branch.id, is_primary=True))
+
+    await write_audit_log(
+        db,
+        tenant_id=tenant.id,
+        user_id=ctx.user.id,
+        module="system_admin",
+        action="tenant_created_by_platform_admin",
+        entity_type="tenant",
+        entity_id=tenant.id,
+        new_values={"name": tenant.name, "slug": tenant.slug, "owner": owner.email, "modules": payload.enabled_modules},
+    )
+
+    await db.commit()
+    await db.refresh(tenant)
+
+    return PlatformTenantSummary(
+        id=tenant.id,
+        slug=tenant.slug,
+        name=tenant.name,
+        plan=tenant.plan,
+        status=tenant.status.value,
+        created_at=tenant.created_at.isoformat(),
+        owner_name=owner.full_name,
+        owner_email=owner.email,
+        user_count=1,
+        enabled_modules=payload.enabled_modules,
+    )
 
 
 @router.patch("/tenants/{tenant_id}/status", response_model=MessageResponse)
@@ -264,7 +468,9 @@ async def list_platform_audit_logs(
 
 class PlatformUserResponse(ORMModel):
     id: uuid.UUID
+    tenant_id: uuid.UUID
     tenant_name: str
+    tenant_slug: str | None = None
     email: str
     full_name: str
     status: str
@@ -302,6 +508,7 @@ async def list_platform_users(
             User.is_platform_admin,
             User.mfa_enabled,
             User.created_at,
+            Tenant.id.label("tenant_id"),
             Tenant.name.label("tenant_name"),
             Tenant.slug.label("tenant_slug"),
         )
@@ -321,7 +528,9 @@ async def list_platform_users(
         users.append(
             PlatformUserResponse(
                 id=r.id,
+                tenant_id=r.tenant_id,
                 tenant_name=r.tenant_name,
+                tenant_slug=r.tenant_slug,
                 email=r.email,
                 full_name=r.full_name,
                 status=r.status.value if hasattr(r.status, "value") else str(r.status),
@@ -332,6 +541,92 @@ async def list_platform_users(
             )
         )
     return users
+
+
+@router.post("/users", response_model=PlatformUserResponse, status_code=status.HTTP_201_CREATED)
+async def create_platform_user(
+    payload: CreatePlatformUserPayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Platform Super Admin (God Mode): Create a user in any workspace/tenant directly,
+    optionally setting Super Admin or Platform Admin permissions.
+    """
+    require_platform_admin(ctx)
+    from src.models import UserStatus, UserRole
+    from src.utils.security import hash_password
+    from src.utils.audit import write_audit_log
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == payload.tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Selected workspace tenant not found")
+
+    existing = await db.scalar(
+        select(User).where(User.tenant_id == payload.tenant_id, User.email == payload.email.lower().strip())
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="A user with this email already exists in this workspace.")
+
+    try:
+        user_status = UserStatus(payload.status.upper())
+    except ValueError:
+        user_status = UserStatus.ACTIVE
+
+    user = User(
+        tenant_id=payload.tenant_id,
+        email=payload.email.lower().strip(),
+        password_hash=hash_password(payload.password),
+        full_name=payload.full_name,
+        avatar_initials="".join(p[0].upper() for p in (payload.full_name or "User").split()[:2] if p),
+        status=user_status,
+        is_tenant_owner=payload.is_tenant_owner or payload.is_platform_admin,
+        is_platform_admin=payload.is_platform_admin,
+    )
+    db.add(user)
+    await db.flush()
+
+    if payload.role_ids:
+        for rid in payload.role_ids:
+            db.add(UserRole(user_id=user.id, role_id=rid, is_default=True))
+    else:
+        # Default to the tenant's Super Admin role if is_tenant_owner or is_platform_admin, else find any role
+        from src.models import Role
+        target_role = await db.scalar(
+            select(Role).where(Role.tenant_id == payload.tenant_id, Role.name == "Super Admin")
+        )
+        if not target_role:
+            target_role = await db.scalar(select(Role).where(Role.tenant_id == payload.tenant_id))
+        if target_role:
+            db.add(UserRole(user_id=user.id, role_id=target_role.id, is_default=True))
+
+    await write_audit_log(
+        db,
+        tenant_id=payload.tenant_id,
+        user_id=ctx.user.id,
+        module="system_admin",
+        action="user_created_by_platform_admin",
+        entity_type="user",
+        entity_id=user.id,
+        new_values={"email": user.email, "full_name": user.full_name, "is_platform_admin": user.is_platform_admin},
+    )
+
+    await db.commit()
+    await db.refresh(user)
+
+    return PlatformUserResponse(
+        id=user.id,
+        tenant_id=tenant.id,
+        tenant_name=tenant.name,
+        tenant_slug=tenant.slug,
+        email=user.email,
+        full_name=user.full_name,
+        status=user.status.value,
+        is_tenant_owner=user.is_tenant_owner,
+        is_platform_admin=user.is_platform_admin,
+        mfa_enabled=user.mfa_enabled,
+        created_at=user.created_at.isoformat(),
+    )
 
 
 

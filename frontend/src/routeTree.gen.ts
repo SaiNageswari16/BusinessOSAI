@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StoreRouteImport } from './routes/store'
 import { Route as RoleSelectRouteImport } from './routes/role-select'
+import { Route as PlatformAdminRouteImport } from './routes/platform-admin'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AppRouteImport } from './routes/_app'
@@ -56,6 +57,11 @@ const StoreRoute = StoreRouteImport.update({
 const RoleSelectRoute = RoleSelectRouteImport.update({
   id: '/role-select',
   path: '/role-select',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlatformAdminRoute = PlatformAdminRouteImport.update({
+  id: '/platform-admin',
+  path: '/platform-admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -242,6 +248,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/platform-admin': typeof PlatformAdminRoute
   '/role-select': typeof RoleSelectRoute
   '/store': typeof StoreRouteWithChildren
   '/accounting': typeof AppAccountingRoute
@@ -281,6 +288,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/platform-admin': typeof PlatformAdminRoute
   '/role-select': typeof RoleSelectRoute
   '/accounting': typeof AppAccountingRoute
   '/copilot': typeof AppCopilotRoute
@@ -321,6 +329,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/platform-admin': typeof PlatformAdminRoute
   '/role-select': typeof RoleSelectRoute
   '/store': typeof StoreRouteWithChildren
   '/_app/accounting': typeof AppAccountingRoute
@@ -362,6 +371,7 @@ export interface FileRouteTypes {
     | '/'
     | '/change-password'
     | '/login'
+    | '/platform-admin'
     | '/role-select'
     | '/store'
     | '/accounting'
@@ -401,6 +411,7 @@ export interface FileRouteTypes {
     | '/'
     | '/change-password'
     | '/login'
+    | '/platform-admin'
     | '/role-select'
     | '/accounting'
     | '/copilot'
@@ -440,6 +451,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/change-password'
     | '/login'
+    | '/platform-admin'
     | '/role-select'
     | '/store'
     | '/_app/accounting'
@@ -481,6 +493,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   ChangePasswordRoute: typeof ChangePasswordRoute
   LoginRoute: typeof LoginRoute
+  PlatformAdminRoute: typeof PlatformAdminRoute
   RoleSelectRoute: typeof RoleSelectRoute
   StoreRoute: typeof StoreRouteWithChildren
   VaultOffersFilenameRoute: typeof VaultOffersFilenameRoute
@@ -501,6 +514,13 @@ declare module '@tanstack/react-router' {
       path: '/role-select'
       fullPath: '/role-select'
       preLoaderRoute: typeof RoleSelectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/platform-admin': {
+      id: '/platform-admin'
+      path: '/platform-admin'
+      fullPath: '/platform-admin'
+      preLoaderRoute: typeof PlatformAdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -839,6 +859,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   ChangePasswordRoute: ChangePasswordRoute,
   LoginRoute: LoginRoute,
+  PlatformAdminRoute: PlatformAdminRoute,
   RoleSelectRoute: RoleSelectRoute,
   StoreRoute: StoreRouteWithChildren,
   VaultOffersFilenameRoute: VaultOffersFilenameRoute,

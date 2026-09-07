@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Bell, MessageSquare, LogOut,
-  ChevronDown, Building2, ShieldCheck, Globe, Coins,
+  ChevronDown, Building2, ShieldCheck, ShieldAlert, Globe, Coins,
   Component, Archive, Layers, Terminal, ShoppingCart,
   ShoppingBag, Receipt, UsersRound, BarChart3, Settings,
   LayoutDashboard, RadioTower, ExternalLink, Trash2,
@@ -614,6 +614,18 @@ export function AppTopbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
+        {/* Platform Admin God Mode Button */}
+        {(user?.isPlatformAdmin || user?.email === "venaticfungus@gmail.com") && (
+          <button
+            onClick={() => navigate({ to: "/platform-admin" })}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/20 hover:from-violet-500 hover:to-indigo-500 border border-violet-400/40 text-xs font-bold transition-all cursor-pointer shrink-0"
+            title="Open Platform Super Admin Control Center (God Mode)"
+          >
+            <ShieldAlert className="size-3.5 text-amber-300" />
+            <span className="hidden md:inline">⚡ God Mode</span>
+          </button>
+        )}
+
         {/* Currency Switcher */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1031,6 +1043,17 @@ export function AppTopbar() {
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
+            {(user?.isPlatformAdmin || user?.email === "venaticfungus@gmail.com") && (
+              <>
+                <DropdownMenuItem
+                  onClick={() => navigate({ to: "/platform-admin" })}
+                  className="cursor-pointer text-xs font-bold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-100"
+                >
+                  <ShieldAlert className="size-4 mr-2 text-violet-600" /> ⚡ Platform Admin (God Mode)
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem onClick={() => { logout(); navigate({ to: "/" }); }} className="text-destructive cursor-pointer">
               <LogOut className="size-4 mr-2" /> Sign out
             </DropdownMenuItem>

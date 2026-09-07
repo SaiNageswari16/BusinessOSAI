@@ -8,7 +8,7 @@ import {
   ListChecks, Lock, Map, MapPin, Megaphone, MessageSquare, MessagesSquare, Microscope, Monitor, Navigation,
   Network, Package, PackageOpen, PackagePlus, Palette, Percent, PieChart, Plus, Printer, QrCode, Radio, RadioTower, Receipt,
   RefreshCcw, RefreshCw, Rocket, RotateCw, Scale, ScanBarcode, ScanLine, Search, Settings, Settings2,
-  ShieldCheck, ShoppingBag, ShoppingBasket, ShoppingCart, Signal, Skull, Sliders, SlidersHorizontal, Snail, Sparkles,
+  ShieldCheck, ShieldAlert, ShoppingBag, ShoppingBasket, ShoppingCart, Signal, Skull, Sliders, SlidersHorizontal, Snail, Sparkles,
   Store, Tag, Tags, Target, Terminal, Ticket, Timer, TrendingUp, Truck, UserCheck,
   UserCircle2, UserCog, Users, UsersRound, Wallet, Warehouse, Waypoints, Webcam, Workflow
 } from "lucide-react";
