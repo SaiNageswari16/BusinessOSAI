@@ -190,6 +190,14 @@ export function AppTopbar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [activeCurrency, setActiveCurrencyState] = useState(getActiveCurrency());
 
+  const isPlatformSuperAdmin = Boolean(
+    user?.isPlatformAdmin ||
+    hasPermission("manage:system_admin") ||
+    hasPermission("all") ||
+    user?.permissions?.includes("manage:system_admin") ||
+    user?.roles?.some(r => r.name?.toLowerCase().includes("super admin") || r.name?.toLowerCase().includes("platform"))
+  );
+
   // Filter modules to only those the current user has permission to access
   const visibleModules = useMemo(() => {
     return moduleDisplayList.filter((mod) => !mod.permission || hasPermission(mod.permission));
@@ -596,33 +604,62 @@ export function AppTopbar() {
               <ChevronDown className="size-3 text-purple-600 shrink-0 ml-0.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64 shadow-xl border-purple-100">
-            <DropdownMenuLabel className="flex items-center gap-2 text-xs font-bold text-slate-800">
-              <Building2 className="size-3.5 text-purple-700" /> Companies & Workspaces
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {companiesList.map((c) => (
-              <DropdownMenuItem key={c.id} onClick={() => setCompany(c)} className="gap-2 cursor-pointer py-2">
-                <div className="size-6 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0">{c.logo || "CO"}</div>
-                <div className="flex-1 font-semibold truncate">
-                  <div className="text-xs font-bold text-slate-900 truncate">{c.name}</div>
-                  <div className="text-[10px] text-muted-foreground truncate">{c.industry}</div>
+          <DropdownMenuContent align="end" className="w-72 shadow-xl border-purple-100">
+            <div className="px-3 py-2 border-b bg-slate-50/70 dark:bg-slate-900/50 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-white">
+                <Building2 className="size-3.5 text-purple-700" /> Workspaces & Tenants
+              </span>
+              {isPlatformSuperAdmin && (
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
+                  ⚡ Super Admin
+                </span>
+              )}
+            </div>
+            <div className="max-h-64 overflow-y-auto py-1">
+              {companiesList.length === 0 ? (
+                <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                  No other workspaces found.
                 </div>
-                {company?.id === c.id && <div className="size-2 rounded-full bg-purple-700" />}
-              </DropdownMenuItem>
-            ))}
+              ) : (
+                companiesList.map((c) => (
+                  <DropdownMenuItem key={c.id} onClick={() => setCompany(c)} className="gap-2 cursor-pointer py-2">
+                    <div className="size-7 rounded-md gradient-brand grid place-items-center text-white text-[10px] font-bold shrink-0">{c.logo || "CO"}</div>
+                    <div className="flex-1 font-semibold truncate">
+                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{c.name}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">{c.industry || "Client Workspace"}</div>
+                    </div>
+                    {company?.id === c.id && <div className="size-2 rounded-full bg-purple-700 shrink-0" />}
+                  </DropdownMenuItem>
+                ))
+              )}
+            </div>
+            {isPlatformSuperAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => navigate({ to: "/platform-admin" })}
+                  className="gap-2 cursor-pointer py-2.5 text-violet-700 dark:text-violet-300 font-bold bg-violet-50/90 dark:bg-violet-950/40 hover:bg-violet-100"
+                >
+                  <ShieldAlert className="size-4 text-violet-600 shrink-0" />
+                  <div className="flex-1">
+                    <div className="text-xs font-bold">⚡ All Workspaces Hub</div>
+                    <div className="text-[10px] font-normal text-muted-foreground">Create, suspend, or configure all tenants</div>
+                  </div>
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 
         {/* Platform Admin God Mode Button */}
-        {(user?.isPlatformAdmin || user?.email === "venaticfungus@gmail.com") && (
+        {isPlatformSuperAdmin && (
           <button
             onClick={() => navigate({ to: "/platform-admin" })}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/20 hover:from-violet-500 hover:to-indigo-500 border border-violet-400/40 text-xs font-bold transition-all cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white shadow-md shadow-violet-500/20 hover:from-violet-500 hover:to-indigo-500 border border-violet-400/40 text-xs font-bold transition-all cursor-pointer shrink-0"
             title="Open Platform Super Admin Control Center (God Mode)"
           >
-            <ShieldAlert className="size-3.5 text-amber-300" />
-            <span className="hidden md:inline">⚡ God Mode</span>
+            <ShieldAlert className="size-3.5 text-amber-300 animate-pulse" />
+            <span className="hidden sm:inline">⚡ God Mode Hub</span>
           </button>
         )}
 
@@ -1043,11 +1080,11 @@ export function AppTopbar() {
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            {(user?.isPlatformAdmin || user?.email === "venaticfungus@gmail.com") && (
+            {isPlatformSuperAdmin && (
               <>
                 <DropdownMenuItem
                   onClick={() => navigate({ to: "/platform-admin" })}
-                  className="cursor-pointer text-xs font-bold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-100"
+                  className="cursor-pointer text-xs font-bold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-100 py-2"
                 >
                   <ShieldAlert className="size-4 mr-2 text-violet-600" /> ⚡ Platform Admin (God Mode)
                 </DropdownMenuItem>

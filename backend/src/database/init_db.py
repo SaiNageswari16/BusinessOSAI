@@ -92,7 +92,6 @@ async def init_database() -> None:
         "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'credit';",
         "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'pending';",
         "ALTER TYPE pos_transaction_status ADD VALUE IF NOT EXISTS 'voided';",
-        "UPDATE users SET is_platform_admin = TRUE WHERE lower(email) = 'venaticfungus@gmail.com';",
         """
         UPDATE erp_inventory_batches b
         SET cost_price = CASE WHEN b.cost_price IS NULL OR b.cost_price = 0 THEN COALESCE(p.cost_price, 65.00) ELSE b.cost_price END,

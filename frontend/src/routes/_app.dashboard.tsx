@@ -112,8 +112,13 @@ function Dashboard() {
   const greeting = language === "ar" ? (hour < 12 ? "صباح الخير" : "مساء الخير") : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
   const today = useMemo(() => new Date().toLocaleDateString(language === "ar" ? "ar-AE" : "en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }), [language]);
   
-  const firstName = user?.name?.split(" ")[0] || (user as any)?.username || "venatic";
-  const isPlatformAdmin = user?.tenantSlug === "system" && user?.isTenantOwner;
+  const isPlatformSuperAdmin = Boolean(
+    user?.isPlatformAdmin ||
+    hasPermission("manage:system_admin") ||
+    hasPermission("all") ||
+    user?.permissions?.includes("manage:system_admin") ||
+    user?.roles?.some(r => r.name?.toLowerCase().includes("super admin") || r.name?.toLowerCase().includes("platform"))
+  );
 
   const totalProducts = Array.isArray(productsData) ? (productsData as any[]).length : 0;
   const totalCustomers = Array.isArray(customersData) && (customersData as any[]).length > 0 ? (customersData as any[]).length : 2;
@@ -626,6 +631,54 @@ function Dashboard() {
 
   return (
     <div className="p-3 space-y-2.5 font-sans bg-background">
+      {/* ── Platform Super Admin God Mode Switcher Toolbar ── */}
+      {isPlatformSuperAdmin && (
+        <div className="p-2 px-3 rounded-xl bg-gradient-to-r from-violet-900 via-indigo-950 to-slate-900 border border-violet-500/30 text-white flex flex-col md:flex-row md:items-center justify-between gap-2 shadow-lg shadow-violet-950/20">
+          <div className="flex items-center gap-2">
+            <div className="size-6.5 rounded-lg bg-amber-400 text-slate-950 flex items-center justify-center font-extrabold text-xs shadow-xs shrink-0">
+              ⚡
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black tracking-wide uppercase bg-gradient-to-r from-amber-300 to-amber-100 bg-clip-text text-transparent">
+                  Platform Super Admin (God Mode)
+                </span>
+                <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded-full bg-violet-500/30 border border-violet-400/30 text-violet-200">
+                  Global System Access
+                </span>
+              </div>
+              <p className="text-[10.5px] text-slate-300 leading-none mt-0.5">
+                Switch between Company ERP Dashboard, LazyMonkey AI, and Platform God Mode Hub
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => navigate({ to: "/dashboard" })}
+              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-xs cursor-pointer flex items-center gap-1"
+            >
+              <LayoutDashboard className="size-3.5 text-purple-700" />
+              <span>ERP Dashboard</span>
+            </button>
+            <button
+              onClick={() => navigate({ to: "/dashboard", search: { tab: "lazymonkey_ai" } })}
+              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-violet-800/60 hover:bg-violet-700/80 text-violet-100 border border-violet-600/40 cursor-pointer flex items-center gap-1"
+            >
+              <Sparkles className="size-3.5 text-amber-300" />
+              <span>LazyMonkey AI</span>
+            </button>
+            <button
+              onClick={() => navigate({ to: "/platform-admin" })}
+              className="px-3 py-1 rounded-lg text-xs font-black bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 shadow-md cursor-pointer flex items-center gap-1.5 transition-transform hover:scale-105"
+            >
+              <span>⚡ Platform Admin Hub</span>
+              <ArrowUpRight className="size-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Top Header Row with Period Selector ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>

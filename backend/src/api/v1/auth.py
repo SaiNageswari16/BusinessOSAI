@@ -616,7 +616,7 @@ async def get_me(
     ]
     is_god = bool(
         getattr(ctx.user, "is_platform_admin", False)
-        or ctx.user.email == "venaticfungus@gmail.com"
+        or "manage:system_admin" in ctx.permissions
     )
 
 

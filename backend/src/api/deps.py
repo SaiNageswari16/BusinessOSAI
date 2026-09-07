@@ -240,7 +240,6 @@ async def get_current_user_context(
 
     is_platform_admin_user = bool(
         getattr(user, "is_platform_admin", False)
-        or user.email == "venaticfungus@gmail.com"
     )
 
     # Module Entitlement Gating for client workspaces (Platform Admin bypasses this)

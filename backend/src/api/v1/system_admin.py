@@ -104,7 +104,8 @@ class UpdateTenantModulesPayload(ORMModel):
 def require_platform_admin(ctx: CurrentUserContext):
     is_god = (
         getattr(ctx.user, "is_platform_admin", False)
-        or ctx.user.email == "venaticfungus@gmail.com"
+        or ctx.has_permission("manage:system_admin")
+        or ctx.has_permission("view:system_admin")
         or ctx.has_permission("all")
         or ctx.has_permission("manage:all")
         or ctx.has_permission("super_admin")
@@ -522,7 +523,6 @@ async def list_platform_users(
     for r in rows:
         is_god = bool(
             getattr(r, "is_platform_admin", False)
-            or r.email == "venaticfungus@gmail.com"
         )
 
         users.append(

@@ -298,7 +298,7 @@ export function GlobalUsers() {
 
   const handleToggleSuperAdmin = async (user: PlatformUser) => {
     if (!accessToken) return;
-    const isSuper = Boolean(user.is_platform_admin || user.email === "venaticfungus@gmail.com");
+    const isSuper = Boolean(user.is_platform_admin);
     const nextState = !isSuper;
     const confirmText = nextState
       ? `Promote "${user.full_name}" (${user.email}) to Global Platform Super Admin / God Mode?\n\nThey will gain unrestricted access to all client companies, settings, and administration tools.`
@@ -325,7 +325,7 @@ export function GlobalUsers() {
 
   const handleDeleteUser = async (user: PlatformUser) => {
     if (!accessToken) return;
-    const isGod = Boolean(user.is_platform_admin || user.email === "venaticfungus@gmail.com");
+    const isGod = Boolean(user.is_platform_admin);
     const warning = isGod ? " (⚠️ WARNING: This user is a Platform Super Admin / God Mode user!)" : "";
     if (!window.confirm(`Permanently delete user "${user.full_name}" (${user.email}) from workspace "${user.tenant_name}"?${warning}\n\nAll their sessions, access roles, products, invoices, and organization records will be permanently purged. This action CANNOT be undone.`)) return;
 
@@ -778,7 +778,7 @@ export function GlobalUsers() {
                           <div>
                             <div className="font-semibold text-foreground flex items-center gap-1.5">
                               {u.full_name}
-                              {Boolean(u.is_platform_admin || u.email === "venaticfungus@gmail.com") ? (
+                              {Boolean(u.is_platform_admin) ? (
                                 <span className="text-[9px] bg-gradient-to-r from-amber-500 to-yellow-600 text-white px-1.5 py-0.5 rounded uppercase tracking-wider font-extrabold shadow-sm flex items-center gap-0.5">
                                   👑 God Mode
                                 </span>
@@ -821,7 +821,7 @@ export function GlobalUsers() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            {Boolean(u.is_platform_admin || u.email === "venaticfungus@gmail.com") ? (
+                            {Boolean(u.is_platform_admin) ? (
                               <Button
                                 variant="ghost"
                                 size="sm"

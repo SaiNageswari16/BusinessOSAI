@@ -37,7 +37,8 @@ function StandalonePlatformAdminPage() {
 
   const isPlatformAdmin =
     Boolean(user?.isPlatformAdmin) ||
-    user?.email === "venaticfungus@gmail.com" ||
+    hasPermission("manage:system_admin") ||
+    hasPermission("view:system_admin") ||
     hasPermission("all") ||
     hasPermission("manage:all") ||
     hasPermission("super_admin");

@@ -63,8 +63,19 @@ function getAuthIsPlatformAdmin(): boolean {
   try {
     const stored = localStorage.getItem("bos-auth");
     if (!stored) return false;
-    const parsed = JSON.parse(stored) as { user?: { isPlatformAdmin?: boolean; email?: string } };
-    return Boolean(parsed.user?.isPlatformAdmin || parsed.user?.email === "venaticfungus@gmail.com");
+    const parsed = JSON.parse(stored) as { user?: any };
+    const u = parsed.user;
+    if (!u) return false;
+    return Boolean(
+      u.isPlatformAdmin ||
+      u.is_platform_admin ||
+      (Array.isArray(u.permissions) && u.permissions.includes("manage:system_admin")) ||
+      (Array.isArray(u.permissions) && u.permissions.includes("all")) ||
+      (Array.isArray(u.roles) && u.roles.some((r: any) => 
+        (typeof r === "string" ? r : r.name)?.toLowerCase().includes("super admin") ||
+        (typeof r === "string" ? r : r.name)?.toLowerCase().includes("platform")
+      ))
+    );
   } catch {
     return false;
   }
@@ -180,27 +191,34 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
       if (isPlatformAdmin) {
         // Fetch all client tenant environments for SaaS impersonation switcher
-        const sysRes = await fetch(`${API_BASE_URL}/system/tenants`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (sysRes.ok) {
-          const sysTenants = await sysRes.json();
-          mappedCompanies = sysTenants.map((t: any) => ({
-            id: t.id,
-            name: t.name,
-            industry: "Client Workspace",
-            logo: t.name.slice(0, 2).toUpperCase(),
-            logo_url: t.logo_url || null,
-            isReal: true,
-            raw: {
-              id: t.id,
-              tenant_id: t.id,
-              name: t.name,
-              logo_initials: t.name.slice(0, 2).toUpperCase(),
-              logo_url: t.logo_url || null,
-              ...(t.settings || {}),
-            } as any
-          }));
+        try {
+          const sysRes = await fetch(`${API_BASE_URL}/system/tenants`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (sysRes.ok) {
+            const sysTenants = await sysRes.json();
+            if (Array.isArray(sysTenants) && sysTenants.length > 0) {
+              mappedCompanies = sysTenants.map((t: any) => ({
+                id: t.id,
+                name: t.name,
+                industry: "Client Workspace",
+                logo: (t.name || "WS").slice(0, 2).toUpperCase(),
+                logo_url: t.logo_url || null,
+                isReal: true,
+                raw: {
+                  id: t.id,
+                  tenant_id: t.id,
+                  name: t.name,
+                  slug: t.slug,
+                  logo_initials: (t.name || "WS").slice(0, 2).toUpperCase(),
+                  logo_url: t.logo_url || null,
+                  ...(t.settings || {}),
+                } as any
+              }));
+            }
+          }
+        } catch (sysErr) {
+          console.warn("Could not fetch system tenants:", sysErr);
         }
       }
 
