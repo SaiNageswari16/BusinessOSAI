@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Package } from "lucide-react";
+import { Package, Truck, CheckCircle2, Clock, Home, ArrowRight } from "lucide-react";
 import { useCurrency } from "@/hooks/use-currency";
 
 export const Route = createFileRoute("/store/orders")({
@@ -7,116 +7,127 @@ export const Route = createFileRoute("/store/orders")({
 });
 
 function OrdersPage() {
-  // A mock list of orders for the user to see
-  const mockOrders = [
+  const { currency } = useCurrency();
+
+  const organicOrders = [
     {
-      id: "ORDER-10294",
-      date: "August 12, 2026",
-      total: 450.00,
-      status: "Processing",
+      id: "ORD-ORG-8924",
+      date: "September 3, 2026",
+      total: 39.5,
+      status: "In Transit",
+      courier: "Careem Cold-Chain Express",
+      eta: "Today by 6:00 PM",
       items: [
-        { name: "Premium Leather Sofa", price: 450.00 }
-      ]
+        { name: "Whole Wheat Sandwich Bread", quantity: 1, price: 18.0, image: "/organic/images/product-thumb-1.png" },
+        { name: "Organic Baby Spinach", quantity: 2, price: 6.5, image: "/organic/images/product-thumb-4.png" },
+        { name: "Pure Squeezed Orange Juice", quantity: 1, price: 8.5, image: "/organic/images/product-thumb-11.png" },
+      ],
     },
     {
-      id: "ORDER-84729",
-      date: "July 20, 2026",
-      total: 120.50,
+      id: "ORD-ORG-8412",
+      date: "August 28, 2026",
+      total: 58.0,
       status: "Delivered",
+      courier: "Aramex Logistics",
+      eta: "Delivered on Aug 28",
       items: [
-        { name: "Wireless Noise Cancelling Headphones", price: 89.99 },
-        { name: "Office Desk Lamp", price: 30.51 }
-      ]
-    }
+        { name: "Fresh Salmon Fillet", quantity: 1, price: 34.0, image: "/organic/images/product-thumb-6.png" },
+        { name: "Greek Style Plain Yogurt", quantity: 2, price: 8.5, image: "/organic/images/product-thumb-10.png" },
+        { name: "Honeycrisp Apples", quantity: 1, price: 7.0, image: "/organic/images/product-thumb-15.png" },
+      ],
+    },
   ];
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl">
-      
+    <div className="bg-white min-h-screen pb-20 font-organic-body">
       {/* Breadcrumb */}
-      <div className="text-sm mb-4">
-        <Link to="/store/account" className="text-sky-700 hover:underline hover:text-amber-600">Your Account</Link> 
-        <span className="text-gray-500 mx-2">›</span> 
-        <span className="text-amber-600">Your Orders</span>
-      </div>
-
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-normal">Your Orders</h1>
-        <div className="hidden sm:flex items-center space-x-2">
-          <input type="text" placeholder="Search all orders" className="border border-gray-300 rounded-sm px-3 py-1 outline-none focus:ring-1 focus:ring-sky-500" />
-          <button className="bg-[#1A1A1A] text-white px-4 py-1 rounded-full text-sm">Search Orders</button>
+      <div className="bg-[#FAF8EF] py-8 mb-10 border-b border-gray-100">
+        <div className="container mx-auto px-4 text-center">
+          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 font-organic-heading mb-2">
+            Order Tracking & History
+          </h1>
+          <div className="text-xs text-gray-500 flex items-center justify-center gap-2">
+            <Link to="/store" className="hover:text-[#6BB252] flex items-center transition-colors font-medium">
+              <Home className="size-3.5 mr-1" /> Home
+            </Link>
+            <span>/</span>
+            <span className="text-[#6BB252] font-bold">Orders</span>
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-[#E5E4E2] mb-6 flex space-x-6 text-sm">
-        <div className="font-bold border-b-2 border-amber-500 text-black pb-2 cursor-pointer">Orders</div>
-        <div className="text-sky-700 hover:text-amber-600 hover:underline cursor-pointer pb-2">Buy Again</div>
-        <div className="text-sky-700 hover:text-amber-600 hover:underline cursor-pointer pb-2">Not Yet Shipped</div>
-        <div className="text-sky-700 hover:text-amber-600 hover:underline cursor-pointer pb-2">Cancelled Orders</div>
-      </div>
+      <div className="container mx-auto px-4 max-w-4xl space-y-6">
+        {organicOrders.map((order) => (
+          <div
+            key={order.id}
+            className="border border-gray-100 rounded-3xl overflow-hidden shadow-xs bg-white"
+          >
+            {/* Header */}
+            <div className="bg-[#FAF8EF] p-5 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4 text-xs">
+              <div className="flex items-center gap-6">
+                <div>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase block">Order Placed</span>
+                  <span className="font-bold text-gray-900">{order.date}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase block">Order Total</span>
+                  <span className="font-extrabold text-gray-900">{currency.symbol}{order.total.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase block">Order Number</span>
+                  <span className="font-mono font-bold text-[#6BB252]">{order.id}</span>
+                </div>
+              </div>
 
-      {/* Orders List */}
-      <div className="space-y-6">
-        {mockOrders.map((order) => (
-          <div key={order.id} className="border border-[#E5E4E2] rounded-lg overflow-hidden">
-            {/* Order Header */}
-            <div className="bg-[#F2F2F2] p-4 border-b border-[#E5E4E2] flex flex-wrap justify-between text-sm text-gray-600">
-              <div className="flex space-x-8">
-                <div>
-                  <div className="uppercase text-xs">Order Placed</div>
-                  <div className="text-black">{order.date}</div>
-                </div>
-                <div>
-                  <div className="uppercase text-xs">Total</div>
-                  <div className="text-black">{order.total.toFixed(2)} KWD</div>
-                </div>
-                <div>
-                  <div className="uppercase text-xs">Ship To</div>
-                  <div className="text-sky-700 hover:underline cursor-pointer">Kuwait City</div>
-                </div>
-              </div>
-              <div className="text-right mt-2 sm:mt-0">
-                <div className="uppercase text-xs">Order # {order.id}</div>
-                <div className="flex space-x-2 justify-end mt-1">
-                  <span className="text-sky-700 hover:underline cursor-pointer">View order details</span>
-                  <span className="text-gray-300">|</span>
-                  <span className="text-sky-700 hover:underline cursor-pointer">Invoice</span>
-                </div>
-              </div>
+              <span
+                className={`px-3 py-1 rounded-full text-[11px] font-bold ${
+                  order.status === "Delivered"
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    : "bg-blue-50 text-blue-700 border border-blue-200"
+                }`}
+              >
+                {order.status === "Delivered" ? "✓ Delivered" : "🚚 In Transit"}
+              </span>
             </div>
 
-            {/* Order Body */}
-            <div className="p-6 bg-white">
-              <h2 className="text-lg font-bold mb-4 flex items-center text-green-700">
-                <Package className="mr-2 h-5 w-5" /> 
-                {order.status}
-              </h2>
-              
-              {order.items.map((item, idx) => (
-                <div key={idx} className="flex mb-4 last:mb-0">
-                  <img 
-                    src={`https://source.unsplash.com/random/100x100/?${encodeURIComponent(item.name)}`} 
-                    alt={item.name}
-                    className="w-20 h-20 object-contain mr-4 border border-gray-100 p-1"
-                  />
-                  <div>
-                    <div className="text-sky-700 hover:underline cursor-pointer font-medium">{item.name}</div>
-                    <div className="text-xs text-gray-500 mt-1">Sold by: Marketplace Vendor</div>
-                    <div className="text-[#B12704] font-bold mt-1">{item.price.toFixed(2)} KWD</div>
-                    
-                    <div className="mt-2 space-x-2">
-                      <button className="bg-amber-400 hover:bg-amber-500 px-3 py-1 text-sm rounded-full shadow-sm text-black">Buy it again</button>
-                      <button className="border border-gray-300 hover:bg-gray-50 px-3 py-1 text-sm rounded-full shadow-sm text-black">View your item</button>
+            {/* Content & items */}
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                <Truck className="size-4 text-[#6BB252]" />
+                <span>Dispatched via {order.courier} • ETA: {order.eta}</span>
+              </div>
+
+              <div className="divide-y divide-gray-100">
+                {order.items.map((item, idx) => (
+                  <div key={idx} className="py-3 flex items-center justify-between text-xs gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="size-12 rounded-xl bg-[#FAF8EF] p-1 border border-gray-200 flex items-center justify-center shrink-0">
+                        <img src={item.image} alt={item.name} className="max-h-full max-w-full object-contain" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-gray-900 block">{item.name}</span>
+                        <span className="text-gray-400">Qty: {item.quantity}</span>
+                      </div>
                     </div>
+                    <span className="font-bold text-gray-900">
+                      {currency.symbol}{(item.price * item.quantity).toFixed(2)}
+                    </span>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+
+              <div className="pt-2 flex justify-end gap-3">
+                <Link
+                  to="/store/shop"
+                  className="px-5 py-2 bg-[#6BB252] hover:bg-[#5ba342] text-white rounded-full text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Buy Again
+                </Link>
+              </div>
             </div>
           </div>
         ))}
       </div>
-
     </div>
   );
 }

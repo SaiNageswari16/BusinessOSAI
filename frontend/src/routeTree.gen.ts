@@ -18,18 +18,22 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as StoreIndexRouteImport } from './routes/store.index'
 import { Route as StoreWishlistRouteImport } from './routes/store.wishlist'
 import { Route as StoreWalletRouteImport } from './routes/store.wallet'
+import { Route as StoreThankYouRouteImport } from './routes/store.thank-you'
+import { Route as StoreStylesRouteImport } from './routes/store.styles'
 import { Route as StoreShopRouteImport } from './routes/store.shop'
 import { Route as StoreSecurityRouteImport } from './routes/store.security'
 import { Route as StoreSearchRouteImport } from './routes/store.search'
 import { Route as StoreRegisterRouteImport } from './routes/store.register'
 import { Route as StorePagesRouteImport } from './routes/store.pages'
 import { Route as StoreOrdersRouteImport } from './routes/store.orders'
+import { Route as StoreContactRouteImport } from './routes/store.contact'
 import { Route as StoreCollectionRouteImport } from './routes/store.collection'
 import { Route as StoreCheckoutRouteImport } from './routes/store.checkout'
 import { Route as StoreCartRouteImport } from './routes/store.cart'
 import { Route as StoreBlogRouteImport } from './routes/store.blog'
 import { Route as StoreAddressesRouteImport } from './routes/store.addresses'
 import { Route as StoreAccountRouteImport } from './routes/store.account'
+import { Route as StoreAboutRouteImport } from './routes/store.about'
 import { Route as AppWarehouseRouteImport } from './routes/_app.warehouse'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
@@ -92,6 +96,16 @@ const StoreWalletRoute = StoreWalletRouteImport.update({
   path: '/wallet',
   getParentRoute: () => StoreRoute,
 } as any)
+const StoreThankYouRoute = StoreThankYouRouteImport.update({
+  id: '/thank-you',
+  path: '/thank-you',
+  getParentRoute: () => StoreRoute,
+} as any)
+const StoreStylesRoute = StoreStylesRouteImport.update({
+  id: '/styles',
+  path: '/styles',
+  getParentRoute: () => StoreRoute,
+} as any)
 const StoreShopRoute = StoreShopRouteImport.update({
   id: '/shop',
   path: '/shop',
@@ -122,6 +136,11 @@ const StoreOrdersRoute = StoreOrdersRouteImport.update({
   path: '/orders',
   getParentRoute: () => StoreRoute,
 } as any)
+const StoreContactRoute = StoreContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => StoreRoute,
+} as any)
 const StoreCollectionRoute = StoreCollectionRouteImport.update({
   id: '/collection',
   path: '/collection',
@@ -150,6 +169,11 @@ const StoreAddressesRoute = StoreAddressesRouteImport.update({
 const StoreAccountRoute = StoreAccountRouteImport.update({
   id: '/account',
   path: '/account',
+  getParentRoute: () => StoreRoute,
+} as any)
+const StoreAboutRoute = StoreAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => StoreRoute,
 } as any)
 const AppWarehouseRoute = AppWarehouseRouteImport.update({
@@ -258,18 +282,22 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AppReportsRoute
   '/settings': typeof AppSettingsRoute
   '/warehouse': typeof AppWarehouseRoute
+  '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
   '/store/addresses': typeof StoreAddressesRoute
   '/store/blog': typeof StoreBlogRoute
   '/store/cart': typeof StoreCartRoute
   '/store/checkout': typeof StoreCheckoutRoute
   '/store/collection': typeof StoreCollectionRoute
+  '/store/contact': typeof StoreContactRoute
   '/store/orders': typeof StoreOrdersRoute
   '/store/pages': typeof StorePagesRoute
   '/store/register': typeof StoreRegisterRoute
   '/store/search': typeof StoreSearchRoute
   '/store/security': typeof StoreSecurityRoute
   '/store/shop': typeof StoreShopRoute
+  '/store/styles': typeof StoreStylesRoute
+  '/store/thank-you': typeof StoreThankYouRoute
   '/store/wallet': typeof StoreWalletRoute
   '/store/wishlist': typeof StoreWishlistRoute
   '/store/': typeof StoreIndexRoute
@@ -296,18 +324,22 @@ export interface FileRoutesByTo {
   '/reports': typeof AppReportsRoute
   '/settings': typeof AppSettingsRoute
   '/warehouse': typeof AppWarehouseRoute
+  '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
   '/store/addresses': typeof StoreAddressesRoute
   '/store/blog': typeof StoreBlogRoute
   '/store/cart': typeof StoreCartRoute
   '/store/checkout': typeof StoreCheckoutRoute
   '/store/collection': typeof StoreCollectionRoute
+  '/store/contact': typeof StoreContactRoute
   '/store/orders': typeof StoreOrdersRoute
   '/store/pages': typeof StorePagesRoute
   '/store/register': typeof StoreRegisterRoute
   '/store/search': typeof StoreSearchRoute
   '/store/security': typeof StoreSecurityRoute
   '/store/shop': typeof StoreShopRoute
+  '/store/styles': typeof StoreStylesRoute
+  '/store/thank-you': typeof StoreThankYouRoute
   '/store/wallet': typeof StoreWalletRoute
   '/store/wishlist': typeof StoreWishlistRoute
   '/store': typeof StoreIndexRoute
@@ -337,18 +369,22 @@ export interface FileRoutesById {
   '/_app/reports': typeof AppReportsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/warehouse': typeof AppWarehouseRoute
+  '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
   '/store/addresses': typeof StoreAddressesRoute
   '/store/blog': typeof StoreBlogRoute
   '/store/cart': typeof StoreCartRoute
   '/store/checkout': typeof StoreCheckoutRoute
   '/store/collection': typeof StoreCollectionRoute
+  '/store/contact': typeof StoreContactRoute
   '/store/orders': typeof StoreOrdersRoute
   '/store/pages': typeof StorePagesRoute
   '/store/register': typeof StoreRegisterRoute
   '/store/search': typeof StoreSearchRoute
   '/store/security': typeof StoreSecurityRoute
   '/store/shop': typeof StoreShopRoute
+  '/store/styles': typeof StoreStylesRoute
+  '/store/thank-you': typeof StoreThankYouRoute
   '/store/wallet': typeof StoreWalletRoute
   '/store/wishlist': typeof StoreWishlistRoute
   '/store/': typeof StoreIndexRoute
@@ -378,18 +414,22 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/warehouse'
+    | '/store/about'
     | '/store/account'
     | '/store/addresses'
     | '/store/blog'
     | '/store/cart'
     | '/store/checkout'
     | '/store/collection'
+    | '/store/contact'
     | '/store/orders'
     | '/store/pages'
     | '/store/register'
     | '/store/search'
     | '/store/security'
     | '/store/shop'
+    | '/store/styles'
+    | '/store/thank-you'
     | '/store/wallet'
     | '/store/wishlist'
     | '/store/'
@@ -416,18 +456,22 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/warehouse'
+    | '/store/about'
     | '/store/account'
     | '/store/addresses'
     | '/store/blog'
     | '/store/cart'
     | '/store/checkout'
     | '/store/collection'
+    | '/store/contact'
     | '/store/orders'
     | '/store/pages'
     | '/store/register'
     | '/store/search'
     | '/store/security'
     | '/store/shop'
+    | '/store/styles'
+    | '/store/thank-you'
     | '/store/wallet'
     | '/store/wishlist'
     | '/store'
@@ -456,18 +500,22 @@ export interface FileRouteTypes {
     | '/_app/reports'
     | '/_app/settings'
     | '/_app/warehouse'
+    | '/store/about'
     | '/store/account'
     | '/store/addresses'
     | '/store/blog'
     | '/store/cart'
     | '/store/checkout'
     | '/store/collection'
+    | '/store/contact'
     | '/store/orders'
     | '/store/pages'
     | '/store/register'
     | '/store/search'
     | '/store/security'
     | '/store/shop'
+    | '/store/styles'
+    | '/store/thank-you'
     | '/store/wallet'
     | '/store/wishlist'
     | '/store/'
@@ -552,6 +600,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StoreWalletRouteImport
       parentRoute: typeof StoreRoute
     }
+    '/store/thank-you': {
+      id: '/store/thank-you'
+      path: '/thank-you'
+      fullPath: '/store/thank-you'
+      preLoaderRoute: typeof StoreThankYouRouteImport
+      parentRoute: typeof StoreRoute
+    }
+    '/store/styles': {
+      id: '/store/styles'
+      path: '/styles'
+      fullPath: '/store/styles'
+      preLoaderRoute: typeof StoreStylesRouteImport
+      parentRoute: typeof StoreRoute
+    }
     '/store/shop': {
       id: '/store/shop'
       path: '/shop'
@@ -594,6 +656,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StoreOrdersRouteImport
       parentRoute: typeof StoreRoute
     }
+    '/store/contact': {
+      id: '/store/contact'
+      path: '/contact'
+      fullPath: '/store/contact'
+      preLoaderRoute: typeof StoreContactRouteImport
+      parentRoute: typeof StoreRoute
+    }
     '/store/collection': {
       id: '/store/collection'
       path: '/collection'
@@ -634,6 +703,13 @@ declare module '@tanstack/react-router' {
       path: '/account'
       fullPath: '/store/account'
       preLoaderRoute: typeof StoreAccountRouteImport
+      parentRoute: typeof StoreRoute
+    }
+    '/store/about': {
+      id: '/store/about'
+      path: '/about'
+      fullPath: '/store/about'
+      preLoaderRoute: typeof StoreAboutRouteImport
       parentRoute: typeof StoreRoute
     }
     '/_app/warehouse': {
@@ -795,18 +871,22 @@ const AppRouteChildren: AppRouteChildren = {
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface StoreRouteChildren {
+  StoreAboutRoute: typeof StoreAboutRoute
   StoreAccountRoute: typeof StoreAccountRoute
   StoreAddressesRoute: typeof StoreAddressesRoute
   StoreBlogRoute: typeof StoreBlogRoute
   StoreCartRoute: typeof StoreCartRoute
   StoreCheckoutRoute: typeof StoreCheckoutRoute
   StoreCollectionRoute: typeof StoreCollectionRoute
+  StoreContactRoute: typeof StoreContactRoute
   StoreOrdersRoute: typeof StoreOrdersRoute
   StorePagesRoute: typeof StorePagesRoute
   StoreRegisterRoute: typeof StoreRegisterRoute
   StoreSearchRoute: typeof StoreSearchRoute
   StoreSecurityRoute: typeof StoreSecurityRoute
   StoreShopRoute: typeof StoreShopRoute
+  StoreStylesRoute: typeof StoreStylesRoute
+  StoreThankYouRoute: typeof StoreThankYouRoute
   StoreWalletRoute: typeof StoreWalletRoute
   StoreWishlistRoute: typeof StoreWishlistRoute
   StoreIndexRoute: typeof StoreIndexRoute
@@ -814,18 +894,22 @@ interface StoreRouteChildren {
 }
 
 const StoreRouteChildren: StoreRouteChildren = {
+  StoreAboutRoute: StoreAboutRoute,
   StoreAccountRoute: StoreAccountRoute,
   StoreAddressesRoute: StoreAddressesRoute,
   StoreBlogRoute: StoreBlogRoute,
   StoreCartRoute: StoreCartRoute,
   StoreCheckoutRoute: StoreCheckoutRoute,
   StoreCollectionRoute: StoreCollectionRoute,
+  StoreContactRoute: StoreContactRoute,
   StoreOrdersRoute: StoreOrdersRoute,
   StorePagesRoute: StorePagesRoute,
   StoreRegisterRoute: StoreRegisterRoute,
   StoreSearchRoute: StoreSearchRoute,
   StoreSecurityRoute: StoreSecurityRoute,
   StoreShopRoute: StoreShopRoute,
+  StoreStylesRoute: StoreStylesRoute,
+  StoreThankYouRoute: StoreThankYouRoute,
   StoreWalletRoute: StoreWalletRoute,
   StoreWishlistRoute: StoreWishlistRoute,
   StoreIndexRoute: StoreIndexRoute,

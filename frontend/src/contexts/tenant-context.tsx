@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { companies as mockCompanies } from "@/data/mock";
 import { companiesApi, branchesApi, type Company as RealCompany, type Branch as RealBranch } from "@/lib/api-client";
@@ -204,10 +204,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // If we couldn't fetch system tenants, fall back to default scoped company API
-      if (mappedCompanies.length === 0) {
-        const coRes = await companiesApi.list(1, 100);
-        mappedCompanies = coRes.items.map(c => ({
+      // Fetch companies and branches concurrently for ultra-fast startup
+      const [coResult, brResult] = await Promise.allSettled([
+        mappedCompanies.length === 0 ? companiesApi.list(1, 100) : Promise.resolve({ items: [] }),
+        branchesApi.list(1, 100)
+      ]);
+
+      if (mappedCompanies.length === 0 && coResult.status === "fulfilled" && coResult.value?.items) {
+        mappedCompanies = coResult.value.items.map(c => ({
           id: c.id,
           name: c.name,
           industry: c.industry ?? "General",
@@ -218,15 +222,16 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }));
       }
 
-      // Fetch real branches
-      const brRes = await branchesApi.list(1, 100);
-      const mappedBranches: TenantBranch[] = brRes.items.map(b => ({
-        id: b.id,
-        name: b.name,
-        code: b.code,
-        isReal: true,
-        raw: b,
-      }));
+      let mappedBranches: TenantBranch[] = [];
+      if (brResult.status === "fulfilled" && brResult.value?.items) {
+        mappedBranches = brResult.value.items.map(b => ({
+          id: b.id,
+          name: b.name,
+          code: b.code,
+          isReal: true,
+          raw: b,
+        }));
+      }
 
       setCompaniesList(mappedCompanies);
       setBranchesList(mappedBranches);

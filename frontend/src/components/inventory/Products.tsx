@@ -107,6 +107,7 @@ const LOCAL_COLUMNS = [
   { id: "status", label: "Is Active / Status", group: "Operations" },
   { id: "has_label", label: "Has Label", group: "Operations" },
   { id: "label_headings", label: "Label Headings", group: "Operations" },
+  { id: "is_published_online", label: "Online Storefront", group: "Operations" },
   { id: "need_to_print_barcode_sticker", label: "Print Barcode Sticker", group: "Operations" },
   { id: "is_service_item", label: "Is Service Item", group: "Operations" },
   { id: "not_for_sale", label: "Not For Sale", group: "Operations" },
@@ -157,6 +158,7 @@ const defaultFormData = () => ({
   barcode: "",
   secondary_barcode: "",
   category_id: "",
+  category: "",
   sub_category: "",
   item_code: "",
   uom_id: "",
@@ -224,6 +226,8 @@ const defaultFormData = () => ({
 
   // 5. Flags & Portal Operations
   status: "active",
+  is_published_online: true,
+  is_featured_online: false,
   is_service_item: false,
   not_for_sale: false,
   only_for_portal: false,
@@ -246,7 +250,7 @@ const defaultFormData = () => ({
 const localVisibleDefault = [
   "image", "name", "sku", "barcode", "base_name", "product_base_code", "size_l_kg",
   "category", "brand", "mrp", "selling_price", "wholesale_price", "b2b_price",
-  "min_wholesale_qty", "tax_percent", "initial_stock", "status"
+  "min_wholesale_qty", "tax_percent", "initial_stock", "is_published_online", "status"
 ];
 const masterVisibleDefault = ["image", "name", "sku", "barcode", "base_name", "product_base_code", "size_l_kg", "category", "brand", "mrp", "selling_price", "source"];
 
@@ -254,7 +258,7 @@ const masterVisibleDefault = ["image", "name", "sku", "barcode", "base_name", "p
 function ColumnMenu({
   columns, visible, onToggle, onToggleAll, onSave, onReset, onClose, onApplyPreset
 }: {
-  columns: typeof LOCAL_COLUMNS;
+  columns: { id: string; label: string; group?: string }[];
   visible: string[];
   onToggle: (id: string) => void;
   onToggleAll: () => void;
@@ -678,7 +682,7 @@ function QuickAddModal({
   uoms: any[];
   warehouses: Warehouse[];
 }) {
-  const { activeTenant } = useTenant();
+  const { tenant } = useTenant();
   const [form, setForm] = useState(() => ({
     name: initialName,
     sku: "",
@@ -774,7 +778,7 @@ function QuickAddModal({
                     <button
                       type="button"
                       onClick={() => {
-                        const code = generateClientTenantBarcode(activeTenant?.id || activeTenant?.name || "BOS", "EAN-13");
+                        const code = generateClientTenantBarcode(tenant?.id || tenant?.name || "BOS", "EAN-13");
                         setForm(prev => ({ ...prev, barcode: code }));
                         toast.success(`Generated tenant barcode: ${code}`);
                       }}
@@ -1609,6 +1613,8 @@ export function Products() {
         opening_stock_batch_expiry_date: (currentForm as any).opening_stock_batch_expiry_date || "",
 
         // Operational Flags
+        is_published_online: (currentForm as any).is_published_online !== false,
+        is_featured_online: Boolean((currentForm as any).is_featured_online),
         is_service_item: Boolean((currentForm as any).is_service_item),
         not_for_sale: Boolean((currentForm as any).not_for_sale),
         only_for_portal: Boolean((currentForm as any).only_for_portal),
@@ -1679,6 +1685,7 @@ export function Products() {
       barcode: product.barcode || "",
       secondary_barcode: specs.secondary_barcode || (product as any).secondary_barcode || "",
       category_id: product.category_id || "",
+      category: product.category_name || product.category || specs.category || "",
       sub_category: specs.sub_category || (product as any).sub_category || "",
       item_code: specs.item_code || (product as any).item_code || "",
       uom_id: product.uom_id || "",
@@ -1744,6 +1751,8 @@ export function Products() {
 
       // Flags & Operations
       status: product.status || "active",
+      is_published_online: specs.is_published_online !== false && (product as any).is_published_online !== false,
+      is_featured_online: Boolean(specs.is_featured_online || (product as any).is_featured_online),
       is_service_item: Boolean(specs.is_service_item),
       not_for_sale: Boolean(specs.not_for_sale),
       only_for_portal: Boolean(specs.only_for_portal),
@@ -1781,6 +1790,7 @@ export function Products() {
       barcode: "",
       secondary_barcode: "",
       category_id: product.category_id || "",
+      category: product.category_name || product.category || specs.category || "",
       sub_category: specs.sub_category || "",
       item_code: (specs.item_code || "") ? specs.item_code + "-COPY" : "",
       uom_id: product.uom_id || "",
@@ -1846,6 +1856,8 @@ export function Products() {
 
       // Flags & Operations
       status: "active",
+      is_published_online: specs.is_published_online !== false && (product as any).is_published_online !== false,
+      is_featured_online: Boolean(specs.is_featured_online || (product as any).is_featured_online),
       is_service_item: Boolean(specs.is_service_item),
       not_for_sale: Boolean(specs.not_for_sale),
       only_for_portal: Boolean(specs.only_for_portal),
@@ -2234,10 +2246,10 @@ export function Products() {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        complete: (results) => {
+        complete: (results: any) => {
           processData(results.data);
         },
-        error: (err) => {
+        error: (err: any) => {
           setIsImporting(false);
           toast.error(`CSV parse error: ${err.message}`);
         }
@@ -2928,7 +2940,7 @@ export function Products() {
                         name="unique_item_name"
                         value={(currentForm as any).unique_item_name || ""}
                         onChange={handleFormChange}
-                        placeholder="e.g. Asian Paints Royale Luxury Emulsion White 1L Can"
+                        placeholder="e.g. Premium Cotton T-Shirt / Organic Fresh Milk 1L"
                         className="w-full h-11 px-4 text-sm rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                       />
                     </div>
@@ -3043,58 +3055,7 @@ export function Products() {
                     </div>
                   </div>
 
-                  {/* Asian Paints / Hardware Specs Card */}
-                  <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200/80 space-y-3">
-                    <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs uppercase tracking-wider">
-                      <Sparkles className="size-4 text-amber-600" />
-                      <span>Asian Paints & Colorant Specifications</span>
-                      <span className="text-[10px] text-amber-600 font-normal ml-auto">Columns C, D, E</span>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Base Code / Name (Col C)
-                        </label>
-                        <input
-                          type="text"
-                          name="base_name"
-                          value={currentForm.base_name}
-                          onChange={handleFormChange}
-                          placeholder="e.g. Base White / Base 01"
-                          className="w-full h-9 px-3 text-xs font-semibold rounded-lg border border-amber-200 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Product Base Code (Col D)
-                        </label>
-                        <input
-                          type="text"
-                          name="product_base_code"
-                          value={currentForm.product_base_code}
-                          onChange={handleFormChange}
-                          placeholder="e.g. ROY-WHT-1L"
-                          className="w-full h-9 px-3 text-xs font-mono rounded-lg border border-amber-200 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Size (L/Kg) (Col E)
-                        </label>
-                        <input
-                          type="text"
-                          name="size_l_kg"
-                          value={currentForm.size_l_kg}
-                          onChange={handleFormChange}
-                          placeholder="e.g. 1L, 4L, 10L, 20L, 1Kg, 5Kg"
-                          className="w-full h-9 px-3 text-xs font-semibold rounded-lg border border-amber-200 bg-white focus:ring-2 focus:ring-amber-500 outline-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
 
                   {/* Category, Brand, UOM, Units */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3152,8 +3113,8 @@ export function Products() {
                                 const val = (e.target as HTMLInputElement).value.trim();
                                 if (val) {
                                   try {
-                                    const res = await inventoryApi.createCategory({ name: val });
-                                    const newCat = res.category || res;
+                                    const res: any = await inventoryApi.createCategory({ name: val });
+                                    const newCat = res?.category || res;
                                     setCategories(prev => [...prev, newCat]);
                                     setCurrentForm(prev => ({ ...prev, category_id: newCat.id, category: newCat.name }));
                                     setCatPopoverOpen(false);
@@ -3172,8 +3133,8 @@ export function Products() {
                                 const val = input?.value?.trim();
                                 if (val) {
                                   try {
-                                    const res = await inventoryApi.createCategory({ name: val });
-                                    const newCat = res.category || res;
+                                    const res: any = await inventoryApi.createCategory({ name: val });
+                                    const newCat = res?.category || res;
                                     setCategories(prev => [...prev, newCat]);
                                     setCurrentForm(prev => ({ ...prev, category_id: newCat.id, category: newCat.name }));
                                     setCatPopoverOpen(false);
@@ -3229,7 +3190,7 @@ export function Products() {
                         <div className="absolute top-full mt-2 left-0 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-3 z-30">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-bold text-slate-800">
-                              New Sub-Category {currentForm.category ? `for ${currentForm.category}` : ""}
+                              New Sub-Category {(currentForm as any).category ? `for ${(currentForm as any).category}` : ""}
                             </span>
                             <button type="button" onClick={() => setSubCatPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">
                               <X className="size-3.5" />
@@ -3245,11 +3206,11 @@ export function Products() {
                                 const val = (e.target as HTMLInputElement).value.trim();
                                 if (val) {
                                   try {
-                                    const res = await inventoryApi.createCategory({
+                                    const res: any = await inventoryApi.createCategory({
                                       name: val,
                                       parent_id: currentForm.category_id || undefined,
                                     });
-                                    const newSub = res.category || res;
+                                    const newSub = res?.category || res;
                                     setCategories(prev => [...prev, newSub]);
                                     setCurrentForm(prev => ({ ...prev, sub_category: val }));
                                     setSubCatPopoverOpen(false);
@@ -3270,11 +3231,11 @@ export function Products() {
                                 const val = input?.value?.trim();
                                 if (val) {
                                   try {
-                                    const res = await inventoryApi.createCategory({
+                                    const res: any = await inventoryApi.createCategory({
                                       name: val,
                                       parent_id: currentForm.category_id || undefined,
                                     });
-                                    const newSub = res.category || res;
+                                    const newSub = res?.category || res;
                                     setCategories(prev => [...prev, newSub]);
                                     setCurrentForm(prev => ({ ...prev, sub_category: val }));
                                     setSubCatPopoverOpen(false);
@@ -4104,6 +4065,35 @@ export function Products() {
                         <div>
                           <span className="text-xs font-bold text-slate-800 block">Not For Sale</span>
                           <span className="text-[10px] text-slate-500">Internal consumable, demo, or raw material</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 cursor-pointer hover:bg-emerald-50">
+                        <input
+                          type="checkbox"
+                          checked={(currentForm as any).is_published_online !== false}
+                          onChange={(e) => setCurrentForm(prev => ({ ...prev, is_published_online: e.target.checked }))}
+                          className="size-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-extrabold text-emerald-950 block">Publish to Online Storefront</span>
+                            <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded">Live Web Store</span>
+                          </div>
+                          <span className="text-[10px] text-emerald-700 font-medium">Visible to customers in public /store catalog and checkout</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={Boolean((currentForm as any).is_featured_online)}
+                          onChange={(e) => setCurrentForm(prev => ({ ...prev, is_featured_online: e.target.checked }))}
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">Featured on Store Homepage</span>
+                          <span className="text-[10px] text-slate-500">Highlight in trending / top-picks carousel on /store</span>
                         </div>
                       </label>
 
@@ -5007,6 +4997,38 @@ export function Products() {
                 </td>
               );
 
+            case "is_published_online": {
+              const isOnline = specs.is_published_online !== false && (product as any).is_published_online !== false;
+              return (
+                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const newStatus = !isOnline;
+                      try {
+                        const updatedSpecs = { ...specs, is_published_online: newStatus };
+                        await inventoryApi.updateProduct(product.id, { specifications: updatedSpecs } as any);
+                        setProducts(prev => prev.map(p => p.id === product.id ? { ...p, specifications: updatedSpecs, is_published_online: newStatus } : p));
+                        toast.success(newStatus ? `"${product.name}" is now LIVE on Online Storefront!` : `"${product.name}" unpublished from Storefront`);
+                      } catch (err: any) {
+                        toast.error("Failed to update storefront status: " + (err.message || ""));
+                      }
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold border transition-all cursor-pointer hover:scale-105 ${
+                      isOnline
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-2xs hover:bg-emerald-100"
+                        : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200"
+                    }`}
+                    title={isOnline ? "Click to unpublish from Online Storefront" : "Click to publish to Online Storefront"}
+                  >
+                    <span className={`size-1.5 rounded-full ${isOnline ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                    <span>{isOnline ? "Live Online" : "In-Store Only"}</span>
+                  </button>
+                </td>
+              );
+            }
+
             case "not_for_sale":
               return (
                 <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
@@ -5104,6 +5126,37 @@ export function Products() {
         {/* Action column */}
         <td className="py-2.5 px-3 whitespace-nowrap text-right sticky right-0 bg-white/95 backdrop-blur-xs border-l border-slate-100 shadow-sm">
           <div className="flex items-center justify-end gap-1.5">
+            {/* 1-Click Storefront Globe Toggle Button */}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={async (e) => {
+                e.stopPropagation();
+                const currentStatus = specs.is_published_online !== false && (product as any).is_published_online !== false;
+                const newStatus = !currentStatus;
+                try {
+                  const updatedSpecs = { ...specs, is_published_online: newStatus };
+                  await inventoryApi.updateProduct(product.id, { specifications: updatedSpecs } as any);
+                  setProducts(prev => prev.map(p => p.id === product.id ? { ...p, specifications: updatedSpecs, is_published_online: newStatus } : p));
+                  toast.success(newStatus ? `"${product.name}" is now LIVE on Online Storefront!` : `"${product.name}" unpublished from Storefront`);
+                } catch (err: any) {
+                  toast.error("Failed to update storefront status: " + (err.message || ""));
+                }
+              }}
+              className={`size-8 rounded-lg transition-all ${
+                specs.is_published_online !== false && (product as any).is_published_online !== false
+                  ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-300 shadow-2xs"
+                  : "bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 border border-slate-200"
+              }`}
+              title={
+                specs.is_published_online !== false && (product as any).is_published_online !== false
+                  ? "🌐 Live on Online Store (Click to Unpublish)"
+                  : "⚪ In-Store Only (Click to Publish to Online Store)"
+              }
+            >
+              <Globe className="size-3.5" />
+            </Button>
+
             {product.barcode && (
               <Button
                 size="icon"

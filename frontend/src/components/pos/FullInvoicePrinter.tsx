@@ -16,6 +16,8 @@ export interface FullInvoiceData {
   customerCompany?: string;
   customerGST?: string;
   customerAddress?: string;
+  customerBillingAddress?: string;
+  customerShippingAddress?: string;
   customerType?: string;
   items?: Array<{
     product_id?: string;
@@ -46,6 +48,7 @@ export interface FullInvoiceData {
   amount_received?: number;
   notes?: string;
   terms?: string;
+  [key: string]: any;
 }
 
 interface FullInvoicePrinterProps {

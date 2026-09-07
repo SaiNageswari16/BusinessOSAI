@@ -1,0 +1,121 @@
+/* ── ThemeWagon Organic Storefront Theme & Design Tokens ── */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
+:root {
+  --organic-font-heading: 'Nunito', sans-serif;
+  --organic-font-body: 'Open Sans', sans-serif;
+
+  --organic-primary: #6bb252;
+  --organic-primary-hover: #5ba342;
+  --organic-primary-light: #f0f7ed;
+
+  --organic-secondary: #364127;
+  --organic-dark: #222222;
+  --organic-muted: #747474;
+
+  --organic-accent: #f95f09;
+  --organic-accent-hover: #e04f02;
+
+  --organic-cream: #faf8ef;
+  --organic-cream-subtle: #fff9eb;
+  --organic-border: #ececec;
+  --organic-card-bg: #ffffff;
+}
+
+.font-organic-heading {
+  font-family: var(--organic-font-heading);
+}
+
+.font-organic-body {
+  font-family: var(--organic-font-body);
+}
+
+/* Organic badges & pill styling */
+.badge-organic-discount {
+  background-color: #f95f09;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 9999px;
+  padding: 3px 10px;
+}
+
+.badge-organic-unit {
+  background-color: #f4f6f2;
+  color: #556247;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+/* Quantity selector button styling */
+.organic-qty-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5f5;
+  color: #333333;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: 1px solid #e5e5e5;
+}
+
+.organic-qty-btn:hover {
+  background-color: #6bb252;
+  color: #ffffff;
+  border-color: #6bb252;
+}
+
+/* Add to cart button */
+.btn-organic-cart {
+  background-color: #6bb252;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 9999px;
+  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(107, 178, 82, 0.25);
+  cursor: pointer;
+}
+
+.btn-organic-cart:hover {
+  background-color: #5ba342;
+  box-shadow: 0 4px 12px rgba(107, 178, 82, 0.4);
+  transform: translateY(-1px);
+}
+
+/* Organic card styling */
+.organic-card {
+  background: #ffffff;
+  border: 1px solid #f0f0f0;
+  border-radius: 16px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.organic-card:hover {
+  border-color: #e0eed9;
+  box-shadow: 0 12px 28px -6px rgba(107, 178, 82, 0.15);
+  transform: translateY(-3px);
+}
+
+/* Promo banner cards */
+.organic-banner-card {
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s ease;
+}
+
+.organic-banner-card:hover {
+  transform: scale(1.015);
+}

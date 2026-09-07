@@ -5,7 +5,7 @@ import { Button } from "../ui/button";
 import {
   ScanBarcode, Loader2, Search, Download, Plus, Hash,
   Printer, Package, CheckCircle2, Filter, X, LayoutGrid, Rows3,
-  Scan, Tag, ListChecks, Sparkles, SlidersHorizontal, Settings2, Info
+  Scan, Tag, ListChecks, Sparkles, SlidersHorizontal, Settings2, Info, Zap
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi, type ProductBarcode, type InventoryCategory } from "../../lib/api-client";
