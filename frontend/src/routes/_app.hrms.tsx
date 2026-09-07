@@ -29,6 +29,7 @@ const componentMap: Record<string, React.ElementType> = {
   teams:            EmployeeManagement,
   documents:        EmployeeManagement,
   employee_profile: EmployeeManagement,
+  org_chart:        EmployeeManagement,
 
   // Attendance
   daily_attendance:       AttendanceManagement,
@@ -62,40 +63,64 @@ const componentMap: Record<string, React.ElementType> = {
   reimbursements:     PayrollManagement,
 
   // Recruitment
+  job_openings:  RecruitmentManagement,
   job_postings:  RecruitmentManagement,
+  applicants:    RecruitmentManagement,
   candidates:    RecruitmentManagement,
   interviews:    RecruitmentManagement,
   offer_letters: RecruitmentManagement,
   onboarding:    RecruitmentManagement,
 
   // Performance
-  appraisals: PerformanceManagement,
-  goals:       PerformanceManagement,
-  feedback:    PerformanceManagement,
-  kra:         PerformanceManagement,
+  goals:               PerformanceManagement,
+  kpis:                PerformanceManagement,
+  appraisals:          PerformanceManagement,
+  performance_reviews: PerformanceManagement,
+  feedback:            PerformanceManagement,
+  kra:                 PerformanceManagement,
+  incentives:          PerformanceManagement,
 
   // Learning
+  training:        LearningManagement,
   courses:         LearningManagement,
+  certificates:    LearningManagement,
+  assessments:     LearningManagement,
   enrollments:     LearningManagement,
   training_budget: LearningManagement,
 
   // Employee Self Service
-  my_profile:       EmployeeSelfService,
-  my_attendance:    EmployeeSelfService,
-  apply_leave:      EmployeeSelfService,
-  my_payslips:      EmployeeSelfService,
-  my_claims:        EmployeeSelfService,
-  team_summary:     EmployeeSelfService,
-  rewards_wellness: EmployeeSelfService,
+  ess_attendance:     EmployeeSelfService,
+  ess_leaves:         EmployeeSelfService,
+  ess_payroll:        EmployeeSelfService,
+  ess_documents:      EmployeeSelfService,
+  ess_tasks:          EmployeeSelfService,
+  ess_performance:    EmployeeSelfService,
+  ess_learning:       EmployeeSelfService,
+  ess_announcements:  EmployeeSelfService,
+  my_profile:         EmployeeSelfService,
+  my_attendance:      EmployeeSelfService,
+  apply_leave:        EmployeeSelfService,
+  my_payslips:        EmployeeSelfService,
+  my_claims:          EmployeeSelfService,
+  team_summary:       EmployeeSelfService,
+  rewards_wellness:   EmployeeSelfService,
   organization_chart: EmployeeSelfService,
 
-  // Separation
-  resignation: ExitManagement,
-  clearance:   ExitManagement,
-  fnf:         ExitManagement,
+  // Exit Management
+  resignation:       ExitManagement,
+  clearance:         ExitManagement,
+  final_settlement:  ExitManagement,
+  fnf:               ExitManagement,
+  experience_letter: ExitManagement,
 
   // HR Intelligence
-  intelligence: HRIntelligence,
+  intelligence:            HRIntelligence,
+  attendance_analytics:    HRIntelligence,
+  payroll_analytics:       HRIntelligence,
+  attrition_prediction:    HRIntelligence,
+  shift_optimization:      HRIntelligence,
+  productivity_score:      HRIntelligence,
+  training_recommendation: HRIntelligence,
 };
 
 const tabPermissions: Record<string, string> = {

@@ -3,6 +3,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Building,
+  Building2,
   Users,
   Terminal,
   Activity,
@@ -30,6 +31,11 @@ import {
   X,
   ExternalLink,
   ChevronRight,
+  ChevronDown,
+  MapPin,
+  Phone,
+  Globe,
+  Hash,
   Database,
   Cpu,
   Server
@@ -85,6 +91,52 @@ interface PlatformUser {
   created_at: string;
 }
 
+export interface PlatformBranch {
+  id: string;
+  company_id: string;
+  tenant_id: string;
+  name: string;
+  code: string;
+  branch_type?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  is_head_office: boolean;
+  status: string;
+  created_at: string;
+}
+
+export interface PlatformCompany {
+  id: string;
+  tenant_id: string;
+  tenant_name: string;
+  tenant_slug: string;
+  name: string;
+  legal_name: string;
+  company_type?: string;
+  gst_number?: string;
+  pan_number?: string;
+  registration_number?: string;
+  industry?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  default_currency_code: string;
+  timezone: string;
+  financial_year_start_month: number;
+  status: string;
+  created_at: string;
+  branches_count: number;
+  branches: PlatformBranch[];
+}
+
 interface PendingApproval {
   tenant_id: string;
   tenant_slug: string;
@@ -127,12 +179,14 @@ export function PlatformAdminDashboard() {
   const { user, accessToken } = useAuth();
   const { setTenantOverride } = useTenant();
 
-  const [activeTab, setActiveTab] = useState<"overview" | "workspaces" | "users" | "approvals" | "audit" | "diagnostics">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "workspaces" | "companies" | "users" | "approvals" | "audit" | "diagnostics">("overview");
   
   // Data state
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
   const [usersList, setUsersList] = useState<PlatformUser[]>([]);
+  const [companiesList, setCompaniesList] = useState<PlatformCompany[]>([]);
+  const [branchesList, setBranchesList] = useState<PlatformBranch[]>([]);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,6 +197,9 @@ export function PlatformAdminDashboard() {
   const [tenantStatusFilter, setTenantStatusFilter] = useState("all");
   const [userSearch, setUserSearch] = useState("");
   const [userTenantFilter, setUserTenantFilter] = useState("all");
+  const [companySearch, setCompanySearch] = useState("");
+  const [companyTenantFilter, setCompanyTenantFilter] = useState("all");
+  const [companyStatusFilter, setCompanyStatusFilter] = useState("all");
   const [auditSearch, setAuditSearch] = useState("");
 
   // Modals state
@@ -151,6 +208,8 @@ export function PlatformAdminDashboard() {
   const [showPasswordResetModal, setShowPasswordResetModal] = useState<PlatformUser | null>(null);
   const [showModulesModal, setShowModulesModal] = useState<PlatformTenant | null>(null);
   const [deleteTenantConfirm, setDeleteTenantConfirm] = useState<PlatformTenant | null>(null);
+  const [inspectingCompany, setInspectingCompany] = useState<PlatformCompany | null>(null);
+  const [expandedCompanyIds, setExpandedCompanyIds] = useState<Record<string, boolean>>({});
 
   // Form states
   const [newTenantData, setNewTenantData] = useState({
@@ -189,10 +248,12 @@ export function PlatformAdminDashboard() {
     try {
       const headers = { Authorization: `Bearer ${accessToken}` };
 
-      const [statsRes, tenantsRes, usersRes, approvalsRes, auditRes] = await Promise.all([
+      const [statsRes, tenantsRes, usersRes, companiesRes, branchesRes, approvalsRes, auditRes] = await Promise.all([
         fetch(`${API_BASE_URL}/system/stats`, { headers }).then((r) => (r.ok ? r.json() : null)),
         fetch(`${API_BASE_URL}/system/tenants`, { headers }).then((r) => (r.ok ? r.json() : [])),
         fetch(`${API_BASE_URL}/system/users`, { headers }).then((r) => (r.ok ? r.json() : [])),
+        fetch(`${API_BASE_URL}/system/companies`, { headers }).then((r) => (r.ok ? r.json() : [])),
+        fetch(`${API_BASE_URL}/system/branches`, { headers }).then((r) => (r.ok ? r.json() : [])),
         fetch(`${API_BASE_URL}/system/pending-approvals`, { headers }).then((r) => (r.ok ? r.json() : [])),
         fetch(`${API_BASE_URL}/system/audit-logs`, { headers }).then((r) => (r.ok ? r.json() : [])),
       ]);
@@ -200,6 +261,8 @@ export function PlatformAdminDashboard() {
       if (statsRes) setStats(statsRes);
       if (Array.isArray(tenantsRes)) setTenants(tenantsRes);
       if (Array.isArray(usersRes)) setUsersList(usersRes);
+      if (Array.isArray(companiesRes)) setCompaniesList(companiesRes);
+      if (Array.isArray(branchesRes)) setBranchesList(branchesRes);
       if (Array.isArray(approvalsRes)) setApprovals(approvalsRes);
       if (Array.isArray(auditRes)) setAuditLogs(auditRes);
     } catch (err: any) {
@@ -488,6 +551,39 @@ export function PlatformAdminDashboard() {
     }
   };
 
+  // Handle Toggle Company Status
+  const handleToggleCompanyStatus = async (comp: PlatformCompany) => {
+    const nextStatus = comp.status === "active" ? "inactive" : "active";
+    try {
+      const res = await fetch(`${API_BASE_URL}/system/companies/${comp.id}/status`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to update company status");
+
+      toast.success(data.message || `Company status updated to ${nextStatus.toUpperCase()}`);
+      loadAllData(true);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update company status");
+    }
+  };
+
+  // Handle Switch into Company/Workspace Context
+  const handleSwitchToCompany = (comp: PlatformCompany) => {
+    const matchingTenant = tenants.find((t) => t.id === comp.tenant_id) || {
+      id: comp.tenant_id,
+      name: comp.tenant_name,
+      slug: comp.tenant_slug,
+    };
+    handleImpersonateTenant(matchingTenant as PlatformTenant);
+    toast.success(`Switched active context to ${comp.name} (${comp.tenant_name})`);
+  };
+
   // Filtered lists
   const filteredTenants = tenants.filter((t) => {
     const matchesSearch =
@@ -505,6 +601,21 @@ export function PlatformAdminDashboard() {
       u.tenant_name.toLowerCase().includes(userSearch.toLowerCase());
     const matchesTenant = userTenantFilter === "all" || u.tenant_id === userTenantFilter;
     return matchesSearch && matchesTenant;
+  });
+
+  const filteredCompanies = companiesList.filter((c) => {
+    const term = companySearch.toLowerCase().trim();
+    const matchesSearch =
+      !term ||
+      c.name.toLowerCase().includes(term) ||
+      c.legal_name.toLowerCase().includes(term) ||
+      c.tenant_name.toLowerCase().includes(term) ||
+      (c.gst_number && c.gst_number.toLowerCase().includes(term)) ||
+      (c.pan_number && c.pan_number.toLowerCase().includes(term)) ||
+      (c.city && c.city.toLowerCase().includes(term));
+    const matchesTenant = companyTenantFilter === "all" || c.tenant_id === companyTenantFilter;
+    const matchesStatus = companyStatusFilter === "all" || c.status.toLowerCase() === companyStatusFilter;
+    return matchesSearch && matchesTenant && matchesStatus;
   });
 
   const filteredAudit = auditLogs.filter((a) => {
@@ -564,8 +675,11 @@ export function PlatformAdminDashboard() {
 
         {/* Live Metrics Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-5 pt-5 border-t border-border/60">
-          <div className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs">
-            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase">
+          <div
+            onClick={() => setActiveTab("workspaces")}
+            className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs cursor-pointer hover:border-purple-400/60 hover:bg-purple-500/5 transition group"
+          >
+            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase group-hover:text-purple-600">
               <Building className="w-3.5 h-3.5 text-indigo-600" /> Workspaces
             </span>
             <div className="text-xl font-black text-foreground mt-1">
@@ -576,8 +690,11 @@ export function PlatformAdminDashboard() {
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs">
-            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase">
+          <div
+            onClick={() => setActiveTab("users")}
+            className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs cursor-pointer hover:border-purple-400/60 hover:bg-purple-500/5 transition group"
+          >
+            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase group-hover:text-purple-600">
               <Users className="w-3.5 h-3.5 text-purple-600" /> Total Users
             </span>
             <div className="text-xl font-black text-foreground mt-1">
@@ -588,26 +705,38 @@ export function PlatformAdminDashboard() {
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs">
-            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase">
-              <Briefcase className="w-3.5 h-3.5 text-blue-600" /> Legal Entities
+          <div
+            onClick={() => setActiveTab("companies")}
+            className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs cursor-pointer hover:border-blue-400/60 hover:bg-blue-500/5 transition group"
+          >
+            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase group-hover:text-blue-600">
+              <Building2 className="w-3.5 h-3.5 text-blue-600" /> Legal Entities
             </span>
             <div className="text-xl font-black text-foreground mt-1">
-              {stats?.total_companies ?? "—"}
+              {companiesList.length || stats?.total_companies || "—"}
+              <span className="text-xs font-semibold text-emerald-600 ml-1.5 font-sans">
+                ({companiesList.filter((c) => c.status === "active").length || companiesList.length} active)
+              </span>
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs">
-            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase">
+          <div
+            onClick={() => setActiveTab("companies")}
+            className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs cursor-pointer hover:border-amber-400/60 hover:bg-amber-500/5 transition group"
+          >
+            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase group-hover:text-amber-600">
               <Layers className="w-3.5 h-3.5 text-amber-600" /> Outlets & Branches
             </span>
             <div className="text-xl font-black text-foreground mt-1">
-              {stats?.total_branches ?? "—"}
+              {branchesList.length || stats?.total_branches || "—"}
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs">
-            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase">
+          <div
+            onClick={() => setActiveTab("approvals")}
+            className="p-3 rounded-xl bg-card/80 border border-border/60 shadow-xs cursor-pointer hover:border-yellow-400/60 hover:bg-yellow-500/5 transition group"
+          >
+            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase group-hover:text-yellow-600">
               <AlertTriangle className="w-3.5 h-3.5 text-yellow-600" /> Approvals
             </span>
             <div className="text-xl font-black text-yellow-600 mt-1">
@@ -651,6 +780,18 @@ export function PlatformAdminDashboard() {
           )}
         >
           <Building className="w-4 h-4" /> Workspaces & Tenancy ({tenants.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab("companies")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-t-lg transition-all border-b-2",
+            activeTab === "companies"
+              ? "border-purple-600 text-purple-700 dark:text-purple-400 bg-purple-50/50 dark:bg-purple-950/30 font-bold"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+          )}
+        >
+          <Building2 className="w-4 h-4" /> Internal Companies & Entities ({companiesList.length})
         </button>
 
         <button
@@ -986,6 +1127,264 @@ export function PlatformAdminDashboard() {
               </table>
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* ─── TAB: COMPANIES & LEGAL ENTITIES ─── */}
+      {activeTab === "companies" && (
+        <div className="space-y-4">
+          <Card className="p-4 border-border/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search entity by name, GST, PAN, city..."
+                  value={companySearch}
+                  onChange={(e) => setCompanySearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground focus:ring-2 focus:ring-purple-500/20 outline-none"
+                />
+              </div>
+
+              <select
+                value={companyTenantFilter}
+                onChange={(e) => setCompanyTenantFilter(e.target.value)}
+                className="px-3 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground outline-none"
+              >
+                <option value="all">All Workspaces ({tenants.length})</option>
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.slug})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={companyStatusFilter}
+                onChange={(e) => setCompanyStatusFilter(e.target.value)}
+                className="px-3 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground outline-none"
+              >
+                <option value="all">All Statuses</option>
+                <option value="active">Active Only</option>
+                <option value="inactive">Inactive Only</option>
+              </select>
+            </div>
+
+            <div className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 font-bold border border-purple-200 dark:border-purple-800">
+                {filteredCompanies.length} Entities
+              </span>
+              <span>•</span>
+              <span className="px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-800">
+                {filteredCompanies.reduce((acc, c) => acc + (c.branches_count || 0), 0)} Branches
+              </span>
+            </div>
+          </Card>
+
+          {/* Companies List / Grid */}
+          <div className="grid grid-cols-1 gap-4">
+            {filteredCompanies.length === 0 ? (
+              <Card className="p-12 text-center text-muted-foreground border-border/80">
+                <Building2 className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="font-semibold text-sm">No legal entities / companies found</p>
+                <p className="text-xs mt-1">Try adjusting your workspace filter or search terms.</p>
+              </Card>
+            ) : (
+              filteredCompanies.map((c) => {
+                const isExpanded = Boolean(expandedCompanyIds[c.id]);
+                return (
+                  <Card
+                    key={c.id}
+                    className="overflow-hidden border-border/80 shadow-xs hover:border-purple-400/40 transition-all bg-card"
+                  >
+                    {/* Header */}
+                    <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/60 bg-muted/10">
+                      <div className="flex items-start sm:items-center gap-3.5">
+                        <div className="size-10 rounded-xl gradient-brand text-white font-bold flex items-center justify-center text-sm shadow-xs shrink-0">
+                          {c.name[0]?.toUpperCase() || <Building2 className="w-5 h-5" />}
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-base font-bold text-foreground">{c.name}</h3>
+                            {c.legal_name && c.legal_name !== c.name && (
+                              <span className="text-xs text-muted-foreground font-normal">({c.legal_name})</span>
+                            )}
+                            <span className="px-2 py-0.5 text-[10.5px] font-bold rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                              🏢 Workspace: {c.tenant_name}
+                            </span>
+                            <span
+                              className={cn(
+                                "px-2 py-0.5 text-[10.5px] font-bold rounded-full uppercase border",
+                                c.status === "active"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                                  : "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800"
+                              )}
+                            >
+                              {c.status}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mt-1">
+                            <span>ID: <code className="font-mono text-[11px] text-foreground">{c.id.slice(0, 8)}...</code></span>
+                            {c.city && <span>• Location: <strong className="text-foreground">{[c.city, c.state, c.country].filter(Boolean).join(", ")}</strong></span>}
+                            <span>• Created: <strong className="text-foreground">{new Date(c.created_at).toLocaleDateString()}</strong></span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                        <Button
+                          size="sm"
+                          onClick={() => handleSwitchToCompany(c)}
+                          className="h-8 text-xs font-semibold gradient-brand text-white shadow-xs border-0"
+                          title="Switch active session into this organization's workspace"
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5 mr-1.5" /> Switch Context
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setInspectingCompany(c)}
+                          className="h-8 text-xs border-border bg-card hover:bg-muted font-medium"
+                          title="Inspect raw company settings & metadata"
+                        >
+                          <Eye className="w-3.5 h-3.5 mr-1" /> Inspect
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleToggleCompanyStatus(c)}
+                          title={c.status === "active" ? "Deactivate Company" : "Activate Company"}
+                          className={cn(
+                            "h-8 px-2 text-xs",
+                            c.status === "active" ? "text-yellow-600 hover:bg-yellow-50" : "text-emerald-600 hover:bg-emerald-50"
+                          )}
+                        >
+                          {c.status === "active" ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Metadata Details Grid */}
+                    <div className="p-4 sm:p-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                      <div className="p-3 rounded-lg bg-muted/20 border border-border/60">
+                        <span className="text-[11px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                          <Hash className="w-3 h-3 text-indigo-500" /> Tax & Identification
+                        </span>
+                        <div className="mt-1.5 space-y-0.5">
+                          <p className="font-semibold text-foreground">GSTIN: <span className="font-mono">{c.gst_number || "Not Registered"}</span></p>
+                          <p className="text-muted-foreground">PAN: <span className="font-mono text-foreground">{c.pan_number || "—"}</span></p>
+                          {c.registration_number && <p className="text-muted-foreground">CIN/Reg: <span className="font-mono text-foreground">{c.registration_number}</span></p>}
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/20 border border-border/60">
+                        <span className="text-[11px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                          <Globe className="w-3 h-3 text-blue-500" /> Fiscal & Currency
+                        </span>
+                        <div className="mt-1.5 space-y-0.5">
+                          <p className="font-semibold text-foreground">Currency: <span className="text-primary font-bold">{c.default_currency_code || "INR"}</span></p>
+                          <p className="text-muted-foreground">Timezone: <span className="text-foreground">{c.timezone || "Asia/Kolkata"}</span></p>
+                          <p className="text-muted-foreground">FY Starts: <span className="text-foreground">Month {c.financial_year_start_month || 4} (April)</span></p>
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/20 border border-border/60">
+                        <span className="text-[11px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                          <Phone className="w-3 h-3 text-emerald-500" /> Contact Details
+                        </span>
+                        <div className="mt-1.5 space-y-0.5">
+                          <p className="text-foreground font-semibold truncate">{c.phone || "No phone listed"}</p>
+                          <p className="text-muted-foreground truncate">{c.email || "No email listed"}</p>
+                          {c.website && <p className="text-primary truncate">{c.website}</p>}
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/20 border border-border/60 flex flex-col justify-between">
+                        <div>
+                          <span className="text-[11px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                            <Layers className="w-3 h-3 text-amber-500" /> Outlets & Branches
+                          </span>
+                          <p className="text-base font-black text-foreground mt-1">
+                            {c.branches_count} <span className="text-xs font-normal text-muted-foreground">Locations</span>
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedCompanyIds((prev) => ({ ...prev, [c.id]: !isExpanded }))}
+                          className="h-6 px-2 text-[11px] text-purple-700 dark:text-purple-400 font-semibold self-start hover:bg-purple-50 dark:hover:bg-purple-950/40 p-0"
+                        >
+                          {isExpanded ? "Hide Branches" : "View Branches"}
+                          <ChevronDown className={cn("w-3 h-3 ml-1 transition-transform", isExpanded && "rotate-180")} />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Expandable Outlets / Branches Accordion */}
+                    {isExpanded && (
+                      <div className="px-5 pb-5 pt-2 border-t border-border/60 bg-muted/5 space-y-3">
+                        <h4 className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-amber-600" /> Registered Outlets & Branches ({c.branches?.length || 0})
+                        </h4>
+                        
+                        {(!c.branches || c.branches.length === 0) ? (
+                          <div className="p-4 rounded-xl bg-muted/20 border border-dashed border-border text-center text-xs text-muted-foreground">
+                            No physical branches or outlets configured for this company.
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {c.branches.map((b) => (
+                              <div
+                                key={b.id}
+                                className="p-3.5 rounded-xl border border-border/70 bg-card shadow-2xs space-y-2"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-xs text-foreground">{b.name}</span>
+                                    <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-muted text-muted-foreground font-bold">
+                                      {b.code}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className={cn(
+                                      "px-1.5 py-0.2 text-[9px] font-bold rounded-full uppercase",
+                                      b.status === "active" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
+                                    )}
+                                  >
+                                    {b.status}
+                                  </span>
+                                </div>
+
+                                <div className="text-[11px] text-muted-foreground space-y-0.5">
+                                  <p className="flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
+                                    <span className="truncate">{[b.city, b.state, b.country].filter(Boolean).join(", ") || "No city set"}</span>
+                                  </p>
+                                  {b.phone && (
+                                    <p className="flex items-center gap-1">
+                                      <Phone className="w-3 h-3 text-muted-foreground shrink-0" />
+                                      <span>{b.phone}</span>
+                                    </p>
+                                  )}
+                                  {b.is_head_office && (
+                                    <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9.5px] font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                      ★ HEADQUARTERS
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Card>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
 
@@ -1762,6 +2161,112 @@ export function PlatformAdminDashboard() {
                 </Button>
                 <Button onClick={handleDeleteTenant} className="bg-destructive hover:bg-destructive/90 text-white font-semibold">
                   Yes, Purge Workspace
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MODAL: INSPECT COMPANY ─── */}
+      <AnimatePresence>
+        {inspectingCompany && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-2xl rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-9 rounded-xl gradient-brand text-white font-bold flex items-center justify-center text-sm shadow-xs">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-foreground">{inspectingCompany.name}</h2>
+                    <p className="text-xs text-muted-foreground">Workspace: {inspectingCompany.tenant_name} ({inspectingCompany.tenant_slug})</p>
+                  </div>
+                </div>
+                <button onClick={() => setInspectingCompany(null)} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border">
+                    <span className="text-muted-foreground text-[10.5px]">Legal Trade Name</span>
+                    <p className="font-semibold text-foreground mt-0.5">{inspectingCompany.legal_name || inspectingCompany.name}</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border">
+                    <span className="text-muted-foreground text-[10.5px]">GSTIN</span>
+                    <p className="font-mono font-semibold text-foreground mt-0.5">{inspectingCompany.gst_number || "Not Registered"}</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border">
+                    <span className="text-muted-foreground text-[10.5px]">PAN Number</span>
+                    <p className="font-mono font-semibold text-foreground mt-0.5">{inspectingCompany.pan_number || "—"}</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border">
+                    <span className="text-muted-foreground text-[10.5px]">Default Currency</span>
+                    <p className="font-semibold text-primary mt-0.5">{inspectingCompany.default_currency_code || "INR"}</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border">
+                    <span className="text-muted-foreground text-[10.5px]">Timezone</span>
+                    <p className="font-semibold text-foreground mt-0.5">{inspectingCompany.timezone || "Asia/Kolkata"}</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-muted/40 border border-border">
+                    <span className="text-muted-foreground text-[10.5px]">FY Start Month</span>
+                    <p className="font-semibold text-foreground mt-0.5">Month {inspectingCompany.financial_year_start_month || 4} (April)</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-muted/20 border border-border space-y-1.5">
+                  <span className="font-bold text-foreground text-xs uppercase tracking-wider">Registered Address & Contact</span>
+                  <p className="text-muted-foreground">{inspectingCompany.address || [inspectingCompany.city, inspectingCompany.state, inspectingCompany.country].filter(Boolean).join(", ") || "No street address configured."}</p>
+                  <div className="flex flex-wrap gap-4 pt-1 text-muted-foreground">
+                    {inspectingCompany.phone && <span>Phone: <strong className="text-foreground">{inspectingCompany.phone}</strong></span>}
+                    {inspectingCompany.email && <span>Email: <strong className="text-foreground">{inspectingCompany.email}</strong></span>}
+                    {inspectingCompany.website && <span>Web: <strong className="text-primary">{inspectingCompany.website}</strong></span>}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="font-bold text-foreground text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-amber-600" /> Outlets & Branches Breakdown ({inspectingCompany.branches?.length || 0})
+                  </span>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {(inspectingCompany.branches || []).map((b) => (
+                      <div key={b.id} className="p-2.5 rounded-lg bg-muted/30 border border-border flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-foreground">{b.name}</span>
+                            <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-muted text-muted-foreground font-bold">{b.code}</span>
+                            {b.is_head_office && <span className="text-[9px] font-extrabold px-1 rounded bg-indigo-100 text-indigo-700">HQ</span>}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{[b.city, b.state, b.country].filter(Boolean).join(", ")}</p>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          {b.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <Button type="button" variant="ghost" onClick={() => setInspectingCompany(null)} className="text-muted-foreground">
+                  Close
+                </Button>
+                <Button
+                  onClick={() => {
+                    handleSwitchToCompany(inspectingCompany);
+                    setInspectingCompany(null);
+                  }}
+                  className="gradient-brand text-white font-semibold"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5 mr-1.5" /> Switch Into Workspace
                 </Button>
               </div>
             </motion.div>

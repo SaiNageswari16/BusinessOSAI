@@ -78,6 +78,56 @@ class TenantStatusUpdateRequest(ORMModel):
     status: str
 
 
+class CompanyStatusUpdateRequest(ORMModel):
+    status: str
+
+
+class PlatformBranchSummary(ORMModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    code: str
+    branch_type: str | None = None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    is_head_office: bool = False
+    status: str = "active"
+    created_at: str
+
+
+class PlatformCompanySummary(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    tenant_name: str
+    tenant_slug: str
+    name: str
+    legal_name: str
+    company_type: str | None = None
+    gst_number: str | None = None
+    pan_number: str | None = None
+    registration_number: str | None = None
+    industry: str | None = None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = "India"
+    address: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    website: str | None = None
+    default_currency_code: str = "INR"
+    timezone: str = "Asia/Kolkata"
+    financial_year_start_month: int = 4
+    status: str = "active"
+    created_at: str
+    branches_count: int = 0
+    branches: list[PlatformBranchSummary] = []
+
+
 class PendingApprovalSummary(ORMModel):
     tenant_id: uuid.UUID
     tenant_slug: str
@@ -937,4 +987,176 @@ async def update_tenant_module_entitlements(
 
     await db.commit()
     return MessageResponse(message=f"Module entitlements updated for {tenant.name}: {', '.join(payload.enabled_modules).upper()}")
+
+
+@router.get("/companies", response_model=list[PlatformCompanySummary])
+async def list_all_system_companies(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: uuid.UUID | None = None,
+    status: str | None = None,
+    search: str | None = None,
+):
+    """
+    God Mode Hub: Lists all internal legal entities / companies across all workspaces with branches.
+    """
+    require_platform_admin(ctx)
+    from src.models import Company, Branch
+
+    query = (
+        select(Company)
+        .options(
+            selectinload(Company.tenant),
+            selectinload(Company.branches),
+        )
+        .order_by(Company.created_at.desc())
+    )
+
+    if tenant_id:
+        query = query.where(Company.tenant_id == tenant_id)
+
+    if search:
+        term = f"%{search.strip().lower()}%"
+        query = query.where(
+            func.lower(Company.name).like(term)
+            | func.lower(Company.legal_name).like(term)
+            | func.lower(Company.gst_number).like(term)
+            | func.lower(Company.pan_number).like(term)
+            | func.lower(Company.city).like(term)
+        )
+
+    results = (await db.scalars(query)).all()
+    out = []
+
+    for comp in results:
+        t_name = comp.tenant.name if comp.tenant else "Unknown Workspace"
+        t_slug = comp.tenant.slug if comp.tenant else "unknown"
+
+        comp_status = comp.status.value if hasattr(comp.status, "value") else str(comp.status or "active")
+        if status and status.lower() != "all" and comp_status.lower() != status.lower():
+            continue
+
+        branch_summaries = []
+        for b in (comp.branches or []):
+            b_status = b.status.value if hasattr(b.status, "value") else str(b.status or "active")
+            branch_summaries.append(
+                PlatformBranchSummary(
+                    id=b.id,
+                    company_id=comp.id,
+                    tenant_id=comp.tenant_id,
+                    name=b.name,
+                    code=b.code,
+                    branch_type=getattr(b, "branch_type", "Branch"),
+                    city=b.city,
+                    state=b.state,
+                    country=b.country or "India",
+                    address=b.address,
+                    phone=b.phone,
+                    email=b.email,
+                    is_head_office=bool(b.is_head_office),
+                    status=b_status,
+                    created_at=b.created_at.isoformat() if b.created_at else "",
+                )
+            )
+
+        out.append(
+            PlatformCompanySummary(
+                id=comp.id,
+                tenant_id=comp.tenant_id,
+                tenant_name=t_name,
+                tenant_slug=t_slug,
+                name=comp.name,
+                legal_name=comp.legal_name or comp.name,
+                company_type=comp.company_type,
+                gst_number=comp.gst_number,
+                pan_number=comp.pan_number,
+                registration_number=comp.registration_number,
+                industry=comp.industry,
+                city=comp.city,
+                state=comp.state,
+                country=comp.country or "India",
+                address=comp.address,
+                phone=comp.phone,
+                email=comp.email,
+                website=comp.website,
+                default_currency_code=comp.default_currency_code or "INR",
+                timezone=comp.timezone or "Asia/Kolkata",
+                financial_year_start_month=comp.financial_year_start_month or 4,
+                status=comp_status,
+                created_at=comp.created_at.isoformat() if comp.created_at else "",
+                branches_count=len(comp.branches or []),
+                branches=branch_summaries,
+            )
+        )
+
+    return out
+
+
+@router.patch("/companies/{company_id}/status")
+async def update_company_status(
+    company_id: uuid.UUID,
+    payload: CompanyStatusUpdateRequest,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    God Mode Hub: Update internal company status (active / inactive).
+    """
+    require_platform_admin(ctx)
+    from src.models import Company, EntityStatus
+
+    company = await db.scalar(select(Company).where(Company.id == company_id))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    new_st = payload.status.lower()
+    if new_st in ("active", "enabled"):
+        company.status = EntityStatus.ACTIVE
+    else:
+        company.status = EntityStatus.INACTIVE
+
+    await db.commit()
+    return MessageResponse(message=f"Company '{company.name}' status updated to {new_st.upper()}")
+
+
+@router.get("/branches", response_model=list[PlatformBranchSummary])
+async def list_all_system_branches(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = None,
+):
+    """
+    God Mode Hub: Lists all branches/outlets across all companies and workspaces.
+    """
+    require_platform_admin(ctx)
+    from src.models import Branch
+
+    query = select(Branch).order_by(Branch.created_at.desc())
+    if company_id:
+        query = query.where(Branch.company_id == company_id)
+
+    results = (await db.scalars(query)).all()
+    out = []
+    for b in results:
+        b_status = b.status.value if hasattr(b.status, "value") else str(b.status or "active")
+        out.append(
+            PlatformBranchSummary(
+                id=b.id,
+                company_id=b.company_id,
+                tenant_id=b.tenant_id,
+                name=b.name,
+                code=b.code,
+                branch_type=getattr(b, "branch_type", "Branch"),
+                city=b.city,
+                state=b.state,
+                country=b.country or "India",
+                address=b.address,
+                phone=b.phone,
+                email=b.email,
+                is_head_office=bool(b.is_head_office),
+                status=b_status,
+                created_at=b.created_at.isoformat() if b.created_at else "",
+            )
+        )
+    return out
 
