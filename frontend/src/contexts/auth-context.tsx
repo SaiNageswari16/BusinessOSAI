@@ -55,9 +55,9 @@ interface ChangePasswordPayload {
 
 export interface TokenResponse {
   access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
+  refresh_token?: string;
+  token_type?: string;
+  expires_in?: number;
   must_change_password?: boolean;
   requires_role_selection?: boolean;
   active_role_id?: string;
@@ -67,7 +67,7 @@ export interface TokenResponse {
 interface StoredAuth {
   user: AppUser;
   accessToken: string;
-  refreshToken: string;
+  refreshToken?: string;
 }
 
 interface AuthCtx {
@@ -79,7 +79,7 @@ interface AuthCtx {
   register: (payload: RegisterPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
   selectRole: (roleId: string) => Promise<{ user: AppUser; token: TokenResponse }>;
   changePassword: (payload: ChangePasswordPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
-  applySession: (user: AppUser, accessToken: string, refreshToken: string) => void;
+  applySession: (user: AppUser, accessToken: string, refreshToken?: string) => void;
   loginWithToken: (tokenData: TokenResponse) => Promise<{ user: AppUser; token: TokenResponse }>;
   logout: () => void;
 }
@@ -143,15 +143,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
 
-  const persistAuth = (nextUser: AppUser, nextAccessToken: string, nextRefreshToken: string) => {
-    const stored: StoredAuth = { user: nextUser, accessToken: nextAccessToken, refreshToken: nextRefreshToken };
+  const persistAuth = (nextUser: AppUser, nextAccessToken: string, nextRefreshToken?: string | null) => {
+    const stored: StoredAuth = { user: nextUser, accessToken: nextAccessToken, refreshToken: nextRefreshToken || undefined };
     localStorage.setItem("bos-auth", JSON.stringify(stored));
   };
 
-  const applySession = (nextUser: AppUser, nextAccessToken: string, nextRefreshToken: string) => {
+  const applySession = (nextUser: AppUser, nextAccessToken: string, nextRefreshToken?: string | null) => {
     setUser(nextUser);
     setAccessToken(nextAccessToken);
-    setRefreshToken(nextRefreshToken);
+    setRefreshToken(nextRefreshToken || null);
     persistAuth(nextUser, nextAccessToken, nextRefreshToken);
   };
 
@@ -340,7 +340,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
           // /me failed — still keep the new tokens so the session survives
           setAccessToken(tokenData.access_token);
-          setRefreshToken(tokenData.refresh_token);
+          setRefreshToken(tokenData.refresh_token || null);
           persistAuth(user, tokenData.access_token, tokenData.refresh_token);
         }
       } catch {

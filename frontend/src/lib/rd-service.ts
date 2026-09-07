@@ -37,7 +37,7 @@ export async function discoverRDService(): Promise<RDDeviceInfo> {
   for (const port of RD_PORTS) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const timeoutId = setTimeout(() => controller.abort(), 800);
 
       const res = await fetch(`http://127.0.0.1:${port}/rd/info`, {
         method: "RDSERVICE",
@@ -73,15 +73,14 @@ export async function discoverRDService(): Promise<RDDeviceInfo> {
     }
   }
 
-  // Fallback: Virtual Government Standard Optical Scanner Driver
+  // Strictly return NOT_FOUND if no real hardware is responding
   return {
-    status: "READY",
-    port: 11100,
-    deviceInfo: "MFS100 Optical Biometric RD Service v1.0.4 (Ready)",
-    manufacturer: "Mantra Softech",
-    model: "Mantra MFS100 Optical USB Scanner",
-    serialNumber: "MFS-8492041",
-    isSimulated: true,
+    status: "NOT_FOUND",
+    port: 0,
+    deviceInfo: "No RD Service detected on local ports (11100-11105)",
+    manufacturer: "None",
+    model: "No Scanner Connected",
+    isSimulated: false,
   };
 }
 
@@ -94,68 +93,73 @@ export async function captureFingerprint(
 ): Promise<RDCaptureResult> {
   const timeoutMs = options?.timeout ?? 10000;
 
-  if (!device.isSimulated && device.port) {
-    try {
-      const pidOptionsXml = `<?xml version="1.0"?>
+  if (!device.port || device.status === "NOT_FOUND") {
+    return {
+      success: false,
+      quality: 0,
+      templateIso: "",
+      deviceBrand: device.model || "Unknown",
+      error: "No physical USB biometric scanner connected. Please plug in a Mantra, Morpho, or SecuGen scanner and ensure the RD service driver is running.",
+    };
+  }
+
+  try {
+    const pidOptionsXml = `<?xml version="1.0"?>
 <PidOptions ver="1.0">
   <Opts fCount="1" fType="2" iCount="0" pCount="0" format="0" pidVer="2.0" timeout="${timeoutMs}" posh="UNKNOWN" env="P" />
 </PidOptions>`;
 
-      const res = await fetch(`http://127.0.0.1:${device.port}/rd/capture`, {
-        method: "CAPTURE",
-        headers: { "Content-Type": "text/xml" },
-        body: pidOptionsXml,
-      });
+    const res = await fetch(`http://127.0.0.1:${device.port}/rd/capture`, {
+      method: "CAPTURE",
+      headers: { "Content-Type": "text/xml" },
+      body: pidOptionsXml,
+    });
 
-      if (res.ok) {
-        const xmlText = await res.text();
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+    if (res.ok) {
+      const xmlText = await res.text();
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlText, "text/xml");
 
-        const respNode = xmlDoc.getElementsByTagName("Resp")[0];
-        const errCode = respNode?.getAttribute("errCode") || "0";
-        const errInfo = respNode?.getAttribute("errInfo") || "";
+      const respNode = xmlDoc.getElementsByTagName("Resp")[0];
+      const errCode = respNode?.getAttribute("errCode") || "0";
+      const errInfo = respNode?.getAttribute("errInfo") || "";
 
-        if (errCode === "0" || errCode === "SUCCESS") {
-          // Extract PID data / ISO template
-          const pidDataNode = xmlDoc.getElementsByTagName("Data")[0];
-          const templateIso = pidDataNode?.textContent?.trim() || "";
+      if (errCode === "0" || errCode === "SUCCESS") {
+        const pidDataNode = xmlDoc.getElementsByTagName("Data")[0];
+        const templateIso = pidDataNode?.textContent?.trim() || "";
+        const qScore = parseInt(respNode?.getAttribute("qScore") || "85", 10);
 
-          // Extract quality score
-          const qScore = parseInt(respNode?.getAttribute("qScore") || "85", 10);
-
-          return {
-            success: true,
-            quality: qScore,
-            templateIso: templateIso || btoa(`MANTRA_MFS100_ISO19794_2_${Date.now()}`),
-            deviceBrand: device.model,
-          };
-        } else {
-          return {
-            success: false,
-            quality: 0,
-            templateIso: "",
-            deviceBrand: device.model,
-            error: errInfo || `Capture failed with error code: ${errCode}`,
-          };
-        }
+        return {
+          success: true,
+          quality: qScore,
+          templateIso: templateIso,
+          deviceBrand: device.model,
+        };
+      } else {
+        return {
+          success: false,
+          quality: 0,
+          templateIso: "",
+          deviceBrand: device.model,
+          error: errInfo || `Capture failed with error code: ${errCode}`,
+        };
       }
-    } catch (err: any) {
-      console.warn("Hardware RD Service request failed, using optical capture bridge fallback:", err);
+    } else {
+      return {
+        success: false,
+        quality: 0,
+        templateIso: "",
+        deviceBrand: device.model,
+        error: `HTTP ${res.status} returned by scanner RD Service driver on port ${device.port}.`,
+      };
     }
+  } catch (err: any) {
+    return {
+      success: false,
+      quality: 0,
+      templateIso: "",
+      deviceBrand: device.model,
+      error: `Failed to communicate with biometric hardware: ${err.message || "Connection refused"}. Please check USB connection.`,
+    };
   }
-
-  // Realistic ISO 19794-2 Simulated Optical Capture
-  await new Promise((resolve) => setTimeout(resolve, 1400));
-  const randomQuality = Math.floor(Math.random() * 20) + 80; // 80% to 99%
-  const simulatedTemplate = btoa(
-    `ISO19794_2_ANSI378_MINUTIAE_FINGERPRINT_STREAM_${device.model}_${Date.now()}`
-  );
-
-  return {
-    success: true,
-    quality: randomQuality,
-    templateIso: simulatedTemplate,
-    deviceBrand: device.model || "Mantra MFS100",
-  };
 }

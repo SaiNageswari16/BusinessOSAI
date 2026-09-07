@@ -687,6 +687,25 @@ export interface AttendanceSettings {
   grace_period_minutes?: number;
   half_day_hours?: number;
   ip_whitelist?: string;
+  assigned_employee_ids?: string[];
+}
+
+export interface AttendanceScheme {
+  id: string;
+  name: string;
+  code?: string | null;
+  latitude: number;
+  longitude: number;
+  geofence_radius_meters: number;
+  enforce_geofence: boolean;
+  allowed_punch_methods: string[];
+  shift_start_time: string;
+  shift_end_time: string;
+  grace_period_minutes: number;
+  half_day_hours: number;
+  ip_whitelist?: string;
+  assigned_employees_count: number;
+  assigned_employee_ids: string[];
 }
 
 export interface LeaveRequest {
@@ -1345,10 +1364,16 @@ export const attendanceApi = {
     request<AttendanceCorrection>("POST", "/hrms/attendance/corrections", data),
   reviewCorrection: (id: string, status: string) =>
     request<AttendanceCorrection>("PATCH", `/hrms/attendance/corrections/${id}/review`, { status }),
-  getSettings: () =>
-    request<AttendanceSettings>("GET", "/hrms/attendance/settings"),
+  getSettings: (branchId?: string, employeeId?: string) =>
+    request<AttendanceSettings>("GET", "/hrms/attendance/settings", undefined, { branch_id: branchId, employee_id: employeeId }),
   updateSettings: (data: AttendanceSettings) =>
     request<AttendanceSettings>("POST", "/hrms/attendance/settings", data),
+  listSchemes: () =>
+    request<AttendanceScheme[]>("GET", "/hrms/attendance/schemes"),
+  createScheme: (data: Partial<AttendanceScheme>) =>
+    request<AttendanceScheme>("POST", "/hrms/attendance/schemes", data),
+  assignEmployeesToScheme: (data: { scheme_id: string; employee_ids: string[]; punch_method?: string }) =>
+    request<{ message: string; scheme_id: string; scheme_name: string; assigned_count: number }>("POST", "/hrms/attendance/schemes/assign", data),
 };
 
 // â”€â”€â”€ HRMS â€” Leaves â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

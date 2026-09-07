@@ -53,14 +53,18 @@ export function BiometricPasskeySettings() {
     }
   };
 
-  const scanForOpticalScanner = async () => {
+  const scanForOpticalScanner = async (isManual = false) => {
     setScanningRD(true);
     try {
       const dev = await discoverRDService();
       setRdDevice(dev);
-      toast.success(`Connected to ${dev.model} on port ${dev.port}`);
+      if (dev && dev.status === "READY" && dev.port > 0) {
+        if (isManual) toast.success(`Connected to ${dev.model} on port ${dev.port}`);
+      } else {
+        if (isManual) toast.info("No USB biometric scanner detected on local ports (11100-11105).");
+      }
     } catch (err) {
-      toast.error("RD Service scan failed. Ensure your Mantra/Morpho RD service is running.");
+      if (isManual) toast.error("RD Service scan failed. Ensure your Mantra/Morpho RD service is running.");
     } finally {
       setScanningRD(false);
     }
@@ -69,7 +73,7 @@ export function BiometricPasskeySettings() {
   useEffect(() => {
     checkSupport();
     loadData();
-    scanForOpticalScanner();
+    scanForOpticalScanner(false);
   }, []);
 
   const getDefaultDeviceName = () => {
@@ -192,17 +196,17 @@ export function BiometricPasskeySettings() {
             <span className={`text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 ${
               biometricSupported
                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                : "bg-muted text-muted-foreground border border-border"
             }`}>
               <ShieldCheck className="size-3.5" />
-              {biometricSupported ? "Hardware Sensor Ready" : "Platform Checking..."}
+              {biometricSupported ? "Hardware Sensor Ready" : "No Built-in Biometrics"}
             </span>
             <button
-              onClick={() => loadData()}
+              onClick={() => { checkSupport(); loadData(); scanForOpticalScanner(true); }}
               className="p-1.5 h-8 w-8 border hover:bg-muted rounded-lg text-muted-foreground"
               title="Refresh"
             >
-              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`size-4 ${loading || scanningRD ? "animate-spin" : ""}`} />
             </button>
           </div>
         </div>
@@ -215,8 +219,12 @@ export function BiometricPasskeySettings() {
             <h4 className="text-base font-bold text-foreground flex items-center gap-2">
               <Usb className="size-5 text-emerald-500" />
               3rd-Party USB Optical Fingerprint Scanners
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-bold border border-emerald-500/20">
-                Govt RD Service Ready
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                rdDevice?.status === "READY"
+                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                  : "bg-muted text-muted-foreground border-border"
+              }`}>
+                {rdDevice?.status === "READY" ? "RD Service Active" : "No RD Service Detected"}
               </span>
             </h4>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -227,7 +235,7 @@ export function BiometricPasskeySettings() {
           <Button
             size="sm"
             variant="outline"
-            onClick={scanForOpticalScanner}
+            onClick={() => scanForOpticalScanner(true)}
             disabled={scanningRD}
             className="text-xs h-8 gap-1.5"
           >
@@ -238,16 +246,28 @@ export function BiometricPasskeySettings() {
 
         {/* Device Status & Live Capture Bar */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 rounded-xl border bg-muted/20 space-y-2">
+          <div className={`p-4 rounded-xl border space-y-2 ${
+            rdDevice?.status === "READY" ? "bg-emerald-500/5 border-emerald-500/25" : "bg-muted/20 border-border"
+          }`}>
             <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-muted-foreground">Connected Scanner</span>
-              <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-bold text-[10px] flex items-center gap-1">
-                <Radio className="size-3 animate-pulse" /> {rdDevice?.status || "Ready"}
-              </span>
+              <span className="font-semibold text-muted-foreground">Scanner Status</span>
+              {rdDevice?.status === "READY" ? (
+                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-bold text-[10px] flex items-center gap-1">
+                  <Radio className="size-3 animate-pulse" /> Ready
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground font-semibold text-[10px]">
+                  Not Connected
+                </span>
+              )}
             </div>
-            <p className="font-bold text-sm text-foreground">{rdDevice?.model || "Mantra MFS100 Optical Scanner"}</p>
+            <p className="font-bold text-sm text-foreground">
+              {rdDevice?.status === "READY" ? rdDevice.model : "No Scanner Detected"}
+            </p>
             <p className="text-[11px] text-muted-foreground">
-              Port: {rdDevice?.port || 11100} • Serial: {rdDevice?.serialNumber || "MFS-8492041"}
+              {rdDevice?.status === "READY"
+                ? `Port: ${rdDevice.port} • Ready for minutiae capture`
+                : "Plug in USB scanner & start RD Service driver (ports 11100-11105)"}
             </p>
           </div>
 
@@ -270,24 +290,31 @@ export function BiometricPasskeySettings() {
           <div className="p-4 rounded-xl border bg-muted/20 flex flex-col justify-between space-y-2">
             <div className="flex justify-between items-center text-xs">
               <span className="font-semibold text-muted-foreground">Scan Quality</span>
-              {capturedQuality && (
+              {capturedQuality ? (
                 <span className="font-bold text-emerald-500">{capturedQuality}% Match Score</span>
+              ) : (
+                <span className="text-muted-foreground text-[11px]">Awaiting scan</span>
               )}
             </div>
             <Button
               onClick={handleCaptureOpticalFingerprint}
-              disabled={capturingFinger}
-              className="w-full gradient-brand text-white font-bold text-xs h-9 gap-1.5 shadow-xs"
+              disabled={capturingFinger || rdDevice?.status !== "READY"}
+              className="w-full gradient-brand text-white font-bold text-xs h-9 gap-1.5 shadow-xs disabled:opacity-50"
             >
               {capturingFinger ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />
                   Reading Finger Sensor...
                 </>
-              ) : (
+              ) : rdDevice?.status === "READY" ? (
                 <>
                   <Scan className="size-3.5" />
                   Capture & Enroll on Scanner
+                </>
+              ) : (
+                <>
+                  <Usb className="size-3.5" />
+                  No Scanner Connected
                 </>
               )}
             </Button>

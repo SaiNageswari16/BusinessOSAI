@@ -6,16 +6,29 @@ import {
   Clipboard, Check, Sparkles, Building, Mail, Phone, Award, Star, 
   BookOpen, GraduationCap, Target, TrendingUp, CheckCircle2, Play, 
   ArrowUpRight, Plus, Trash2, Radio, ShieldCheck, ExternalLink, XCircle,
-  LayoutList
+  LayoutList, Navigation, AlertTriangle
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
-import { employeesApi, attendanceApi, leavesApi, payrollApi, Employee, AttendanceRecord, EmployeeDocument, LeaveRequest, LeaveBalance, Payslip, EmployeeVCard } from "../../lib/api-client";
+import { employeesApi, attendanceApi, leavesApi, payrollApi, Employee, AttendanceRecord, EmployeeDocument, LeaveRequest, LeaveBalance, Payslip, EmployeeVCard, AttendanceSettings } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useCurrency } from "@/hooks/use-currency";
 import { AttendanceCalendarView } from "./AttendanceCalendarView";
+
+function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const r = 6371000.0;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180.0;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180.0;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180.0) * Math.cos((lat2 * Math.PI) / 180.0) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return r * c;
+}
 
 const formatDate = (dateStr: string | null | undefined, options?: Intl.DateTimeFormatOptions) => {
   if (!dateStr) return "N/A";
@@ -58,6 +71,9 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
   // HR Assigned Punch Mode for this employee ("GPS" | "Biometric" | "Face" | "Web")
   const [assignedPunchMethod, setAssignedPunchMethod] = useState<"GPS" | "Biometric" | "Face" | "Web">("GPS");
+  const [assignedPolicy, setAssignedPolicy] = useState<AttendanceSettings | null>(null);
+  const [userGps, setUserGps] = useState<{ lat: number; lng: number; accuracy: number; distanceMeters: number | null } | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
 
   // ESS Attendance View Mode: "overview" (cards + punch) | "calendar" (monthly calendar grid)
   const [essAttendanceView, setEssAttendanceView] = useState<"overview" | "calendar">("overview");
@@ -81,72 +97,13 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
   const [selectedCourseForCert, setSelectedCourseForCert] = useState<any>(null);
 
   // Interactive Tasks State
-  const [tasksList, setTasksList] = useState([
-    { id: "task-1", task: "Complete Q3 Information Security & ISO Compliance", due: "2026-08-30", priority: "High", category: "Compliance", done: false },
-    { id: "task-2", task: "Review & Sign Annual Remote Work Policy Addendum", due: "2026-09-02", priority: "Medium", category: "HR Policy", done: false },
-    { id: "task-3", task: "Submit Q3 Milestone Self-Appraisal Review", due: "2026-09-05", priority: "High", category: "Performance", done: true },
-    { id: "task-4", task: "Upload Updated Emergency Contact & Bank Account Proof", due: "2026-09-10", priority: "Low", category: "Profile", done: false },
-  ]);
+  const [tasksList, setTasksList] = useState<any[]>([]);
   const [taskFilter, setTaskFilter] = useState<"all" | "pending" | "completed">("all");
   const [newTaskInput, setNewTaskInput] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState("Medium");
 
   // Role-Specific Curated & AI Recommended Courses
-  const [coursesList, setCoursesList] = useState([
-    {
-      id: "course-1",
-      title: "Advanced Distributed Systems & Scalable Architecture",
-      category: "Engineering & Cloud",
-      duration: "6 hours 30 mins",
-      modules: 8,
-      progress: 75,
-      level: "Advanced",
-      instructor: "Dr. Sarah Chen, Cloud Architect",
-      skills: ["Architecture", "Resilience", "APIs"],
-      status: "In Progress",
-      certificateReady: false,
-    },
-    {
-      id: "course-2",
-      title: "Enterprise Data Privacy, GDPR & ISO/IEC 27001 Essentials",
-      category: "Compliance & Security",
-      duration: "2 hours 45 mins",
-      modules: 5,
-      progress: 100,
-      level: "Mandatory",
-      instructor: "Security & Legal Operations Team",
-      skills: ["ISO 27001", "GDPR", "Data Governance"],
-      status: "Completed",
-      certificateReady: true,
-      completedDate: "August 20, 2026"
-    },
-    {
-      id: "course-3",
-      title: "Modern React & Next.js Performance Optimization",
-      category: "Frontend Mastery",
-      duration: "8 hours 15 mins",
-      modules: 12,
-      progress: 30,
-      level: "Core Skill",
-      instructor: "Elena Rostova, Principal Engineer",
-      skills: ["React", "SSR", "Vite/Next.js"],
-      status: "In Progress",
-      certificateReady: false,
-    },
-    {
-      id: "course-4",
-      title: "AI Prompt Engineering & Business Operations Mastery",
-      category: "Artificial Intelligence",
-      duration: "4 hours 00 mins",
-      modules: 6,
-      progress: 0,
-      level: "AI Recommended",
-      instructor: "BusinessOS AI Academy",
-      skills: ["LLM Workflows", "Automation", "Copilot"],
-      status: "Enrolled",
-      certificateReady: false,
-    }
-  ]);
+  const [coursesList, setCoursesList] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -268,7 +225,8 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
 
       if (meRes?.id) {
         try {
-          const attRes = await attendanceApi.list(1, 10, meRes.id);
+          const todayStr = new Date().toISOString().split("T")[0];
+          const attRes = await attendanceApi.list(1, 10, meRes.id, undefined, todayStr);
           setAttendance(attRes.items || []);
         } catch (err) {
           console.error("Attendance fetch error:", err);
@@ -301,6 +259,39 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
         } catch (err) {
           console.error("Payslips fetch error:", err);
         }
+
+        try {
+          const policyRes = await attendanceApi.getSettings(undefined, meRes.id);
+          setAssignedPolicy(policyRes);
+
+          if ("geolocation" in navigator && policyRes?.latitude && policyRes?.longitude) {
+            setGpsLoading(true);
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                const dist = calculateDistanceMeters(
+                  pos.coords.latitude,
+                  pos.coords.longitude,
+                  policyRes.latitude!,
+                  policyRes.longitude!
+                );
+                setUserGps({
+                  lat: pos.coords.latitude,
+                  lng: pos.coords.longitude,
+                  accuracy: pos.coords.accuracy,
+                  distanceMeters: dist,
+                });
+                setGpsLoading(false);
+              },
+              (err) => {
+                console.warn("GPS preview error:", err);
+                setGpsLoading(false);
+              },
+              { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+          }
+        } catch (err) {
+          console.error("Policy fetch error:", err);
+        }
       }
     } catch (e: any) {
       console.error("Failed to load ESS profile", e);
@@ -313,6 +304,58 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
   useEffect(() => {
     loadMe();
   }, [loadMe]);
+
+  const [calibrating, setCalibrating] = useState(false);
+
+  const handleRefreshGps = () => {
+    if (!("geolocation" in navigator) || !assignedPolicy?.latitude || !assignedPolicy?.longitude) return;
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const dist = calculateDistanceMeters(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          assignedPolicy.latitude!,
+          assignedPolicy.longitude!
+        );
+        setUserGps({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          distanceMeters: dist,
+        });
+        setGpsLoading(false);
+        toast.info(`GPS Refreshed (Accuracy ±${Math.round(pos.coords.accuracy)}m)`);
+      },
+      (err) => {
+        console.warn("GPS refresh error:", err);
+        setGpsLoading(false);
+        toast.error("GPS error: " + err.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  const handleCalibrateLocation = async () => {
+    if (!userGps || !assignedPolicy) return;
+    setCalibrating(true);
+    try {
+      const updated = await attendanceApi.updateSettings({
+        ...assignedPolicy,
+        latitude: parseFloat(userGps.lat.toFixed(6)),
+        longitude: parseFloat(userGps.lng.toFixed(6)),
+      });
+      setAssignedPolicy(updated);
+      setUserGps((prev) => (prev ? { ...prev, distanceMeters: 0 } : null));
+      toast.success(
+        `Branch geofence calibrated to your device location (${userGps.lat.toFixed(4)}, ${userGps.lng.toFixed(4)})! You are now inside the perimeter.`
+      );
+    } catch (err: any) {
+      toast.error("Failed to calibrate location: " + (err.message || "Unknown error"));
+    } finally {
+      setCalibrating(false);
+    }
+  };
 
   // Real-time Geolocation Clock In
   const handleClockIn = async () => {
@@ -329,11 +372,10 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
           method: assignedPunchMethod,
         });
         toast.success("Clock-in recorded successfully!");
-        await loadMe();
       } catch (err: any) {
-        toast.error("Clock-in failed: " + (err.message || "Unknown error"));
-        alert("Clock-in failed: " + (err.message || "Unknown error"));
+        toast.error("Clock-in: " + (err.message || "Unknown error"));
       } finally {
+        await loadMe();
         setLoading(false);
       }
     };
@@ -385,11 +427,10 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
           notes: `Clock-Out via ${assignedPunchMethod} Verified Punch`,
         });
         toast.success("Clock-out recorded successfully!");
-        await loadMe();
       } catch (err: any) {
-        toast.error("Clock-out failed: " + (err.message || "Unknown error"));
-        alert("Clock-out failed: " + (err.message || "Unknown error"));
+        toast.error("Clock-out: " + (err.message || "Unknown error"));
       } finally {
+        await loadMe();
         setLoading(false);
       }
     };
@@ -1296,9 +1337,9 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                   </h4>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {assignedPunchMethod === "GPS" ? "Your check-ins are verified against authorized office geofences (San Francisco HQ 150m radius & Oakland Campus)." :
-                   assignedPunchMethod === "Biometric" ? "Your attendance is captured automatically via physical biometric turnstile terminal (BIO-01 ZKTeco Main Gate)." :
-                   assignedPunchMethod === "Face" ? "Your presence is verified automatically at building entrance camera scanner (HQ Lobby Cam-1)." :
+                  {assignedPunchMethod === "GPS" ? `Your check-ins are verified against authorized office geofence (${assignedPolicy?.branch_name || "Office Branch"} — ${assignedPolicy?.geofence_radius_meters || 50}m radius threshold).` :
+                   assignedPunchMethod === "Biometric" ? "Your attendance is captured automatically via physical biometric turnstile terminal." :
+                   assignedPunchMethod === "Face" ? "Your presence is verified automatically at building entrance camera scanner." :
                    "You are authorized for standard browser portal clock-in/out."}
                 </p>
               </div>
@@ -1327,25 +1368,83 @@ export function EmployeeSelfService({ tab = "ess_attendance" }: Props) {
                 <div>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold">Punch Gateway</p>
                   <p className="font-semibold text-foreground">
-                    {assignedPunchMethod === "GPS" ? "SF HQ (37.7749° N, -122.4194° W)" :
-                     assignedPunchMethod === "Biometric" ? "Terminal BIO-01 (Turnstile Gate A)" :
-                     assignedPunchMethod === "Face" ? "Tablet Scanner #04 (Lobby Entrance)" :
+                    {assignedPunchMethod === "GPS" ? `${assignedPolicy?.branch_name || "Assigned Branch"} (${(assignedPolicy?.latitude ?? 17.3730).toFixed(4)}° N, ${(assignedPolicy?.longitude ?? 78.5211).toFixed(4)}° E)` :
+                     assignedPunchMethod === "Biometric" ? "Terminal BIO-01 (Turnstile Gate)" :
+                     assignedPunchMethod === "Face" ? "Tablet Scanner (Lobby Entrance)" :
                      "Web Application Portal"}
                   </p>
                 </div>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-card border flex items-center gap-2.5">
-                <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Verification Status</p>
-                  <p className="font-semibold text-emerald-600 flex items-center gap-1">
-                    <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
-                    {assignedPunchMethod === "GPS" ? "Inside 150m Perimeter" :
-                     assignedPunchMethod === "Biometric" ? "Smart NFC #99481 Synced" :
-                     assignedPunchMethod === "Face" ? "Biometric ID: 99.2% Confirmed" :
-                     "Authorized User Token"}
-                  </p>
+              <div className="p-2.5 rounded-xl bg-card border flex items-start gap-2.5">
+                <ShieldCheck className="size-4 text-emerald-500 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1">
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold">Verification Status</p>
+                    {assignedPunchMethod === "GPS" && (
+                      <button
+                        type="button"
+                        onClick={handleRefreshGps}
+                        disabled={gpsLoading}
+                        className="text-[10px] text-primary hover:underline font-semibold flex items-center gap-0.5"
+                        title="Re-fetch current device GPS coordinates"
+                      >
+                        {gpsLoading ? <Loader2 className="size-2.5 animate-spin" /> : <Navigation className="size-2.5" />}
+                        Refresh GPS
+                      </button>
+                    )}
+                  </div>
+                  {assignedPunchMethod === "GPS" ? (
+                    userGps?.distanceMeters !== null && userGps?.distanceMeters !== undefined ? (
+                      userGps.distanceMeters <= (assignedPolicy?.geofence_radius_meters || 50) ? (
+                        <div>
+                          <p className="font-semibold text-emerald-600 flex items-center gap-1">
+                            <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            Inside {assignedPolicy?.geofence_radius_meters || 50}m Perimeter ({Math.round(userGps.distanceMeters)}m away)
+                          </p>
+                          <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                            Device GPS: {userGps.lat.toFixed(4)}° N, {userGps.lng.toFixed(4)}° E (±{Math.round(userGps.accuracy)}m)
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="font-semibold text-amber-600 flex items-center gap-1" title={`Target: ${assignedPolicy?.latitude}, ${assignedPolicy?.longitude}`}>
+                            <span className="size-1.5 rounded-full bg-amber-500" />
+                            Outside Perimeter ({Math.round(userGps.distanceMeters)}m from {assignedPolicy?.branch_name || "Office"})
+                          </p>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              Device: {userGps.lat.toFixed(4)}°, {userGps.lng.toFixed(4)}°
+                            </span>
+                            {(user?.role === "super_admin" || user?.role === "admin" || (user as any)?.is_platform_god_admin) && (
+                              <button
+                                type="button"
+                                onClick={handleCalibrateLocation}
+                                disabled={calibrating}
+                                className="text-[10px] font-bold text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/20 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                                title="Click to update this branch's geofence center to your exact current device location"
+                              >
+                                {calibrating ? <Loader2 className="size-2.5 animate-spin" /> : <MapPin className="size-2.5" />}
+                                Set Scheme To Here
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      <p className="font-semibold text-blue-600 flex items-center gap-1">
+                        <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
+                        {gpsLoading ? "Acquiring GPS Signal..." : `Geofence: ${assignedPolicy?.geofence_radius_meters || 50}m Perimeter Active`}
+                      </p>
+                    )
+                  ) : (
+                    <p className="font-semibold text-emerald-600 flex items-center gap-1">
+                      <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
+                      {assignedPunchMethod === "Biometric" ? "Smart NFC / Biometric Synced" :
+                       assignedPunchMethod === "Face" ? "Biometric ID Confirmed" :
+                       "Authorized User Token"}
+                    </p>
+                  )}
                 </div>
               </div>
 

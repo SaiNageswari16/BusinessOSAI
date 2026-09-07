@@ -38,6 +38,9 @@ from src.schemas.erp import (
     CorrectionReviewRequest,
     HrmsDashboardStats,
     AttendanceSettingsSchema,
+    AttendanceSchemeCreate,
+    AttendanceSchemeResponse,
+    AssignSchemeEmployeesRequest,
 )
 from src.utils.pagination import PaginatedResponse, paginate
 
@@ -55,28 +58,209 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     return r * c
 
 
-# ─── Attendance & Geofence Portal Settings ─────────────────────────
+# ─── Attendance Schemes & Geofence Settings ─────────────────────────
 
-@router.get("/attendance/settings", response_model=AttendanceSettingsSchema)
-async def get_attendance_settings(
+@router.get("/attendance/schemes", response_model=list[AttendanceSchemeResponse])
+async def list_attendance_schemes(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     branch_q = select(Branch).where(Branch.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        branch_q = branch_q.where(Branch.company_id == ctx.active_company_id)
+        branch_q = branch_q.where((Branch.company_id == ctx.active_company_id) | (Branch.company_id == None))
     
-    branch = await db.scalar(branch_q.order_by(Branch.created_at.asc()))
+    branches = (await db.scalars(branch_q.order_by(Branch.name.asc()))).all()
+    if not branches:
+        # Fetch fallback
+        branches = (await db.scalars(select(Branch).where(Branch.tenant_id == ctx.tenant_id).order_by(Branch.name.asc()))).all()
+
+    # Load employee counts per branch
+    emp_res = (
+        await db.execute(
+            select(Employee.id, Employee.branch_id).where(
+                Employee.tenant_id == ctx.tenant_id,
+                Employee.status == "Active"
+            )
+        )
+    ).all()
+
+    emp_branch_map: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for eid, bid in emp_res:
+        if bid:
+            emp_branch_map.setdefault(bid, []).append(eid)
+
+    schemes = []
+    for b in branches:
+        assigned = emp_branch_map.get(b.id, [])
+        schemes.append(
+            AttendanceSchemeResponse(
+                id=b.id,
+                name=b.name,
+                code=b.code,
+                latitude=float(b.latitude) if b.latitude is not None else 17.372998,
+                longitude=float(b.longitude) if b.longitude is not None else 78.521062,
+                geofence_radius_meters=int(b.geofence_radius_meters) if b.geofence_radius_meters is not None else 50,
+                enforce_geofence=bool(b.enforce_geofence) if b.enforce_geofence is not None else True,
+                allowed_punch_methods=["GPS", "Biometric", "Face", "Web"],
+                shift_start_time="09:00",
+                shift_end_time="18:00",
+                grace_period_minutes=15,
+                half_day_hours=4.0,
+                ip_whitelist="",
+                assigned_employees_count=len(assigned),
+                assigned_employee_ids=assigned,
+            )
+        )
+    return schemes
+
+
+@router.post("/attendance/schemes", response_model=AttendanceSchemeResponse, status_code=status.HTTP_201_CREATED)
+async def create_attendance_scheme(
+    payload: AttendanceSchemeCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    comp_id = ctx.active_company_id
+    if not comp_id:
+        comp = await db.scalar(select(Company).where(Company.tenant_id == ctx.tenant_id))
+        if comp:
+            comp_id = comp.id
+        else:
+            raise HTTPException(status_code=400, detail="No active Company found to link Attendance Scheme")
+
+    code = payload.code or payload.name[:6].upper().replace(" ", "")
+    # Check for existing branch with same code
+    existing = await db.scalar(
+        select(Branch).where(Branch.tenant_id == ctx.tenant_id, Branch.code == code)
+    )
+    if existing:
+        code = f"{code[:4]}_{uuid.uuid4().hex[:4].upper()}"
+
+    branch = Branch(
+        tenant_id=ctx.tenant_id,
+        company_id=comp_id,
+        code=code,
+        name=payload.name,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        geofence_radius_meters=payload.geofence_radius_meters,
+        enforce_geofence=payload.enforce_geofence,
+    )
+    db.add(branch)
+    await db.flush()
+
+    if payload.assigned_employee_ids:
+        for eid in payload.assigned_employee_ids:
+            emp = await db.get(Employee, eid)
+            if emp and emp.tenant_id == ctx.tenant_id:
+                emp.branch_id = branch.id
+        await db.flush()
+
+    await db.commit()
+    await db.refresh(branch)
+
+    return AttendanceSchemeResponse(
+        id=branch.id,
+        name=branch.name,
+        code=branch.code,
+        latitude=float(branch.latitude) if branch.latitude is not None else payload.latitude,
+        longitude=float(branch.longitude) if branch.longitude is not None else payload.longitude,
+        geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else payload.geofence_radius_meters,
+        enforce_geofence=bool(branch.enforce_geofence) if branch.enforce_geofence is not None else payload.enforce_geofence,
+        allowed_punch_methods=payload.allowed_punch_methods,
+        shift_start_time=payload.shift_start_time,
+        shift_end_time=payload.shift_end_time,
+        grace_period_minutes=payload.grace_period_minutes,
+        half_day_hours=payload.half_day_hours,
+        ip_whitelist=payload.ip_whitelist or "",
+        assigned_employees_count=len(payload.assigned_employee_ids),
+        assigned_employee_ids=payload.assigned_employee_ids,
+    )
+
+
+@router.post("/attendance/schemes/assign")
+async def assign_employees_to_scheme(
+    payload: AssignSchemeEmployeesRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    branch = await db.scalar(
+        select(Branch).where(Branch.id == payload.scheme_id, Branch.tenant_id == ctx.tenant_id)
+    )
     if not branch:
-        branch = await db.scalar(select(Branch).where(Branch.tenant_id == ctx.tenant_id).order_by(Branch.created_at.asc()))
+        raise HTTPException(status_code=404, detail="Attendance scheme / branch not found")
+
+    count = 0
+    for eid in payload.employee_ids:
+        emp = await db.get(Employee, eid)
+        if emp and emp.tenant_id == ctx.tenant_id:
+            emp.branch_id = branch.id
+            if payload.punch_method:
+                emp.punch_method = payload.punch_method
+            count += 1
+
+    await db.commit()
+    return {
+        "message": f"Successfully assigned {count} employee(s) to attendance scheme '{branch.name}'.",
+        "scheme_id": branch.id,
+        "scheme_name": branch.name,
+        "assigned_count": count
+    }
+
+
+@router.get("/attendance/settings", response_model=AttendanceSettingsSchema)
+async def get_attendance_settings(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    branch_id: uuid.UUID | None = None,
+    employee_id: uuid.UUID | None = None,
+):
+    branch = None
+    if branch_id:
+        branch = await db.scalar(select(Branch).where(Branch.id == branch_id, Branch.tenant_id == ctx.tenant_id))
+    
+    if not branch and employee_id:
+        emp = await db.scalar(select(Employee).where(Employee.id == employee_id, Employee.tenant_id == ctx.tenant_id))
+        if emp and emp.branch_id:
+            branch = await db.scalar(select(Branch).where(Branch.id == emp.branch_id, Branch.tenant_id == ctx.tenant_id))
+            
+    if not branch:
+        # Check if current user is linked to an employee profile
+        emp = await db.scalar(
+            select(Employee).where(
+                (Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email),
+                Employee.tenant_id == ctx.tenant_id
+            )
+        )
+        if emp and emp.branch_id:
+            branch = await db.scalar(select(Branch).where(Branch.id == emp.branch_id, Branch.tenant_id == ctx.tenant_id))
+
+    if not branch and ctx.active_company_id:
+        branch = await db.scalar(
+            select(Branch).where(Branch.company_id == ctx.active_company_id, Branch.tenant_id == ctx.tenant_id, Branch.latitude.isnot(None)).order_by(Branch.created_at.asc())
+        )
+    if not branch:
+        branch = await db.scalar(
+            select(Branch).where(Branch.tenant_id == ctx.tenant_id, Branch.latitude.isnot(None)).order_by(Branch.created_at.asc())
+        )
+    if not branch:
+        branch = await db.scalar(
+            select(Branch).where(Branch.tenant_id == ctx.tenant_id).order_by(Branch.created_at.asc())
+        )
 
     if branch:
+        assigned_emp_ids = (
+            await db.scalars(
+                select(Employee.id).where(Employee.tenant_id == ctx.tenant_id, Employee.branch_id == branch.id)
+            )
+        ).all()
+
         return AttendanceSettingsSchema(
             branch_id=branch.id,
             branch_name=branch.name,
-            latitude=float(branch.latitude) if branch.latitude is not None else 37.7749,
-            longitude=float(branch.longitude) if branch.longitude is not None else -122.4194,
-            geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 500,
+            latitude=float(branch.latitude) if branch.latitude is not None else 17.372998,
+            longitude=float(branch.longitude) if branch.longitude is not None else 78.521062,
+            geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 50,
             enforce_geofence=bool(branch.enforce_geofence) if branch.enforce_geofence is not None else True,
             allowed_punch_methods=["GPS", "Biometric", "Face", "Web"],
             shift_start_time="09:00",
@@ -84,6 +268,7 @@ async def get_attendance_settings(
             grace_period_minutes=15,
             half_day_hours=4.0,
             ip_whitelist="",
+            assigned_employee_ids=list(assigned_emp_ids),
         )
     
     return AttendanceSettingsSchema()
@@ -138,15 +323,29 @@ async def update_attendance_settings(
         branch.geofence_radius_meters = payload.geofence_radius_meters
         branch.enforce_geofence = payload.enforce_geofence
 
+    # If employee IDs are provided to assign to this scheme/branch
+    if payload.assigned_employee_ids:
+        for eid in payload.assigned_employee_ids:
+            emp = await db.get(Employee, eid)
+            if emp and emp.tenant_id == ctx.tenant_id:
+                emp.branch_id = branch.id
+        await db.flush()
+
     await db.commit()
     await db.refresh(branch)
+
+    assigned_emp_ids = (
+        await db.scalars(
+            select(Employee.id).where(Employee.tenant_id == ctx.tenant_id, Employee.branch_id == branch.id)
+        )
+    ).all()
 
     return AttendanceSettingsSchema(
         branch_id=branch.id,
         branch_name=branch.name,
-        latitude=float(branch.latitude) if branch.latitude is not None else 37.7749,
-        longitude=float(branch.longitude) if branch.longitude is not None else -122.4194,
-        geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 500,
+        latitude=float(branch.latitude) if branch.latitude is not None else 17.372998,
+        longitude=float(branch.longitude) if branch.longitude is not None else 78.521062,
+        geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 50,
         enforce_geofence=bool(branch.enforce_geofence) if branch.enforce_geofence is not None else True,
         allowed_punch_methods=payload.allowed_punch_methods or ["GPS", "Biometric", "Face", "Web"],
         shift_start_time=payload.shift_start_time or "09:00",
@@ -154,6 +353,7 @@ async def update_attendance_settings(
         grace_period_minutes=payload.grace_period_minutes or 15,
         half_day_hours=payload.half_day_hours or 4.0,
         ip_whitelist=payload.ip_whitelist or "",
+        assigned_employee_ids=list(assigned_emp_ids),
     )
 
 
@@ -301,15 +501,28 @@ async def create_attendance_entry(
     db.add(att)
     await db.flush()
 
-    await write_audit_log(
-        db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
-        action="created", entity_type="attendance_record", entity_id=att.id,
-        new_values=payload.model_dump(mode="json"),
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+    resp = AttendanceRecordResponse(
+        id=att.id,
+        tenant_id=att.tenant_id,
+        employee_id=att.employee_id,
+        employee_name=emp.full_name,
+        employee_code=emp.employee_code,
+        date=att.date,
+        check_in=att.check_in,
+        check_out=att.check_out,
+        hours_worked=float(att.hours_worked) if att.hours_worked is not None else None,
+        status=att.status,
+        method=att.method,
+        latitude=float(att.latitude) if att.latitude is not None else None,
+        longitude=float(att.longitude) if att.longitude is not None else None,
+        is_geofence_verified=getattr(att, "is_geofence_verified", False),
+        ip_address=getattr(att, "ip_address", None),
+        notes=att.notes,
+        created_at=att.created_at,
+        updated_at=att.updated_at,
     )
     await db.commit()
-    return att
+    return resp
 
 
 # ─── Clock In / Clock Out ─────────────────────────────────────────
@@ -345,7 +558,7 @@ async def clock_in(
             AttendanceRecord.date == today
         )
     )
-    if existing:
+    if existing and existing.check_in is not None:
         raise HTTPException(status_code=400, detail="Already clocked in for today")
 
     # ─── Geofence & GPS Restriction Enforcement ───
@@ -353,28 +566,49 @@ async def clock_in(
     if payload.notes and any(w in payload.notes.lower() for w in ("wfh", "remote", "home", "out-of-office")):
         is_wfh = True
 
-    method_str = (payload.method or emp.punch_method or "Manual").upper()
-    is_gps_punch = "GPS" in method_str or method_str == "OFFICE"
-
-    target_lat: float = 37.7749
-    target_lng: float = -122.4194
-    target_radius: int = 500  # Default 500 meters
-    target_location_name: str = "Corporate HQ (Innovation Campus)"
+    target_lat: float = 17.372998
+    target_lng: float = 78.521062
+    target_radius: int = 50
+    target_location_name: str = "Authorized Workspace Branch"
     enforce_geofence: bool = True
 
+    branch = None
     if emp.branch_id:
         branch = await db.scalar(
             select(Branch).where(Branch.id == emp.branch_id, Branch.tenant_id == ctx.tenant_id)
         )
-        if branch:
-            target_location_name = branch.name
-            if branch.latitude is not None and branch.longitude is not None:
-                target_lat = float(branch.latitude)
-                target_lng = float(branch.longitude)
-            if branch.geofence_radius_meters is not None:
-                target_radius = int(branch.geofence_radius_meters)
-            if hasattr(branch, "enforce_geofence") and branch.enforce_geofence is not None:
-                enforce_geofence = bool(branch.enforce_geofence)
+    if not branch and ctx.active_company_id:
+        branch = await db.scalar(
+            select(Branch).where(
+                Branch.company_id == ctx.active_company_id,
+                Branch.tenant_id == ctx.tenant_id,
+                Branch.latitude.isnot(None)
+            ).order_by(Branch.created_at.asc())
+        )
+    if not branch:
+        branch = await db.scalar(
+            select(Branch).where(
+                Branch.tenant_id == ctx.tenant_id,
+                Branch.latitude.isnot(None)
+            ).order_by(Branch.created_at.asc())
+        )
+    if not branch:
+        branch = await db.scalar(
+            select(Branch).where(Branch.tenant_id == ctx.tenant_id).order_by(Branch.created_at.asc())
+        )
+
+    if branch:
+        target_location_name = branch.name
+        if branch.latitude is not None and branch.longitude is not None:
+            target_lat = float(branch.latitude)
+            target_lng = float(branch.longitude)
+        if branch.geofence_radius_meters is not None:
+            target_radius = int(branch.geofence_radius_meters)
+        if hasattr(branch, "enforce_geofence") and branch.enforce_geofence is not None:
+            enforce_geofence = bool(branch.enforce_geofence)
+
+    method_str = (payload.method or emp.punch_method or "Manual").upper()
+    is_gps_punch = "GPS" in method_str or method_str == "OFFICE" or method_str == "MANUAL"
 
     is_geofence_verified = False
     verified_distance: float | None = None
@@ -409,20 +643,31 @@ async def clock_in(
     final_notes = f"{verification_note} • {payload.notes}" if payload.notes and verification_note else (verification_note or payload.notes)
 
     now_tz = datetime.now(timezone.utc)
-    att = AttendanceRecord(
-        tenant_id=ctx.tenant_id,
-        employee_id=emp.id,
-        date=today,
-        check_in=now_tz,
-        status="Present",
-        method=payload.method or emp.punch_method or "GPS",
-        latitude=payload.latitude,
-        longitude=payload.longitude,
-        is_geofence_verified=is_geofence_verified,
-        ip_address=request.client.host if request.client else None,
-        notes=final_notes,
-    )
-    db.add(att)
+    if existing:
+        att = existing
+        att.check_in = now_tz
+        att.status = "Present"
+        att.method = payload.method or emp.punch_method or "GPS"
+        att.latitude = payload.latitude
+        att.longitude = payload.longitude
+        att.is_geofence_verified = is_geofence_verified
+        att.ip_address = request.client.host if request.client else None
+        att.notes = final_notes
+    else:
+        att = AttendanceRecord(
+            tenant_id=ctx.tenant_id,
+            employee_id=emp.id,
+            date=today,
+            check_in=now_tz,
+            status="Present",
+            method=payload.method or emp.punch_method or "GPS",
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            is_geofence_verified=is_geofence_verified,
+            ip_address=request.client.host if request.client else None,
+            notes=final_notes,
+        )
+        db.add(att)
     await db.flush()
 
     await write_audit_log(
@@ -439,8 +684,28 @@ async def clock_in(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    resp = AttendanceRecordResponse(
+        id=att.id,
+        tenant_id=att.tenant_id,
+        employee_id=att.employee_id,
+        employee_name=emp.full_name,
+        employee_code=emp.employee_code,
+        date=att.date,
+        check_in=att.check_in,
+        check_out=att.check_out,
+        hours_worked=float(att.hours_worked) if att.hours_worked is not None else None,
+        status=att.status,
+        method=att.method,
+        latitude=float(att.latitude) if att.latitude is not None else None,
+        longitude=float(att.longitude) if att.longitude is not None else None,
+        is_geofence_verified=getattr(att, "is_geofence_verified", False),
+        ip_address=getattr(att, "ip_address", None),
+        notes=att.notes,
+        created_at=att.created_at,
+        updated_at=att.updated_at or now_tz,
+    )
     await db.commit()
-    return att
+    return resp
 
 
 @router.post("/attendance/check-out", response_model=AttendanceRecordResponse)
@@ -475,12 +740,18 @@ async def clock_out(
         )
     )
     if not att:
-        raise HTTPException(status_code=400, detail="No check-in record found for today")
-
-    if att.check_out:
-        raise HTTPException(status_code=400, detail="Already clocked out for today")
+        att = AttendanceRecord(
+            tenant_id=ctx.tenant_id,
+            employee_id=emp.id,
+            date=today,
+            status="Present",
+            method=emp.punch_method or "GPS",
+        )
+        db.add(att)
 
     now_tz = datetime.now(timezone.utc)
+    if not att.check_in:
+        att.check_in = now_tz
     att.check_out = now_tz
     
     # Calculate hours
@@ -505,8 +776,28 @@ async def clock_out(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    resp = AttendanceRecordResponse(
+        id=att.id,
+        tenant_id=att.tenant_id,
+        employee_id=att.employee_id,
+        employee_name=emp.full_name,
+        employee_code=emp.employee_code,
+        date=att.date,
+        check_in=att.check_in,
+        check_out=att.check_out,
+        hours_worked=float(att.hours_worked) if att.hours_worked is not None else None,
+        status=att.status,
+        method=att.method,
+        latitude=float(att.latitude) if att.latitude is not None else None,
+        longitude=float(att.longitude) if att.longitude is not None else None,
+        is_geofence_verified=getattr(att, "is_geofence_verified", False),
+        ip_address=getattr(att, "ip_address", None),
+        notes=att.notes,
+        created_at=att.created_at,
+        updated_at=att.updated_at or now_tz,
+    )
     await db.commit()
-    return att
+    return resp
 
 
 # ─── Attendance Dashboard Stats ───────────────────────────────────
@@ -734,7 +1025,24 @@ async def create_correction_request(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    return corr
+    return AttendanceCorrectionResponse(
+        id=corr.id,
+        tenant_id=corr.tenant_id,
+        employee_id=corr.employee_id,
+        employee_name=emp.full_name,
+        date=corr.date,
+        original_status=corr.original_status,
+        original_check_in=corr.original_check_in,
+        original_check_out=corr.original_check_out,
+        corrected_status=corr.corrected_status,
+        corrected_check_in=corr.corrected_check_in,
+        corrected_check_out=corr.corrected_check_out,
+        reason=corr.reason,
+        status=corr.status,
+        reviewed_by=corr.reviewed_by,
+        created_at=corr.created_at,
+        updated_at=corr.updated_at,
+    )
 
 
 @router.patch("/corrections/{corr_id}/review", response_model=AttendanceCorrectionResponse)
@@ -792,6 +1100,8 @@ async def review_correction_request(
             delta = att.check_out - att.check_in
             att.hours_worked = round(delta.total_seconds() / 3600.0, 2)
 
+    emp = await db.scalar(select(Employee).where(Employee.id == corr.employee_id))
+
     await write_audit_log(
         db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="hrms",
         action="reviewed", entity_type="attendance_correction", entity_id=corr.id,
@@ -799,8 +1109,26 @@ async def review_correction_request(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
+    resp = AttendanceCorrectionResponse(
+        id=corr.id,
+        tenant_id=corr.tenant_id,
+        employee_id=corr.employee_id,
+        employee_name=emp.full_name if emp else None,
+        date=corr.date,
+        original_status=corr.original_status,
+        original_check_in=corr.original_check_in,
+        original_check_out=corr.original_check_out,
+        corrected_status=corr.corrected_status,
+        corrected_check_in=corr.corrected_check_in,
+        corrected_check_out=corr.corrected_check_out,
+        reason=corr.reason,
+        status=corr.status,
+        reviewed_by=corr.reviewed_by,
+        created_at=corr.created_at,
+        updated_at=corr.updated_at,
+    )
     await db.commit()
-    return corr
+    return resp
 
 
 @router.delete("/attendance/{attendance_id}", status_code=status.HTTP_204_NO_CONTENT)

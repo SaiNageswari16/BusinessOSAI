@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList, SlidersHorizontal, Shield, Globe, LocateFixed, Building2, Check, Sparkles, Navigation, Settings } from "lucide-react";
+import { Plus, Clock, CheckCircle, AlertTriangle, XCircle, Fingerprint, Camera, MapPin, RefreshCw, Loader2, Play, AlertCircle, Trash2, Calendar as CalendarIcon, LayoutList, SlidersHorizontal, Shield, Globe, LocateFixed, Building2, Check, Sparkles, Navigation, Settings, Users, Search, UserCheck, Layers, CheckSquare } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { attendanceApi, employeesApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, workCalendarsApi, AttendanceSettings } from "../../lib/api-client";
+import { attendanceApi, employeesApi, AttendanceRecord, BiometricDevice, FaceRecognitionLog, AttendanceCorrection, HrmsDashboardStats, Employee, workCalendarsApi, AttendanceSettings, AttendanceScheme } from "../../lib/api-client";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -67,12 +67,18 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   const [faceLogs, setFaceLogs] = useState<FaceRecognitionLog[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
 
-  // Attendance Portal & Geofence Settings State
+  // Attendance Schemes & Geofence Settings State
+  const [schemes, setSchemes] = useState<AttendanceScheme[]>([]);
+  const [selectedSchemeId, setSelectedSchemeId] = useState<string | null>(null);
+  const [empSearchQuery, setEmpSearchQuery] = useState("");
+  const [newSchemeDialogOpen, setNewSchemeDialogOpen] = useState(false);
+  const [newSchemeName, setNewSchemeName] = useState("");
+
   const [settings, setSettings] = useState<AttendanceSettings>({
-    branch_name: "Corporate Headquarters",
-    latitude: 37.7749,
-    longitude: -122.4194,
-    geofence_radius_meters: 500,
+    branch_name: "Warangal",
+    latitude: 17.372998,
+    longitude: 78.521062,
+    geofence_radius_meters: 50,
     enforce_geofence: true,
     allowed_punch_methods: ["GPS", "Biometric", "Face", "Web"],
     shift_start_time: "09:00",
@@ -80,6 +86,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     grace_period_minutes: 15,
     half_day_hours: 4.0,
     ip_whitelist: "",
+    assigned_employee_ids: [],
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState("");
@@ -228,7 +235,21 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
   const loadSettings = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const res = await attendanceApi.getSettings();
+      const [res, schemesRes, empRes] = await Promise.all([
+        attendanceApi.getSettings(),
+        attendanceApi.listSchemes().catch(() => []),
+        employeesApi.list(1, 100).catch(() => ({ items: [] })),
+      ]);
+
+      if (empRes?.items) {
+        setEmployees(empRes.items);
+      }
+      if (schemesRes && schemesRes.length > 0) {
+        setSchemes(schemesRes);
+        if (!selectedSchemeId) {
+          setSelectedSchemeId(schemesRes[0].id);
+        }
+      }
       if (res) {
         setSettings(res);
       }
@@ -237,7 +258,74 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedSchemeId]);
+
+  const handleSelectScheme = (sch: AttendanceScheme) => {
+    setSelectedSchemeId(sch.id);
+    setSettings({
+      branch_id: sch.id,
+      branch_name: sch.name,
+      latitude: sch.latitude,
+      longitude: sch.longitude,
+      geofence_radius_meters: sch.geofence_radius_meters,
+      enforce_geofence: sch.enforce_geofence,
+      allowed_punch_methods: sch.allowed_punch_methods || ["GPS", "Biometric", "Face", "Web"],
+      shift_start_time: sch.shift_start_time || "09:00",
+      shift_end_time: sch.shift_end_time || "18:00",
+      grace_period_minutes: sch.grace_period_minutes ?? 15,
+      half_day_hours: sch.half_day_hours ?? 4.0,
+      ip_whitelist: sch.ip_whitelist || "",
+      assigned_employee_ids: sch.assigned_employee_ids || [],
+    });
+  };
+
+  const handleToggleEmployee = (empId: string) => {
+    setSettings(s => {
+      const current = s.assigned_employee_ids || [];
+      const next = current.includes(empId) ? current.filter(id => id !== empId) : [...current, empId];
+      return { ...s, assigned_employee_ids: next };
+    });
+  };
+
+  const handleSelectAllEmployees = () => {
+    setSettings(s => ({
+      ...s,
+      assigned_employee_ids: employees.map(e => e.id)
+    }));
+  };
+
+  const handleDeselectAllEmployees = () => {
+    setSettings(s => ({
+      ...s,
+      assigned_employee_ids: []
+    }));
+  };
+
+  const handleCreateNewScheme = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSchemeName.trim()) return;
+    try {
+      const created = await attendanceApi.createScheme({
+        name: newSchemeName.trim(),
+        latitude: settings.latitude ?? 17.372998,
+        longitude: settings.longitude ?? 78.521062,
+        geofence_radius_meters: settings.geofence_radius_meters ?? 50,
+        enforce_geofence: settings.enforce_geofence ?? true,
+        allowed_punch_methods: settings.allowed_punch_methods || ["GPS", "Biometric", "Face", "Web"],
+        shift_start_time: settings.shift_start_time || "09:00",
+        shift_end_time: settings.shift_end_time || "18:00",
+        grace_period_minutes: settings.grace_period_minutes ?? 15,
+        half_day_hours: settings.half_day_hours ?? 4.0,
+      });
+      setNewSchemeDialogOpen(false);
+      setNewSchemeName("");
+      setSettingsSuccess(`Created new Attendance Scheme '${created.name}'!`);
+      await loadSettings();
+      handleSelectScheme(created);
+    } catch (err: any) {
+      alert("Failed to create scheme: " + (err.message || "Unknown error"));
+    }
+  };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,8 +334,12 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
     try {
       const updated = await attendanceApi.updateSettings(settings);
       setSettings(updated);
-      setSettingsSuccess("Attendance portal restrictions & GPS coordinates saved successfully!");
-      setTimeout(() => setSettingsSuccess(""), 4000);
+      setSettingsSuccess(`Scheme '${updated.branch_name || settings.branch_name}' and ${updated.assigned_employee_ids?.length || 0} employee assignment(s) saved & activated!`);
+      const refreshedSchemes = await attendanceApi.listSchemes().catch(() => []);
+      if (refreshedSchemes.length > 0) {
+        setSchemes(refreshedSchemes);
+      }
+      setTimeout(() => setSettingsSuccess(""), 5000);
     } catch (err: any) {
       alert("Failed to save settings: " + (err.message || "Unknown error"));
     } finally {
@@ -947,21 +1039,39 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
 
   // ─── Render: Attendance Portal & Geofence Restrictions ─────────
   if (tab === "attendance_settings") {
+    const filteredEmployees = employees.filter(e => 
+      !empSearchQuery || 
+      e.full_name?.toLowerCase().includes(empSearchQuery.toLowerCase()) || 
+      e.employee_code?.toLowerCase().includes(empSearchQuery.toLowerCase()) ||
+      (e as any).department?.name?.toLowerCase().includes(empSearchQuery.toLowerCase())
+    );
+
+    const assignedCount = (settings.assigned_employee_ids || []).length;
+
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance & Geofencing Portal</h2>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Attendance & Geofencing Schemes</h2>
               <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${settings.enforce_geofence ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-amber-500/10 text-amber-500 border border-amber-500/20"}`}>
                 {settings.enforce_geofence ? "Geofence Enforcement Active" : "Geofence Enforcement Disabled"}
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Configure office GPS coordinates, permitted check-in perimeter radius, punch methods, and shift grace period policies for this workspace.
+              Configure attendance schemes with custom GPS coordinates & perimeter radius, and assign desired employees to activate their policies.
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setNewSchemeDialogOpen(true)}
+              className="text-xs font-semibold"
+            >
+              <Plus className="size-3.5 mr-1.5 text-primary" /> + New Scheme
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -978,9 +1088,44 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               className="gradient-brand text-white border-0 text-xs font-semibold h-9 px-4"
             >
               {savingSettings ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Check className="size-3.5 mr-1.5" />}
-              Save Restrictions
+              Save Scheme & Assignments
             </Button>
           </div>
+        </div>
+
+        {/* ─── Schemes Selector Ribbon ─── */}
+        <div className="p-3 bg-muted/40 rounded-2xl border flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground mr-2">
+            <Layers className="size-4 text-primary" />
+            <span>Saved Schemes:</span>
+          </div>
+          {schemes.map(sch => {
+            const isSelected = (settings.branch_id && sch.id === settings.branch_id) || selectedSchemeId === sch.id;
+            return (
+              <button
+                key={sch.id}
+                type="button"
+                onClick={() => handleSelectScheme(sch)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  isSelected 
+                    ? "bg-card text-foreground shadow-xs border border-primary/40 font-bold" 
+                    : "bg-transparent text-muted-foreground hover:bg-card/60 hover:text-foreground"
+                }`}
+              >
+                <MapPin className={`size-3.5 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                <span>{sch.name}</span>
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-primary/10 text-primary font-mono">
+                  {sch.geofence_radius_meters}m
+                </span>
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-muted text-muted-foreground">
+                  {sch.assigned_employees_count || 0} Emps
+                </span>
+              </button>
+            );
+          })}
+          {schemes.length === 0 && (
+            <span className="text-xs text-muted-foreground italic">No schemes saved yet. Create your first scheme.</span>
+          )}
         </div>
 
         {settingsSuccess && (
@@ -991,7 +1136,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
         )}
 
         <form onSubmit={handleSaveSettings} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Card 1: GPS Perimeter & Restrictions */}
+          {/* Card 1 & 2: Left column with GPS & Shift Settings */}
           <div className="lg:col-span-2 space-y-6">
             <Card className="p-6 space-y-5 glass-panel">
               <div className="flex items-center justify-between border-b pb-4">
@@ -1000,7 +1145,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                     <MapPin className="size-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-foreground">Workspace GPS Geofence & Boundary</h3>
+                    <h3 className="text-base font-bold text-foreground">Scheme Geofence & Perimeter</h3>
                     <p className="text-xs text-muted-foreground">Define coordinates and allowable distance radius for check-ins.</p>
                   </div>
                 </div>
@@ -1018,11 +1163,12 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground uppercase">Office / Branch Name</label>
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Scheme / Office Name</label>
                   <Input
                     value={settings.branch_name || ""}
                     onChange={e => setSettings(s => ({ ...s, branch_name: e.target.value }))}
-                    placeholder="e.g. San Francisco HQ / Building 4"
+                    placeholder="e.g. Warangal Branch / SF HQ"
+                    required
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1044,7 +1190,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   <Input
                     type="number"
                     step="0.000001"
-                    value={settings.latitude ?? 37.7749}
+                    value={settings.latitude ?? 17.372998}
                     onChange={e => setSettings(s => ({ ...s, latitude: parseFloat(e.target.value) || 0 }))}
                     required
                   />
@@ -1057,7 +1203,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   <Input
                     type="number"
                     step="0.000001"
-                    value={settings.longitude ?? -122.4194}
+                    value={settings.longitude ?? 78.521062}
                     onChange={e => setSettings(s => ({ ...s, longitude: parseFloat(e.target.value) || 0 }))}
                     required
                   />
@@ -1067,7 +1213,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               <div className="space-y-3 pt-2">
                 <div className="flex justify-between items-center">
                   <label className="text-xs font-bold text-muted-foreground uppercase">
-                    Permitted Check-In Radius: <span className="text-primary font-bold text-sm">{settings.geofence_radius_meters || 500} meters</span>
+                    Permitted Check-In Radius: <span className="text-primary font-bold text-sm">{settings.geofence_radius_meters || 50} meters</span>
                   </label>
                   <div className="flex gap-1">
                     {[50, 100, 250, 500, 1000, 2000].map(r => (
@@ -1085,16 +1231,16 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                 <input
                   type="range"
                   min="20"
-                  max="5000"
+                  max="2000"
                   step="10"
-                  value={settings.geofence_radius_meters || 500}
-                  onChange={e => setSettings(s => ({ ...s, geofence_radius_meters: parseInt(e.target.value) || 500 }))}
+                  value={settings.geofence_radius_meters || 50}
+                  onChange={e => setSettings(s => ({ ...s, geofence_radius_meters: parseInt(e.target.value) || 50 }))}
                   className="w-full accent-primary cursor-pointer"
                 />
                 <p className="text-[11px] text-muted-foreground">
                   {settings.enforce_geofence ? (
                     <span className="text-amber-600 font-medium">
-                      ⚠️ Employees clocking in via GPS beyond {settings.geofence_radius_meters}m from ({settings.latitude}, {settings.longitude}) will be restricted unless tagged as WFH.
+                      ⚠️ Employees assigned to this scheme clocking in via GPS beyond {settings.geofence_radius_meters}m from ({settings.latitude}, {settings.longitude}) will be restricted unless tagged as WFH.
                     </span>
                   ) : (
                     <span>Geofence restriction is relaxed. Coordinates will be logged for audit without blocking punches.</span>
@@ -1103,7 +1249,7 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
               </div>
             </Card>
 
-            {/* Card 2: Shift Timings & Grace Policies */}
+            {/* Shift Timings Card */}
             <Card className="p-6 space-y-5 glass-panel">
               <div className="flex items-center gap-3 border-b pb-4">
                 <div className="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-500">
@@ -1164,25 +1310,96 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             </Card>
           </div>
 
-          {/* Card 3: Sidebar Summary & Allowed Punch Methods */}
+          {/* Right Column: Employee Assignment & Punch Channels */}
           <div className="space-y-6">
-            <Card className="p-6 space-y-5 glass-panel">
-              <div className="flex items-center gap-3 border-b pb-4">
-                <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-500">
-                  <Shield className="size-5" />
+            {/* Card: Assign Employees to this Scheme */}
+            <Card className="p-6 space-y-4 glass-panel border-primary/20">
+              <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                    <Users className="size-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">Assign Desired Employees</h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      <strong className="text-primary font-bold">{assignedCount}</strong> of {employees.length} employee(s) active in scheme
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-foreground">Allowed Punch Channels</h3>
-                  <p className="text-xs text-muted-foreground">Enable active verification methods.</p>
+                <div className="flex items-center gap-1">
+                  <Button type="button" variant="ghost" size="xs" onClick={handleSelectAllEmployees} className="text-[10px] h-6 px-2">All</Button>
+                  <Button type="button" variant="ghost" size="xs" onClick={handleDeselectAllEmployees} className="text-[10px] h-6 px-2 text-muted-foreground">Clear</Button>
                 </div>
               </div>
 
-              <div className="space-y-3">
+              {/* Search input */}
+              <div className="relative">
+                <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={empSearchQuery}
+                  onChange={e => setEmpSearchQuery(e.target.value)}
+                  placeholder="Search employees..."
+                  className="pl-8 text-xs h-8"
+                />
+              </div>
+
+              {/* Scrollable employee list */}
+              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                {filteredEmployees.map(empItem => {
+                  const isAssigned = (settings.assigned_employee_ids || []).includes(empItem.id);
+                  return (
+                    <div
+                      key={empItem.id}
+                      onClick={() => handleToggleEmployee(empItem.id)}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 text-xs ${
+                        isAssigned ? "bg-primary/10 border-primary/50 text-foreground font-semibold" : "bg-card/60 hover:bg-muted/50 border-border/60 text-muted-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 truncate">
+                        <input
+                          type="checkbox"
+                          checked={isAssigned}
+                          onChange={() => {}}
+                          className="accent-primary"
+                        />
+                        <div className="size-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-[10px] shrink-0">
+                          {empItem.full_name?.charAt(0) || "E"}
+                        </div>
+                        <div className="truncate">
+                          <p className="truncate text-xs font-bold leading-none">{empItem.full_name}</p>
+                          <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{empItem.employee_code || "EMP"}</p>
+                        </div>
+                      </div>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${isAssigned ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                        {isAssigned ? "Activated" : "Unassigned"}
+                      </span>
+                    </div>
+                  );
+                })}
+                {filteredEmployees.length === 0 && (
+                  <p className="text-center text-xs text-muted-foreground py-4">No employees found.</p>
+                )}
+              </div>
+            </Card>
+
+            {/* Card: Allowed Punch Channels */}
+            <Card className="p-6 space-y-4 glass-panel">
+              <div className="flex items-center gap-2.5 border-b pb-3">
+                <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
+                  <Shield className="size-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">Allowed Punch Channels</h3>
+                  <p className="text-[11px] text-muted-foreground">Permitted punch modes for this scheme.</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 {[
-                  { id: "GPS", label: "GPS Mobile & Web Geofencing", desc: "Verifies browser/mobile coordinates within perimeter radius", icon: MapPin },
-                  { id: "Biometric", label: "Biometric Fingerprint Terminals", desc: "ZKTeco & Suprema hardware gate turnstiles", icon: Fingerprint },
-                  { id: "Face", label: "AI Facial Recognition Tablet Kiosk", desc: "High confidence biometric face matching at entrances", icon: Camera },
-                  { id: "Web", label: "Web ESS Self-Service & WFH", desc: "Employee portal clock-in with remote justification", icon: Globe },
+                  { id: "GPS", label: "GPS Mobile & Web Geofencing", desc: "Verifies device coordinates within radius", icon: MapPin },
+                  { id: "Biometric", label: "Biometric Fingerprint Terminals", desc: "Hardware gate turnstiles", icon: Fingerprint },
+                  { id: "Face", label: "AI Facial Recognition Tablet", desc: "Kiosk face recognition at entrance", icon: Camera },
+                  { id: "Web", label: "Web ESS Portal & WFH", desc: "Browser 1-click punch", icon: Globe },
                 ].map(method => {
                   const IconComp = method.icon;
                   const isChecked = (settings.allowed_punch_methods || []).includes(method.id);
@@ -1196,46 +1413,46 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                           : [...current, method.id];
                         setSettings(s => ({ ...s, allowed_punch_methods: next }));
                       }}
-                      className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${isChecked ? "bg-primary/5 border-primary/40" : "bg-background border-border/60 opacity-60"}`}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-start gap-2.5 ${isChecked ? "bg-primary/5 border-primary/40" : "bg-background border-border/60 opacity-60"}`}
                     >
                       <input
                         type="checkbox"
                         checked={isChecked}
                         onChange={() => {}}
-                        className="mt-1 accent-primary"
+                        className="mt-0.5 accent-primary"
                       />
                       <div className="flex-1">
                         <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
                           <IconComp className="size-3.5 text-primary" /> {method.label}
                         </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{method.desc}</p>
+                        <p className="text-[10px] text-muted-foreground">{method.desc}</p>
                       </div>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="pt-3 border-t">
+              <div className="pt-2">
                 <Button
                   type="submit"
                   disabled={savingSettings}
-                  className="w-full gradient-brand text-white border-0 font-semibold"
+                  className="w-full gradient-brand text-white border-0 font-semibold h-10 text-xs shadow-md"
                 >
                   {savingSettings ? <Loader2 className="size-4 animate-spin mr-2" /> : <Check className="size-4 mr-2" />}
-                  Save All Settings
+                  Save Scheme & Activate ({assignedCount} Employees)
                 </Button>
               </div>
             </Card>
 
             {/* Quick Live Preview Card */}
-            <div className="glass-panel p-5 rounded-xl border bg-gradient-to-br from-primary/5 via-transparent to-primary/10 space-y-3">
+            <div className="glass-panel p-4 rounded-xl border bg-gradient-to-br from-primary/5 via-transparent to-primary/10 space-y-2.5">
               <div className="flex items-center gap-2">
                 <Sparkles className="size-4 text-primary" />
-                <h4 className="text-xs font-bold uppercase text-foreground">Active Policy Summary</h4>
+                <h4 className="text-xs font-bold uppercase text-foreground">Active Scheme Summary</h4>
               </div>
-              <div className="text-xs space-y-1.5 text-muted-foreground">
+              <div className="text-xs space-y-1 text-muted-foreground">
                 <div className="flex justify-between">
-                  <span>Target Branch:</span>
+                  <span>Target Scheme:</span>
                   <span className="font-semibold text-foreground">{settings.branch_name || "Headquarters"}</span>
                 </div>
                 <div className="flex justify-between">
@@ -1247,6 +1464,10 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
                   <span className="font-semibold text-foreground">{settings.geofence_radius_meters}m</span>
                 </div>
                 <div className="flex justify-between">
+                  <span>Assigned Employees:</span>
+                  <span className="font-bold text-primary">{assignedCount} Members</span>
+                </div>
+                <div className="flex justify-between">
                   <span>Enforcement:</span>
                   <span className={`font-bold ${settings.enforce_geofence ? "text-emerald-500" : "text-amber-500"}`}>
                     {settings.enforce_geofence ? "Strict (403 Rejection)" : "Audit Log Only"}
@@ -1256,6 +1477,50 @@ export function AttendanceManagement({ tab = "daily_attendance" }: Props) {
             </div>
           </div>
         </form>
+
+        {/* ─── New Scheme Modal ─── */}
+        {newSchemeDialogOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <div className="bg-card border rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <Building2 className="size-5 text-primary" />
+                  <h3 className="font-bold text-base text-foreground">Create Attendance Scheme</h3>
+                </div>
+                <button type="button" onClick={() => setNewSchemeDialogOpen(false)} className="text-muted-foreground hover:text-foreground">
+                  <XCircle className="size-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateNewScheme} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Scheme / Branch Name</label>
+                  <Input
+                    value={newSchemeName}
+                    onChange={e => setNewSchemeName(e.target.value)}
+                    placeholder="e.g. Hyderabad Tech Park / Field Team"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div className="p-3 bg-muted/40 rounded-xl text-xs text-muted-foreground space-y-1">
+                  <p className="font-bold text-foreground">Next Step:</p>
+                  <p>Once created, you can customize its GPS perimeter, radius, shift timings, and select which employees belong to this scheme.</p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setNewSchemeDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" className="gradient-brand text-white border-0">
+                    Create Scheme
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

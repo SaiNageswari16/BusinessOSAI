@@ -1379,18 +1379,18 @@ class AttendanceRecordResponse(ORMModel):
     employee_name: str | None = None
     employee_code: str | None = None
     date: date
-    check_in: datetime | None
-    check_out: datetime | None
-    hours_worked: float | None
-    status: str
-    method: str
-    latitude: float | None
-    longitude: float | None
+    check_in: datetime | None = None
+    check_out: datetime | None = None
+    hours_worked: float | None = None
+    status: str = "Present"
+    method: str = "Manual"
+    latitude: float | None = None
+    longitude: float | None = None
     is_geofence_verified: bool | None = False
     ip_address: str | None = None
-    notes: str | None
-    created_at: datetime
-    updated_at: datetime
+    notes: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class ClockInRequest(BaseModel):
@@ -1411,9 +1411,9 @@ class ClockOutRequest(BaseModel):
 class AttendanceSettingsSchema(BaseModel):
     branch_id: uuid.UUID | None = None
     branch_name: str | None = None
-    latitude: float | None = 37.7749
-    longitude: float | None = -122.4194
-    geofence_radius_meters: int = 500
+    latitude: float | None = 17.372998
+    longitude: float | None = 78.521062
+    geofence_radius_meters: int = 50
     enforce_geofence: bool = True
     allowed_punch_methods: list[str] = ["GPS", "Biometric", "Face", "Web"]
     shift_start_time: str = "09:00"
@@ -1421,6 +1421,47 @@ class AttendanceSettingsSchema(BaseModel):
     grace_period_minutes: int = 15
     half_day_hours: float = 4.0
     ip_whitelist: str | None = ""
+    assigned_employee_ids: list[uuid.UUID] = []
+
+
+class AttendanceSchemeCreate(BaseModel):
+    name: str
+    code: str | None = None
+    latitude: float = 17.372998
+    longitude: float = 78.521062
+    geofence_radius_meters: int = 50
+    enforce_geofence: bool = True
+    allowed_punch_methods: list[str] = ["GPS", "Biometric", "Face", "Web"]
+    shift_start_time: str = "09:00"
+    shift_end_time: str = "18:00"
+    grace_period_minutes: int = 15
+    half_day_hours: float = 4.0
+    ip_whitelist: str | None = ""
+    assigned_employee_ids: list[uuid.UUID] = []
+
+
+class AttendanceSchemeResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    code: str | None = None
+    latitude: float
+    longitude: float
+    geofence_radius_meters: int
+    enforce_geofence: bool
+    allowed_punch_methods: list[str] = ["GPS", "Biometric", "Face", "Web"]
+    shift_start_time: str = "09:00"
+    shift_end_time: str = "18:00"
+    grace_period_minutes: int = 15
+    half_day_hours: float = 4.0
+    ip_whitelist: str | None = ""
+    assigned_employees_count: int = 0
+    assigned_employee_ids: list[uuid.UUID] = []
+
+
+class AssignSchemeEmployeesRequest(BaseModel):
+    scheme_id: uuid.UUID
+    employee_ids: list[uuid.UUID]
+    punch_method: str | None = None
 
 
 class BiometricDeviceCreate(BaseModel):

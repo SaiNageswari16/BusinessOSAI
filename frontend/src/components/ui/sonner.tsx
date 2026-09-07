@@ -7,9 +7,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       className="toaster group"
       closeButton={true}
-      duration={Infinity}
+      duration={4000}
       toastOptions={{
-        duration: Infinity,
+        duration: 4000,
         classNames: {
           toast:
             "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",

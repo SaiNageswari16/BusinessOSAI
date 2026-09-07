@@ -37,7 +37,7 @@ export async function isBiometricsSupported(): Promise<boolean> {
     if (typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function") {
       return await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
     }
-    return true;
+    return false;
   } catch {
     return false;
   }
@@ -51,8 +51,14 @@ export async function createBiometricCredential(serverOptions: any): Promise<any
     throw new Error("Biometric WebAuthn is not supported in this browser.");
   }
 
+  const hostname = typeof window !== "undefined" ? window.location.hostname : "localhost";
+
   const publicKey: PublicKeyCredentialCreationOptions = {
     ...serverOptions,
+    rp: {
+      name: serverOptions.rp?.name || "BusinessOS AI",
+      id: hostname,
+    },
     challenge: base64UrlToBuffer(serverOptions.challenge),
     user: {
       ...serverOptions.user,
@@ -88,8 +94,11 @@ export async function getBiometricAssertion(serverOptions: any): Promise<any> {
     throw new Error("Biometric WebAuthn is not supported in this browser.");
   }
 
+  const hostname = typeof window !== "undefined" ? window.location.hostname : "localhost";
+
   const publicKey: PublicKeyCredentialRequestOptions = {
     ...serverOptions,
+    rpId: hostname,
     challenge: base64UrlToBuffer(serverOptions.challenge),
     allowCredentials: (serverOptions.allowCredentials || []).map((cred: any) => ({
       ...cred,

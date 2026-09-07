@@ -116,6 +116,12 @@ function LoginPage() {
     }
     setLoading(true);
     try {
+      const supported = await isBiometricsSupported();
+      if (!supported) {
+        toast.error("No built-in biometric sensor (Windows Hello / Touch ID) detected on this device. Please use password or plug in an external USB fingerprint scanner.");
+        setLoading(false);
+        return;
+      }
       const options = await passkeysApi.getLoginOptions(email, tenantSlug || undefined);
       toast.info("Please scan your fingerprint or Face ID on your device sensor...");
       const assertion = await getBiometricAssertion(options);
@@ -142,8 +148,13 @@ function LoginPage() {
   const handleOpticalFingerprintLogin = async () => {
     setLoading(true);
     try {
-      toast.info("Discovering connected USB Fingerprint Scanner (Mantra / Morpho / SecuGen)...");
+      toast.info("Scanning for USB Fingerprint Scanner (Mantra / Morpho / SecuGen)...");
       const device = await discoverRDService();
+
+      if (!device || device.status !== "READY" || !device.port) {
+        toast.error("No USB optical scanner detected. Please connect your Mantra/Morpho/SecuGen scanner and verify the RD Service driver is running.");
+        return;
+      }
 
       toast.info(`Please place your registered finger firmly on the ${device.model} scanner glass...`);
       const capture = await captureFingerprint(device);

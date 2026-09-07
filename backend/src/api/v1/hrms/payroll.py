@@ -1071,9 +1071,45 @@ async def process_payroll(
         await db.delete(existing)
         await db.flush()
 
-    allowances = sal.hra + sal.other_allowances
-    deductions = sal.pf_deduction + sal.esi_deduction + sal.tds_deduction + sal.other_deductions
-    gross = sal.basic_salary + allowances
+    days_in_month = calendar.monthrange(payload.year, payload.month)[1]
+    start_d = date(payload.year, payload.month, 1)
+    end_d = date(payload.year, payload.month, days_in_month)
+
+    # Query attendance records for this month to apply accurate LOP proration
+    emp_att = (
+        await db.scalars(
+            select(AttendanceRecord).where(
+                AttendanceRecord.tenant_id == ctx.tenant_id,
+                AttendanceRecord.employee_id == payload.employee_id,
+                AttendanceRecord.date >= start_d,
+                AttendanceRecord.date <= end_d,
+            )
+        )
+    ).all()
+
+    lop_days = 0.0
+    for a in emp_att:
+        if a.status in ["Absent", "absent"]:
+            lop_days += 1.0
+        elif a.status in ["Half Day", "half_day"]:
+            lop_days += 0.5
+
+    payable_days = max(0.0, float(days_in_month) - lop_days)
+    proration = payable_days / float(days_in_month)
+
+    prorated_basic = round(float(sal.basic_salary) * proration)
+    prorated_hra = round(float(sal.hra) * proration)
+    prorated_allow = round(float(sal.other_allowances) * proration)
+
+    gross = prorated_basic + prorated_hra + prorated_allow
+    pf = round(min(prorated_basic, 15000.0) * 0.12) if prorated_basic > 0 else 0
+    esi = round(gross * 0.0075) if (gross > 0 and gross <= 21000.0) else 0
+    annual_gross = gross * 12
+    tds = round(((annual_gross - 700000.0) * 0.10) / 12) if annual_gross > 700000.0 else 0
+    other_ded = float(sal.other_deductions or 0.0)
+
+    total_ded = pf + esi + tds + other_ded
+    net_salary = max(0.0, gross - total_ded)
 
     # Check for active template
     active_tpl = await db.scalar(
@@ -1096,15 +1132,15 @@ async def process_payroll(
         employee_id=payload.employee_id,
         month=payload.month,
         year=payload.year,
-        basic_salary=sal.basic_salary,
-        hra=sal.hra,
-        other_allowances=sal.other_allowances,
-        pf_deduction=sal.pf_deduction,
-        esi_deduction=sal.esi_deduction,
-        tds_deduction=sal.tds_deduction,
-        other_deductions=sal.other_deductions,
+        basic_salary=prorated_basic,
+        hra=prorated_hra,
+        other_allowances=prorated_allow,
+        pf_deduction=pf,
+        esi_deduction=esi,
+        tds_deduction=tds,
+        other_deductions=other_ded,
         gross_salary=gross,
-        net_salary=sal.net_salary,
+        net_salary=net_salary,
         status=payload.status,
         template_id=tpl_id,
         pdf_url=f"/vault/payslips/slip_pending.pdf"
