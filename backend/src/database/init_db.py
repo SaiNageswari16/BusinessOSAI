@@ -51,6 +51,10 @@ async def init_database() -> None:
 
     # Ensure new columns on existing PostgreSQL tables always runs
     migration_statements = [
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS penalty_amount NUMERIC(18, 2) DEFAULT 0.0;",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMPTZ;",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS reminder_count INT DEFAULT 0;",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS penalty_applied_at TIMESTAMPTZ;",
         "ALTER TABLE erp_product_categories ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
         "ALTER TABLE erp_brands ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
         "ALTER TABLE erp_uoms ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",

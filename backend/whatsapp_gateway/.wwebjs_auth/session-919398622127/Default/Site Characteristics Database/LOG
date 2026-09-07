@@ -1,3 +1,2 @@
-2026/08/15-16:39:09.775 2480 Reusing MANIFEST C:\Users\Admin\Desktop\NEW FOLDER\backend\whatsapp_gateway\.wwebjs_auth\session-919398622127\Default\Site Characteristics Database/MANIFEST-000001
-2026/08/15-16:39:09.776 2480 Recovering log #3
-2026/08/15-16:39:09.777 2480 Reusing old log C:\Users\Admin\Desktop\NEW FOLDER\backend\whatsapp_gateway\.wwebjs_auth\session-919398622127\Default\Site Characteristics Database/000003.log 
+2026/09/07-21:19:03.163 1fa0 Creating DB C:\Users\abhil\Desktop\businessosai\BusinessOSAI\backend\whatsapp_gateway\.wwebjs_auth\session-919398622127\Default\Site Characteristics Database since it was missing.
+2026/09/07-21:19:03.180 1fa0 Reusing MANIFEST C:\Users\abhil\Desktop\businessosai\BusinessOSAI\backend\whatsapp_gateway\.wwebjs_auth\session-919398622127\Default\Site Characteristics Database/MANIFEST-000001

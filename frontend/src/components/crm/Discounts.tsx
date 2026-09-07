@@ -13,6 +13,7 @@ import {
   Copy,
   CheckCircle,
   XCircle,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { crmDiscountsApi, crmCustomersApi, type Discount, type DiscountUsage, type CrmCustomer } from "@/lib/api-client";
@@ -481,8 +482,8 @@ export function Discounts() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => handleEdit(discount)} className="p-1.5 hover:bg-muted rounded-md" title="Edit">
-                              <Plus className="size-3.5 rotate-45" />
+                            <button onClick={() => handleEdit(discount)} className="p-1.5 hover:bg-indigo-500/10 text-muted-foreground hover:text-indigo-600 rounded-md transition" title="Edit Discount">
+                              <Pencil className="size-3.5" />
                             </button>
                             <button onClick={() => handleDelete(discount.id)} className="p-1.5 hover:bg-red-500/10 text-red-500 rounded-md" title="Delete">
                               <Trash2 className="size-3.5" />

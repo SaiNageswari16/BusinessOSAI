@@ -6,6 +6,37 @@ const fs = require('fs');
 const path = require('path');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 
+// Global Process Crash Prevention
+process.on('uncaughtException', (err) => {
+    const msg = err?.message || String(err);
+    if (
+        msg.includes('Execution context was destroyed') ||
+        msg.includes('Session closed') ||
+        msg.includes('Protocol error') ||
+        msg.includes('Target closed') ||
+        msg.includes('Promise was collected')
+    ) {
+        console.warn('⚠️ [Safe Catch] Suppressed Puppeteer context/navigation error:', msg);
+        return;
+    }
+    console.error('💥 Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    const msg = reason?.message || String(reason);
+    if (
+        msg.includes('Execution context was destroyed') ||
+        msg.includes('Session closed') ||
+        msg.includes('Protocol error') ||
+        msg.includes('Target closed') ||
+        msg.includes('Promise was collected')
+    ) {
+        console.warn('⚠️ [Safe Catch] Suppressed Puppeteer unhandled rejection:', msg);
+        return;
+    }
+    console.error('💥 Unhandled Promise Rejection:', reason);
+});
+
 const app = express();
 const PORT = process.env.PORT || 8005;
 const FASTAPI_WEBHOOK_URL = process.env.FASTAPI_WEBHOOK_URL || 'http://localhost:8000/api/v1/whatsapp-automation/webhook';
@@ -134,21 +165,44 @@ function startClient(rawId) {
         }
     });
 
-    client.on('auth_failure', (msg) => {
+    client.on('auth_failure', async (msg) => {
         console.error(`❌ Session ${id} Auth Failure:`, msg);
-        clients[id].status = 'DISCONNECTED';
-        clients[id].qr = null;
+        if (clients[id]) {
+            clients[id].status = 'DISCONNECTED';
+            clients[id].qr = null;
+        }
+        try {
+            await client.destroy();
+        } catch (_) {}
     });
 
-    client.on('disconnected', (reason) => {
+    client.on('disconnected', async (reason) => {
         console.log(`🔌 Session ${id} was DISCONNECTED:`, reason);
-        clients[id].status = 'DISCONNECTED';
-        clients[id].qr = null;
+        if (clients[id]) {
+            clients[id].status = 'DISCONNECTED';
+            clients[id].qr = null;
+        }
         
         // Remove from saved list
         const saved = loadSessions();
         const updated = saved.filter(s => s !== id);
         saveSessions(updated);
+
+        // If logged out, clean session auth files to allow fresh scan
+        if (reason === 'LOGOUT') {
+            const sessionAuthPath = path.join(AUTH_DIR, `session-${id}`);
+            try {
+                if (fs.existsSync(sessionAuthPath)) {
+                    fs.rmSync(sessionAuthPath, { recursive: true, force: true });
+                }
+            } catch (err) {
+                console.warn('Could not clean auth dir on logout:', err.message);
+            }
+        }
+
+        try {
+            await client.destroy();
+        } catch (_) {}
     });
 
     // Inbound Message Listener

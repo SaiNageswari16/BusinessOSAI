@@ -10,16 +10,30 @@ class ORMModel(BaseModel):
 
 class CustomerBase(BaseModel):
     name: str = Field(min_length=2, max_length=255)
-    email: EmailStr | None = None
+    email: EmailStr | str | None = None
     phone: str | None = Field(default=None, max_length=100)
+    alternate_phone: str | None = None
+    whatsapp_number: str | None = None
     company_name: str | None = Field(default=None, max_length=255)
+    contact_person: str | None = None
     customer_type: str = "Retail"
     status: str = "Active"
     address: str | None = None
     billing_address: str | None = None
     shipping_address: str | None = None
     addresses: list[dict] | None = Field(default_factory=list)
+    city: str | None = None
+    state: str | None = None
+    country: str | None = "India"
+    postal_code: str | None = None
     gst_number: str | None = Field(default=None, max_length=50)
+    pan_number: str | None = None
+    date_of_birth: date | str | None = None
+    anniversary_date: date | str | None = None
+    gender: str | None = None
+    preferred_language: str | None = "English"
+    credit_limit: float | None = 0.0
+    source: str | None = None
     owner_user_id: uuid.UUID | None = None
 
 
@@ -29,16 +43,30 @@ class CustomerCreate(CustomerBase):
 
 class CustomerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=255)
-    email: EmailStr | None = None
+    email: EmailStr | str | None = None
     phone: str | None = None
+    alternate_phone: str | None = None
+    whatsapp_number: str | None = None
     company_name: str | None = None
+    contact_person: str | None = None
     customer_type: str | None = None
     status: str | None = None
     address: str | None = None
     billing_address: str | None = None
     shipping_address: str | None = None
     addresses: list[dict] | None = None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = None
+    postal_code: str | None = None
     gst_number: str | None = None
+    pan_number: str | None = None
+    date_of_birth: date | str | None = None
+    anniversary_date: date | str | None = None
+    gender: str | None = None
+    preferred_language: str | None = None
+    credit_limit: float | None = None
+    source: str | None = None
     owner_user_id: uuid.UUID | None = None
 
 
@@ -46,18 +74,32 @@ class CustomerResponse(ORMModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     name: str
-    email: str | None
-    phone: str | None
-    company_name: str | None
-    customer_type: str
-    status: str
-    address: str | None
+    email: str | None = None
+    phone: str | None = None
+    alternate_phone: str | None = None
+    whatsapp_number: str | None = None
+    company_name: str | None = None
+    contact_person: str | None = None
+    customer_type: str = "Retail"
+    status: str = "Active"
+    address: str | None = None
     billing_address: str | None = None
     shipping_address: str | None = None
     addresses: list[dict] | None = None
-    gst_number: str | None
-    owner_user_id: uuid.UUID | None
-    lead_id: uuid.UUID | None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = "India"
+    postal_code: str | None = None
+    gst_number: str | None = None
+    pan_number: str | None = None
+    date_of_birth: date | str | None = None
+    anniversary_date: date | str | None = None
+    gender: str | None = None
+    preferred_language: str | None = None
+    credit_limit: float | None = 0.0
+    source: str | None = None
+    owner_user_id: uuid.UUID | None = None
+    lead_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

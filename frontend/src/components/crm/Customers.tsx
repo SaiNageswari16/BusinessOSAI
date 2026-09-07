@@ -20,7 +20,7 @@ import {
 import { crmCustomersApi, inventoryApi, type CrmCustomer, type CustomerAddressItem } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
-import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock, Trash2, Check } from "lucide-react";
+import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock, Trash2, Check, Pencil, Eye } from "lucide-react";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { AiCallingModal } from "./AiCallingModal";
 import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
@@ -428,17 +428,20 @@ export function Customers() {
         const updated = await crmCustomersApi.update(editingId, payload);
         setCustomers((curr) => curr.map((c) => (c.id === editingId ? updated : c)));
         if (selectedCustomer?.id === editingId) setSelectedCustomer(updated);
-        toast.success("Customer and addresses updated successfully");
+        toast.success("Customer updated successfully");
       } else {
         const created = await crmCustomersApi.create(payload);
         setCustomers((curr) => [created, ...curr]);
         setTotal((t) => t + 1);
-        toast.success("Customer created with multi-location addresses");
+        toast.success("Customer created successfully");
       }
       setShowForm(false);
       resetForm();
-    } catch {
-      toast.error("Failed to save customer");
+      void load();
+    } catch (err: any) {
+      console.error("Customer save error:", err);
+      const msg = err?.detail || err?.message || "Failed to save customer";
+      toast.error(typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setSaving(false);
     }
@@ -850,15 +853,23 @@ export function Customers() {
                                 : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
                               : "hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400"
                           }`}
-                          title={callStatusMap[customer.id] ? "Called — Click to call again" : "Start AI Call"}
+                          title={callStatusMap[customer.id] ? "Called — Click to call again" : "Start AI Voice Call"}
                         >
                           <PhoneCall className="size-3.5" />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); openEdit(customer); }} className="p-1 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground" title="Edit">
-                          <Plus className="size-3.5 rotate-45" />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEdit(customer); }}
+                          className="p-1.5 hover:bg-indigo-500/10 text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition"
+                          title="Edit Customer"
+                        >
+                          <Pencil className="size-3.5" />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDelete(customer.id); }} className="p-1 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 rounded-md" title="Deactivate">
-                          <X className="size-3.5" />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(customer.id); }}
+                          className="p-1.5 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition"
+                          title="Deactivate Customer"
+                        >
+                          <Trash2 className="size-3.5" />
                         </button>
                       </div>
                     </td>

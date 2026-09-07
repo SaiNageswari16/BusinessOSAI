@@ -1,5 +1,5 @@
 import {
-  Activity, AlertTriangle, Archive, AreaChart, ArrowDownToLine, ArrowRightLeft, Award, Banknote, BarChart3, Barcode, Blocks,
+  Activity, AlertTriangle, Archive, AreaChart, ArrowDownToLine, ArrowRightLeft, Award, Banknote, BarChart3, Barcode, BellRing, Blocks,
   BookOpen, Boxes, BrainCircuit, Briefcase, BriefcaseBusiness, Building, Building2, Calculator, Calendar, CalendarClock,
   CalendarRange, CalendarX, ChartPie, ChartSpline, CircleDollarSign, ClipboardCheck, ClipboardList, Clock, Cog, Columns,
   Combine, Compass, Component, Contact, CreditCard, Crosshair, Database, DollarSign, DoorOpen, Factory, FileCheck,
@@ -486,6 +486,7 @@ export const nav: NavGroup[] = [
           { to: "/accounting?tab=payments", label: "Payments", icon: Wallet },
           { to: "/accounting?tab=outstanding", label: "Outstanding", icon: Clock },
           { to: "/accounting?tab=collections", label: "Collections", icon: Target },
+          { to: "/accounting?tab=payment_reminders", label: "Payment Reminders", icon: BellRing },
         ]
       },
       {

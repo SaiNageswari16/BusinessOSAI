@@ -4815,6 +4815,17 @@ export const invoicesApi = {
     request<PaginatedResponse<any>>("GET", "/invoices/payments/all", undefined, params),
 };
 
+export const paymentRemindersApi = {
+  getSummary: () => request<any>("GET", "/invoices/reminders/summary"),
+  getPolicy: () => request<any>("GET", "/invoices/reminders/policy"),
+  updatePolicy: (data: any) => request<{ message: string }>("PUT", "/invoices/reminders/policy", data),
+  evaluateBatch: () => request<any>("POST", "/invoices/reminders/evaluate-batch"),
+  sendSingleReminder: (invoiceId: string, data?: { custom_note?: string }) =>
+    request<{ message: string; result: any }>("POST", `/invoices/reminders/invoices/${invoiceId}/send-now`, data),
+  getLogs: (params?: { channel?: string; limit?: number }) =>
+    request<any[]>("GET", "/invoices/reminders/logs", undefined, params),
+};
+
 export const fixedAssetsApi = {
   listAssets: (params?: { page?: number; page_size?: number; status?: string; search?: string; category_id?: string }) =>
     request<PaginatedResponse<FixedAsset>>("GET", "/fixed-assets", undefined, params),

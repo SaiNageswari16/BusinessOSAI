@@ -290,6 +290,10 @@ class Invoice(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     total_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     amount_paid: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     balance_due: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    penalty_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    last_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reminder_count: Mapped[int] = mapped_column(Integer, default=0)
+    penalty_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     notes: Mapped[str | None] = mapped_column(Text)
     terms: Mapped[str | None] = mapped_column(Text)

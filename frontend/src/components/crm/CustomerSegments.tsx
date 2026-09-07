@@ -9,6 +9,7 @@ import {
   Users,
   Sparkles,
   AlertTriangle,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { crmSegmentsApi, type CrmSegment } from "@/lib/api-client";
@@ -448,8 +449,8 @@ export function CustomerSegments() {
                         <button onClick={() => handleRecalculate(segment.id)} className="p-1.5 hover:bg-muted rounded-md" title="Recalculate">
                           <RefreshCw className="size-3.5" />
                         </button>
-                        <button onClick={() => handleEdit(segment)} className="p-1.5 hover:bg-muted rounded-md" title="Edit">
-                          <Plus className="size-3.5 rotate-45" />
+                        <button onClick={() => handleEdit(segment)} className="p-1.5 hover:bg-indigo-500/10 text-muted-foreground hover:text-indigo-600 rounded-md transition" title="Edit Segment">
+                          <Pencil className="size-3.5" />
                         </button>
                         <button onClick={() => handleDelete(segment.id)} className="p-1.5 hover:bg-red-500/10 text-red-500 rounded-md" title="Delete">
                           <Trash2 className="size-3.5" />

@@ -2021,5 +2021,6 @@ from .erp import *
 from .inventory import *
 from .procurement import *
 from .marketplace import *
+from .payment_reminders import *
 
 

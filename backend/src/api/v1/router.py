@@ -150,6 +150,7 @@ from src.api.v1.notifications import router as notifications_router
 from src.api.v1.erp.financial_reports import router as financial_reports_router
 from src.api.v1.erp.accounting import router as accounting_router
 from src.api.v1.erp.invoices import router as invoices_router
+from src.api.v1.erp.payment_reminders import router as payment_reminders_router
 from src.api.v1.erp.bank import router as bank_router
 from src.api.v1.erp.fixed_assets import router as fixed_assets_router
 from src.api.v1.erp.vouchers import router as vouchers_router
@@ -162,6 +163,7 @@ api_router.include_router(notifications_router)
 
 api_router.include_router(accounting_router)
 api_router.include_router(invoices_router, tags=["Invoices & AR"])
+api_router.include_router(payment_reminders_router, tags=["Payment Reminders & Penalties"])
 api_router.include_router(bank_router)
 api_router.include_router(fixed_assets_router)
 api_router.include_router(vouchers_router)

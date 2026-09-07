@@ -55,17 +55,29 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error during system startup initialization: {e}")
 
-    # Start background enricher service
+    # Start background services
     try:
         from src.services.rag_enricher import RAGEnricherService
         await RAGEnricherService.start()
     except Exception as enrich_err:
         logger.error(f"Failed to start RAG Enricher Service: {enrich_err}")
 
+    try:
+        from src.services.payment_reminder_engine import PaymentReminderScheduler
+        await PaymentReminderScheduler.start(interval_minutes=15)
+    except Exception as sched_err:
+        logger.error(f"Failed to start Payment Reminder Scheduler: {sched_err}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down LazyMonkeyai Core Services...")
+    try:
+        from src.services.payment_reminder_engine import PaymentReminderScheduler
+        await PaymentReminderScheduler.stop()
+    except Exception as sched_err:
+        logger.error(f"Failed to stop Payment Reminder Scheduler: {sched_err}")
+
     try:
         from src.services.rag_enricher import RAGEnricherService
         await RAGEnricherService.stop()

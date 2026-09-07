@@ -10,6 +10,7 @@ import {
   Star,
   Ticket,
   RefreshCw,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { crmLoyaltyApi, crmCustomersApi, type LoyaltyRule, type LoyaltyTransaction, type CrmCustomer } from "@/lib/api-client";
@@ -351,8 +352,8 @@ export function LoyaltyProgram() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => handleEdit(rule)} className="p-1.5 hover:bg-muted rounded-md" title="Edit">
-                              <Plus className="size-3.5 rotate-45" />
+                            <button onClick={() => handleEdit(rule)} className="p-1.5 hover:bg-indigo-500/10 text-muted-foreground hover:text-indigo-600 rounded-md transition" title="Edit Rule">
+                              <Pencil className="size-3.5" />
                             </button>
                             <button onClick={() => handleDeleteRule(rule.id)} className="p-1.5 hover:bg-red-500/10 text-red-500 rounded-md" title="Delete">
                               <Trash2 className="size-3.5" />

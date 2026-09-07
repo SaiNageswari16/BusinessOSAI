@@ -95,7 +95,34 @@ async def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate, reque
     customer = await db.scalar(select(Customer).where(Customer.id == customer_id, Customer.tenant_id == ctx.tenant_id))
     if not customer: raise HTTPException(status_code=404, detail="Customer not found")
     updates = payload.model_dump(exclude_unset=True)
-    for key, value in updates.items(): setattr(customer, key, value)
+    for key, value in updates.items():
+        if hasattr(customer, key):
+            setattr(customer, key, value)
+    
+    # Cascade customer contact/address updates to invoices
+    invoice_updates = {}
+    if "name" in updates and updates["name"]:
+        invoice_updates["customer_name"] = updates["name"]
+    if "email" in updates:
+        invoice_updates["customer_email"] = updates["email"]
+    if "phone" in updates:
+        invoice_updates["customer_phone"] = updates["phone"]
+    if "gst_number" in updates:
+        invoice_updates["customer_gstin"] = updates["gst_number"]
+    if "billing_address" in updates:
+        invoice_updates["billing_address"] = updates["billing_address"]
+    if "shipping_address" in updates:
+        invoice_updates["shipping_address"] = updates["shipping_address"]
+
+    if invoice_updates:
+        from src.models.erp import Invoice
+        from sqlalchemy import update as sa_update
+        await db.execute(
+            sa_update(Invoice)
+            .where(Invoice.customer_id == customer_id, Invoice.tenant_id == ctx.tenant_id)
+            .values(**invoice_updates)
+        )
+
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="customer_updated", entity_type="customer", entity_id=customer.id, new_values=updates, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     return customer
 

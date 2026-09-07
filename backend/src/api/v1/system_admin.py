@@ -102,16 +102,8 @@ class UpdateTenantModulesPayload(ORMModel):
 # ─── Helpers ──────────────────────────────────────────────────────
 
 def require_platform_admin(ctx: CurrentUserContext):
-    is_god = (
-        getattr(ctx.user, "is_platform_admin", False)
-        or ctx.has_permission("manage:system_admin")
-        or ctx.has_permission("view:system_admin")
-        or ctx.has_permission("all")
-        or ctx.has_permission("manage:all")
-        or ctx.has_permission("super_admin")
-    )
-    is_platform_tenant = ctx.user.tenant and ctx.user.tenant.slug in ("system", "nimbus-retail")
-    if is_god or (is_platform_tenant and ctx.user.is_tenant_owner):
+    is_god = bool(getattr(ctx.user, "is_platform_admin", False))
+    if is_god:
         return
 
     raise HTTPException(

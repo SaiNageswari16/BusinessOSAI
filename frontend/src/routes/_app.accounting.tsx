@@ -18,6 +18,7 @@ import { Budgets } from "@/components/accounting/Budgets";
 import { ProfitAndLoss } from "@/components/accounting/ProfitAndLoss";
 import { BalanceSheet } from "@/components/accounting/BalanceSheet";
 import { GstFilingDashboard } from "@/components/accounting/GstFilingDashboard";
+import { PaymentReminderHub } from "@/components/accounting/PaymentReminderHub";
 
 export const Route = createFileRoute("/_app/accounting")({
   component: AccountingModule,
@@ -39,12 +40,15 @@ const componentMap: Record<string, React.ElementType> = {
   opening_balances:     AccountingCore,
   closing_entries:      AccountingCore,
 
-  // Receivables (5 distinct sub-views inside Receivables)
+  // Receivables (Payment Reminders & Late Penalties)
   customers:            Receivables,
   invoices:             Receivables,
   payments:             Receivables,
   outstanding:          Receivables,
   collections:          Receivables,
+  payment_reminders:    PaymentReminderHub,
+  reminders:            PaymentReminderHub,
+  late_penalties:       PaymentReminderHub,
 
   // Payables (5 distinct sub-views inside Payables)
   vendor_bills:         Payables,
