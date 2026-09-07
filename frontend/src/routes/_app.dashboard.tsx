@@ -112,6 +112,8 @@ function Dashboard() {
   const greeting = language === "ar" ? (hour < 12 ? "صباح الخير" : "مساء الخير") : (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
   const today = useMemo(() => new Date().toLocaleDateString(language === "ar" ? "ar-AE" : "en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }), [language]);
   
+  const firstName = user?.name?.split(" ")[0] || (user as any)?.username || "there";
+  
   const isPlatformSuperAdmin = Boolean(
     user?.isPlatformAdmin ||
     hasPermission("manage:system_admin") ||
