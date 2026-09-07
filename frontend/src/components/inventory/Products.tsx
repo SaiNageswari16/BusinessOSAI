@@ -1923,10 +1923,13 @@ export function Products() {
       });
       toast.success(`"${item.name}" imported to your inventory`);
       setPreviewItem(null);
-      await loadData();
+      setActiveTab("inventory");
       setSearch("");
       setMasterResults([]);
       setSuggestions([]);
+      setCurrentPage(1);
+      await loadData("");
+      window.dispatchEvent(new CustomEvent("inventory_updated"));
     } catch (error: any) {
       toast.error("Import failed: " + (error.detail || error.message));
     } finally {

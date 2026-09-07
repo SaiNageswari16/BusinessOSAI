@@ -264,6 +264,7 @@ export const MasterCatalogModal: React.FC<MasterCatalogModalProps> = ({
       });
       showToast(`Successfully added "${selectedItem.name}" to Local Inventory!`, "success");
       setSelectedItem(null);
+      window.dispatchEvent(new CustomEvent("inventory_updated"));
       if (onProductAdded) onProductAdded();
     } catch (err: any) {
       showToast(err.message || "Failed to import into local inventory", "error");

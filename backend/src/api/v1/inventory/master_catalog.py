@@ -2277,6 +2277,7 @@ async def import_to_local_inventory(
 ):
     """Instantly converts a Master Catalog or AI-searched item into a live operational local product (erp_products)."""
     tenant_id = ctx.tenant_id
+    company_id = ctx.active_company_id
     
     # 1. Sync / Find Brand
     brand_id = None
@@ -2287,7 +2288,7 @@ async def import_to_local_inventory(
         if existing_brand:
             brand_id = existing_brand.id
         else:
-            new_brand = Brand(id=uuid.uuid4(), tenant_id=tenant_id, name=b_name, status=EntityStatus.ACTIVE)
+            new_brand = Brand(id=uuid.uuid4(), tenant_id=tenant_id, company_id=company_id, name=b_name, status=EntityStatus.ACTIVE)
             db.add(new_brand)
             await db.flush()
             brand_id = new_brand.id
@@ -2335,6 +2336,7 @@ async def import_to_local_inventory(
     new_product = Product(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
+        company_id=company_id,
         name=payload.name,
         sku=sku,
         barcode=product_barcode,
@@ -2369,6 +2371,7 @@ async def import_to_local_inventory(
         new_batch = InventoryBatch(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
+            company_id=company_id,
             batch_number=batch_number,
             product_id=new_product.id,
             product_name=payload.name,

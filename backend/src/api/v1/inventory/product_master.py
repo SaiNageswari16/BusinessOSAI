@@ -736,7 +736,7 @@ async def list_products(
         .where(Product.tenant_id == ctx.tenant_id)
     )
     if ctx.active_company_id:
-        query = query.where(Product.company_id == ctx.active_company_id)
+        query = query.where((Product.company_id == ctx.active_company_id) | (Product.company_id.is_(None)))
     
     if search:
         words = [w.strip() for w in search.strip().split() if w.strip()]
@@ -1071,6 +1071,7 @@ async def master_import_products(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     tenant_id = ctx.tenant_id
+    company_id = ctx.active_company_id
     
     # 1. Collect unique names
     brand_names = {item.brand_name.strip() for item in payload.items if item.brand_name and item.brand_name.strip()}
@@ -1094,7 +1095,7 @@ async def master_import_products(
         
         for b_name in brand_names:
             if b_name.lower() not in brand_map:
-                new_brand = Brand(id=uuid.uuid4(), tenant_id=tenant_id, name=b_name, status=EntityStatus.ACTIVE)
+                new_brand = Brand(id=uuid.uuid4(), tenant_id=tenant_id, company_id=company_id, name=b_name, status=EntityStatus.ACTIVE)
                 db.add(new_brand)
                 brand_map[b_name.lower()] = new_brand.id
                 brands_created += 1
@@ -1126,7 +1127,7 @@ async def master_import_products(
             
         for u_name in uom_names:
             if u_name.lower() not in uom_map:
-                new_uom = UnitOfMeasure(id=uuid.uuid4(), tenant_id=tenant_id, name=u_name, abbreviation=u_name[:20], status=EntityStatus.ACTIVE)
+                new_uom = UnitOfMeasure(id=uuid.uuid4(), tenant_id=tenant_id, company_id=company_id, name=u_name, abbreviation=u_name[:20], status=EntityStatus.ACTIVE)
                 db.add(new_uom)
                 uom_map[u_name.lower()] = new_uom.id
                 uoms_created += 1
@@ -1184,6 +1185,7 @@ async def master_import_products(
         new_product = Product(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
+            company_id=company_id,
             name=item.name,
             sku=item.sku,
             barcode=item_barcode,
