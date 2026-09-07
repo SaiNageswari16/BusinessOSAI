@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Search, ScanBarcode, Store, Clock, User as UserIcon,
   Trash2, X, ChevronRight, Plus, Minus, CreditCard, Banknote, QrCode, Tag, ShoppingCart,
   Info, Camera, Sparkles, Printer, Database, Boxes, LayoutGrid, List as ListIcon, Combine, ArrowRightLeft, ArrowLeft,
-  Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus, Percent, CheckCircle2, Loader2
+  Truck, RefreshCw, Heart, History, Wallet, Layers, Phone, Building, Mail, UserPlus, Percent, CheckCircle2, Loader2,
+  Pencil, Edit3
 } from "lucide-react";
 import { posApi, inventoryApi, crmApi, invoicesApi, crmWalletApi, procurementApi, POSProduct, POSCategory, resolveImageUrl } from "../../lib/api-client";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
@@ -231,6 +232,14 @@ function PosTerminalInner() {
 
   // Modal States
   const [discountModalItem, setDiscountModalItem] = useState<any | null>(null);
+  const [cartEditItem, setCartEditItem] = useState<any | null>(null);
+  const [editSellingPrice, setEditSellingPrice] = useState<string>("");
+  const [editMrp, setEditMrp] = useState<string>("");
+  const [editTaxInclusive, setEditTaxInclusive] = useState<boolean>(true);
+  const [editDiscountType, setEditDiscountType] = useState<"amount" | "percent">("amount");
+  const [editDiscountValue, setEditDiscountValue] = useState<string>("");
+  const [editUpdateMaster, setEditUpdateMaster] = useState<boolean>(false);
+  const [isSavingEditItem, setIsSavingEditItem] = useState<boolean>(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [discountInput, setDiscountInput] = useState<string>("");
@@ -474,158 +483,159 @@ function PosTerminalInner() {
   };
 
   // Load real data from backend on mount
-  useEffect(() => {
-    const loadData = async () => {
-      setIsLoadingProducts(true);
+  const loadData = useCallback(async () => {
+    setIsLoadingProducts(true);
+    try {
+      const [cats, invCatsRes, posProds, invProdsRes, bList, heldHistory] = await Promise.all([
+        posApi.getCategories().catch(() => []),
+        inventoryApi.getCategories({ page_size: 500 }).catch(() => null),
+        posApi.getProducts({ limit: 5000 }).catch(() => []),
+        inventoryApi.getProducts({ page_size: 5000, sort_by: "updated_at", sort_order: "desc" }).catch(() => null),
+        inventoryApi.getBatches().catch(() => []),
+        posApi.getHistory({ status_filter: 'on_hold', limit: 100 }).catch(() => [])
+      ]);
+
+      if (Array.isArray(bList)) {
+        setBatches(bList);
+      }
+
+      if (Array.isArray(heldHistory)) {
+        setHeldBillsCount(heldHistory.length);
+      }
+
+      // Also check session
       try {
-        const [cats, invCatsRes, posProds, invProdsRes, bList, heldHistory] = await Promise.all([
-          posApi.getCategories().catch(() => []),
-          inventoryApi.getCategories({ page_size: 500 }).catch(() => null),
-          posApi.getProducts({ limit: 5000 }).catch(() => []),
-          inventoryApi.getProducts({ page_size: 5000, sort_by: "updated_at", sort_order: "desc" }).catch(() => null),
-          inventoryApi.getBatches().catch(() => []),
-          posApi.getHistory({ status_filter: 'on_hold', limit: 100 }).catch(() => [])
-        ]);
-
-        if (Array.isArray(bList)) {
-          setBatches(bList);
+        const sess = await posApi.getCurrentSession();
+        setCurrentSession(sess);
+      } catch (sessErr: any) {
+        if (sessErr?.status === 404) {
+          setSessionModalOpen(true);
         }
+      }
 
-        if (Array.isArray(heldHistory)) {
-          setHeldBillsCount(heldHistory.length);
-        }
-
-        // Also check session
-        try {
-          const sess = await posApi.getCurrentSession();
-          setCurrentSession(sess);
-        } catch (sessErr: any) {
-          if (sessErr?.status === 404) {
-            setSessionModalOpen(true);
-          }
-        }
-
-        // 1. Build unified categories list
-        const rawPosCats = Array.isArray(cats) ? cats : ((cats as any)?.items || []);
-        const rawInvCats = Array.isArray(invCatsRes) ? invCatsRes : ((invCatsRes as any)?.items || []);
-        
-        const catMap = new Map<string, any>();
-        [...rawPosCats, ...rawInvCats].forEach((c: any, i: number) => {
-          if (c && (c.id || c.name)) {
-            const key = String(c.id || c.name);
-            if (!catMap.has(key)) {
-              catMap.set(key, {
-                id: c.id || c.name,
-                name: c.name,
-                parent_id: c.parent_id || null,
-                color: c.color || posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
-                icon: posCategories[i % posCategories.length]?.icon || null,
-                aiScore: Math.floor(Math.random() * 30) + 70,
-              });
-            }
-          }
-        });
-
-        // 2. Build unified products list
-        const rawPosProds: any[] = Array.isArray(posProds) ? posProds : ((posProds as any)?.items || []);
-        const rawInvProds: any[] = Array.isArray(invProdsRes) ? invProdsRes : ((invProdsRes as any)?.items || []);
-
-        const prodMap = new Map<string, any>();
-        rawPosProds.forEach((p: any) => { if (p?.id) prodMap.set(String(p.id), p); });
-        rawInvProds.forEach((p: any) => {
-          if (p?.id) {
-            const existing = prodMap.get(String(p.id)) || {};
-            prodMap.set(String(p.id), { ...existing, ...p });
-          }
-        });
-
-        const allFetchedProds = Array.from(prodMap.values());
-
-        // Extract any missing categories / subcategories present on products
-        allFetchedProds.forEach((p: any, i: number) => {
-          const catName = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
-          const subCatName = p.sub_category || p.subcategory || p.sub_category_name || "";
-          if (catName && !catMap.has(catName)) {
-            catMap.set(catName, {
-              id: p.category_id || catName,
-              name: catName,
-              parent_id: null,
-              color: posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
+      // 1. Build unified categories list
+      const rawPosCats = Array.isArray(cats) ? cats : ((cats as any)?.items || []);
+      const rawInvCats = Array.isArray(invCatsRes) ? invCatsRes : ((invCatsRes as any)?.items || []);
+      
+      const catMap = new Map<string, any>();
+      [...rawPosCats, ...rawInvCats].forEach((c: any, i: number) => {
+        if (c && (c.id || c.name)) {
+          const key = String(c.id || c.name);
+          if (!catMap.has(key)) {
+            catMap.set(key, {
+              id: c.id || c.name,
+              name: c.name,
+              parent_id: c.parent_id || null,
+              color: c.color || posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
               icon: posCategories[i % posCategories.length]?.icon || null,
+              aiScore: Math.floor(Math.random() * 30) + 70,
+            });
+          }
+        }
+      });
+
+      // 2. Build unified products list
+      const rawPosProds: any[] = Array.isArray(posProds) ? posProds : ((posProds as any)?.items || []);
+      const rawInvProds: any[] = Array.isArray(invProdsRes) ? invProdsRes : ((invProdsRes as any)?.items || []);
+
+      const prodMap = new Map<string, any>();
+      rawPosProds.forEach((p: any) => { if (p?.id) prodMap.set(String(p.id), p); });
+      rawInvProds.forEach((p: any) => {
+        if (p?.id) {
+          const existing = prodMap.get(String(p.id)) || {};
+          prodMap.set(String(p.id), { ...existing, ...p });
+        }
+      });
+
+      const allFetchedProds = Array.from(prodMap.values());
+
+      // Extract any missing categories / subcategories present on products
+      allFetchedProds.forEach((p: any, i: number) => {
+        const catName = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
+        const subCatName = p.sub_category || p.subcategory || p.sub_category_name || "";
+        if (catName && !catMap.has(catName)) {
+          catMap.set(catName, {
+            id: p.category_id || catName,
+            name: catName,
+            parent_id: null,
+            color: posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
+            icon: posCategories[i % posCategories.length]?.icon || null,
+            aiScore: 80
+          });
+        }
+        if (catName && subCatName) {
+          const subKey = `${catName}::${subCatName}`;
+          if (!catMap.has(subKey)) {
+            const parentCatObj = catMap.get(catName) || catMap.get(p.category_id);
+            catMap.set(subKey, {
+              id: subKey,
+              name: subCatName,
+              parent_id: parentCatObj ? parentCatObj.id : catName,
+              color: posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
+              icon: null,
               aiScore: 80
             });
           }
-          if (catName && subCatName) {
-            const subKey = `${catName}::${subCatName}`;
-            if (!catMap.has(subKey)) {
-              const parentCatObj = catMap.get(catName) || catMap.get(p.category_id);
-              catMap.set(subKey, {
-                id: subKey,
-                name: subCatName,
-                parent_id: parentCatObj ? parentCatObj.id : catName,
-                color: posCategories[i % posCategories.length]?.color || "bg-slate-100 text-slate-700",
-                icon: null,
-                aiScore: 80
-              });
-            }
-          }
-        });
+        }
+      });
 
-        const finalCats = Array.from(catMap.values());
-        setCategories(finalCats);
+      const finalCats = Array.from(catMap.values());
+      setCategories(finalCats);
 
-        const mappedProds = allFetchedProds.map((p: any) => {
-          const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
-          const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
-          const rawWholesale = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : 0));
-          const rawB2B = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
-          const wPrice = rawWholesale > 0 ? rawWholesale : (basePrice > 0 ? Math.round(basePrice * 0.90 * 100) / 100 : 0);
-          const bPrice = rawB2B > 0 ? rawB2B : (rawWholesale > 0 ? Math.round(rawWholesale * 0.95 * 100) / 100 : (basePrice > 0 ? Math.round(basePrice * 0.85 * 100) / 100 : 0));
-          const taxPct = Number(p.tax_percent != null ? p.tax_percent : (p.tax_rate != null ? p.tax_rate : 18));
-          
-          const catNameVal = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
-          const subCatNameVal = p.sub_category || p.subcategory || p.sub_category_name || "";
+      const mappedProds = allFetchedProds.map((p: any) => {
+        const specs = typeof p.specifications === "string" ? JSON.parse(p.specifications || "{}") : (p.specifications || {});
+        const basePrice = Number(p.selling_price || p.price || p.mrp || 0);
+        const rawWholesale = Number(p.wholesale_price && Number(p.wholesale_price) > 0 ? p.wholesale_price : (specs.wholesale_price && Number(specs.wholesale_price) > 0 ? specs.wholesale_price : 0));
+        const rawB2B = Number(p.b2b_price && Number(p.b2b_price) > 0 ? p.b2b_price : (specs.b2b_price && Number(specs.b2b_price) > 0 ? specs.b2b_price : 0));
+        const wPrice = rawWholesale > 0 ? rawWholesale : (basePrice > 0 ? Math.round(basePrice * 0.90 * 100) / 100 : 0);
+        const bPrice = rawB2B > 0 ? rawB2B : (rawWholesale > 0 ? Math.round(rawWholesale * 0.95 * 100) / 100 : (basePrice > 0 ? Math.round(basePrice * 0.85 * 100) / 100 : 0));
+        const taxPct = Number(p.tax_percent != null ? p.tax_percent : (p.tax_rate != null ? p.tax_rate : 18));
+        
+        const catNameVal = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
+        const subCatNameVal = p.sub_category || p.subcategory || p.sub_category_name || "";
 
-          return {
-            id: p.id,
-            name: p.name,
-            brand: p.brand?.name || (typeof p.brand === "string" ? p.brand : "") || "",
-            category: p.category_id || p.category?.id || catNameVal || "all",
-            category_id: p.category_id || p.category?.id || null,
-            category_name: catNameVal,
-            sub_category: subCatNameVal,
-            shortDesc: p.description || p.short_description || `${p.name}`,
-            longDesc: p.description || "",
-            barcode: p.barcode || "",
-            sku: p.sku || "",
-            hsn_code: p.hsn_code || "1905",
-            sellingPrice: basePrice,
-            wholesalePrice: wPrice,
-            b2bPrice: bPrice,
-            minWholesaleQty: Number(p.min_wholesale_qty || 1),
-            mrp: Number(p.mrp || basePrice || 0),
-            purchasePrice: Number(p.purchase_price || p.cost_price || 0),
-            tax_percent: taxPct,
-            tax: taxPct,
-            is_tax_inclusive: p.is_tax_inclusive !== false,
-            discount: Number(p.discount || p.discount_limit || 0),
-            stock: Number(p.stock || p.initial_stock || 0),
-            reorderLevel: Number(p.reorder_level || 10),
-            image: p.image_url ? resolveImageUrl(p.image_url) : null,
-            aiScore: Math.floor(Math.random() * 30) + 70,
-            isFastMoving: (p.stock || p.initial_stock || 0) > 50,
-          };
-        });
+        return {
+          id: p.id,
+          name: p.name,
+          brand: p.brand?.name || (typeof p.brand === "string" ? p.brand : "") || "",
+          category: p.category_id || p.category?.id || catNameVal || "all",
+          category_id: p.category_id || p.category?.id || null,
+          category_name: catNameVal,
+          sub_category: subCatNameVal,
+          shortDesc: p.description || p.short_description || `${p.name}`,
+          longDesc: p.description || "",
+          barcode: p.barcode || "",
+          sku: p.sku || "",
+          hsn_code: p.hsn_code || "1905",
+          sellingPrice: basePrice,
+          wholesalePrice: wPrice,
+          b2bPrice: bPrice,
+          minWholesaleQty: Number(p.min_wholesale_qty || 1),
+          mrp: Number(p.mrp || basePrice || 0),
+          purchasePrice: Number(p.purchase_price || p.cost_price || 0),
+          tax_percent: taxPct,
+          tax: taxPct,
+          is_tax_inclusive: p.is_tax_inclusive !== false,
+          discount: Number(p.discount || p.discount_limit || 0),
+          stock: Number(p.stock || p.initial_stock || 0),
+          reorderLevel: Number(p.reorder_level || 10),
+          image: p.image_url ? resolveImageUrl(p.image_url) : null,
+          aiScore: Math.floor(Math.random() * 30) + 70,
+          isFastMoving: (p.stock || p.initial_stock || 0) > 50,
+        };
+      });
 
-        setProducts(mappedProds);
-      } catch (err) {
-        console.warn("Backend loading notice:", err);
-      } finally {
-        setIsLoadingProducts(false);
-      }
-    };
-    loadData();
+      setProducts(mappedProds);
+    } catch (err) {
+      console.warn("Backend loading notice:", err);
+    } finally {
+      setIsLoadingProducts(false);
+    }
   }, [tenant?.id, (tenant as any)?.company_id, (tenant as any)?.raw?.id]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   useEffect(() => {
     const handleWorkspaceRefresh = () => {
@@ -641,7 +651,7 @@ function PosTerminalInner() {
       window.removeEventListener("inventory_updated", handleWorkspaceRefresh);
       window.removeEventListener("pos_invoices_updated", handleWorkspaceRefresh);
     };
-  }, []);
+  }, [loadData]);
 
   useEffect(() => {
     // Attempt to enter fullscreen
@@ -785,6 +795,84 @@ function PosTerminalInner() {
 
   const removeItem = (id: string) => setCart(prev => prev.filter(item => item.id !== id));
 
+  const openCartItemEditModal = (item: any) => {
+    setCartEditItem(item);
+    const rawPrice = item.sellingPrice || item.selling_price || item.price || 0;
+    setEditSellingPrice(rawPrice > 0 ? rawPrice.toString() : "");
+    setEditMrp((item.mrp || 0) > 0 ? item.mrp.toString() : "");
+    setEditTaxInclusive(item.is_tax_inclusive !== false);
+    setEditDiscountType("amount");
+    setEditDiscountValue(item.discount ? item.discount.toString() : "");
+    setEditUpdateMaster(false);
+  };
+
+  const handleSaveCartItemEdit = async () => {
+    if (!cartEditItem) return;
+    const rawPrice = parseFloat(editSellingPrice) || 0;
+    const rawMrp = parseFloat(editMrp) || 0;
+
+    // Calculate effective discount
+    let discAmt = 0;
+    const discVal = parseFloat(editDiscountValue) || 0;
+    if (editDiscountType === "percent") {
+      discAmt = (rawPrice * discVal) / 100;
+    } else {
+      discAmt = discVal;
+    }
+
+    setIsSavingEditItem(true);
+    try {
+      // 1. Update cart item
+      setCart(prev => prev.map(it => {
+        if (it.id === cartEditItem.id) {
+          return {
+            ...it,
+            sellingPrice: rawPrice,
+            selling_price: rawPrice,
+            price: rawPrice,
+            mrp: rawMrp,
+            is_tax_inclusive: editTaxInclusive,
+            discount: discAmt,
+          };
+        }
+        return it;
+      }));
+
+      // 2. If requested, sync back to master product database
+      if (editUpdateMaster) {
+        try {
+          await posApi.updateProduct(cartEditItem.id, {
+            selling_price: rawPrice,
+            mrp: rawMrp,
+            is_tax_inclusive: editTaxInclusive,
+          });
+          setProducts(prev => prev.map(p => {
+            if (p.id === cartEditItem.id) {
+              return {
+                ...p,
+                sellingPrice: rawPrice,
+                selling_price: rawPrice,
+                mrp: rawMrp,
+                is_tax_inclusive: editTaxInclusive,
+              };
+            }
+            return p;
+          }));
+          toast.success("Updated in cart and saved to product database!");
+        } catch (dbErr: any) {
+          console.error("Failed to update master product:", dbErr);
+          toast.warning("Updated in cart, but could not update product master.");
+        }
+      } else {
+        toast.success("Cart item pricing updated!");
+      }
+
+      setCartEditItem(null);
+    } finally {
+      setIsSavingEditItem(false);
+    }
+  };
+
   const applyDiscount = () => {
     if (!discountModalItem) return;
     setCart(prev => prev.map(item => {
@@ -898,33 +986,58 @@ function PosTerminalInner() {
     }, 0);
   }, [posCustomCharges]);
 
-  // Cart Math with Dynamic Before-Tax & After-Tax Discount
-  const subtotal = cart.reduce((sum, item) => {
-    const { unitPrice } = getItemEffectivePrice(item);
-    return sum + (unitPrice * item.qty);
-  }, 0);
-  const itemDiscounts = cart.reduce((sum, item) => sum + ((item.discount || 0) * item.qty), 0);
-  const netSubtotal = Math.max(0, subtotal - itemDiscounts);
+  // Cart Math with Dynamic Before-Tax & After-Tax Discount and GST Inclusive/Exclusive Support
+  const itemTaxBreakdown = useMemo(() => {
+    return cart.map((item) => {
+      const { unitPrice, isWholesale, tierName } = getItemEffectivePrice(item);
+      const taxRate = Number(item.tax_percent ?? item.tax ?? 18);
+      const isIncl = item.is_tax_inclusive !== false;
+      const baseUnitPrice = isIncl && taxRate > 0 ? unitPrice / (1 + taxRate / 100) : unitPrice;
+      const unitGst = isIncl && taxRate > 0 ? unitPrice - baseUnitPrice : baseUnitPrice * (taxRate / 100);
+      const sellingUnitPriceIncl = isIncl ? unitPrice : baseUnitPrice + unitGst;
+
+      const grossBase = baseUnitPrice * item.qty;
+      const lineDisc = (item.discount || 0) * item.qty;
+      const taxableLine = Math.max(0, grossBase - lineDisc);
+      const taxLine = taxableLine * (taxRate / 100);
+      const finalLineTotal = (sellingUnitPriceIncl * item.qty) - lineDisc;
+
+      return {
+        item,
+        unitPrice,
+        isWholesale,
+        tierName,
+        taxRate,
+        isIncl,
+        baseUnitPrice,
+        unitGst,
+        sellingUnitPriceIncl,
+        grossBase,
+        lineDisc,
+        taxableLine,
+        taxLine,
+        finalLineTotal,
+      };
+    });
+  }, [cart, pricingMode, selectedCustomer]);
+
+  const subtotal = itemTaxBreakdown.reduce((sum, b) => sum + (b.unitPrice * b.item.qty), 0);
+  const totalBaseTaxable = itemTaxBreakdown.reduce((sum, b) => sum + b.taxableLine, 0);
+  const itemDiscounts = itemTaxBreakdown.reduce((sum, b) => sum + b.lineDisc, 0);
 
   // 1. Before-Tax Discount
   let beforeTaxDiscount = 0;
   if (discountMode === "before_tax" && cartDiscountValue > 0) {
     beforeTaxDiscount = cartDiscountType === "percent"
-      ? netSubtotal * (cartDiscountValue / 100)
-      : Math.min(cartDiscountValue, netSubtotal);
+      ? totalBaseTaxable * (cartDiscountValue / 100)
+      : Math.min(cartDiscountValue, totalBaseTaxable);
   }
 
-  const taxableAmount = Math.max(0, netSubtotal - beforeTaxDiscount);
+  const taxableAmount = Math.max(0, totalBaseTaxable - beforeTaxDiscount);
 
   // 2. Tax Calculation on Taxable Value
-  const taxRatio = netSubtotal > 0 ? (taxableAmount / netSubtotal) : 1;
-  const tax = cart.reduce((sum, item) => {
-    const { unitPrice } = getItemEffectivePrice(item);
-    const itemTaxPercent = Number(item.tax_percent ?? item.tax ?? 18);
-    const itemNet = Math.max(0, (unitPrice - (item.discount || 0)) * item.qty);
-    const effectiveItemTaxable = itemNet * taxRatio;
-    return sum + (effectiveItemTaxable * (itemTaxPercent / 100));
-  }, 0);
+  const taxRatio = totalBaseTaxable > 0 ? (taxableAmount / totalBaseTaxable) : 1;
+  const tax = itemTaxBreakdown.reduce((sum, b) => sum + (b.taxLine * taxRatio), 0);
 
   const grossTotal = taxableAmount + tax;
 
@@ -2146,19 +2259,29 @@ function PosTerminalInner() {
                             <h2 className="text-2xl font-semibold text-slate-900 leading-tight mb-2">{selectedProduct.name}</h2>
                             <p className="text-sm text-slate-600 mb-4">{selectedProduct.longDesc}</p>
 
-                            <div className="flex items-end gap-4">
+                            <div className="flex flex-wrap items-end gap-4">
                               <div>
                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Selling Price</p>
                                 <div className="text-3xl font-semibold text-emerald-600">{formatCurrency(selectedProduct.sellingPrice)}</div>
                               </div>
-                              {selectedProduct.discount > 0 && (
-                                <div className="pb-1">
-                                  <span className="text-sm text-slate-400 line-through mr-2">{formatCurrency(selectedProduct.mrp)}</span>
-                                  <span className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">
-                                    -{selectedProduct.margin} Margin
+                              <div className="pb-1 space-y-1">
+                                <div className="flex items-center gap-1.5 text-xs">
+                                  <span className="font-semibold text-slate-500">
+                                    Base (Excl. GST): <strong className="text-slate-800">{formatCurrency(selectedProduct.is_tax_inclusive !== false && Number(selectedProduct.tax_percent || 18) > 0 ? selectedProduct.sellingPrice / (1 + Number(selectedProduct.tax_percent || 18) / 100) : selectedProduct.sellingPrice)}</strong>
+                                  </span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${selectedProduct.is_tax_inclusive !== false ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-blue-50 text-blue-700 border border-blue-200"}`}>
+                                    {selectedProduct.is_tax_inclusive !== false ? "✅ Incl. GST" : "🔶 Excl. GST"} {selectedProduct.tax_percent || 18}%
                                   </span>
                                 </div>
-                              )}
+                                {selectedProduct.discount > 0 && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-slate-400 line-through">{formatCurrency(selectedProduct.mrp)}</span>
+                                    <span className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">
+                                      -{selectedProduct.margin} Margin
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -2209,88 +2332,119 @@ function PosTerminalInner() {
           <div className="w-[30%] min-w-[350px] max-w-[480px] shrink-0 bg-white/95 backdrop-blur-3xl flex flex-col shadow-[-8px_0_32px_rgba(0,0,0,0.05)] border-l border-slate-200/50 z-20">
 
             {/* Customer Profile */}
-            <div className="p-3 border-b border-slate-100 bg-slate-50/50">
+            <div className="p-2 border-b border-slate-100 bg-slate-50/50">
               <button
                 onClick={() => setIsCustomerModalOpen(true)}
-                className="w-full bg-white border border-slate-200 hover:border-indigo-400 rounded-2xl p-3 flex items-center justify-between transition-all shadow-sm hover:shadow-md group mb-2 text-left"
+                className="w-full bg-white border border-slate-200 hover:border-indigo-400 rounded-xl p-2 flex items-center justify-between transition-all shadow-2xs hover:shadow-xs group mb-1.5 text-left"
               >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="h-10 w-10 shrink-0 rounded-full bg-indigo-50 text-indigo-700 font-semibold text-sm flex items-center justify-center border border-indigo-100 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                    {selectedCustomer?.name && selectedCustomer.name !== "Walk-in Customer" ? selectedCustomer.name.charAt(0).toUpperCase() : <UserIcon className="w-5 h-5" />}
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="h-8 w-8 shrink-0 rounded-full bg-indigo-50 text-indigo-700 font-semibold text-xs flex items-center justify-center border border-indigo-100 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                    {selectedCustomer?.name && selectedCustomer.name !== "Walk-in Customer" ? selectedCustomer.name.charAt(0).toUpperCase() : <UserIcon className="w-4 h-4" />}
                   </div>
                   <div className="text-left min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-slate-900 leading-tight truncate">{selectedCustomer.name}</p>
-                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 uppercase">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-bold text-slate-900 leading-tight truncate">{selectedCustomer.name}</p>
+                      <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100 uppercase">
                         {(selectedCustomer as any).customer_type || selectedCustomer.tier || 'Retail'}
                       </span>
                     </div>
                     {selectedCustomer.id && selectedCustomer.id !== 'walk-in' && selectedCustomer.id !== 'WALK-IN' ? (
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                        <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shadow-2xs">
-                          💰 Wallet: {formatCurrency(customerWalletBalance)}
+                      <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                        <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                          💰 {formatCurrency(customerWalletBalance)}
                         </span>
-                        <span className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
+                        <span className="text-[10px] font-bold text-amber-900 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
                           ⭐ {selectedCustomer.points || (selectedCustomer as any).loyalty_points || 0} Pts
                         </span>
                       </div>
                     ) : (
-                      <div className="text-[11px] text-slate-400 font-medium mt-0.5">
+                      <div className="text-[10px] text-slate-400 font-medium leading-none mt-0.5">
                         Guest • Click to select customer
                       </div>
                     )}
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 transition-colors shrink-0 ml-1" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 transition-colors shrink-0 ml-1" />
               </button>
 
               {/* Customer Pending Dues Banner */}
               {customerSummary && customerSummary.total_pending_due > 0 && (
-                <div className="mb-2 p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl text-xs flex flex-col gap-1.5 shadow-sm">
+                <div className="mb-1.5 p-1.5 bg-amber-50/90 border border-amber-200 rounded-lg text-[11px] flex flex-col gap-1 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-amber-900 flex items-center gap-1">
-                      ⚠️ Previous Outstanding Due:
+                      ⚠️ Prev Due:
                     </span>
                     <span className="font-extrabold text-amber-700">{currency.symbol}{customerSummary.total_pending_due?.toFixed(2)}</span>
                   </div>
-                  <label className="flex items-center gap-2 text-slate-700 cursor-pointer pt-1 border-t border-amber-200/60 font-medium">
+                  <label className="flex items-center gap-1.5 text-slate-700 cursor-pointer pt-0.5 border-t border-amber-200/60 font-medium text-[10px]">
                     <input
                       type="checkbox"
                       checked={includePreviousDueInBill}
                       onChange={(e) => setIncludePreviousDueInBill(e.target.checked)}
-                      className="rounded border-amber-400 text-amber-600 focus:ring-amber-500 h-4 w-4"
+                      className="rounded border-amber-400 text-amber-600 focus:ring-amber-500 h-3.5 w-3.5"
                     />
-                    <span>Add previous due to current bill total</span>
+                    <span>Add previous due to current bill</span>
                   </label>
                 </div>
               )}
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={handleHoldBill}
                   disabled={cart.length === 0}
-                  className="flex-1 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg border border-amber-200 transition-colors flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                  className="flex-1 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 text-[11px] font-bold rounded-lg border border-amber-200 transition-colors flex items-center justify-center gap-1 shadow-2xs disabled:opacity-50 cursor-pointer"
                 >
-                  <Clock className="w-3.5 h-3.5" /> Hold Bill
+                  <Clock className="w-3 h-3" /> Hold Bill
                 </button>
                 <button
                   onClick={openHeldBillsModal}
-                  className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                  className="flex-1 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold rounded-lg border border-indigo-200 transition-colors flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
                 >
-                  <ListIcon className="w-3.5 h-3.5" /> Resume Bill {heldBillsCount > 0 && `(${heldBillsCount})`}
+                  <ListIcon className="w-3 h-3" /> Resume {heldBillsCount > 0 && `(${heldBillsCount})`}
                 </button>
               </div>
+
+              {/* Tax Mode Bulk Quick Toggle */}
+              {cart.length > 0 && (
+                <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-slate-200/60 text-[10px]">
+                  <span className="font-bold text-slate-500 uppercase tracking-wider text-[9px]">GST Pricing:</span>
+                  <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setCart(prev => prev.map(it => ({ ...it, is_tax_inclusive: true })))}
+                      className={`px-1.5 py-0.2 rounded font-extrabold transition-all cursor-pointer text-[9px] ${
+                        cart.every(it => it.is_tax_inclusive !== false)
+                          ? "bg-emerald-600 text-white shadow-2xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      All Incl. GST
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCart(prev => prev.map(it => ({ ...it, is_tax_inclusive: false })))}
+                      className={`px-1.5 py-0.2 rounded font-extrabold transition-all cursor-pointer text-[9px] ${
+                        cart.every(it => it.is_tax_inclusive === false)
+                          ? "bg-blue-600 text-white shadow-2xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      All Excl. GST
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* High-Density Cart */}
-            <div className="flex-1 overflow-y-auto px-3 py-1 bg-white relative">
+            <div className="flex-1 overflow-y-auto px-2 py-0.5 bg-white relative">
               <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
               {cart.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center space-y-4">
-                  <div className="w-24 h-24 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100 shadow-xs">
-                    <ShoppingCart className="w-10 h-10 text-slate-300" />
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 p-6 text-center space-y-3">
+                  <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100 shadow-2xs">
+                    <ShoppingCart className="w-7 h-7 text-slate-300" />
                   </div>
-                  <p className="font-bold text-sm text-slate-500">Cart is empty.<br />Scan a barcode to begin.</p>
+                  <p className="font-bold text-xs text-slate-500">Cart is empty.<br />Scan barcode to add.</p>
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
@@ -2298,99 +2452,131 @@ function PosTerminalInner() {
                     const { unitPrice, isWholesale } = getItemEffectivePrice(item);
                     const itemTaxPercent = Number(item.tax_percent ?? item.tax ?? 18);
                     const isIncl = item.is_tax_inclusive !== false;
-                    const sellingPriceIncl = isIncl ? unitPrice : unitPrice * (1 + itemTaxPercent / 100);
+                    const baseUnitPrice = isIncl && itemTaxPercent > 0 ? unitPrice / (1 + itemTaxPercent / 100) : unitPrice;
+                    const unitGst = isIncl && itemTaxPercent > 0 ? unitPrice - baseUnitPrice : baseUnitPrice * (itemTaxPercent / 100);
+                    const sellingPriceIncl = isIncl ? unitPrice : baseUnitPrice + unitGst;
                     const mrpVal = Number(item.mrp) || 0;
                     const isMrpExceeded = mrpVal > 0 && sellingPriceIncl > mrpVal;
 
                     return (
                       <div
                         key={`${item.id}-${idx}`}
-                        onClick={() => { setDiscountModalItem(item); setDiscountInput(item.discount.toString()); }}
-                        className={`py-1.5 px-1.5 hover:bg-slate-50/90 transition-colors relative group cursor-pointer rounded-lg ${isMrpExceeded ? "bg-red-50/40" : ""}`}
+                        onClick={() => openCartItemEditModal(item)}
+                        className={`py-1.5 px-1 hover:bg-slate-50/90 transition-colors relative group cursor-pointer rounded-lg ${isMrpExceeded ? "bg-red-50/40" : ""}`}
                       >
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2">
                           <img
                             src={item.image || "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"}
                             onError={(e) => { e.currentTarget.src = "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"; }}
                             alt={item.name}
-                            className="w-9 h-9 rounded-lg border border-slate-100 object-contain p-0.5 shrink-0 bg-slate-50"
+                            className="w-7 h-7 rounded border border-slate-100 object-contain p-0.5 shrink-0 bg-slate-50"
                           />
                           <div className="flex-1 min-w-0 space-y-0.5">
-                            {/* Line 1: Product Name on left, Line Total Price on right */}
-                            <div className="flex items-center justify-between gap-2">
-                              <h5 className="text-[13px] font-semibold text-slate-900 leading-tight truncate" title={item.sku ? `${item.name} (SKU: ${item.sku})` : item.name}>
+                            {/* Line 1: Name & Price */}
+                            <div className="flex items-center justify-between gap-1.5">
+                              <h5 className="text-xs font-bold text-slate-900 leading-none truncate" title={item.sku ? `${item.name} (SKU: ${item.sku})` : item.name}>
                                 {item.name}
                               </h5>
                               <div className="text-right shrink-0">
-                                <span className="font-bold text-sm text-slate-900 block leading-none">
-                                  {formatCurrency(unitPrice * item.qty)}
+                                <span className="font-extrabold text-xs text-slate-900 block leading-none">
+                                  {formatCurrency((isIncl ? unitPrice : sellingPriceIncl) * item.qty - (item.discount || 0) * item.qty)}
                                 </span>
                                 {isWholesale && (
-                                  <span className={`text-[9px] font-bold block leading-none mt-0.5 ${pricingMode === 'B2B' ? 'text-purple-600' : 'text-emerald-600'}`}>
+                                  <span className={`text-[8px] font-bold block leading-none mt-0.5 ${pricingMode === 'B2B' ? 'text-purple-600' : 'text-emerald-600'}`}>
                                     {getItemEffectivePrice(item).tierName}
-                                  </span>
-                                )}
-                                {item.discount > 0 && (
-                                  <span className="text-[9px] text-rose-500 font-bold block leading-none mt-0.5">
-                                    Saved {formatCurrency(item.discount * item.qty)}
                                   </span>
                                 )}
                               </div>
                             </div>
 
-                            {/* Line 2: MRP, Tax & Batch directly underneath beside Quantity Stepper */}
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5 text-[10px]">
+                            {/* Line 2: All badges + Base/GST + Stepper in ONE single compact line */}
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="flex items-center gap-1 text-[9px] flex-wrap min-w-0">
                                 {mrpVal > 0 ? (
-                                  <span className="inline-flex items-center px-1.5 py-0.2 bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-bold rounded">
-                                    MRP: {formatCurrency(mrpVal)}
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openCartItemEditModal(item); }}
+                                    title="Click to edit MRP or Selling Price"
+                                    className="px-1 py-0.2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold rounded flex items-center gap-0.5 transition-colors cursor-pointer"
+                                  >
+                                    <span>MRP: {formatCurrency(mrpVal)}</span>
+                                    <Pencil className="w-2 h-2 opacity-70" />
+                                  </button>
                                 ) : (
-                                  <span className="font-semibold text-slate-600 text-[10px]">
-                                    {formatCurrency(unitPrice)}/ea
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openCartItemEditModal(item); }}
+                                    title="Click to set MRP"
+                                    className="px-1 py-0.2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-500 font-bold rounded flex items-center gap-0.5 transition-colors cursor-pointer"
+                                  >
+                                    <span>+ MRP</span>
+                                  </button>
                                 )}
-                                <span className="text-slate-400 text-[9px] font-medium">
-                                  GST {itemTaxPercent}%
+
+                                {/* Interactive GST toggle badge */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCart(prev => prev.map(it => it.id === item.id ? { ...it, is_tax_inclusive: !isIncl } : it));
+                                  }}
+                                  title={isIncl ? "Tax Inclusive: Click to switch to Tax Exclusive" : "Tax Exclusive: Click to switch to Tax Inclusive"}
+                                  className={`px-1 py-0.2 rounded font-extrabold uppercase transition-all hover:scale-105 cursor-pointer border ${
+                                    isIncl
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                      : "bg-blue-50 text-blue-700 border-blue-300"
+                                  }`}
+                                >
+                                  {isIncl ? "Incl." : "Excl."} {itemTaxPercent}%
+                                </button>
+
+                                <span className="text-slate-400 font-medium whitespace-nowrap">
+                                  Base: {formatCurrency(baseUnitPrice)} • GST: {formatCurrency(unitGst)}
                                 </span>
-                                {item.batch_number && (
-                                  <span className="inline-flex items-center px-1.5 py-0.2 bg-indigo-50 border border-indigo-100 text-indigo-700 text-[9px] font-bold rounded">
-                                    #{item.batch_number}
-                                  </span>
-                                )}
+
                                 {item.hsn_code && (
-                                  <span className="inline-flex items-center px-1 py-0.2 bg-slate-100 text-slate-600 text-[9px] font-mono rounded">
+                                  <span className="px-1 py-0.2 bg-slate-100 text-slate-500 font-mono rounded">
                                     {item.hsn_code}
                                   </span>
                                 )}
                               </div>
 
-                              <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="flex items-center gap-1 shrink-0">
+                                {/* Edit Price / MRP button */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); openCartItemEditModal(item); }}
+                                  className="text-slate-400 hover:text-indigo-600 transition-colors p-0.5 rounded opacity-0 group-hover:opacity-100 cursor-pointer"
+                                  title="Edit Rate, MRP & Discount"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+
                                 {/* Quantity Stepper */}
-                                <div className="flex items-center bg-slate-100 rounded-md border border-slate-200/80 p-0.5">
+                                <div className="flex items-center bg-slate-100 rounded border border-slate-200/80 p-0.5">
                                   <button
                                     onClick={(e) => { e.stopPropagation(); updateQty(item.id, -1); }}
-                                    className="w-5 h-5 flex items-center justify-center rounded bg-white text-slate-700 shadow-xs hover:bg-slate-50 transition-colors"
+                                    className="w-4 h-4 flex items-center justify-center rounded bg-white text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"
                                     title="Decrease quantity"
                                   >
-                                    <Minus className="w-3 h-3" />
+                                    <Minus className="w-2.5 h-2.5" />
                                   </button>
-                                  <span className="w-6 text-center text-xs font-bold text-slate-900">{item.qty}</span>
+                                  <span className="w-5 text-center text-xs font-bold text-slate-900 leading-none">{item.qty}</span>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); updateQty(item.id, 1); }}
-                                    className="w-5 h-5 flex items-center justify-center rounded bg-white text-slate-700 shadow-xs hover:bg-slate-50 transition-colors"
+                                    className="w-4 h-4 flex items-center justify-center rounded bg-white text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"
                                     title="Increase quantity"
                                   >
-                                    <Plus className="w-3 h-3" />
+                                    <Plus className="w-2.5 h-2.5" />
                                   </button>
                                 </div>
 
                                 <button
                                   onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
-                                  className="text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors p-1 rounded-md opacity-0 group-hover:opacity-100"
+                                  className="text-slate-300 hover:text-rose-500 transition-colors p-0.5 rounded opacity-0 group-hover:opacity-100 cursor-pointer"
                                   title="Remove item"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-3 h-3" />
                                 </button>
                               </div>
                             </div>
@@ -2399,7 +2585,7 @@ function PosTerminalInner() {
 
                         {/* MRP Warning Alert Banner */}
                         {isMrpExceeded && (
-                          <div className="flex items-center gap-1.5 bg-red-100 text-red-800 border border-red-300 rounded-lg px-2 py-1 text-[10px] font-bold">
+                          <div className="flex items-center gap-1 bg-red-100 text-red-800 border border-red-300 rounded px-1.5 py-0.5 text-[9px] font-bold mt-1">
                             <span className="animate-pulse">⚠️</span>
                             <span>MRP Alert: Price {currency.symbol}{sellingPriceIncl.toFixed(2)} &gt; MRP {currency.symbol}{mrpVal.toFixed(2)}</span>
                           </div>
@@ -2415,21 +2601,21 @@ function PosTerminalInner() {
             <div className="bg-white border-t border-slate-200/80 shadow-[0_-8px_30px_-10px_rgba(0,0,0,0.05)] flex flex-col shrink-0 z-20">
 
               {/* DYNAMIC CART DISCOUNT BAR */}
-              <div className="p-3 border-b border-slate-200/70 bg-slate-50/90 space-y-2">
+              <div className="px-2.5 py-1.5 border-b border-slate-200/70 bg-slate-50/90 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5 text-indigo-600" /> Dynamic Cart Discount
+                  <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                    <Tag className="w-3 h-3 text-indigo-600" /> Dynamic Cart Discount
                   </span>
-                  <div className="flex items-center bg-white rounded-lg p-0.5 border border-slate-200/80 text-[10px] font-bold shadow-2xs">
+                  <div className="flex items-center bg-white rounded-md p-0.5 border border-slate-200/80 text-[9px] font-bold shadow-2xs">
                     <button
                       onClick={() => setDiscountMode("before_tax")}
-                      className={`px-2 py-0.5 rounded-md transition-all ${discountMode === "before_tax" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
+                      className={`px-1.5 py-0.2 rounded transition-all ${discountMode === "before_tax" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"}`}
                     >
                       Before Tax
                     </button>
                     <button
                       onClick={() => setDiscountMode("after_tax")}
-                      className={`px-2 py-0.5 rounded-md transition-all ${discountMode === "after_tax" ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
+                      className={`px-1.5 py-0.2 rounded transition-all ${discountMode === "after_tax" ? "bg-purple-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-900"}`}
                     >
                       After Tax
                     </button>
@@ -2437,31 +2623,31 @@ function PosTerminalInner() {
                 </div>
 
                 {/* Quick Presets & Custom Input */}
-                <div className="flex items-center gap-1.5">
-                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1">
+                <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-0.5 overflow-x-auto no-scrollbar flex-1">
                     {[0, 5, 10, 15, 20, 25].map(val => (
                       <button
                         key={val}
                         onClick={() => { setCartDiscountType("percent"); setCartDiscountValue(val); }}
-                        className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all shrink-0 ${cartDiscountType === "percent" && cartDiscountValue === val ? (discountMode === "before_tax" ? "bg-indigo-600 text-white shadow-sm" : "bg-purple-600 text-white shadow-sm") : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100"}`}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all shrink-0 ${cartDiscountType === "percent" && cartDiscountValue === val ? (discountMode === "before_tax" ? "bg-indigo-600 text-white shadow-xs" : "bg-purple-600 text-white shadow-xs") : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100"}`}
                       >
                         {val === 0 ? "Off" : `${val}%`}
                       </button>
                     ))}
                   </div>
 
-                  <div className="flex items-center bg-white border border-slate-200/80 rounded-lg p-0.5 shrink-0 w-28 shadow-2xs">
+                  <div className="flex items-center bg-white border border-slate-200/80 rounded p-0.5 shrink-0 w-24 shadow-2xs">
                     <input
                       type="number"
                       min="0"
                       placeholder="Custom"
                       value={cartDiscountValue || ""}
                       onChange={(e) => setCartDiscountValue(Math.max(0, Number(e.target.value)))}
-                      className="w-14 text-center text-xs font-bold text-slate-800 outline-none"
+                      className="w-12 text-center text-[10px] font-bold text-slate-800 outline-none"
                     />
                     <button
                       onClick={() => setCartDiscountType(cartDiscountType === "percent" ? "amount" : "percent")}
-                      className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-semibold text-slate-700 hover:bg-slate-200"
+                      className="px-1 py-0.2 rounded bg-slate-100 text-[9px] font-semibold text-slate-700 hover:bg-slate-200"
                     >
                       {cartDiscountType === "percent" ? "%" : "₹"}
                     </button>
@@ -2470,39 +2656,39 @@ function PosTerminalInner() {
               </div>
 
               {/* DYNAMIC ADDITIONAL CHARGES BAR (Freight, Packing, Transport, etc.) */}
-              <div className="px-3 py-2.5 border-b border-slate-200/70 bg-emerald-50/40 space-y-2">
+              <div className="px-2.5 py-1.5 border-b border-slate-200/70 bg-emerald-50/40 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
-                    <Truck className="w-3.5 h-3.5 text-emerald-600" /> Additional Charges (Freight / Transport)
+                  <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                    <Truck className="w-3 h-3 text-emerald-600" /> Additional Charges (Freight / Transport)
                   </span>
                   <button
                     onClick={handleAddPosChargeRow}
-                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 bg-white border border-emerald-200 hover:bg-emerald-100 px-2 py-0.5 rounded-md transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
+                    className="text-[9px] font-bold text-emerald-700 hover:text-emerald-900 bg-white border border-emerald-200 hover:bg-emerald-100 px-1.5 py-0.2 rounded transition-all flex items-center gap-0.5 shadow-2xs cursor-pointer"
                   >
-                    <Plus className="w-3 h-3" /> Add Charge
+                    <Plus className="w-2.5 h-2.5" /> Add Charge
                   </button>
                 </div>
 
                 {posCustomCharges.length > 0 && (
-                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                  <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
                     {posCustomCharges.map(ch => (
-                      <div key={ch.id} className="flex items-center gap-1.5 bg-white border border-emerald-200/70 rounded-lg p-1 shadow-2xs">
+                      <div key={ch.id} className="flex items-center gap-1 bg-white border border-emerald-200/70 rounded p-1 shadow-2xs text-[10px]">
                         <input
                           type="text"
                           value={ch.name}
                           onChange={e => handleUpdatePosCharge(ch.id, "name", e.target.value)}
-                          placeholder="Charge name (e.g. Transport)"
-                          className="flex-1 min-w-0 text-xs font-semibold text-slate-800 outline-none px-1.5"
+                          placeholder="Charge name"
+                          className="flex-1 min-w-0 text-[10px] font-semibold text-slate-800 outline-none px-1"
                         />
-                        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-md px-1 shrink-0">
-                          <span className="text-[10px] text-slate-400 font-bold">{currency.symbol}</span>
+                        <div className="flex items-center bg-slate-50 border border-slate-200 rounded px-1 shrink-0">
+                          <span className="text-[9px] text-slate-400 font-bold">{currency.symbol}</span>
                           <input
                             type="number"
                             min="0"
                             value={ch.amount || ""}
                             onChange={e => handleUpdatePosCharge(ch.id, "amount", e.target.value)}
                             placeholder="0"
-                            className="w-14 text-right text-xs font-bold text-slate-900 outline-none py-0.5"
+                            className="w-12 text-right text-[10px] font-bold text-slate-900 outline-none py-0.2"
                           />
                         </div>
                         {/* GST % Selector for charge */}
@@ -2510,24 +2696,24 @@ function PosTerminalInner() {
                           value={ch.tax_rate || 0}
                           onChange={e => handleUpdatePosCharge(ch.id, "tax_rate", e.target.value)}
                           title="GST on charge"
-                          className="shrink-0 bg-slate-50 border border-slate-200 rounded-md px-1 py-0.5 text-[10px] font-bold text-slate-700 outline-none"
+                          className="shrink-0 bg-slate-50 border border-slate-200 rounded px-0.5 py-0.2 text-[9px] font-bold text-slate-700 outline-none"
                         >
-                          <option value={0}>0% GST</option>
-                          <option value={5}>5% GST</option>
-                          <option value={12}>12% GST</option>
-                          <option value={18}>18% GST</option>
-                          <option value={28}>28% GST</option>
+                          <option value={0}>0%</option>
+                          <option value={5}>5%</option>
+                          <option value={12}>12%</option>
+                          <option value={18}>18%</option>
+                          <option value={28}>28%</option>
                         </select>
                         {Number(ch.tax_rate) > 0 && Number(ch.amount) > 0 && (
-                          <span className="shrink-0 text-[10px] font-bold text-emerald-600 whitespace-nowrap">
+                          <span className="shrink-0 text-[9px] font-bold text-emerald-600 whitespace-nowrap">
                             +{currency.symbol}{(Number(ch.amount) * Number(ch.tax_rate) / 100).toFixed(2)}
                           </span>
                         )}
                         <button
                           onClick={() => handleDeletePosCharge(ch.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors shrink-0"
+                          className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-50 transition-colors shrink-0"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <X className="w-3 h-3" />
                         </button>
                       </div>
                     ))}
@@ -2536,47 +2722,47 @@ function PosTerminalInner() {
               </div>
 
               {/* Totals Box */}
-              <div className="p-4 space-y-1.5 border-b border-slate-100 border-dashed bg-slate-50/40">
-                <div className="flex justify-between text-[12px]">
+              <div className="px-3 py-1.5 space-y-1 border-b border-slate-100 border-dashed bg-slate-50/40 text-[11px]">
+                <div className="flex justify-between">
                   <span className="text-slate-500 font-bold">Subtotal ({cart.reduce((s, i) => s + i.qty, 0)} items)</span>
                   <span className="font-semibold text-slate-700">{formatCurrency(subtotal)}</span>
                 </div>
 
                 {itemDiscounts > 0 && (
-                  <div className="flex justify-between text-[12px] text-rose-500">
+                  <div className="flex justify-between text-rose-500">
                     <span className="font-bold">Item Savings</span>
                     <span className="font-semibold">-{formatCurrency(itemDiscounts)}</span>
                   </div>
                 )}
 
                 {beforeTaxDiscount > 0 && (
-                  <div className="flex justify-between text-[12px] text-indigo-600 font-bold">
-                    <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> Before-Tax Discount ({cartDiscountType === "percent" ? `${cartDiscountValue}%` : "Flat"})</span>
+                  <div className="flex justify-between text-indigo-600 font-bold">
+                    <span className="flex items-center gap-1"><Tag className="w-2.5 h-2.5" /> Before-Tax Discount ({cartDiscountType === "percent" ? `${cartDiscountValue}%` : "Flat"})</span>
                     <span className="font-semibold">-{formatCurrency(beforeTaxDiscount)}</span>
                   </div>
                 )}
 
-                <div className="flex justify-between text-[12px]">
+                <div className="flex justify-between">
                   <span className="text-slate-500 font-bold">Taxable Amount</span>
                   <span className="font-semibold text-slate-700">{formatCurrency(taxableAmount)}</span>
                 </div>
 
                 {/* GST Breakdown (CGST+SGST vs IGST toggle) */}
-                <div className="pt-1.5 border-t border-slate-200/60 space-y-1">
-                  <div className="flex items-center justify-between text-[11px]">
+                <div className="pt-1 border-t border-slate-200/60 space-y-0.5 text-[10px]">
+                  <div className="flex items-center justify-between">
                     <span className="text-slate-500 font-bold flex items-center gap-1">
                       Total Tax / GST
                     </span>
-                    <div className="flex items-center bg-slate-100 rounded-md p-0.5 text-[9px] font-bold">
+                    <div className="flex items-center bg-slate-100 rounded p-0.5 text-[8px] font-bold">
                       <button
                         onClick={() => setPosGstType("cgst_sgst")}
-                        className={`px-1.5 py-0.5 rounded transition-all ${posGstType === "cgst_sgst" ? "bg-white text-indigo-700 shadow-2xs font-extrabold" : "text-slate-500"}`}
+                        className={`px-1 py-0.2 rounded transition-all ${posGstType === "cgst_sgst" ? "bg-white text-indigo-700 shadow-2xs font-extrabold" : "text-slate-500"}`}
                       >
                         CGST+SGST
                       </button>
                       <button
                         onClick={() => setPosGstType("igst")}
-                        className={`px-1.5 py-0.5 rounded transition-all ${posGstType === "igst" ? "bg-white text-indigo-700 shadow-2xs font-extrabold" : "text-slate-500"}`}
+                        className={`px-1 py-0.2 rounded transition-all ${posGstType === "igst" ? "bg-white text-indigo-700 shadow-2xs font-extrabold" : "text-slate-500"}`}
                       >
                         IGST
                       </button>
@@ -2585,34 +2771,34 @@ function PosTerminalInner() {
 
                   {posGstType === "cgst_sgst" ? (
                     <>
-                      <div className="flex justify-between text-[11px] text-slate-600 pl-2">
+                      <div className="flex justify-between text-slate-600 pl-1.5">
                         <span>• CGST</span>
                         <span className="font-semibold">+{formatCurrency((tax + posChargesGstTotal) / 2)}</span>
                       </div>
-                      <div className="flex justify-between text-[11px] text-slate-600 pl-2">
+                      <div className="flex justify-between text-slate-600 pl-1.5">
                         <span>• SGST</span>
                         <span className="font-semibold">+{formatCurrency((tax + posChargesGstTotal) / 2)}</span>
                       </div>
                     </>
                   ) : (
-                    <div className="flex justify-between text-[11px] text-slate-600 pl-2">
+                    <div className="flex justify-between text-slate-600 pl-1.5">
                       <span>• IGST</span>
                       <span className="font-semibold">+{formatCurrency(tax + posChargesGstTotal)}</span>
                     </div>
                   )}
                 </div>
 
-                {posAdditionalChargesTotal > 0 && (
-                  <div className="flex justify-between text-[12px] text-emerald-700 font-bold">
-                    <span className="flex items-center gap-1"><Truck className="w-3 h-3 text-emerald-600" /> Extra Additional Charges</span>
-                    <span className="font-semibold">+{formatCurrency(posAdditionalChargesTotal)}</span>
+                {afterTaxDiscount > 0 && (
+                  <div className="flex justify-between text-purple-600 font-bold pt-0.5 border-t border-slate-200/60">
+                    <span className="flex items-center gap-1"><Tag className="w-2.5 h-2.5" /> After-Tax Discount ({cartDiscountType === "percent" ? `${cartDiscountValue}%` : "Flat"})</span>
+                    <span className="font-semibold">-{formatCurrency(afterTaxDiscount)}</span>
                   </div>
                 )}
-
-                {afterTaxDiscount > 0 && (
-                  <div className="flex justify-between text-[12px] text-purple-600 font-bold">
-                    <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> After-Tax Discount ({cartDiscountType === "percent" ? `${cartDiscountValue}%` : "Flat"})</span>
-                    <span className="font-semibold">-{formatCurrency(afterTaxDiscount)}</span>
+                
+                {includePreviousDueInBill && customerSummary?.total_pending_due > 0 && (
+                  <div className="flex justify-between text-amber-700 font-bold pt-0.5 border-t border-amber-200/60">
+                    <span>⚠️ Previous Due</span>
+                    <span className="font-bold">+{formatCurrency(customerSummary.total_pending_due)}</span>
                   </div>
                 )}
               </div>
@@ -2840,43 +3026,301 @@ function PosTerminalInner() {
         </div>
       </div>
 
-      {/* LINE ITEM DISCOUNT MODAL */}
+      {/* ── EDIT CART ITEM (MRP, RATE, DISCOUNT & TAX) MODAL ── */}
       <AnimatePresence>
-        {discountModalItem && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDiscountModalItem(null)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-slate-900">Line Discount</h3>
-                <button onClick={() => setDiscountModalItem(null)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"><X className="w-4 h-4" /></button>
-              </div>
-              <div className="flex gap-4 items-center mb-6 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <img src={discountModalItem.image || "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"} onError={(e) => { e.currentTarget.src = "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"; }} alt={discountModalItem.name} className="w-12 h-12 object-contain mix-blend-multiply bg-white rounded border border-slate-200" />
-                <div>
-                  <p className="font-bold text-slate-900 line-clamp-1">{discountModalItem.name}</p>
-                  <p className="text-xs font-semibold text-slate-500">{formatCurrency(discountModalItem.sellingPrice)} each</p>
+        {cartEditItem && (() => {
+          const rawPrice = parseFloat(editSellingPrice) || 0;
+          const rawMrp = parseFloat(editMrp) || 0;
+          const taxPercent = Number(cartEditItem.tax_percent ?? cartEditItem.tax ?? 18);
+
+          // Base & GST calculation based on tax inclusive toggle
+          const baseUnitPrice = editTaxInclusive && taxPercent > 0
+            ? rawPrice / (1 + taxPercent / 100)
+            : rawPrice;
+          const unitGst = editTaxInclusive && taxPercent > 0
+            ? rawPrice - baseUnitPrice
+            : baseUnitPrice * (taxPercent / 100);
+          const grossSellingPrice = editTaxInclusive ? rawPrice : baseUnitPrice + unitGst;
+
+          // Discount calculation
+          const discVal = parseFloat(editDiscountValue) || 0;
+          const discAmt = editDiscountType === "percent"
+            ? (grossSellingPrice * discVal) / 100
+            : discVal;
+          const netUnitPrice = Math.max(0, grossSellingPrice - discAmt);
+          const lineTotal = netUnitPrice * (cartEditItem.qty || 1);
+          const isMrpExceeded = rawMrp > 0 && grossSellingPrice > rawMrp;
+
+          return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setCartEditItem(null)}
+                className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/90">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs">
+                      <Tag className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900 leading-tight">Edit Cart Item Pricing</h3>
+                      <p className="text-[11px] text-slate-500 font-medium">Update MRP, Selling Rate & Discounts on this line</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setCartEditItem(null)}
+                    className="p-1.5 bg-white hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-              </div>
-              <div className="mb-6">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Discount Amount ({currency.symbol})</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{currency.symbol}</span>
-                  <input
-                    type="number"
-                    value={discountInput}
-                    onChange={(e) => setDiscountInput(e.target.value)}
-                    className="w-full text-2xl font-semibold text-slate-900 border-2 border-slate-200 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-indigo-500 transition-colors"
-                    placeholder="0.00"
-                    autoFocus
-                  />
+
+                {/* Body */}
+                <div className="p-6 space-y-4 overflow-y-auto max-h-[75vh]">
+                  {/* Product Header Card */}
+                  <div className="flex gap-3 items-center bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <img
+                      src={cartEditItem.image || "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"}
+                      onError={(e) => { e.currentTarget.src = "https://placehold.co/100x100/f8fafc/94a3b8?text=Img"; }}
+                      alt={cartEditItem.name}
+                      className="w-11 h-11 object-contain mix-blend-multiply bg-white rounded-xl border border-slate-200 shrink-0 p-1"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-extrabold text-slate-900 text-xs truncate" title={cartEditItem.name}>{cartEditItem.name}</p>
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-semibold mt-1 flex-wrap">
+                        {cartEditItem.sku && <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">SKU: {cartEditItem.sku}</span>}
+                        {cartEditItem.barcode && <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">Barcode: {cartEditItem.barcode}</span>}
+                        <span className="text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">Qty: {cartEditItem.qty}</span>
+                        <span className="text-slate-600 font-bold bg-slate-200/70 px-1.5 py-0.5 rounded">GST: {taxPercent}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* MRP and Selling Price Fields in a 2-Column Grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* MRP Field */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                          MRP ({currency.symbol})
+                        </label>
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          Printed MRP
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-extrabold text-sm">{currency.symbol}</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editMrp}
+                          onChange={(e) => setEditMrp(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full text-sm font-extrabold text-slate-900 border-2 border-slate-200 rounded-xl py-2 pl-7 pr-3 focus:outline-none focus:border-indigo-500 transition-colors bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Selling Price Field */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                          Selling Rate ({currency.symbol})
+                        </label>
+                        <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                          {editTaxInclusive ? "Incl. GST" : "Excl. GST"}
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-extrabold text-sm">{currency.symbol}</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editSellingPrice}
+                          onChange={(e) => setEditSellingPrice(e.target.value)}
+                          placeholder="0.00"
+                          autoFocus
+                          className="w-full text-sm font-extrabold text-slate-900 border-2 border-slate-200 rounded-xl py-2 pl-7 pr-3 focus:outline-none focus:border-indigo-500 transition-colors bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* GST Mode Toggle */}
+                  <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
+                    <span className="text-xs font-bold text-slate-700">Tax Type:</span>
+                    <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setEditTaxInclusive(true)}
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-md transition-all cursor-pointer ${
+                          editTaxInclusive ? "bg-emerald-600 text-white shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        Tax Inclusive (GST Included)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditTaxInclusive(false)}
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-md transition-all cursor-pointer ${
+                          !editTaxInclusive ? "bg-blue-600 text-white shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        Tax Exclusive (GST Added)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Discount Section */}
+                  <div className="space-y-2 bg-slate-50/70 p-3 rounded-2xl border border-slate-200/80">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                        Line Discount
+                      </label>
+                      <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200 text-xs font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setEditDiscountType("amount")}
+                          className={`px-2.5 py-0.5 rounded transition-all cursor-pointer ${
+                            editDiscountType === "amount" ? "bg-indigo-600 text-white" : "text-slate-600"
+                          }`}
+                        >
+                          Flat ({currency.symbol})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditDiscountType("percent")}
+                          className={`px-2.5 py-0.5 rounded transition-all cursor-pointer ${
+                            editDiscountType === "percent" ? "bg-indigo-600 text-white" : "text-slate-600"
+                          }`}
+                        >
+                          Percent (%)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-extrabold text-sm">
+                          {editDiscountType === "amount" ? currency.symbol : "%"}
+                        </span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editDiscountValue}
+                          onChange={(e) => setEditDiscountValue(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full text-sm font-extrabold text-slate-900 border-2 border-slate-200 rounded-xl py-2 pl-7 pr-3 focus:outline-none focus:border-indigo-500 transition-colors bg-white"
+                        />
+                      </div>
+                      {/* Quick Percentage Chips */}
+                      {editDiscountType === "percent" && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          {[5, 10, 15, 20].map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => setEditDiscountValue(pct.toString())}
+                              className={`px-2 py-1.5 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
+                                editDiscountValue === pct.toString()
+                                  ? "bg-indigo-50 text-indigo-700 border-indigo-300"
+                                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              {pct}%
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Live Calculation Breakdown Card */}
+                  <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/70 border border-indigo-100/90 rounded-2xl p-3.5 space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center text-slate-600 font-medium">
+                      <span>Base Unit Price (Excl. Tax):</span>
+                      <span className="font-bold text-slate-900">{formatCurrency(baseUnitPrice)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-600 font-medium">
+                      <span>GST Amount ({taxPercent}%):</span>
+                      <span className="font-bold text-slate-900">{formatCurrency(unitGst)}</span>
+                    </div>
+                    {discAmt > 0 && (
+                      <div className="flex justify-between items-center text-rose-600 font-medium">
+                        <span>Discount Applied:</span>
+                        <span className="font-bold">-{formatCurrency(discAmt)}</span>
+                      </div>
+                    )}
+                    <div className="border-t border-indigo-200/60 pt-1.5 flex justify-between items-center">
+                      <span className="font-extrabold text-indigo-950">Effective Customer Rate / Unit:</span>
+                      <span className="font-black text-sm text-indigo-600">{formatCurrency(netUnitPrice)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-0.5">
+                      <span className="font-extrabold text-slate-700">Line Total ({cartEditItem.qty} {cartEditItem.qty === 1 ? 'item' : 'items'}):</span>
+                      <span className="font-black text-sm text-slate-900">{formatCurrency(lineTotal)}</span>
+                    </div>
+                  </div>
+
+                  {/* MRP Warning Alert */}
+                  {isMrpExceeded && (
+                    <div className="flex items-center gap-2 bg-red-50 text-red-800 border border-red-200 rounded-xl p-2.5 text-xs font-bold">
+                      <span className="text-base">⚠️</span>
+                      <div>
+                        <span>Selling Price ({currency.symbol}{grossSellingPrice.toFixed(2)}) exceeds MRP ({currency.symbol}{rawMrp.toFixed(2)})!</span>
+                        <p className="text-[10px] font-normal text-red-600 mt-0.5">Under consumer regulations, products cannot be sold above printed MRP.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Master Database Sync Option */}
+                  <label className="flex items-start gap-2.5 p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={editUpdateMaster}
+                      onChange={(e) => setEditUpdateMaster(e.target.checked)}
+                      className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                    />
+                    <div className="text-xs">
+                      <span className="font-extrabold text-slate-900 block">Update in Product Master Database</span>
+                      <span className="text-[11px] text-slate-500 font-normal">Save this new MRP ({currency.symbol}{rawMrp.toFixed(2)}) & Rate permanently so all future scans use it.</span>
+                    </div>
+                  </label>
                 </div>
-              </div>
-              <button onClick={applyDiscount} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-indigo-600/20">
-                Apply Discount
-              </button>
-            </motion.div>
-          </div>
-        )}
+
+                {/* Footer Buttons */}
+                <div className="p-4 bg-slate-50/90 border-t border-slate-100 flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setCartEditItem(null)}
+                    disabled={isSavingEditItem}
+                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-xl transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveCartItemEdit}
+                    disabled={isSavingEditItem}
+                    className="px-5 py-2 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 rounded-xl shadow-md shadow-indigo-600/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingEditItem ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    <span>Apply & Save</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* CASH TENDERED MODAL */}

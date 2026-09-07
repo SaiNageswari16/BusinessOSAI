@@ -1,5 +1,5 @@
 import uuid
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Union
 from datetime import datetime, date
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
@@ -560,7 +560,7 @@ class PublicProductVariantResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class PublicProductResponse(BaseModel):
-    id: uuid.UUID
+    id: Union[uuid.UUID, str]
     name: str
     sku: str
     category_name: Optional[str] = None

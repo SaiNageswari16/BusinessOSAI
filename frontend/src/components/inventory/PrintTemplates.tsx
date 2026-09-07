@@ -1253,6 +1253,7 @@ interface EditorProps {
 }
 
 function TemplateEditorModal({ template, onClose, onSave }: EditorProps) {
+  const { tenant } = useTenant();
   const [form, setForm] = useState<PrintTemplate>({ ...template });
   const [openSection, setOpenSection] = useState<string>("general");
 

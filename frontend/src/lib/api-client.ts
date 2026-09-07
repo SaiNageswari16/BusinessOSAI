@@ -5348,6 +5348,14 @@ export const pushNotificationsApi = {
 
 // ── WebAuthn / FIDO2 Biometric Passkeys ──────────────────────────────────────
 
+export interface TokenResponse {
+  access_token: string;
+  token_type?: string;
+  user?: any;
+  tenant?: any;
+  tenant_id?: string;
+}
+
 export interface UserPasskey {
   id: string;
   credential_id: string;

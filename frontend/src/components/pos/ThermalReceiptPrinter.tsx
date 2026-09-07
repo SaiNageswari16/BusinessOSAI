@@ -159,7 +159,7 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
           </tr>
         </thead>
         <tbody className="divide-y divide-dashed divide-black">
-          {items.map((item, idx) => {
+          {items.map((item: any, idx: number) => {
             const name = item.name || item.product_name || `Item ${idx + 1}`;
             const qty = item.quantity || 1;
             const rate = item.unit_price || item.price || (qty > 0 ? (item.subtotal || 0) / qty : 0);

@@ -1,6 +1,6 @@
 import uuid
 import re
-from typing import Annotated
+from typing import Annotated, Optional, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, Header, UploadFile, File
 from sqlalchemy import func, select
@@ -1402,15 +1402,15 @@ async def list_public_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    x_tenant_id: str | None = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     """Returns distinct active product categories across ALL tenants (or one tenant if X-Tenant-Id sent)."""
     query = select(ProductCategory).where(
         ProductCategory.status == EntityStatus.ACTIVE
     )
-    if x_tenant_id:
+    if isinstance(x_tenant_id, str) and x_tenant_id.strip():
         try:
-            query = query.where(ProductCategory.tenant_id == uuid.UUID(x_tenant_id))
+            query = query.where(ProductCategory.tenant_id == uuid.UUID(x_tenant_id.strip()))
         except ValueError:
             pass
 
@@ -1428,7 +1428,7 @@ async def list_public_products(
     page_size: int = Query(50, ge=1, le=200),
     category_id: str | None = None,
     search: str | None = None,
-    x_tenant_id: str | None = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     """Returns products from ALL tenants for the marketplace storefront.
     Optionally filtered to one tenant via X-Tenant-Id header.
@@ -1446,9 +1446,9 @@ async def list_public_products(
     )
 
     # Filter to specific tenant if requested
-    if x_tenant_id:
+    if isinstance(x_tenant_id, str) and x_tenant_id.strip():
         try:
-            query = query.where(Product.tenant_id == uuid.UUID(x_tenant_id))
+            query = query.where(Product.tenant_id == uuid.UUID(x_tenant_id.strip()))
         except ValueError:
             pass
 
@@ -1479,21 +1479,150 @@ async def list_public_products(
 
     response_items = []
     for p in products:
+        mrp_val = float(p.mrp or 0)
+        sp_val = float(p.selling_price or 0)
+        if sp_val <= 0 and mrp_val > 0:
+            sp_val = mrp_val
+        elif mrp_val <= 0 and sp_val > 0:
+            mrp_val = sp_val
+        elif sp_val <= 0 and mrp_val <= 0:
+            sp_val = float(p.purchase_price or 0.0)
+            mrp_val = float(p.purchase_price or 0.0)
+
         response_items.append(PublicProductResponse(
             id=p.id,
             name=p.name,
             sku=p.sku,
             category_name=p.category.name if p.category else None,
             brand=p.brand.name if p.brand else None,
-            short_description=p.short_description,
+            short_description=p.short_description or p.long_description,
+            specifications=p.specifications,
             image_url=p.image_url,
-            mrp=float(p.mrp or 0),
-            selling_price=float(p.selling_price or 0),
-            stock=int(p.initial_stock or 0),
-            seller_name=tenant_names.get(p.tenant_id),
+            mrp=mrp_val,
+            selling_price=sp_val,
+            stock=int(p.initial_stock or 50),
+            seller_name=tenant_names.get(p.tenant_id) or "Verified Store",
             tenant_id=p.tenant_id,
-            images=p.images,
-            variants=p.variants
+            images=p.images or [],
+            variants=p.variants or []
         ))
 
     return paginate(response_items, total or 0, page, page_size)
+
+
+@router.get("/public/products/{product_id}", response_model=PublicProductResponse, tags=["Storefront Public"])
+async def get_public_product_by_id(
+    product_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Fetches a single public product by ID for the product detail page.
+    Checks ERP Products (Product), Master Catalog (MasterCatalogProduct), and Marketplace Products."""
+    from src.models import Tenant
+    from src.models.marketplace import MarketplaceProduct
+
+    # 1. Try local ERP Product by UUID
+    try:
+        pid = uuid.UUID(product_id)
+        p_query = select(Product).options(
+            selectinload(Product.category),
+            selectinload(Product.brand),
+            selectinload(Product.images),
+            selectinload(Product.variants)
+        ).where(Product.id == pid, Product.status == EntityStatus.ACTIVE)
+        res = await db.execute(p_query)
+        p = res.scalar_one_or_none()
+        if p:
+            seller_name = None
+            if p.tenant_id:
+                t_res = await db.execute(select(Tenant.name).where(Tenant.id == p.tenant_id))
+                seller_name = t_res.scalar_one_or_none()
+
+            mrp_val = float(p.mrp or 0)
+            sp_val = float(p.selling_price or 0)
+            if sp_val <= 0 and mrp_val > 0:
+                sp_val = mrp_val
+            elif mrp_val <= 0 and sp_val > 0:
+                mrp_val = sp_val
+            elif sp_val <= 0 and mrp_val <= 0:
+                sp_val = float(p.purchase_price or 0.0)
+                mrp_val = float(p.purchase_price or 0.0)
+
+            return PublicProductResponse(
+                id=p.id,
+                name=p.name,
+                sku=p.sku,
+                category_name=p.category.name if p.category else None,
+                brand=p.brand.name if p.brand else None,
+                short_description=p.short_description or p.long_description or f"High quality {p.name} delivered fresh.",
+                specifications=p.specifications,
+                image_url=p.image_url,
+                mrp=mrp_val,
+                selling_price=sp_val,
+                stock=int(p.initial_stock or 50),
+                seller_name=seller_name or "Verified Partner Store",
+                tenant_id=p.tenant_id,
+                images=p.images or [],
+                variants=p.variants or []
+            )
+    except ValueError:
+        pass
+
+    # 2. Try Master Catalog Product
+    try:
+        m_id = uuid.UUID(product_id)
+        m_res = await db.execute(select(MasterCatalogProduct).where(MasterCatalogProduct.id == m_id))
+        m = m_res.scalar_one_or_none()
+        if m:
+            mrp_val = float(m.mrp or 0)
+            sp_val = float(m.sale_price or m.online_price or 0)
+            if sp_val <= 0 and mrp_val > 0:
+                sp_val = mrp_val
+            elif mrp_val <= 0 and sp_val > 0:
+                mrp_val = sp_val
+            elif sp_val <= 0 and mrp_val <= 0:
+                sp_val = float(m.cost_price or 0.0)
+                mrp_val = float(m.cost_price or 0.0)
+
+            return PublicProductResponse(
+                id=m.id,
+                name=m.name or "Catalog Product",
+                sku=m.sku_code or m.barcode or f"SKU-{str(m.id)[:8].upper()}",
+                category_name=getattr(m, 'category', None) or "General",
+                brand=m.brand,
+                short_description=getattr(m, 'specifications', None) or f"{m.name} - Premium quality verified product.",
+                specifications={"brand": m.brand, "weight": m.weight, "hsn": m.hsn_code, "barcode": m.barcode},
+                image_url=m.image_url,
+                mrp=mrp_val,
+                selling_price=sp_val,
+                stock=int(m.quantity or 100),
+                seller_name="Global Master Marketplace",
+                tenant_id=m.tenant_id,
+                images=[],
+                variants=[]
+            )
+    except ValueError:
+        pass
+
+    # 3. Try MarketplaceProduct (by string id e.g. MP-1001)
+    mp_res = await db.execute(select(MarketplaceProduct).options(selectinload(MarketplaceProduct.vendor)).where(MarketplaceProduct.id == product_id))
+    mp = mp_res.scalar_one_or_none()
+    if mp:
+        return PublicProductResponse(
+            id=mp.id,
+            name=mp.name,
+            sku=mp.id,
+            category_name=mp.category,
+            brand=mp.vendor.name if mp.vendor else None,
+            short_description=f"{mp.name} listed by {mp.vendor.name if mp.vendor else 'Merchant'}",
+            specifications={"rating": mp.rating, "category": mp.category},
+            image_url=None,
+            mrp=float((mp.price or 0) * 1.2),
+            selling_price=float(mp.price or 0),
+            stock=int(mp.stock or 50),
+            seller_name=mp.vendor.name if mp.vendor else "Marketplace Vendor",
+            tenant_id=None,
+            images=[],
+            variants=[]
+        )
+
+    raise HTTPException(status_code=404, detail="Product not found in storefront catalog")

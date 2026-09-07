@@ -1,168 +1,289 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Home, ChevronRight, LayoutGrid, List } from "lucide-react";
-import { ProductGrid } from "@/components/storefront/ProductGrid";
-import { useState } from "react";
+import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { fetchStorefrontProducts, fetchStorefrontCategories } from "@/lib/storefront-api";
+import { Home, ChevronRight, LayoutGrid, List, SlidersHorizontal, Check, RefreshCw } from "lucide-react";
+import { useState, useMemo } from "react";
+import {
+  organicProducts as fallbackProducts,
+  organicCategories as fallbackCategories,
+  OrganicProduct
+} from "@/data/mockOrganicData";
+import { OrganicProductCard } from "@/components/storefront/organic/OrganicProductCard";
+import { fetchStorefrontProducts, fetchStorefrontCategories, mapStorefrontToOrganic } from "@/lib/storefront-api";
 import { useCurrency } from "@/hooks/use-currency";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/store/shop")({
   component: ShopPage,
 });
 
 function ShopPage() {
+  const routerState = useRouterState();
+  const searchParams = new URLSearchParams(routerState.location.searchStr);
+  const initialCategory = searchParams.get("category") || "All";
+  const initialFilter = searchParams.get("filter") || "";
+  const initialSearch = searchParams.get("search") || "";
+
   const { currency } = useCurrency();
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
+  const [selectedSort, setSelectedSort] = useState("featured");
+  const [maxPrice, setMaxPrice] = useState<number>(5000);
+  const [organicOnly, setOrganicOnly] = useState<boolean>(true);
 
-  const { data: productData } = useQuery({
-    queryKey: ["storefrontProducts", selectedCategory],
-    queryFn: () => fetchStorefrontProducts(selectedCategory),
+  // Fetch live products
+  const { data: dynamicProductsData, isLoading: isProductsLoading } = useQuery({
+    queryKey: ["storefront-products-shop", initialSearch],
+    queryFn: () => fetchStorefrontProducts(undefined, initialSearch || undefined, undefined, 1, 100),
+    staleTime: 30000,
   });
-  const allProducts = productData?.items ?? [];
 
-  const { data: categories = [] } = useQuery({
-    queryKey: ["storefrontCategories"],
+  // Fetch live categories
+  const { data: dynamicCategoriesData } = useQuery({
+    queryKey: ["storefront-categories-shop"],
     queryFn: () => fetchStorefrontCategories(),
+    staleTime: 60000,
   });
+
+  const liveItems: OrganicProduct[] = useMemo(() => {
+    return (dynamicProductsData?.items || []).map((p, i) => mapStorefrontToOrganic(p, i));
+  }, [dynamicProductsData]);
+
+  const allProducts: OrganicProduct[] = useMemo(() => {
+    return liveItems.length > 0 ? liveItems : fallbackProducts;
+  }, [liveItems]);
+
+  const categoriesList = useMemo(() => {
+    if (dynamicCategoriesData && dynamicCategoriesData.length > 0) {
+      return dynamicCategoriesData.map((c, i) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.name.toLowerCase().replace(/\s+/g, "-"),
+        image: fallbackCategories[i % fallbackCategories.length]?.image || "/organic/images/category-thumb-1.jpg",
+        itemCount: allProducts.filter(p => p.category?.toLowerCase() === c.name.toLowerCase()).length || 1,
+      }));
+    }
+    // If no backend categories returned, derive from products
+    if (liveItems.length > 0) {
+      const distinctCats = Array.from(new Set(liveItems.map(p => p.category).filter(Boolean)));
+      return distinctCats.map((cat, i) => ({
+        id: `cat-${i}`,
+        name: cat,
+        slug: cat.toLowerCase().replace(/\s+/g, "-"),
+        image: fallbackCategories[i % fallbackCategories.length]?.image || "/organic/images/category-thumb-1.jpg",
+        itemCount: liveItems.filter(p => p.category === cat).length,
+      }));
+    }
+    return fallbackCategories;
+  }, [dynamicCategoriesData, liveItems, allProducts]);
+
+  const filteredProducts = useMemo(() => {
+    return allProducts.filter((product) => {
+      // Category filter
+      if (selectedCategory !== "All" && product.category?.toLowerCase() !== selectedCategory.toLowerCase()) {
+        if (!product.category?.toLowerCase().includes(selectedCategory.toLowerCase())) {
+          return false;
+        }
+      }
+      // Query filter
+      if (initialSearch && !product.name.toLowerCase().includes(initialSearch.toLowerCase()) && !product.category?.toLowerCase().includes(initialSearch.toLowerCase())) {
+        return false;
+      }
+      // Promo filter
+      if (initialFilter === "sale" && !product.discountBadge) return false;
+      if (initialFilter === "combo" && !product.discountBadge?.includes("50")) return false;
+      if (initialFilter === "coupons" && !product.discountBadge) return false;
+
+      // Price filter
+      if (product.price > maxPrice) return false;
+
+      return true;
+    }).sort((a, b) => {
+      if (selectedSort === "price-low") return a.price - b.price;
+      if (selectedSort === "price-high") return b.price - a.price;
+      if (selectedSort === "rating") return b.rating - a.rating;
+      return 0; // featured default
+    });
+  }, [allProducts, selectedCategory, initialSearch, initialFilter, maxPrice, selectedSort]);
 
   return (
-    <div className="bg-white min-h-screen pb-20">
-      {/* Breadcrumb Banner */}
-      <div className="bg-[#F2F2F2] py-10 mb-12 border-b border-[#E5E4E2]">
+    <div className="bg-white min-h-screen pb-20 font-organic-body">
+      {/* ── Breadcrumb Banner ── */}
+      <div className="bg-[#FAF8EF] py-10 mb-10 border-b border-gray-100">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-3xl font-black text-[#1A1A1A] uppercase tracking-widest mb-4">
-            Shop
+          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 font-organic-heading mb-2">
+            Organic Grocery Shop
           </h1>
-          <div className="text-sm text-gray-500 flex items-center justify-center space-x-2">
-            <Link
-              to="/store"
-              className="hover:text-blue-600 flex items-center transition-colors font-medium"
-            >
-              <Home className="h-4 w-4 mr-1" />
-              Home
+          <div className="text-xs text-gray-500 flex items-center justify-center gap-2">
+            <Link to="/store" className="hover:text-[#6BB252] flex items-center transition-colors font-medium">
+              <Home className="size-3.5 mr-1" /> Home
             </Link>
-            <span className="text-gray-400">/</span>
-            <span className="text-[#1A1A1A] font-bold">Shop</span>
+            <span>/</span>
+            <span className="text-[#6BB252] font-bold">Shop</span>
+            {selectedCategory !== "All" && (
+              <>
+                <span>/</span>
+                <span className="text-gray-800 font-semibold">{selectedCategory}</span>
+              </>
+            )}
           </div>
         </div>
       </div>
 
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Left Sidebar: Filters */}
-          <div className="lg:col-span-1 space-y-8">
-            {/* Categories */}
-            <div className="border border-[#E5E4E2] rounded-lg p-6">
-              <h3 className="text-lg font-black text-[#1A1A1A] uppercase tracking-wide mb-4">
+          {/* ── Left Sidebar Filters ── */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Categories filter */}
+            <div className="border border-gray-100 rounded-2xl p-5 bg-[#FAF8EF]/40">
+              <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider mb-3.5 font-organic-heading">
                 Categories
               </h3>
-              <ul className="space-y-3">
-                <li
-                  onClick={() => setSelectedCategory(undefined)}
-                  className="flex justify-between items-center group cursor-pointer"
-                >
-                  <span
-                    className={`transition-colors ${!selectedCategory ? "text-blue-600 font-bold" : "text-gray-600 group-hover:text-blue-600"}`}
+              <ul className="space-y-1 text-xs">
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory("All")}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-all cursor-pointer",
+                      selectedCategory === "All"
+                        ? "bg-[#6BB252] text-white font-bold shadow-xs"
+                        : "text-gray-700 hover:bg-white hover:text-[#6BB252]"
+                    )}
                   >
-                    All
-                  </span>
+                    <span>All Categories</span>
+                    <span className={cn("text-[10px]", selectedCategory === "All" ? "text-white/80" : "text-gray-400")}>
+                      ({allProducts.length})
+                    </span>
+                  </button>
                 </li>
-                {categories.map((cat) => (
-                  <li
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
-                    className="flex justify-between items-center group cursor-pointer"
-                  >
-                    <span
-                      className={`transition-colors ${selectedCategory === cat.id ? "text-blue-600 font-bold" : "text-gray-600 group-hover:text-blue-600"}`}
+                {categoriesList.map((cat) => (
+                  <li key={cat.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory(cat.name)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-all cursor-pointer",
+                        selectedCategory.toLowerCase() === cat.name.toLowerCase()
+                          ? "bg-[#6BB252] text-white font-bold shadow-xs"
+                          : "text-gray-700 hover:bg-white hover:text-[#6BB252]"
+                      )}
                     >
-                      {cat.name}
-                    </span>
-                    <span className="w-6 h-6 rounded-full bg-[#F2F2F2] flex items-center justify-center text-xs text-gray-500 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                      <ChevronRight className="w-3 h-3" />
-                    </span>
+                      <span className="flex items-center gap-2">
+                        <img src={cat.image} alt={cat.name} className="size-4 rounded-full object-cover" />
+                        {cat.name}
+                      </span>
+                      <span className={cn("text-[10px]", selectedCategory.toLowerCase() === cat.name.toLowerCase() ? "text-white/80" : "text-gray-400")}>
+                        ({cat.itemCount})
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>
             </div>
 
-            {/* Price Filter (Mock) */}
-            <div className="border border-[#E5E4E2] rounded-lg p-6">
-              <h3 className="text-lg font-black text-[#1A1A1A] uppercase tracking-wide mb-4">
-                Filter By Price
+            {/* Price Filter */}
+            <div className="border border-gray-100 rounded-2xl p-5 bg-[#FAF8EF]/40">
+              <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider mb-3 font-organic-heading flex justify-between items-center">
+                <span>Filter by Price</span>
+                <span className="text-[#6BB252] font-black">{currency.symbol}{maxPrice}</span>
               </h3>
-              <div className="mb-4">
+              <input
+                type="range"
+                min="5"
+                max="5000"
+                step="25"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(Number(e.target.value))}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#6BB252]"
+              />
+              <div className="flex justify-between text-[11px] text-gray-400 font-medium mt-2">
+                <span>{currency.symbol}5</span>
+                <span>{currency.symbol}5000</span>
+              </div>
+            </div>
+
+            {/* Quality & Certification */}
+            <div className="border border-gray-100 rounded-2xl p-5 bg-[#FAF8EF]/40 space-y-2.5">
+              <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider mb-3 font-organic-heading">
+                Quality Verification
+              </h3>
+              <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer select-none">
                 <input
-                  type="range"
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  type="checkbox"
+                  checked={organicOnly}
+                  onChange={(e) => setOrganicOnly(e.target.checked)}
+                  className="rounded border-gray-300 text-[#6BB252] focus:ring-[#6BB252]"
                 />
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Price: {currency.symbol}10 - {currency.symbol}2000</span>
-                <button className="bg-[#1A1A1A] hover:bg-blue-600 text-white px-4 py-1.5 text-xs font-bold uppercase rounded transition-colors">
-                  Filter
-                </button>
-              </div>
-            </div>
-
-            {/* Brands */}
-            <div className="border border-[#E5E4E2] rounded-lg p-6">
-              <h3 className="text-lg font-black text-[#1A1A1A] uppercase tracking-wide mb-4">
-                Brands
-              </h3>
-              <ul className="space-y-3">
-                {["TechNova", "Global Trade", "Fresh Foods", "Style Hub"].map((brand) => (
-                  <li key={brand} className="flex items-center space-x-3 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-600"
-                    />
-                    <span className="text-gray-600 group-hover:text-blue-600 transition-colors">
-                      {brand}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                100% Certified Organic
+              </label>
+              <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  defaultChecked
+                  className="rounded border-gray-300 text-[#6BB252] focus:ring-[#6BB252]"
+                />
+                Pesticide-Free Harvest
+              </label>
+              <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  defaultChecked
+                  className="rounded border-gray-300 text-[#6BB252] focus:ring-[#6BB252]"
+                />
+                Non-GMO Guaranteed
+              </label>
             </div>
           </div>
 
-          {/* Right Column: Products */}
-          <div className="lg:col-span-3">
-            {/* Toolbar */}
-            <div className="flex flex-col md:flex-row justify-between items-center bg-[#F2F2F2] p-4 border border-[#E5E4E2] rounded-lg mb-8">
-              <div className="flex items-center space-x-4 mb-4 md:mb-0">
-                <button
-                  onClick={() => setViewMode("grid")}
-                  className={`p-2 rounded ${viewMode === "grid" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:text-blue-600"}`}
-                >
-                  <LayoutGrid className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setViewMode("list")}
-                  className={`p-2 rounded ${viewMode === "list" ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:text-blue-600"}`}
-                >
-                  <List className="w-5 h-5" />
-                </button>
-                <span className="text-sm text-gray-500">
-                  Showing 1–{allProducts.length} of {allProducts.length} results
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-600">Sort by:</span>
-                <select className="border border-gray-300 rounded px-3 py-1.5 text-sm text-[#1E293B] outline-none focus:border-blue-600">
-                  <option>Default sorting</option>
-                  <option>Sort by popularity</option>
-                  <option>Sort by average rating</option>
-                  <option>Sort by latest</option>
-                  <option>Sort by price: low to high</option>
-                  <option>Sort by price: high to low</option>
-                </select>
+          {/* ── Right Products Section ── */}
+          <div className="lg:col-span-3 space-y-6">
+            {/* Top Toolbar */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl border border-gray-100 bg-[#FAF8EF]/40">
+              <p className="text-xs text-gray-600 font-medium">
+                Showing <span className="font-bold text-gray-900">{filteredProducts.length}</span> organic products
+              </p>
+
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 font-medium">Sort by:</span>
+                  <select
+                    value={selectedSort}
+                    onChange={(e) => setSelectedSort(e.target.value)}
+                    className="bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-gray-800 outline-none cursor-pointer"
+                  >
+                    <option value="featured">Featured Picks</option>
+                    <option value="price-low">Price: Low to High</option>
+                    <option value="price-high">Price: High to Low</option>
+                    <option value="rating">Highest Customer Rating</option>
+                  </select>
+                </div>
               </div>
             </div>
 
             {/* Product Grid */}
-            <ProductGrid products={allProducts} />
+            {filteredProducts.length === 0 ? (
+              <div className="text-center py-20 bg-[#FAF8EF]/30 rounded-3xl border border-gray-100 p-8 space-y-3">
+                <h3 className="text-lg font-bold text-gray-800 font-organic-heading">No products found</h3>
+                <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                  Try adjusting your category filter or increasing your price range limit.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory("All");
+                    setMaxPrice(50);
+                  }}
+                  className="bg-[#6BB252] text-white text-xs font-bold px-6 py-2 rounded-full cursor-pointer"
+                >
+                  Reset Filters
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProducts.map((product) => (
+                  <OrganicProductCard key={product.id} product={product} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

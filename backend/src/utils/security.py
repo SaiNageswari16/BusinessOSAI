@@ -306,11 +306,17 @@ DEFAULT_PERMISSIONS: list[tuple[str, str, str, str]] = [
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # bcrypt has a 72 byte limit
+    truncated = password[:72]
+    return pwd_context.hash(truncated)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        truncated = plain_password[:72]
+        return pwd_context.verify(truncated, hashed_password)
+    except Exception:
+        return False
 
 
 def create_access_token(*, subject: str, tenant_id: str, permissions: list[str], active_role_id: str | None = None) -> str:
