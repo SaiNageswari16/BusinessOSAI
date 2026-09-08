@@ -46,8 +46,7 @@ async def lifespan(app: FastAPI):
         is_healthy = await check_database_health()
         if is_healthy:
             logger.info("PostgreSQL database connection verified.")
-            if settings.auto_create_tables:
-                await init_database()
+            await init_database()
         else:
             logger.warning(
                 "PostgreSQL connection check failed. System will operate with degraded capabilities."
