@@ -2427,12 +2427,14 @@ async def delete_support_ticket(
 # ─── CRM Quotations ──────────────────────────────────────────────
 
 class QuotationCreate(BaseModel):
-    customer_id: uuid.UUID
+    customer_id: uuid.UUID | None = None
     quote_number: str
+    customer_name: str | None = None
     items: dict = {}
     subtotal: float = 0.0
     tax: float = 0.0
     total: float = 0.0
+    status: str = "Draft"
 
 @router.get("/quotations")
 async def list_quotations(
@@ -2443,7 +2445,32 @@ async def list_quotations(
     if ctx.active_company_id:
         query = query.where((CRMQuotation.company_id == ctx.active_company_id) | (CRMQuotation.company_id == None))
     res = await db.execute(query.order_by(CRMQuotation.created_at.desc()))
-    return res.scalars().all()
+    quotes = res.scalars().all()
+    
+    result = []
+    for q in quotes:
+        cust_name = (q.items or {}).get("customer_name") if isinstance(q.items, dict) else None
+        if not cust_name and q.customer_id:
+            cust = await db.get(Customer, q.customer_id)
+            if cust:
+                cust_name = cust.name
+        
+        result.append({
+            "id": str(q.id),
+            "tenant_id": str(q.tenant_id),
+            "company_id": str(q.company_id) if q.company_id else None,
+            "customer_id": str(q.customer_id) if q.customer_id else None,
+            "customer_name": cust_name or "Valued Client",
+            "quote_number": q.quote_number,
+            "items": q.items or {},
+            "subtotal": float(q.subtotal or 0),
+            "tax": float(q.tax or 0),
+            "total": float(q.total or 0),
+            "status": q.status or "Draft",
+            "created_at": q.created_at.isoformat() if q.created_at else None,
+            "updated_at": q.updated_at.isoformat() if q.updated_at else None,
+        })
+    return result
 
 @router.post("/quotations")
 async def create_quotation(
@@ -2451,20 +2478,114 @@ async def create_quotation(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
+    # Ensure customer_id is valid uuid
+    target_cust_id = payload.customer_id
+    if not target_cust_id:
+        # Fallback to first existing customer or create dummy if needed
+        first_cust = await db.scalar(select(Customer).where(Customer.tenant_id == ctx.tenant_id).limit(1))
+        if first_cust:
+            target_cust_id = first_cust.id
+        else:
+            new_cust = Customer(
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                name=payload.customer_name or "Walk-in Customer",
+                status="Active"
+            )
+            db.add(new_cust)
+            await db.flush()
+            target_cust_id = new_cust.id
+
+    items_data = dict(payload.items or {})
+    if payload.customer_name:
+        items_data["customer_name"] = payload.customer_name
+
     quote = CRMQuotation(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
-        customer_id=payload.customer_id,
+        customer_id=target_cust_id,
         quote_number=payload.quote_number,
-        items=payload.items,
+        items=items_data,
         subtotal=payload.subtotal,
         tax=payload.tax,
-        total=payload.total
+        total=payload.total,
+        status=payload.status or "Draft"
     )
     db.add(quote)
     await db.flush()
     await db.commit()
     return quote
+
+
+@router.put("/quotations/{quote_id}")
+async def update_quotation(
+    quote_id: uuid.UUID,
+    payload: QuotationCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+
+    items_data = dict(payload.items or {})
+    if payload.customer_name:
+        items_data["customer_name"] = payload.customer_name
+
+    quote.quote_number = payload.quote_number
+    if payload.customer_id:
+        quote.customer_id = payload.customer_id
+    quote.items = items_data
+    quote.subtotal = payload.subtotal
+    quote.tax = payload.tax
+    quote.total = payload.total
+    quote.status = payload.status or quote.status
+
+    await db.commit()
+    await db.refresh(quote)
+    return quote
+
+
+@router.delete("/quotations/{quote_id}")
+async def delete_quotation(
+    quote_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    await db.delete(quote)
+    await db.commit()
+    return {"message": "Quotation deleted successfully", "id": str(quote_id)}
+
+
+@router.post("/quotations/{quote_id}/convert-to-order")
+async def convert_quotation_to_sales_order(
+    quote_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+
+    order_num = f"SO-{quote.quote_number.replace('QT-', '').replace('RFQ-', '')}"
+    order = CRMSalesOrder(
+        tenant_id=ctx.tenant_id,
+        company_id=quote.company_id,
+        customer_id=quote.customer_id,
+        order_number=order_num,
+        items=quote.items or {},
+        total=quote.total or 0,
+        status="Pending",
+        payment_status="Unpaid"
+    )
+    db.add(order)
+    quote.status = "Accepted"
+    await db.commit()
+    await db.refresh(order)
+    return {"message": "Converted to Sales Order successfully", "order": order}
 
 
 # ─── CRM Sales Orders ────────────────────────────────────────────

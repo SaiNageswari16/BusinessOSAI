@@ -14,6 +14,7 @@ export default defineConfig({
     }),
     viteReact(),
     VitePWA({
+      disable: true, // PWA only in production build
       registerType: 'autoUpdate',
       manifest: {
         name: 'LazyMonkeyAI',
@@ -46,23 +47,10 @@ export default defineConfig({
       "date-fns",
       "papaparse"
     ],
-    esbuildOptions: {
-      target: "esnext",
-    },
   },
   server: {
     host: true,
-    port: 8080,
+    port: 3000,
     allowedHosts: true,
-    warmup: {
-      clientFiles: [
-        "./src/routes/__root.tsx",
-        "./src/routes/_app.tsx",
-        "./src/routes/_app.dashboard.tsx",
-        "./src/routes/_app.pos.tsx",
-        "./src/components/pos/POSTerminal.tsx",
-        "./src/components/inventory/Products.tsx"
-      ]
-    }
   },
 });

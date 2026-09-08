@@ -466,9 +466,12 @@ async def list_purchase_requests(
         pr_items = []
         for it in items:
             prod_name = "Unknown Product"
-            prod = await db.get(Product, it.product_id)
-            if prod:
-                prod_name = prod.name
+            try:
+                prod = await db.get(Product, it.product_id)
+                if prod:
+                    prod_name = prod.name
+            except Exception as pe:
+                logger.warning(f"Could not resolve product {it.product_id}: {pe}")
                 
             from src.schemas.procurement import PurchaseRequestItemResponse
             pr_items.append(
