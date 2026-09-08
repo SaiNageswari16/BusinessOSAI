@@ -60,6 +60,30 @@ async def main():
         "ALTER TABLE companies ADD COLUMN IF NOT EXISTS upi_id VARCHAR(100);",
         "ALTER TABLE companies ADD COLUMN IF NOT EXISTS upi_qr_url TEXT;",
         "ALTER TABLE companies ADD COLUMN IF NOT EXISTS signature_url TEXT;",
+
+        # crm_customers table
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS addresses JSONB DEFAULT '[]'::jsonb;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS alternate_phone VARCHAR(100);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(100);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS customer_type VARCHAR(50) DEFAULT 'Retail';",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS billing_address TEXT;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS shipping_address TEXT;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS city VARCHAR(100);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS state VARCHAR(100);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS country VARCHAR(100) DEFAULT 'India';",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(50);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS gst_number VARCHAR(50);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS pan_number VARCHAR(50);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS date_of_birth DATE;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS anniversary_date DATE;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS gender VARCHAR(50);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(50) DEFAULT 'English';",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(14, 2) DEFAULT 0.0;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS source VARCHAR(150);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS lead_id UUID REFERENCES crm_leads(id) ON DELETE SET NULL;",
     ]
 
     for stmt in statements:
