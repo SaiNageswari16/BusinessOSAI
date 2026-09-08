@@ -391,6 +391,18 @@ async def get_current_user_context(
     )
 
 
+async def get_optional_user_context(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> CurrentUserContext | None:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        return None
+    try:
+        return await get_current_user_context(request, credentials, db)
+    except HTTPException:
+        return None
+
 
 def require_permission(permission: str):
     async def _dependency(

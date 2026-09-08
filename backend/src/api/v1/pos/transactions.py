@@ -21,7 +21,7 @@ from src.models import (
     CustomerWallet,
     CustomerWalletTransaction,
 )
-from src.models.inventory import InventoryBatch
+from src.models.inventory import InventoryBatch, InventoryTransaction
 from src.models.erp import Invoice, InvoiceLine, InvoicePayment
 from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSCheckoutPayload
 from src.services.invoice_pdf import get_active_invoice_template, render_invoice_pdf_b64, save_invoice_pdf
@@ -113,8 +113,27 @@ async def checkout(
                 prod_res = await db.execute(prod_stmt)
                 product = prod_res.scalar_one_or_none()
                 if product:
-                    current_stk = product.initial_stock if product.initial_stock is not None else 0
-                    product.initial_stock = int(current_stk - item.quantity)
+                    curr_on_hand = product.on_hand_stock if product.on_hand_stock is not None else (product.initial_stock or 0)
+                    curr_res = product.reserved_stock or 0
+                    new_on_hand = max(0, curr_on_hand - item.quantity)
+                    product.on_hand_stock = new_on_hand
+                    product.initial_stock = new_on_hand
+
+                    pos_tx = InventoryTransaction(
+                        tenant_id=ctx.user.tenant_id,
+                        product_id=product.id,
+                        transaction_type="OFFLINE_SALE",
+                        quantity=item.quantity,
+                        before_on_hand=curr_on_hand,
+                        after_on_hand=new_on_hand,
+                        before_reserved=curr_res,
+                        after_reserved=curr_res,
+                        reference_type="INVOICE",
+                        reference_id=transaction.receipt_number or str(transaction.id),
+                        user_id=ctx.user.id,
+                        notes=f"In-store POS counter sale ({transaction.receipt_number})"
+                    )
+                    db.add(pos_tx)
 
                 # Deduct from active FEFO batch in erp_inventory_batches
                 batch_stmt = select(InventoryBatch).where(

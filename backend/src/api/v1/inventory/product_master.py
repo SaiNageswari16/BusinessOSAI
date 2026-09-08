@@ -1481,8 +1481,12 @@ async def list_public_products(
 
     response_items = []
     for p in products:
+        on_hand_val = p.on_hand_stock if p.on_hand_stock is not None else (p.initial_stock or 0)
+        reserved_val = p.reserved_stock or 0
+        avail_stock = max(0, on_hand_val - reserved_val)
+
         mrp_val = float(p.mrp or 0)
-        sp_val = float(p.selling_price or 0)
+        sp_val = float(p.online_price or p.selling_price or 0)
         if sp_val <= 0 and mrp_val > 0:
             sp_val = mrp_val
         elif mrp_val <= 0 and sp_val > 0:
@@ -1502,7 +1506,7 @@ async def list_public_products(
             image_url=p.image_url,
             mrp=mrp_val,
             selling_price=sp_val,
-            stock=int(p.initial_stock or 50),
+            stock=int(avail_stock),
             seller_name=tenant_names.get(p.tenant_id) or "Verified Store",
             tenant_id=p.tenant_id,
             images=p.images or [],
@@ -1539,8 +1543,12 @@ async def get_public_product_by_id(
                 t_res = await db.execute(select(Tenant.name).where(Tenant.id == p.tenant_id))
                 seller_name = t_res.scalar_one_or_none()
 
+            on_hand_val = p.on_hand_stock if p.on_hand_stock is not None else (p.initial_stock or 0)
+            reserved_val = p.reserved_stock or 0
+            avail_stock = max(0, on_hand_val - reserved_val)
+
             mrp_val = float(p.mrp or 0)
-            sp_val = float(p.selling_price or 0)
+            sp_val = float(p.online_price or p.selling_price or 0)
             if sp_val <= 0 and mrp_val > 0:
                 sp_val = mrp_val
             elif mrp_val <= 0 and sp_val > 0:
@@ -1560,7 +1568,7 @@ async def get_public_product_by_id(
                 image_url=p.image_url,
                 mrp=mrp_val,
                 selling_price=sp_val,
-                stock=int(p.initial_stock or 50),
+                stock=int(avail_stock),
                 seller_name=seller_name or "Verified Partner Store",
                 tenant_id=p.tenant_id,
                 images=p.images or [],

@@ -53,7 +53,8 @@ export function RibbonNavigation() {
             if (item.subItems && item.subItems.length > 0) {
               const filteredSubItems = item.subItems.filter((s) => {
                 const subPerm = s.permission || item.permission || group.permission;
-                return !subPerm || hasPermission(subPerm);
+                if (subPerm && !hasPermission(subPerm)) return false;
+                return true;
               });
 
               if (filteredSubItems.length === 0) {

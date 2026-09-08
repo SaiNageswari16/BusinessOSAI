@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { X, Plus, Store, Package, Tags, Wallet, ShieldCheck, Check, CheckCircle2, Loader2, Sparkles, Building2, FileText } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { marketplaceApi, inventoryApi } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 import { toast } from "sonner";
@@ -273,10 +273,18 @@ export function AddProductModal({ isOpen, onClose }: { isOpen: boolean; onClose:
   const queryClient = useQueryClient();
   const { currency } = useCurrency();
   const [name, setName] = useState("");
-  const [vendorId, setVendorId] = useState("VND-001");
+  const [vendorId, setVendorId] = useState("");
   const [category, setCategory] = useState("Electronics");
   const [price, setPrice] = useState(199.0);
   const [stock, setStock] = useState(50);
+
+  const { data: vendors } = useQuery({
+    queryKey: ["marketplace-vendors"],
+    queryFn: () => marketplaceApi.getVendors(),
+    staleTime: 30000,
+  });
+
+  const vendorList = vendors || [];
 
   const mutation = useMutation({
     mutationFn: (data: any) => marketplaceApi.createProduct(data),
@@ -288,6 +296,8 @@ export function AddProductModal({ isOpen, onClose }: { isOpen: boolean; onClose:
   });
 
   if (!isOpen) return null;
+
+  const currentVendorId = vendorId || (vendorList[0]?.id || "VND-001");
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
@@ -307,7 +317,7 @@ export function AddProductModal({ isOpen, onClose }: { isOpen: boolean; onClose:
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            mutation.mutate({ vendor_id: vendorId, name, category, price: Number(price), stock: Number(stock) });
+            mutation.mutate({ vendor_id: currentVendorId, name, category, price: Number(price), stock: Number(stock) });
           }}
           className="space-y-3.5"
         >
@@ -324,16 +334,17 @@ export function AddProductModal({ isOpen, onClose }: { isOpen: boolean; onClose:
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-foreground">Vendor ID</label>
+              <label className="text-xs font-semibold text-foreground">Merchant / Vendor</label>
               <select
-                value={vendorId}
+                value={currentVendorId}
                 onChange={(e) => setVendorId(e.target.value)}
                 className="mt-1 w-full px-3 py-2 border rounded-lg text-sm bg-background/50 focus:outline-none"
               >
-                <option value="VND-001">TechNova Electronics (VND-001)</option>
-                <option value="VND-002">Arabian Coffee (VND-002)</option>
-                <option value="VND-003">Fresh Harvest (VND-003)</option>
-                <option value="VND-005">Gulf Packaging (VND-005)</option>
+                {vendorList.map((v: any) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({v.id})
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -495,14 +506,24 @@ export function AddCouponModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
 export function CreatePayoutModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { currency } = useCurrency();
-  const [vendorId, setVendorId] = useState("VND-001");
+  const [vendorId, setVendorId] = useState("");
   const [amount, setAmount] = useState(25000);
   const [method, setMethod] = useState("WPS Bank Transfer");
+
+  const { data: vendors } = useQuery({
+    queryKey: ["marketplace-vendors"],
+    queryFn: () => marketplaceApi.getVendors(),
+    staleTime: 30000,
+  });
+
+  const vendorList = vendors || [];
+  const currentVendorId = vendorId || (vendorList[0]?.id || "VND-001");
 
   const mutation = useMutation({
     mutationFn: (data: any) => marketplaceApi.createPayout(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["marketplace-payouts"] });
+      queryClient.invalidateQueries({ queryKey: ["marketplace-vendors"] });
       toast.success("Merchant settlement disbursed!");
       onClose();
     },
@@ -528,21 +549,22 @@ export function CreatePayoutModal({ isOpen, onClose }: { isOpen: boolean; onClos
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            mutation.mutate({ vendor_id: vendorId, amount: Number(amount), method });
+            mutation.mutate({ vendor_id: currentVendorId, amount: Number(amount), method });
           }}
           className="space-y-3.5"
         >
           <div>
             <label className="text-xs font-semibold text-foreground">Select Merchant</label>
             <select
-              value={vendorId}
+              value={currentVendorId}
               onChange={(e) => setVendorId(e.target.value)}
               className="mt-1 w-full px-3 py-2 border rounded-lg text-sm bg-background/50 focus:outline-none"
             >
-              <option value="VND-001">TechNova Electronics (Escrow: ₹48,500)</option>
-              <option value="VND-002">Arabian Coffee Roasters (Escrow: ₹24,200)</option>
-              <option value="VND-003">Fresh Harvest Groceries (Escrow: ₹65,000)</option>
-              <option value="VND-005">Gulf Packaging (Escrow: ₹18,200)</option>
+              {vendorList.map((v: any) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} (Escrow: {currency.symbol}{Number(v.escrow_balance || 0).toLocaleString()})
+                </option>
+              ))}
             </select>
           </div>
 

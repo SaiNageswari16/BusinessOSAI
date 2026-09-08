@@ -169,13 +169,13 @@ export const topUpWallet = async (amount: number): Promise<any> => {
 };
 
 export const fetchWishlist = async (): Promise<any[]> => {
-  const response = await fetch(`${API_BASE_URL}/storefront/public/wishlist`);
-  if (!response.ok) throw new Error('Failed to fetch wishlist');
+  const response = await fetch(`${API_BASE_URL.replace('/inventory', '/storefront')}/wishlist`);
+  if (!response.ok) return [];
   return response.json();
 };
 
 export const addToWishlist = async (productId: string): Promise<any> => {
-  const response = await fetch(`${API_BASE_URL}/storefront/public/wishlist`, {
+  const response = await fetch(`${API_BASE_URL.replace('/inventory', '/storefront')}/wishlist`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ product_id: productId })
@@ -185,7 +185,7 @@ export const addToWishlist = async (productId: string): Promise<any> => {
 };
 
 export const removeFromWishlist = async (productId: string): Promise<any> => {
-  const response = await fetch(`${API_BASE_URL}/storefront/public/wishlist/${productId}`, {
+  const response = await fetch(`${API_BASE_URL.replace('/inventory', '/storefront')}/wishlist/${productId}`, {
     method: 'DELETE'
   });
   if (!response.ok) throw new Error('Failed to remove from wishlist');
@@ -210,28 +210,26 @@ export const createStorefrontOrder = async (orderData: {
 }): Promise<any> => {
   const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
   const marketplaceBase = `${rootBase}/marketplace`;
+  const tid = getActiveStorefrontTenantId();
   
   const payload = {
     ...orderData,
+    tenant_id: tid,
+    channel: "Online Storefront",
     source: "Storefront Online",
     created_at: new Date().toISOString()
   };
 
-  try {
-    const response = await fetch(`${marketplaceBase}/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (e) {
-    console.warn("Marketplace order API warning:", e);
+  const response = await fetch(`${marketplaceBase}/orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (response.ok) {
+    return await response.json();
   }
-
-  // Fallback graceful response
-  return { id: `ORD-ORG-${Math.floor(1000 + Math.random() * 9000)}`, status: "Processing", source: "Storefront Online" };
+  const errorBody = await response.json().catch(() => ({}));
+  throw new Error(errorBody.detail || "Failed to place order and reserve stock.");
 };
 
 import { resolveImageUrl } from "@/lib/api-client";

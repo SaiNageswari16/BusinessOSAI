@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import CurrentUserContext, get_current_user_context
+from src.api.deps import CurrentUserContext, get_current_user_context, get_optional_user_context
 from src.database.session import get_db
 from src.models import Company, PaymentGatewayConfig, User
 from src.services.pinelabs_service import PineLabsService
@@ -381,11 +381,16 @@ async def test_gateway_connection(
 @router.post("/razorpay/create-order")
 async def razorpay_create_order(
     payload: RazorpayOrderCreateRequest,
-    ctx: CurrentUserContext = Depends(get_current_user_context),
+    ctx: CurrentUserContext | None = Depends(get_optional_user_context),
     db: AsyncSession = Depends(get_db),
 ):
-    """Creates a Razorpay Order using the tenant's DB-configured credentials."""
-    saved_config = await get_gateway_config_from_db(db, ctx.tenant_id, "razorpay", payload.company_id)
+    """Creates a Razorpay Order using the tenant's DB-configured credentials or system defaults."""
+    tenant_id = ctx.tenant_id if ctx else None
+    if not tenant_id:
+        from src.models import Tenant
+        tenant_id = await db.scalar(select(Tenant.id).limit(1))
+
+    saved_config = await get_gateway_config_from_db(db, tenant_id, "razorpay", payload.company_id) if tenant_id else None
     creds = saved_config.credentials if saved_config else {}
     key_id = creds.get("keyId") or creds.get("key_id", "rzp_test_RCEmjSWmFaZJbN")
     key_secret = creds.get("keySecret") or creds.get("key_secret", "IGLluMDmPXFRpqDd4MZ7PwBB")
@@ -413,11 +418,16 @@ async def razorpay_create_order(
 @router.post("/razorpay/verify")
 async def razorpay_verify_payment(
     payload: RazorpayVerifyRequest,
-    ctx: CurrentUserContext = Depends(get_current_user_context),
+    ctx: CurrentUserContext | None = Depends(get_optional_user_context),
     db: AsyncSession = Depends(get_db),
 ):
     """Validates Razorpay payment signature after checkout popup completes."""
-    saved_config = await get_gateway_config_from_db(db, ctx.tenant_id, "razorpay", payload.company_id)
+    tenant_id = ctx.tenant_id if ctx else None
+    if not tenant_id:
+        from src.models import Tenant
+        tenant_id = await db.scalar(select(Tenant.id).limit(1))
+
+    saved_config = await get_gateway_config_from_db(db, tenant_id, "razorpay", payload.company_id) if tenant_id else None
     creds = saved_config.credentials if saved_config else {}
     key_id = creds.get("keyId") or creds.get("key_id", "rzp_test_RCEmjSWmFaZJbN")
     key_secret = creds.get("keySecret") or creds.get("key_secret", "IGLluMDmPXFRpqDd4MZ7PwBB")

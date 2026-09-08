@@ -11,6 +11,8 @@ from src.models.marketplace import (
     MarketplaceVendor, MarketplaceProduct, MarketplaceOrder,
     MarketplaceOrderItem, MarketplacePayout, MarketplacePromotion
 )
+from src.models.inventory import Product, InventoryTransaction
+from src.models.erp import Invoice, InvoiceLine
 from src.schemas.marketplace import (
     VendorCreate, VendorUpdate, ProductCreate, ProductUpdate,
     OrderCreate, PayoutCreate, PromotionCreate
@@ -23,6 +25,12 @@ async def ensure_seeded_data(db: AsyncSession):
     stmt = select(func.count(MarketplaceVendor.id))
     count = await db.scalar(stmt)
     if count == 0:
+        v0 = MarketplaceVendor(
+            id="STORE-MAIN", name="Central Retail Store Master", category="Omnichannel Store", status="Active",
+            rating=5.0, total_orders=0, revenue=0.0, commission_rate=0.0, escrow_balance=0.0,
+            location="Main Store Floor", email="store@businessos.ai", phone="+971 4 800 0000",
+            trade_license="STORE-CENTRAL-01", tax_trn="TRN-10049281900003", kyc_status="Approved"
+        )
         v1 = MarketplaceVendor(
             id="VND-001", name="TechNova Electronics LLC", category="Electronics", status="Active",
             rating=4.8, total_orders=12450, revenue=1450000.0, commission_rate=8.5, escrow_balance=48500.0,
@@ -53,7 +61,7 @@ async def ensure_seeded_data(db: AsyncSession):
             location="Ajman Free Zone", email="sales@gulfpackaging.ae", phone="+971 6 700 8901",
             trade_license="AJ-992013", tax_trn="TRN-10099201300003", kyc_status="Approved"
         )
-        db.add_all([v1, v2, v3, v4, v5])
+        db.add_all([v0, v1, v2, v3, v4, v5])
 
         p1 = MarketplaceProduct(
             id="MP-1001", vendor_id="VND-001", name="Quantum Pro Laptop M3", category="Electronics",
@@ -174,7 +182,7 @@ async def create_vendor(vendor: VendorCreate, db: AsyncSession = Depends(get_db)
     return new_v
 
 @router.put("/vendors/{vendor_id}/kyc")
-async def update_vendor_kyc(vendor_id: str, kyc_status: str = Query(..., regex="^(Approved|Rejected|Pending)$"), db: AsyncSession = Depends(get_db)):
+async def update_vendor_kyc(vendor_id: str, kyc_status: str = Query(..., pattern="^(Approved|Rejected|Pending)$"), db: AsyncSession = Depends(get_db)):
     stmt = select(MarketplaceVendor).where(MarketplaceVendor.id == vendor_id)
     v = await db.scalar(stmt)
     if not v:
@@ -187,7 +195,7 @@ async def update_vendor_kyc(vendor_id: str, kyc_status: str = Query(..., regex="
     await db.commit()
     return {"message": f"Vendor {vendor_id} KYC updated to {kyc_status}", "vendor": v}
 
-# ── PRODUCT ENDPOINTS (SQLAlchemy DB-Backed) ──
+# ── PRODUCT ENDPOINTS (Omnichannel Central erp_products + Marketplace) ──
 @router.get("/products")
 async def get_products(
     vendor_id: Optional[str] = None,
@@ -195,32 +203,88 @@ async def get_products(
     db: AsyncSession = Depends(get_db)
 ):
     await ensure_seeded_data(db)
-    query = select(MarketplaceProduct).options(selectinload(MarketplaceProduct.vendor))
-    if vendor_id:
-        query = query.where(MarketplaceProduct.vendor_id == vendor_id)
-    if status:
-        query = query.where(MarketplaceProduct.status == status)
-    query = query.order_by(MarketplaceProduct.created_at.desc())
     
-    result = await db.execute(query)
-    products = result.scalars().all()
+    # 1. Fetch physical store products from central erp_products
+    erp_stmt = (
+        select(Product)
+        .options(selectinload(Product.category), selectinload(Product.brand))
+        .order_by(Product.created_at.desc())
+    )
+    erp_res = await db.execute(erp_stmt)
+    erp_products = erp_res.scalars().all()
     
-    return [
-        {
-            "id": p.id,
-            "vendorId": p.vendor_id,
-            "vendorName": p.vendor.name if p.vendor else "Merchant",
+    unified_list = []
+    
+    for p in erp_products:
+        on_hand = p.on_hand_stock if p.on_hand_stock is not None else (p.initial_stock or 0)
+        reserved = p.reserved_stock or 0
+        avail = max(0, on_hand - reserved)
+        
+        unified_list.append({
+            "id": str(p.id),
+            "sku": p.sku,
+            "vendorId": "STORE-MAIN",
+            "vendorName": "Store Master Inventory",
             "name": p.name,
-            "category": p.category,
-            "price": p.price,
-            "cost_price": p.cost_price,
-            "stock": p.stock,
-            "status": p.status,
-            "rating": p.rating,
-            "is_featured": p.is_featured,
-        }
-        for p in products
-    ]
+            "category": p.category.name if p.category else "General",
+            "brand": p.brand.name if p.brand else None,
+            "price": float(p.online_price or p.selling_price or p.mrp or 0.0),
+            "store_price": float(p.store_price or p.selling_price or 0.0),
+            "online_price": float(p.online_price or p.selling_price or 0.0),
+            "cost_price": float(p.purchase_price or 0.0),
+            "stock": avail,
+            "on_hand_stock": on_hand,
+            "reserved_stock": reserved,
+            "available_stock": avail,
+            "rack_location": p.rack_location or "Main Shelf / Floor",
+            "status": "Approved" if str(p.status).lower() in ["active", "entitystatus.active"] else "Pending",
+            "rating": 5.0,
+            "is_featured": True,
+            "channel": "Omnichannel Store",
+            "image_url": p.image_url,
+        })
+
+    # 2. Fetch any external vendor marketplace listings
+    mp_query = select(MarketplaceProduct).options(selectinload(MarketplaceProduct.vendor))
+    if vendor_id:
+        mp_query = mp_query.where(MarketplaceProduct.vendor_id == vendor_id)
+    if status:
+        mp_query = mp_query.where(MarketplaceProduct.status == status)
+    mp_query = mp_query.order_by(MarketplaceProduct.created_at.desc())
+    
+    mp_result = await db.execute(mp_query)
+    mp_products = mp_result.scalars().all()
+    
+    for mp in mp_products:
+        unified_list.append({
+            "id": mp.id,
+            "sku": f"SKU-{mp.id}",
+            "vendorId": mp.vendor_id,
+            "vendorName": mp.vendor.name if mp.vendor else "Merchant",
+            "name": mp.name,
+            "category": mp.category,
+            "price": mp.price,
+            "store_price": mp.price,
+            "online_price": mp.price,
+            "cost_price": mp.cost_price,
+            "stock": mp.stock,
+            "on_hand_stock": mp.stock,
+            "reserved_stock": 0,
+            "available_stock": mp.stock,
+            "rack_location": "Vendor Warehouse",
+            "status": mp.status,
+            "rating": mp.rating,
+            "is_featured": mp.is_featured,
+            "channel": "Marketplace Vendor",
+            "image_url": None,
+        })
+    
+    if status and status != "All":
+        unified_list = [p for p in unified_list if p["status"].lower() == status.lower()]
+    if vendor_id:
+        unified_list = [p for p in unified_list if p["vendorId"] == vendor_id]
+
+    return unified_list
 
 @router.post("/products", status_code=status.HTTP_201_CREATED)
 async def create_product(product: ProductCreate, db: AsyncSession = Depends(get_db)):
@@ -242,7 +306,7 @@ async def create_product(product: ProductCreate, db: AsyncSession = Depends(get_
     return new_p
 
 @router.put("/products/{product_id}/status")
-async def update_product_status(product_id: str, product_status: str = Query(..., regex="^(Approved|Rejected|Pending)$"), db: AsyncSession = Depends(get_db)):
+async def update_product_status(product_id: str, product_status: str = Query(..., pattern="^(Approved|Rejected|Pending)$"), db: AsyncSession = Depends(get_db)):
     stmt = select(MarketplaceProduct).where(MarketplaceProduct.id == product_id)
     p = await db.scalar(stmt)
     if not p:
@@ -251,7 +315,7 @@ async def update_product_status(product_id: str, product_status: str = Query(...
     await db.commit()
     return {"message": f"Product {product_id} status updated to {product_status}"}
 
-# ── ORDER ENDPOINTS (SQLAlchemy DB-Backed) ──
+# ── ORDER & FULFILLMENT ENDPOINTS (Omnichannel Unified Stock Engine) ──
 @router.get("/orders")
 async def get_orders(
     vendor_id: Optional[str] = None,
@@ -259,9 +323,11 @@ async def get_orders(
     db: AsyncSession = Depends(get_db)
 ):
     await ensure_seeded_data(db)
-    query = select(MarketplaceOrder)
-    if status:
-        query = query.where(MarketplaceOrder.order_status == status)
+    query = select(MarketplaceOrder).options(selectinload(MarketplaceOrder.items))
+    if status and status != "All":
+        query = query.where(
+            (MarketplaceOrder.order_status == status) | (MarketplaceOrder.fulfillment_status == status)
+        )
     query = query.order_by(MarketplaceOrder.created_at.desc())
     
     result = await db.execute(query)
@@ -272,27 +338,364 @@ async def get_orders(
             "id": o.id,
             "customerId": o.customer_id or "CUST-001",
             "customerName": o.customer_name,
-            "vendorId": "VND-001",
-            "vendorName": "Multi-Vendor Fulfillment",
+            "customerEmail": o.customer_email,
+            "customerPhone": o.customer_phone,
+            "deliveryAddress": o.delivery_address,
+            "vendorId": "STORE-MAIN",
+            "vendorName": "Central Store Fulfillment",
             "status": o.order_status,
+            "fulfillment_status": o.fulfillment_status or "Pending Pick",
             "total": o.total_amount,
-            "date": o.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "items": 1,
-            "delivery_partner": o.delivery_partner,
+            "payment_method": o.payment_method,
+            "payment_status": o.payment_status,
+            "channel": o.channel or "Online Storefront",
+            "invoice_number": o.invoice_number,
+            "invoice_id": o.invoice_id,
+            "tracking_number": o.tracking_number,
+            "date": o.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if o.created_at else datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "items_count": len(o.items) if o.items else 1,
+            "delivery_partner": o.delivery_partner or "Express Courier",
+            "items": [
+                {
+                    "id": it.id,
+                    "product_id": it.product_id,
+                    "name": it.product_name,
+                    "sku": it.sku or "SKU-MAIN",
+                    "rack_location": it.rack_location or "Main Shelf",
+                    "unit_price": it.unit_price,
+                    "quantity": it.quantity,
+                    "fulfillment_status": it.fulfillment_status or "Pending Pick"
+                }
+                for it in o.items
+            ] if o.items else []
         }
         for o in orders
     ]
 
-@router.put("/orders/{order_id}/dispatch")
-async def dispatch_order(order_id: str, courier: Optional[str] = "Careem Express", db: AsyncSession = Depends(get_db)):
+@router.post("/orders")
+async def create_order(payload: Dict[str, Any], db: AsyncSession = Depends(get_db)):
+    """Transactional Omnichannel Order Creation:
+    1. Validates available stock with atomic row-level locking (SELECT FOR UPDATE)
+    2. Atomically reserves physical stock on erp_products
+    3. Records immutable InventoryTransaction ('ONLINE_RESERVATION')
+    4. Auto-generates single official Tax Invoice in ar_invoices (Zero duplicate billing)
+    """
+    items_data = payload.get("items", [])
+    if not items_data:
+        raise HTTPException(status_code=400, detail="Order must contain at least one item")
+
+    order_id = f"ORD-{uuid.uuid4().hex[:8].upper()}"
+    raw_tenant_id = payload.get("tenant_id")
+    tenant_uuid = None
+    if raw_tenant_id:
+        try:
+            tenant_uuid = uuid.UUID(str(raw_tenant_id))
+        except ValueError:
+            pass
+
+    # 1. Row-lock products and validate stock
+    processed_items = []
+    total_calc = 0.0
+    for it in items_data:
+        pid_raw = it.get("product_id")
+        qty = int(it.get("quantity") or 1)
+        price = float(it.get("price") or 0.0)
+        p_name = it.get("name") or "Product"
+        p_sku = "SKU-MAIN"
+        p_rack = "Rack 1 / Shelf A"
+
+        if pid_raw:
+            try:
+                p_uuid = uuid.UUID(str(pid_raw))
+                prod_stmt = select(Product).where(Product.id == p_uuid).with_for_update()
+                prod_res = await db.execute(prod_stmt)
+                product = prod_res.scalar_one_or_none()
+                if product:
+                    p_name = product.name
+                    p_sku = product.sku
+                    p_rack = product.rack_location or "Central Floor"
+                    
+                    on_hand = product.on_hand_stock if product.on_hand_stock is not None else (product.initial_stock or 0)
+                    reserved = product.reserved_stock or 0
+                    available = on_hand - reserved
+
+                    if available < qty:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Insufficient available stock for '{product.name}'. Available: {max(0, available)}, Requested: {qty}"
+                        )
+                    
+                    # Atomically reserve stock
+                    product.on_hand_stock = on_hand
+                    product.reserved_stock = reserved + qty
+                    
+                    # Log reservation transaction
+                    inv_tx = InventoryTransaction(
+                        tenant_id=product.tenant_id,
+                        product_id=product.id,
+                        transaction_type="ONLINE_RESERVATION",
+                        quantity=qty,
+                        before_on_hand=on_hand,
+                        after_on_hand=on_hand,
+                        before_reserved=reserved,
+                        after_reserved=reserved + qty,
+                        reference_type="ORDER",
+                        reference_id=order_id,
+                        notes=f"Stock reserved for web order {order_id}"
+                    )
+                    db.add(inv_tx)
+            except HTTPException:
+                raise
+            except Exception as e:
+                pass
+
+        total_calc += price * qty
+        processed_items.append({
+            "product_id": str(pid_raw),
+            "name": p_name,
+            "sku": p_sku,
+            "rack_location": p_rack,
+            "unit_price": price,
+            "quantity": qty
+        })
+
+    # Resolve valid tenant_uuid
+    if not tenant_uuid:
+        for it in items_data:
+            pid_raw = it.get("product_id")
+            if pid_raw:
+                try:
+                    p_uuid = uuid.UUID(str(pid_raw))
+                    p_tenant = await db.scalar(select(Product.tenant_id).where(Product.id == p_uuid))
+                    if p_tenant:
+                        tenant_uuid = p_tenant
+                        break
+                except Exception:
+                    pass
+    if not tenant_uuid:
+        from src.models import Tenant
+        tenant_uuid = await db.scalar(select(Tenant.id).limit(1))
+
+    # 2. Create Single Official Online Sales Tax Invoice in ar_invoices
+    inv_num = f"INV-{order_id}"
+    customer_name = payload.get("customer_name") or "Online Customer"
+    total_amt = float(payload.get("total_amount") or total_calc)
+    subtotal_val = total_amt * 0.82
+    tax_val = total_amt * 0.18
+
+    online_invoice = Invoice(
+        tenant_id=tenant_uuid,
+        customer_name=customer_name,
+        customer_phone=payload.get("customer_phone"),
+        customer_email=payload.get("customer_email"),
+        shipping_address=payload.get("shipping_address"),
+        invoice_number=inv_num,
+        invoice_type="tax_invoice",
+        order_number=order_id,
+        status="paid" if payload.get("payment_method") != "cod" else "pending",
+        invoice_date=datetime.utcnow().date(),
+        due_date=datetime.utcnow().date(),
+        payment_terms=payload.get("payment_method") or "Online Card/UPI",
+        subtotal=subtotal_val,
+        cgst_amount=tax_val / 2,
+        sgst_amount=tax_val / 2,
+        total_amount=total_amt,
+        amount_paid=total_amt if payload.get("payment_method") != "cod" else 0.0,
+        balance_due=0.0 if payload.get("payment_method") != "cod" else total_amt,
+        notes=f"E-Commerce Online Order {order_id}. Do not re-bill at physical POS counter."
+    )
+    db.add(online_invoice)
+    await db.flush()
+
+    for idx, pit in enumerate(processed_items):
+        line_pid = None
+        try:
+            line_pid = uuid.UUID(str(pit["product_id"]))
+        except Exception:
+            line_pid = None
+
+        inv_line = InvoiceLine(
+            invoice_id=online_invoice.id,
+            line_number=idx + 1,
+            product_id=line_pid,
+            product_name=pit["name"],
+            product_sku=pit["sku"],
+            quantity=pit["quantity"],
+            unit_price=pit["unit_price"],
+            taxable_amount=pit["unit_price"] * pit["quantity"] * 0.82,
+            tax_rate=18.0,
+            cgst_amount=(pit["unit_price"] * pit["quantity"] * 0.18) / 2,
+            sgst_amount=(pit["unit_price"] * pit["quantity"] * 0.18) / 2,
+            line_total=pit["unit_price"] * pit["quantity"]
+        )
+        db.add(inv_line)
+
+    # 3. Create Marketplace Order & Order Items
+    order = MarketplaceOrder(
+        id=order_id,
+        tenant_id=str(tenant_uuid) if tenant_uuid else None,
+        customer_id=payload.get("customer_id") or f"CUST-{uuid.uuid4().hex[:4].upper()}",
+        customer_name=customer_name,
+        customer_email=payload.get("customer_email"),
+        customer_phone=payload.get("customer_phone"),
+        delivery_address=payload.get("shipping_address"),
+        subtotal=subtotal_val,
+        shipping_fee=float(payload.get("shipping_fee") or 0.0),
+        total_amount=total_amt,
+        payment_method=payload.get("payment_method") or "Prepaid",
+        payment_status="Paid" if payload.get("payment_method") != "cod" else "Pending",
+        order_status="Processing",
+        fulfillment_status="Pending Pick",
+        delivery_partner=payload.get("delivery_partner") or "Express Delivery",
+        invoice_number=inv_num,
+        invoice_id=str(online_invoice.id),
+        channel=payload.get("channel") or "Online Storefront",
+        notes=payload.get("notes")
+    )
+    db.add(order)
+    await db.flush()
+
+    for pit in processed_items:
+        order_item = MarketplaceOrderItem(
+            order_id=order.id,
+            vendor_id=pit.get("vendor_id") or "STORE-MAIN",
+            product_id=pit["product_id"],
+            product_name=pit["name"],
+            sku=pit["sku"],
+            rack_location=pit["rack_location"],
+            unit_price=pit["unit_price"],
+            quantity=pit["quantity"],
+            fulfillment_status="Pending Pick"
+        )
+        db.add(order_item)
+
+    await db.commit()
+    return {
+        "id": order.id,
+        "invoice_number": inv_num,
+        "invoice_id": str(online_invoice.id),
+        "status": order.order_status,
+        "fulfillment_status": order.fulfillment_status,
+        "total": order.total_amount
+    }
+
+@router.put("/orders/{order_id}/pack")
+async def pack_order(order_id: str, db: AsyncSession = Depends(get_db)):
     stmt = select(MarketplaceOrder).where(MarketplaceOrder.id == order_id)
     o = await db.scalar(stmt)
     if not o:
         raise HTTPException(status_code=404, detail="Order not found")
-    o.order_status = "Shipped"
-    o.delivery_partner = courier
+    o.fulfillment_status = "Ready to Ship"
     await db.commit()
-    return {"message": f"Order {order_id} dispatched via {courier}"}
+    return {"message": f"Order {order_id} marked as packed & ready to ship"}
+
+@router.put("/orders/{order_id}/dispatch")
+async def dispatch_order(
+    order_id: str,
+    payload: Dict[str, Any] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Store Employee Dispatch:
+    1. Releases reserved stock and deducts physical on-hand inventory
+    2. Logs immutable InventoryTransaction ('ONLINE_DISPATCH')
+    3. Records courier and tracking number
+    """
+    courier = (payload or {}).get("courier") or "Express Delivery"
+    tracking = (payload or {}).get("tracking_number") or f"TRK-{uuid.uuid4().hex[:8].upper()}"
+
+    stmt = select(MarketplaceOrder).options(selectinload(MarketplaceOrder.items)).where(MarketplaceOrder.id == order_id)
+    res = await db.execute(stmt)
+    o = res.scalar_one_or_none()
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Deduct physical stock & release reservation
+    for it in o.items:
+        if it.product_id:
+            try:
+                p_uuid = uuid.UUID(str(it.product_id))
+                prod_stmt = select(Product).where(Product.id == p_uuid).with_for_update()
+                prod_res = await db.execute(prod_stmt)
+                product = prod_res.scalar_one_or_none()
+                if product:
+                    curr_on_hand = product.on_hand_stock if product.on_hand_stock is not None else (product.initial_stock or 0)
+                    curr_res = product.reserved_stock or 0
+                    
+                    new_on_hand = max(0, curr_on_hand - it.quantity)
+                    new_res = max(0, curr_res - it.quantity)
+                    
+                    product.on_hand_stock = new_on_hand
+                    product.initial_stock = new_on_hand
+                    product.reserved_stock = new_res
+
+                    inv_tx = InventoryTransaction(
+                        tenant_id=product.tenant_id,
+                        product_id=product.id,
+                        transaction_type="ONLINE_DISPATCH",
+                        quantity=it.quantity,
+                        before_on_hand=curr_on_hand,
+                        after_on_hand=new_on_hand,
+                        before_reserved=curr_res,
+                        after_reserved=new_res,
+                        reference_type="SHIPMENT",
+                        reference_id=order_id,
+                        notes=f"Physical stock dispatched via {courier} (Tracking: {tracking})"
+                    )
+                    db.add(inv_tx)
+            except Exception as err:
+                pass
+
+    o.order_status = "Shipped"
+    o.fulfillment_status = "Shipped"
+    o.delivery_partner = courier
+    o.tracking_number = tracking
+    await db.commit()
+    return {"message": f"Order {order_id} dispatched via {courier}", "tracking_number": tracking}
+
+@router.put("/orders/{order_id}/cancel")
+async def cancel_order(order_id: str, db: AsyncSession = Depends(get_db)):
+    """Pre-dispatch cancellation: releases reserved stock back to available inventory."""
+    stmt = select(MarketplaceOrder).options(selectinload(MarketplaceOrder.items)).where(MarketplaceOrder.id == order_id)
+    res = await db.execute(stmt)
+    o = res.scalar_one_or_none()
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if o.order_status != "Shipped" and o.order_status != "Delivered":
+        for it in o.items:
+            if it.product_id:
+                try:
+                    p_uuid = uuid.UUID(str(it.product_id))
+                    prod_stmt = select(Product).where(Product.id == p_uuid).with_for_update()
+                    prod_res = await db.execute(prod_stmt)
+                    product = prod_res.scalar_one_or_none()
+                    if product:
+                        curr_on_hand = product.on_hand_stock if product.on_hand_stock is not None else (product.initial_stock or 0)
+                        curr_res = product.reserved_stock or 0
+                        new_res = max(0, curr_res - it.quantity)
+                        product.reserved_stock = new_res
+
+                        inv_tx = InventoryTransaction(
+                            tenant_id=product.tenant_id,
+                            product_id=product.id,
+                            transaction_type="ONLINE_RESERVATION_RELEASE",
+                            quantity=it.quantity,
+                            before_on_hand=curr_on_hand,
+                            after_on_hand=curr_on_hand,
+                            before_reserved=curr_res,
+                            after_reserved=new_res,
+                            reference_type="CANCEL",
+                            reference_id=order_id,
+                            notes=f"Stock reservation released for cancelled order {order_id}"
+                        )
+                        db.add(inv_tx)
+                except Exception:
+                    pass
+
+    o.order_status = "Cancelled"
+    o.fulfillment_status = "Cancelled"
+    await db.commit()
+    return {"message": f"Order {order_id} cancelled and stock reservation released"}
 
 # ── PAYOUTS (SQLAlchemy DB-Backed) ──
 @router.get("/payouts")
@@ -551,22 +954,30 @@ async def get_trade_credits():
 @router.get("/stats")
 async def get_marketplace_stats(db: AsyncSession = Depends(get_db)):
     await ensure_seeded_data(db)
-    vendors_count = await db.scalar(select(func.count(MarketplaceVendor.id)))
-    active_vendors = await db.scalar(select(func.count(MarketplaceVendor.id)).where(MarketplaceVendor.status == "Active"))
-    pending_kyc = await db.scalar(select(func.count(MarketplaceVendor.id)).where(MarketplaceVendor.kyc_status == "Pending"))
-    products_count = await db.scalar(select(func.count(MarketplaceProduct.id)))
-    orders_count = await db.scalar(select(func.count(MarketplaceOrder.id)))
-    total_gmv = await db.scalar(select(func.sum(MarketplaceOrder.total_amount))) or 0.0
+    vendors_count = await db.scalar(select(func.count(MarketplaceVendor.id))) or 0
+    active_vendors = await db.scalar(select(func.count(MarketplaceVendor.id)).where(MarketplaceVendor.status == "Active")) or 0
+    pending_kyc = await db.scalar(select(func.count(MarketplaceVendor.id)).where(MarketplaceVendor.kyc_status == "Pending")) or 0
+    
+    mp_products_count = await db.scalar(select(func.count(MarketplaceProduct.id))) or 0
+    erp_products_count = await db.scalar(select(func.count(Product.id))) or 0
+    total_products = mp_products_count + erp_products_count
+
+    orders_count = await db.scalar(select(func.count(MarketplaceOrder.id))) or 0
+    total_gmv = float(await db.scalar(select(func.sum(MarketplaceOrder.total_amount))) or 0.0)
+    total_payouts = float(await db.scalar(select(func.sum(MarketplacePayout.amount))) or 0.0)
+    
+    avg_commission = 10.0
+    platform_revenue = total_gmv * (avg_commission / 100.0)
 
     return {
         "totalVendors": vendors_count,
         "activeVendors": active_vendors,
         "pendingApprovals": pending_kyc,
-        "totalProducts": products_count,
-        "monthlyGMV": total_gmv + 500000.0,
-        "monthlyOrders": orders_count + 120,
-        "averageCommission": 9.5,
-        "totalRevenue": (total_gmv + 500000.0) * 0.095,
-        "totalPayouts": (total_gmv + 500000.0) * 0.905,
+        "totalProducts": total_products,
+        "monthlyGMV": total_gmv,
+        "monthlyOrders": orders_count,
+        "averageCommission": avg_commission,
+        "totalRevenue": platform_revenue,
+        "totalPayouts": total_payouts,
     }
 

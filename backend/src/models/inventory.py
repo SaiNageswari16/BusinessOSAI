@@ -96,6 +96,11 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 
     
     initial_stock: Mapped[int] = mapped_column(Integer, default=0)
+    on_hand_stock: Mapped[int | None] = mapped_column(Integer, default=0, nullable=True)
+    reserved_stock: Mapped[int | None] = mapped_column(Integer, default=0, nullable=True)
+    online_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    store_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    rack_location: Mapped[str | None] = mapped_column(String(100), nullable=True)
     reorder_level: Mapped[int] = mapped_column(Integer, default=0)
     safety_stock: Mapped[int] = mapped_column(Integer, default=0)
     
@@ -577,6 +582,25 @@ class HSNMaster(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     sgst_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     igst_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     cess_rate: Mapped[float | None] = mapped_column(Float, nullable=True, default=0.0)
+
+
+class InventoryTransaction(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "erp_inventory_transactions"
+
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="RESTRICT"), nullable=False, index=True)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
+    transaction_type: Mapped[str] = mapped_column(String(50), nullable=False) 
+    # PURCHASE, OFFLINE_SALE, ONLINE_RESERVATION, ONLINE_RESERVATION_RELEASE, ONLINE_DISPATCH, RETURN_RESTOCK, RETURN_DAMAGED, ADJUSTMENT
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False) # e.g. -5, +10, or reserved qty
+    before_on_hand: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    after_on_hand: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    before_reserved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    after_reserved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reference_type: Mapped[str] = mapped_column(String(50), nullable=False) # ORDER, INVOICE, SHIPMENT, RETURN, ADJUSTMENT
+    reference_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True) # e.g. "ONL-10025", "POS-5001"
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 
 

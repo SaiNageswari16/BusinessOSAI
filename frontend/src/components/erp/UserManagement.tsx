@@ -18,6 +18,17 @@ import { useRbac } from "@/contexts/rbac-context";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { ModuleSelector } from "./ModuleSelector";
+import {
+  getStoredUserModules,
+  setStoredUserModules,
+  getStoredUserTabs,
+  setStoredUserTabs,
+  getStoredRoleModules,
+  getStoredRoleTabs,
+  ALL_MODULE_IDS,
+  SYSTEM_MODULES,
+} from "@/data/modules-config";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -69,6 +80,8 @@ interface UserFormPayload {
   password?: string;
   send_invite?: boolean;
   is_tenant_owner?: boolean;
+  enabled_modules?: string[];
+  enabled_tabs?: string[];
 }
 
 
@@ -115,6 +128,32 @@ function UserFormModal({
   const [mustChangePassword, setMustChangePassword] = useState(user?.must_change_password ?? true);
   const [isTenantOwner, setIsTenantOwner] = useState(user?.is_tenant_owner ?? false);
 
+  const [selectedModules, setSelectedModules] = useState<string[]>(() => {
+    if (user?.id) {
+      const stored = getStoredUserModules(user.id);
+      if (stored && stored.length > 0) return stored;
+    }
+    const primaryRole = user?.roles?.[0]?.id || (roles.length > 0 ? roles[0].id : null);
+    if (primaryRole) {
+      const roleMod = getStoredRoleModules(primaryRole);
+      if (roleMod && roleMod.length > 0) return roleMod;
+    }
+    return ALL_MODULE_IDS;
+  });
+
+  const [selectedTabs, setSelectedTabs] = useState<string[]>(() => {
+    if (user?.id) {
+      const stored = getStoredUserTabs(user.id);
+      if (stored && stored.length > 0) return stored;
+    }
+    const primaryRole = user?.roles?.[0]?.id || (roles.length > 0 ? roles[0].id : null);
+    if (primaryRole) {
+      const roleTabs = getStoredRoleTabs(primaryRole);
+      if (roleTabs && roleTabs.length > 0) return roleTabs;
+    }
+    return [];
+  });
+
   const assignableRoles = useMemo(
     () =>
       roles.filter(
@@ -129,8 +168,25 @@ function UserFormModal({
     }
   }, [isEdit, selectedRoles, defaultRoleId]);
 
-  const toggleRole = (id: string) =>
-    setSelectedRoles((prev) => (prev.includes(id) ? prev.filter((roleId) => roleId !== id) : [...prev, id]));
+  const toggleRole = (id: string) => {
+    setSelectedRoles((prev) => {
+      const next = prev.includes(id) ? prev.filter((roleId) => roleId !== id) : [...prev, id];
+      if (!isEdit && next.length > 0) {
+        const pickedRole = assignableRoles.find((r) => r.id === id);
+        const roleMod = getStoredRoleModules(id) || (pickedRole?.name ? getStoredRoleModules(pickedRole.name) : null);
+        const roleTabs = getStoredRoleTabs(id) || (pickedRole?.name ? getStoredRoleTabs(pickedRole.name) : null);
+        if (roleMod && roleMod.length > 0) {
+          setSelectedModules(roleMod);
+        } else if (pickedRole?.name.toLowerCase().includes("pos") || pickedRole?.name.toLowerCase().includes("cashier")) {
+          setSelectedModules(["dashboard", "pos", "inventory", "operations"]);
+        }
+        if (roleTabs && roleTabs.length > 0) {
+          setSelectedTabs(roleTabs);
+        }
+      }
+      return next;
+    });
+  };
 
   const canSubmit =
     fullName.trim().length > 0 &&
@@ -157,6 +213,8 @@ function UserFormModal({
       company_id: assignedCompanyId || null,
       must_change_password: mustChangePassword,
       is_tenant_owner: isTenantOwner,
+      enabled_modules: selectedModules,
+      enabled_tabs: selectedTabs,
       ...(sendInvite ? { send_invite: true } : {}),
       ...(sendInvite ? {} : { password }),
     });
@@ -310,6 +368,16 @@ function UserFormModal({
               )}
             </div>
 
+            {/* Module Visibility & UI Permissions */}
+            <div>
+              <ModuleSelector
+                selectedModules={selectedModules}
+                onChange={setSelectedModules}
+                title="Allowed Portal Modules (UI Visibility)"
+                subtitle="Only the selected modules will be visible in this user's topbar and ribbon navigation. Background APIs (e.g., POS querying CRM or posting ledger entries) remain fully operational."
+              />
+            </div>
+
             {!isEdit && (
               <div className="space-y-3 rounded-2xl border p-4 bg-muted/50">
                 <label className="flex items-center gap-3 text-sm font-medium">
@@ -454,6 +522,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
     setError(null);
 
     try {
+      let savedUser: any = null;
       if (editUser) {
         const response = await fetch(`${API_BASE_URL}/erp/users/${editUser.id}`, {
           method: "PATCH",
@@ -467,7 +536,6 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
             must_change_password: payload.must_change_password,
             is_tenant_owner: payload.is_tenant_owner,
           }),
-
         });
         if (!response.ok) {
           let message = "Failed to save user";
@@ -480,6 +548,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           }
           throw new Error(message);
         }
+        savedUser = await response.json().catch(() => null);
       } else {
         const response = await fetch(`${API_BASE_URL}/erp/users`, {
           method: "POST",
@@ -496,6 +565,17 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
             if (body) message = body;
           }
           throw new Error(message);
+        }
+        savedUser = await response.json().catch(() => null);
+      }
+
+      const targetUserId = savedUser?.id || editUser?.id;
+      if (targetUserId) {
+        if (payload.enabled_modules) {
+          setStoredUserModules(targetUserId, payload.enabled_modules);
+        }
+        if (payload.enabled_tabs) {
+          setStoredUserTabs(targetUserId, payload.enabled_tabs);
         }
       }
 
@@ -624,6 +704,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">User</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workspace Company</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Roles</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Visible Modules</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions</th>
             </tr>
@@ -631,13 +712,13 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-sm text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-6 text-sm text-center text-muted-foreground">
                   Loading users…
                 </td>
               </tr>
             ) : filteredUsers.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-sm text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-6 text-sm text-center text-muted-foreground">
                   No users found matching filters.
                 </td>
               </tr>
@@ -687,6 +768,38 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
                         </span>
                       ))}
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const userCustom = getStoredUserModules(user.id);
+                      const roleCustom = user.roles?.[0]?.id ? getStoredRoleModules(user.roles[0].id) : null;
+                      const effective = userCustom || roleCustom || ALL_MODULE_IDS;
+                      if (user.is_tenant_owner || effective.length === ALL_MODULE_IDS.length) {
+                        return (
+                          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                            ✨ All Modules
+                          </span>
+                        );
+                      }
+                      const labels = SYSTEM_MODULES.filter((m) => effective.includes(m.id)).map((m) => m.shortLabel);
+                      return (
+                        <div className="flex flex-wrap gap-1 max-w-[200px]" title={labels.join(", ")}>
+                          {labels.slice(0, 3).map((lbl) => (
+                            <span
+                              key={lbl}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200/60 font-semibold"
+                            >
+                              {lbl}
+                            </span>
+                          ))}
+                          {labels.length > 3 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
+                              +{labels.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3 space-y-2">
                     <StatusBadge status={user.status} />

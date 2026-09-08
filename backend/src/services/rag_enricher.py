@@ -247,24 +247,30 @@ class RAGEnricherService:
     @classmethod
     async def stop(cls):
         """Stops workers gracefully."""
+        global _http_client
+        cls._should_run = False
         if cls._inv_task is not None and not cls._inv_task.done():
             try:
                 cls._inv_task.cancel()
                 await cls._inv_task
             except (asyncio.CancelledError, Exception):
                 pass
-        for t in cls._tasks:
+            cls._inv_task = None
+
+        if cls._master_task is not None and not cls._master_task.done():
             try:
-                t.cancel()
-            except Exception:
+                cls._master_task.cancel()
+                await cls._master_task
+            except (asyncio.CancelledError, Exception):
                 pass
-        cls._tasks = []
+            cls._master_task = None
+
         if _http_client and not _http_client.is_closed:
             try:
                 await _http_client.aclose()
-                _http_client = None
             except Exception:
                 pass
+            _http_client = None
         logger.info("🛑 [RAG Enricher] Background enrichment workers stopped.")
 
     @classmethod

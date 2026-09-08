@@ -5227,8 +5227,10 @@ export const marketplaceApi = {
     return request<any[]>("GET", `/marketplace/orders${qs ? `?${qs}` : ""}`);
   },
   createOrder: (data: any) => request<any>("POST", "/marketplace/orders", data),
-  dispatchOrder: (orderId: string, courier?: string) =>
-    request<any>("PUT", `/marketplace/orders/${orderId}/dispatch${courier ? `?courier=${encodeURIComponent(courier)}` : ""}`),
+  packOrder: (orderId: string) => request<any>("PUT", `/marketplace/orders/${orderId}/pack`),
+  dispatchOrder: (orderId: string, payload?: { courier?: string; tracking_number?: string }) =>
+    request<any>("PUT", `/marketplace/orders/${orderId}/dispatch`, payload || {}),
+  cancelOrder: (orderId: string) => request<any>("PUT", `/marketplace/orders/${orderId}/cancel`),
 
   getStats: () => request<any>("GET", `/marketplace/stats`),
   getPayouts: () => request<any[]>("GET", `/marketplace/payouts`),

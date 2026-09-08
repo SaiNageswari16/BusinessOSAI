@@ -32,7 +32,6 @@ export const Route = createFileRoute("/_app/marketplace")({
   component: MarketplaceModule,
 });
 
-/* ── Generic Sub-Tab Table Component with Search, Actions & Live Data ── */
 function SubTabTableView({
   title,
   subtitle,
@@ -42,6 +41,7 @@ function SubTabTableView({
   columns,
   data,
   isLoading,
+  activeTabKey,
 }: {
   title: string;
   subtitle: string;
@@ -51,6 +51,7 @@ function SubTabTableView({
   columns: { header: string; align?: "left" | "center" | "right"; render: (row: any) => React.ReactNode }[];
   data: any[];
   isLoading?: boolean;
+  activeTabKey?: string;
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const filtered = (data || []).filter((item) =>
@@ -247,6 +248,7 @@ function MarketplaceModule() {
             icon={Layers}
             isLoading={categoriesLoading}
             data={currentCategories}
+            activeTabKey={activeTab}
             columns={[
               { header: "Category ID", render: (r) => <span className="font-mono font-bold text-slate-700">{r.id}</span> },
               { header: "Category Name", render: (r) => <span className="font-bold text-foreground text-sm">{r.name}</span> },
@@ -266,6 +268,7 @@ function MarketplaceModule() {
             icon={FileCheck}
             isLoading={contractsLoading}
             data={currentContracts}
+            activeTabKey={activeTab}
             columns={[
               { header: "Contract ID", render: (r) => <span className="font-mono font-bold text-slate-700">{r.id}</span> },
               { header: "Vendor Name", render: (r) => <span className="font-bold text-foreground text-sm">{r.vendor}</span> },
@@ -290,6 +293,7 @@ function MarketplaceModule() {
             onActionClick={() => setIsCreatePayoutOpen(true)}
             isLoading={payoutsLoading}
             data={currentPayouts}
+            activeTabKey={activeTab}
             columns={[
               { header: "Payout ID", render: (r) => <span className="font-mono font-bold text-slate-700">{r.id}</span> },
               { header: "Vendor Name", render: (r) => <span className="font-bold text-foreground text-sm">{r.vendorName || r.vendor}</span> },
@@ -313,6 +317,7 @@ function MarketplaceModule() {
             onActionClick={() => setIsAddVendorOpen(true)}
             isLoading={vendorsLoading}
             data={currentVendors}
+            activeTabKey={activeTab}
             columns={[
               { header: "Vendor ID", render: (r) => <span className="font-mono font-bold text-slate-700">{r.id}</span> },
               { header: "Vendor Name", render: (r) => <span className="font-bold text-foreground text-sm">{r.name}</span> },
@@ -361,13 +366,16 @@ function MarketplaceModule() {
         );
 
       case "pricing_rules":
+      case "dynamic_pricing":
         return <B2BPricingRules />;
 
       case "rfqs":
-      case "vendor_contracts":
+      case "vendor_rfqs":
+      case "quotations":
         return <MarketplaceRFQ />;
 
       case "trade_credit":
+      case "b2b_credit":
         return <TradeCreditManager />;
 
       case "marketplace_products":

@@ -2,13 +2,22 @@ import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, ShieldCheck, Users, Edit2, Trash2, Save, X,
-  Check, Lock, Unlock, ChevronRight, AlertTriangle,
+  Check, Lock, Unlock, ChevronRight, AlertTriangle, Layers,
 } from "lucide-react";
 import { useAuth, canAssignSuperAdmin } from "@/contexts/auth-context";
 import { useRbac } from "@/contexts/rbac-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { ModuleSelector } from "./ModuleSelector";
+import {
+  getStoredRoleModules,
+  setStoredRoleModules,
+  getStoredRoleTabs,
+  setStoredRoleTabs,
+  ALL_MODULE_IDS,
+  SYSTEM_MODULES,
+} from "@/data/modules-config";
 
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -46,6 +55,8 @@ interface RoleFormPayload {
   name: string;
   description: string | null;
   permission_codes: string[];
+  enabled_modules?: string[];
+  enabled_tabs?: string[];
 }
 
 // ─── Permission groups for display ────────────────────────────────
@@ -571,6 +582,18 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
   const [selectedPerms, setSelectedPerms] = useState<string[]>(
     role?.permissions.map((p) => p.code) ?? []
   );
+  const [selectedModules, setSelectedModules] = useState<string[]>(() => {
+    if (role?.id) {
+      return getStoredRoleModules(role.id) || (role.name ? getStoredRoleModules(role.name) : null) || ALL_MODULE_IDS;
+    }
+    return ALL_MODULE_IDS;
+  });
+  const [selectedTabs, setSelectedTabs] = useState<string[]>(() => {
+    if (role?.id) {
+      return getStoredRoleTabs(role.id) || (role.name ? getStoredRoleTabs(role.name) : null) || [];
+    }
+    return [];
+  });
   const [saving, setSaving] = useState(false);
 
   // All permission codes available from the API
@@ -579,6 +602,12 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
   useEffect(() => {
     if (role) {
       setSelectedPerms(role.permissions.map((p) => p.code));
+      if (role.id) {
+        const stored = getStoredRoleModules(role.id) || (role.name ? getStoredRoleModules(role.name) : null);
+        if (stored) setSelectedModules(stored);
+        const storedTabs = getStoredRoleTabs(role.id) || (role.name ? getStoredRoleTabs(role.name) : null);
+        if (storedTabs) setSelectedTabs(storedTabs);
+      }
     }
   }, [role]);
 
@@ -606,6 +635,8 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
         name: name.trim(),
         description: description.trim() || null,
         permission_codes: selectedPerms,
+        enabled_modules: selectedModules,
+        enabled_tabs: selectedTabs,
       });
       onClose();
     } finally {
@@ -672,12 +703,21 @@ function RoleFormModal({ role, availablePermissions, canManageSuperAdmin, onClos
             </div>
           </div>
 
+          {/* Module Selector */}
+          <ModuleSelector
+            selectedModules={selectedModules}
+            onChange={setSelectedModules}
+            disabled={isSystem}
+            title="Allowed Portal Modules (UI Visibility)"
+            subtitle="Choose which modules are displayed in the top navigation ribbon and workspace menus for users with this role."
+          />
+
           {/* Permissions */}
           {!isSystem && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <ShieldCheck className="size-4 text-primary" /> Module Permissions
+                  <ShieldCheck className="size-4 text-primary" /> Detailed Action Permissions
                 </h3>
                 <div className="flex gap-2">
                   <button
@@ -885,7 +925,11 @@ export function RolesPermissions() {
       const response = await fetch(url, {
         method: editRole ? "PATCH" : "POST",
         headers: authHeaders,
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          name: payload.name,
+          description: payload.description,
+          permission_codes: payload.permission_codes,
+        }),
       });
       if (!response.ok) {
         let message = "Failed to save role";
@@ -896,6 +940,16 @@ export function RolesPermissions() {
           message = await response.text() || message;
         }
         throw new Error(message);
+      }
+      const savedData = await response.json().catch(() => null);
+      const targetRoleId = savedData?.id || editRole?.id;
+      if (targetRoleId) {
+        if (payload.enabled_modules) {
+          setStoredRoleModules(targetRoleId, payload.enabled_modules, payload.name);
+        }
+        if (payload.enabled_tabs) {
+          setStoredRoleTabs(targetRoleId, payload.enabled_tabs, payload.name);
+        }
       }
       await loadData();
       toast.success(editRole ? "Role updated" : "Role created");
@@ -1148,6 +1202,44 @@ export function RolesPermissions() {
                     )}
                   </div>
                 </div>
+
+                {/* Allowed Portal Modules */}
+                {(() => {
+                  const roleModules = getStoredRoleModules(selectedRole.id) || ALL_MODULE_IDS;
+                  return (
+                    <div className="bg-card border rounded-xl overflow-hidden">
+                      <div className="p-4 border-b flex items-center justify-between">
+                        <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                          <Layers className="size-4 text-purple-600" />
+                          Visible Portal Modules
+                        </h3>
+                        <span className="text-xs bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">
+                          {roleModules.length} of {SYSTEM_MODULES.length} Active
+                        </span>
+                      </div>
+                      <div className="p-4 flex flex-wrap gap-2">
+                        {SYSTEM_MODULES.map((mod) => {
+                          const isAllowed = roleModules.includes(mod.id);
+                          const Icon = mod.icon;
+                          return (
+                            <span
+                              key={mod.id}
+                              className={cn(
+                                "text-xs px-2.5 py-1 rounded-lg border inline-flex items-center gap-1.5",
+                                isAllowed
+                                  ? "bg-purple-50 text-purple-800 border-purple-200 font-semibold"
+                                  : "bg-slate-50 text-slate-400 border-slate-200 line-through opacity-40"
+                              )}
+                            >
+                              <Icon className="size-3.5" />
+                              {mod.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Permissions granted */}
                 <div className="bg-card border rounded-xl overflow-hidden">

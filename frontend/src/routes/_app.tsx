@@ -4,6 +4,8 @@ import { AppTopbar } from "@/components/layout/app-topbar";
 import { RibbonNavigation } from "@/components/layout/ribbon-navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { TenantProvider } from "@/contexts/tenant-context";
+import { useRbac } from "@/contexts/rbac-context";
+import { isRouteAllowed, getDefaultAllowedRoute } from "@/data/modules-config";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -11,6 +13,7 @@ export const Route = createFileRoute("/_app")({
 
 function AppLayout() {
   const { isAuthed, authReady, user } = useAuth();
+  const { allowedModules } = useRbac();
   const navigate = useNavigate();
   const routerState = useRouterState();
   
@@ -28,8 +31,23 @@ function AppLayout() {
 
     if (user?.mustChangePassword && window.location.pathname !== "/change-password") {
       navigate({ to: "/change-password" });
+      return;
     }
-  }, [isAuthed, authReady, navigate, user]);
+
+    // Module visibility route guard (frontend gating)
+    const currentPath = routerState.location.pathname;
+    if (currentPath && currentPath !== "/" && !isRouteAllowed(currentPath, allowedModules)) {
+      const fallback = getDefaultAllowedRoute(allowedModules);
+      const [path, searchStr] = fallback.split("?");
+      const search: Record<string, string> = {};
+      if (searchStr) {
+        new URLSearchParams(searchStr).forEach((val, key) => {
+          search[key] = val;
+        });
+      }
+      void navigate({ to: path, search });
+    }
+  }, [isAuthed, authReady, navigate, user, routerState.location.pathname, allowedModules]);
 
   if (!authReady) {
     return (

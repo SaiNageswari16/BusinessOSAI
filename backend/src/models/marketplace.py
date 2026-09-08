@@ -59,6 +59,7 @@ class MarketplaceOrder(Base):
     __tablename__ = "marketplace_orders"
 
     id = Column(String(50), primary_key=True, default=lambda: f"ORD-{uuid.uuid4().hex[:8].upper()}")
+    tenant_id = Column(String(50), nullable=True, index=True)
     customer_id = Column(String(50), nullable=True)
     customer_name = Column(String(150), nullable=False)
     customer_email = Column(String(150), nullable=True)
@@ -71,7 +72,13 @@ class MarketplaceOrder(Base):
     payment_method = Column(String(50), default="Credit Card")
     payment_status = Column(String(50), default="Paid")  # Paid, Pending, Refunded
     order_status = Column(String(50), default="Processing")  # Pending, Processing, Shipped, Delivered, Cancelled
-    delivery_partner = Column(String(100), default="Careem Express")
+    fulfillment_status = Column(String(50), default="Pending Pick") # Pending Pick, Packed, Ready to Ship, Shipped, Delivered
+    delivery_partner = Column(String(100), default="Express Delivery")
+    tracking_number = Column(String(100), nullable=True)
+    invoice_number = Column(String(100), nullable=True)
+    invoice_id = Column(String(50), nullable=True)
+    channel = Column(String(50), default="Online Storefront")
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -82,9 +89,11 @@ class MarketplaceOrderItem(Base):
 
     id = Column(String(50), primary_key=True, default=lambda: f"ITEM-{uuid.uuid4().hex[:8].upper()}")
     order_id = Column(String(50), ForeignKey("marketplace_orders.id", ondelete="CASCADE"), nullable=False)
-    vendor_id = Column(String(50), ForeignKey("marketplace_vendors.id"), nullable=False)
+    vendor_id = Column(String(50), ForeignKey("marketplace_vendors.id"), nullable=True)
     product_id = Column(String(50), nullable=False)
     product_name = Column(String(255), nullable=False)
+    sku = Column(String(100), nullable=True)
+    rack_location = Column(String(100), nullable=True)
     unit_price = Column(Float, nullable=False)
     quantity = Column(Integer, default=1)
     vendor_payout = Column(Float, default=0.0)

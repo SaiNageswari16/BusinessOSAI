@@ -171,3 +171,59 @@ async def topup_wallet(
     await db.refresh(wallet)
     
     return wallet
+
+
+@router.get("/wishlist", response_model=List[StorefrontWishlistResponse])
+async def get_wishlist(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user_id: uuid.UUID = Query(default=DEMO_USER_ID)
+):
+    result = await db.execute(
+        select(StorefrontWishlist)
+        .where(StorefrontWishlist.user_id == user_id)
+        .order_by(StorefrontWishlist.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/wishlist", response_model=StorefrontWishlistResponse)
+async def add_to_wishlist(
+    request: StorefrontWishlistAddRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user_id: uuid.UUID = Query(default=DEMO_USER_ID)
+):
+    existing = await db.scalar(
+        select(StorefrontWishlist).where(
+            StorefrontWishlist.user_id == user_id,
+            StorefrontWishlist.product_id == request.product_id
+        )
+    )
+    if existing:
+        return existing
+
+    item = StorefrontWishlist(
+        user_id=user_id,
+        product_id=request.product_id
+    )
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+@router.delete("/wishlist/{product_id}")
+async def remove_from_wishlist(
+    product_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user_id: uuid.UUID = Query(default=DEMO_USER_ID)
+):
+    from sqlalchemy import delete
+    await db.execute(
+        delete(StorefrontWishlist).where(
+            StorefrontWishlist.user_id == user_id,
+            StorefrontWishlist.product_id == product_id
+        )
+    )
+    await db.commit()
+    return {"status": "success", "message": "Item removed from wishlist"}
+
