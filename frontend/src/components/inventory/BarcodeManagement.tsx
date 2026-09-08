@@ -14,6 +14,7 @@ import {
   RealBarcodeSvg,
   SingleBarcodeLabelCard as SharedBarcodeLabelCard,
   FmcgProductLabelCard,
+  printBarcodePopup,
 } from "../../lib/barcode-svg";
 import { useCurrency } from "@/hooks/use-currency";
 
@@ -129,61 +130,8 @@ export function BarcodeManagement() {
 
   const handleExecutePrint = () => {
     if (targetPrintItems.length === 0) return;
-
-    let styleEl = document.getElementById("barcode-print-style-tag");
-    if (!styleEl) {
-      styleEl = document.createElement("style");
-      styleEl.id = "barcode-print-style-tag";
-      document.head.appendChild(styleEl);
-    }
-
-    let pageCss = "@page { size: 50mm 25mm !important; margin: 0mm !important; }";
-    if (layoutType === "2up") {
-      pageCss = "@page { size: 100mm 25mm !important; margin: 0mm !important; }";
-    } else if (layoutType === "3up") {
-      pageCss = "@page { size: 114mm 25mm !important; margin: 0mm !important; }";
-    } else if (layoutType.startsWith("a4")) {
-      pageCss = "@page { size: A4 portrait !important; margin: 5mm !important; }";
-    }
-
-    styleEl.innerHTML = `
-      @media print {
-        ${pageCss}
-        html, body {
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #ffffff !important;
-          width: 100% !important;
-        }
-        body > *:not(#printable-barcode-portal) {
-          display: none !important;
-        }
-        #printable-barcode-portal {
-          display: block !important;
-          visibility: visible !important;
-          position: absolute !important;
-          left: 0 !important;
-          top: 0 !important;
-          width: 100% !important;
-          background: #ffffff !important;
-          padding: 0 !important;
-          margin: 0 !important;
-        }
-        #printable-barcode-portal * {
-          visibility: visible !important;
-        }
-      }
-    `;
-
-    document.body.classList.add("printing-barcodes");
+    printBarcodePopup(targetPrintItems, activeTemplate, layoutType, currency.symbol);
     setIsPrintModalOpen(false);
-
-    setTimeout(() => {
-      window.print();
-      setTimeout(() => {
-        document.body.classList.remove("printing-barcodes");
-      }, 1000);
-    }, 150);
   };
 
   const [genFormat, setGenFormat] = useState<"EAN-13" | "Code-128">("EAN-13");
@@ -578,101 +526,6 @@ export function BarcodeManagement() {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Printable Barcode Portal with Calibrated CSS Sheet Margins & Zero Drift */}
-      {typeof document !== "undefined" && createPortal(
-        <div id="printable-barcode-portal" className="hidden print:block text-black bg-white p-0 m-0">
-          <style>{`
-            @page {
-              size: auto;
-              margin: 0mm;
-            }
-            @media print {
-              html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #ffffff !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              body * {
-                visibility: hidden;
-              }
-              #printable-barcode-portal, #printable-barcode-portal * {
-                visibility: visible;
-              }
-              #printable-barcode-portal {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                margin: 0;
-                padding: 2mm;
-                box-sizing: border-box;
-              }
-            }
-          `}</style>
-
-          {layoutType === "fmcg" ? (
-            <div className="grid grid-cols-2 gap-3 w-full p-2">
-              {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="break-inside-avoid">
-                  <FmcgProductLabelCard item={item} isPrint={true} />
-                </div>
-              ))}
-            </div>
-          ) : layoutType === "a4_24" ? (
-            <div className="grid grid-cols-3 gap-2 w-full p-2">
-              {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[34mm] break-inside-avoid">
-                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
-                </div>
-              ))}
-            </div>
-          ) : layoutType === "a4_30" ? (
-            <div className="grid grid-cols-3 gap-1.5 w-full p-1.5">
-              {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[25.4mm] break-inside-avoid">
-                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
-                </div>
-              ))}
-            </div>
-          ) : layoutType === "a4_65" ? (
-            <div className="grid grid-cols-5 gap-1 w-full p-1">
-              {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[21.2mm] break-inside-avoid">
-                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
-                </div>
-              ))}
-            </div>
-          ) : layoutType === "2up" ? (
-            <div className="grid grid-cols-2 gap-1.5 w-full p-1">
-              {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[24mm] break-inside-avoid">
-                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
-                </div>
-              ))}
-            </div>
-          ) : layoutType === "3up" ? (
-            <div className="grid grid-cols-3 gap-1 w-full p-0">
-              {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[24mm] break-inside-avoid">
-                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1 w-full p-1">
-              {targetPrintItems.map((item, idx) => (
-                <div key={idx} className="h-[24mm] break-inside-avoid">
-                  <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>,
-        document.body
-      )}
 
       {/* Toast Notification */}
       <AnimatePresence>

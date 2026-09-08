@@ -1225,7 +1225,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Average Ticket (₹)", "key": "avg_ticket"},
                 {"header": "Target Quota", "key": "target"},
             ]
-            e_stmt = select(Employee).limit(50)
+            e_stmt = select(Employee).options(selectinload(Employee.designation)).limit(50)
             if search:
                 e_stmt = e_stmt.where(Employee.full_name.ilike(f"%{search}%"))
             emps = (await db.execute(e_stmt)).scalars().all()
@@ -1233,7 +1233,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
             s_rows = []
             for i, e in enumerate(emps or range(4)):
                 e_name = getattr(e, "full_name", None) or f"Sales Exec #{i+1}"
-                e_role = getattr(e, "designation", "Counter Billing Cashier")
+                e_role = getattr(e.designation, "title", None) if (hasattr(e, "designation") and e.designation) else (getattr(e, "employment_type", None) or "Counter Billing Cashier")
                 e_invoices = max(1, len(tx_list) // max(1, len(emps or [1]))) + (i * 3)
                 e_turnover = (total_revenue / max(1, len(emps or [1]))) + (i * 4500)
                 e_disc = (total_discount / max(1, len(emps or [1]))) + (i * 120)
@@ -1878,7 +1878,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
     # 8. STAFF & USER SUITE
     # ══════════════════════════════════════════════════════════════════════════
     elif entity in ["staff", "user_sales", "salesperson_performance", "user_activity", "discount_audit", "cancelled_invoices"]:
-        stmt = select(Employee).limit(50)
+        stmt = select(Employee).options(selectinload(Employee.designation)).limit(50)
         if search:
             stmt = stmt.where(Employee.full_name.ilike(f"%{search}%"))
         emp_list = (await db.execute(stmt)).scalars().all()
@@ -1895,7 +1895,7 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
         result["tableData"] = [
             {
                 "name": getattr(e, "full_name", None) or f"Staff Member #{i+1}",
-                "role": getattr(e, "designation", "POS Cashier"),
+                "role": getattr(e.designation, "title", None) if (hasattr(e, "designation") and e.designation) else (getattr(e, "employment_type", None) or "POS Cashier"),
                 "bills_count": f"{15 + i * 4} Invoices",
                 "total_sales": f"₹{(25000 + i * 8500):,.2f}",
                 "discounts": f"₹{(450 + i * 120):,.2f}",
