@@ -11,6 +11,7 @@ import {
   RadioTower,
   BarChart3,
   Settings,
+  Calculator,
 } from "lucide-react";
 
 export interface ModuleSubTab {
@@ -173,7 +174,7 @@ export const SYSTEM_MODULES: SystemModule[] = [
     shortLabel: "Accounting",
     description: "Chart of accounts, general ledger, tax compliance, bank reconciliation, and financial reports.",
     category: "Finance & People",
-    icon: Receipt,
+    icon: Calculator,
     navGroup: "Accounting & Finance",
     permissionKey: "view:accounting",
     defaultRoute: "/accounting?tab=chart_of_accounts",

@@ -13,7 +13,8 @@ import {
   Store, AlertTriangle, ArrowUpRight, ArrowDownRight,
   Clock, MapPin, Activity, CheckCircle, Navigation,
   Wallet, RefreshCw, BarChart3, Radio, FileCheck,
-  TrendingDown, Flame, BadgeMinus, Skull, UserX, ShoppingBag
+  TrendingDown, Flame, BadgeMinus, Skull, UserX, ShoppingBag,
+  Calculator
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,7 +41,7 @@ const WORKSPACE_TABS = [
   { id: "pos", label: "POS", icon: CreditCard, permission: "view:pos" },
   { id: "sales_crm", label: "Sales & CRM", icon: TrendingUp, permission: "view:crm" },
   { id: "marketplace", label: "Marketplace", icon: Store, permission: "view:marketplace" },
-  { id: "accounting", label: "Accounting", icon: DollarSign, permission: "view:accounting" },
+  { id: "accounting", label: "Accounting", icon: Calculator, permission: "view:accounting" },
   { id: "hrm", label: "HRMS", icon: Users, permission: "view:hrms" },
 ];
 
@@ -89,7 +90,7 @@ function Dashboard() {
   const { user } = useAuth();
   const { tenant, tenant: company } = useTenant();
   const { language, t } = useI18n();
-  const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency, ActiveCurrencyIcon } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<"today" | "week" | "month" | "year">("month");
   const [chartPeriod, setChartPeriod] = useState<"week" | "month" | "year">("month");
@@ -249,7 +250,7 @@ function Dashboard() {
       case "pos":
         return {
           kpis: [
-            { id: "pos_rev", label: "POS Revenue", value: `${currency.symbol}${((dashboardData as any)?.posRevenueToday != null && (dashboardData as any).posRevenueToday > 0 ? (dashboardData as any).posRevenueToday : 18450).toLocaleString()}`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +16.2%", suffix: "vs yesterday" },
+            { id: "pos_rev", label: "POS Revenue", value: `${currency.symbol}${((dashboardData as any)?.posRevenueToday != null && (dashboardData as any).posRevenueToday > 0 ? (dashboardData as any).posRevenueToday : 18450).toLocaleString()}`, icon: ActiveCurrencyIcon, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +16.2%", suffix: "vs yesterday" },
             { id: "pos_tx", label: "Transactions", value: String((dashboardData as any)?.posTransactionsToday || 64), icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12", suffix: "tickets" },
             { id: "pos_ticket", label: "Avg Ticket Size", value: `${currency.symbol}288`, icon: Receipt, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ +4.8%", suffix: "per basket" },
             { id: "pos_cash", label: "Cash in Drawer", value: `${currency.symbol}4,820`, icon: Wallet, iconBg: "bg-emerald-50 text-emerald-600", growth: "✓ Balanced", suffix: "drawer count" },
@@ -314,7 +315,7 @@ function Dashboard() {
             { id: "leads", label: "Active Leads", value: "45", icon: Users, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +18%", suffix: "in funnel" },
             { id: "conv", label: "Conversion Rate", value: "24.5%", icon: CheckCircle2, iconBg: "bg-sky-50 text-sky-600", growth: "↗ +2.8%", suffix: "lead to win" },
             { id: "accs", label: "Active Accounts", value: String(totalCustomers), icon: UserCheck, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ 100%", suffix: "enterprise" },
-            { id: "size", label: "Avg Deal Size", value: `${currency.symbol}10.2K`, icon: DollarSign, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +6.5%", suffix: "per contract" },
+            { id: "size", label: "Avg Deal Size", value: `${currency.symbol}10.2K`, icon: ActiveCurrencyIcon, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +6.5%", suffix: "per contract" },
             { id: "target", label: "Quarter Target", value: "82%", icon: BarChart3, iconBg: "bg-blue-50 text-blue-600", growth: "↗ On Track", suffix: "of quota" },
             { id: "quotes", label: "Open Quotations", value: "7", icon: FileText, iconBg: "bg-amber-50 text-amber-600", growth: "↗ Review", suffix: "pending sign" },
           ],
@@ -368,7 +369,7 @@ function Dashboard() {
       case "marketplace":
         return {
           kpis: [
-            { id: "gmv", label: "Marketplace GMV", value: `${currency.symbol}540.0K`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +24.8%", suffix: "this month" },
+            { id: "gmv", label: "Marketplace GMV", value: `${currency.symbol}540.0K`, icon: ActiveCurrencyIcon, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +24.8%", suffix: "this month" },
             { id: "v_tot", label: "Total Vendors", value: "12", icon: Store, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12.5%", suffix: "merchants" },
             { id: "v_act", label: "Active Stores", value: "10", icon: CheckCircle, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +8.2%", suffix: "selling" },
             { id: "v_ord", label: "Merchant Orders", value: "128", icon: ShoppingCart, iconBg: "bg-sky-50 text-sky-600", growth: "↗ +15.4%", suffix: "fulfilled" },
@@ -433,7 +434,7 @@ function Dashboard() {
             { id: "bill_pd", label: "Bills Paid", value: `${currency.symbol}30.0K`, icon: Wallet, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ 78%", suffix: "cleared" },
             { id: "ap", label: "Accounts Payable", value: `${currency.symbol}8.4K`, icon: Receipt, iconBg: "bg-blue-50 text-blue-600", growth: "✓ Current", suffix: "not overdue" },
             { id: "cashflow", label: "Cash Flow", value: `${currency.symbol}95.0K`, icon: TrendingUp, iconBg: "bg-amber-50 text-amber-600", growth: "↗ Positive", suffix: "bank balance" },
-            { id: "profit", label: "Net Profit", value: `${currency.symbol}121.3K`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +18.5%", suffix: "margin 65%" },
+            { id: "profit", label: "Net Profit", value: `${currency.symbol}121.3K`, icon: ActiveCurrencyIcon, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +18.5%", suffix: "margin 65%" },
             { id: "inv_tot", label: "Total Invoiced", value: `${currency.symbol}185.4K`, icon: FileText, iconBg: "bg-purple-50 text-purple-600", growth: "↗ +12.4%", suffix: "billed" },
           ],
           chartTitle: "Income vs Expenses",
@@ -491,7 +492,7 @@ function Dashboard() {
             { id: "absent", label: "Absent Todays", value: String((dashboardData as any)?.employeesAbsent ?? 0), icon: UserX, iconBg: "bg-rose-50 text-rose-600", growth: "✓ 0%", suffix: "unplanned" },
             { id: "leave", label: "On Leave", value: "0", icon: Clock, iconBg: "bg-orange-50 text-orange-600", growth: "✓ 0%", suffix: "approved leave" },
             { id: "shifts", label: "Active Shifts", value: "2", icon: Radio, iconBg: "bg-sky-50 text-sky-600", growth: "✓ Day/Night", suffix: "roster" },
-            { id: "payroll", label: "Monthly Payroll", value: `${currency.symbol}145.0K`, icon: DollarSign, iconBg: "bg-indigo-50 text-indigo-600", growth: "✓ Disbursed", suffix: "100% processed" },
+            { id: "payroll", label: "Monthly Payroll", value: `${currency.symbol}145.0K`, icon: ActiveCurrencyIcon, iconBg: "bg-indigo-50 text-indigo-600", growth: "✓ Disbursed", suffix: "100% processed" },
             { id: "prod", label: "Productivity Score", value: "94.2%", icon: Sparkles, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +3.5%", suffix: "high performance" },
             { id: "reqs", label: "Pending Requests", value: "1", icon: FileText, iconBg: "bg-blue-50 text-blue-600", growth: "↗ Review", suffix: "leave request" },
             { id: "attr", label: "Retention Rate", value: "98.5%", icon: Shield, iconBg: "bg-amber-50 text-amber-600", growth: "★ Low Risk", suffix: "attrition AI" },
@@ -546,7 +547,7 @@ function Dashboard() {
       default: // OVERVIEW
         return {
           kpis: [
-            { id: "revenue", label: "Revenue", value: `${currency.symbol}${displayedSales.toLocaleString()}`, icon: DollarSign, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +12.5%", suffix: "vs last month" },
+            { id: "revenue", label: "Revenue", value: `${currency.symbol}${displayedSales.toLocaleString()}`, icon: ActiveCurrencyIcon, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +12.5%", suffix: "vs last month" },
             { id: "sales", label: "Sales", value: String(Math.round(displayedSales > 0 ? displayedSales / 450 : 0)), icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "↗ 0%", suffix: "orders" },
             { id: "orders_pending", label: "Orders Pending", value: "0", icon: Package, iconBg: "bg-orange-50 text-orange-600", growth: "↗ 0%", suffix: "to fulfill" },
             { id: "active_customers", label: "Active Customers", value: String(totalCustomers), icon: Users, iconBg: "bg-sky-50 text-sky-600", growth: "↗ 0%", suffix: "total active" },

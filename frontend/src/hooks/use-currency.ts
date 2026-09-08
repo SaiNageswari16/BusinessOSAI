@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { getActiveCurrency, formatCurrency, CurrencyConfig, EXCHANGE_RATES } from '@/lib/utils';
+import { getCurrencyLucideIcon, CurrencyIcon } from '@/components/common/CurrencyIcon';
+
+export { getCurrencyLucideIcon, CurrencyIcon };
 
 export function useCurrency() {
   const [currency, setCurrency] = useState<CurrencyConfig>(getActiveCurrency());
@@ -12,5 +15,7 @@ export function useCurrency() {
     return () => window.removeEventListener("bos-currency-changed", handleCurrencyChanged);
   }, []);
 
-  return { currency, formatCurrency, exchangeRates: EXCHANGE_RATES };
+  const ActiveCurrencyIcon = getCurrencyLucideIcon(currency?.code);
+
+  return { currency, formatCurrency, exchangeRates: EXCHANGE_RATES, CurrencyIcon, ActiveCurrencyIcon };
 }

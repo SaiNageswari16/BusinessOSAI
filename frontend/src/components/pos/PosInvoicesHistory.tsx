@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { useNavigate } from "@tanstack/react-router";
+import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
 
 interface LocalInvoiceRecord {
   id: string;
@@ -767,11 +768,19 @@ export function PosInvoicesHistory() {
                       )}
                     </td>
 
-                    {/* Date */}
+                    {/* Date & Time */}
                     <td className="px-4 py-3 text-slate-600">
-                      <div className="flex items-center gap-1 text-[11px]">
-                        <Calendar className="w-3 h-3 text-slate-400" />
-                        {inv.invoice_date}
+                      <div className="flex flex-col gap-0.5 text-[11px]">
+                        <div className="flex items-center gap-1 font-semibold text-slate-800">
+                          <Calendar className="w-3 h-3 text-slate-400" />
+                          {formatDisplayDate(inv.invoice_date || inv.created_at)}
+                        </div>
+                        {inv.created_at && (
+                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
+                            <Clock className="w-2.5 h-2.5 text-slate-400" />
+                            {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        )}
                       </div>
                     </td>
 

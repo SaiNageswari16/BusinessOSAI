@@ -27,6 +27,8 @@ import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { getTodayDateString } from "@/lib/utils";
+import { DatePickerInput } from "@/components/ui/date-picker-input";
 
 // Removed dummy PAST_PAYMENTS in favor of real backend data
 
@@ -48,7 +50,7 @@ export function PosPaymentIn() {
   // Payment Mode / Purpose: 'settle_due' | 'wallet_topup' | 'wallet_debit'
   const [paymentPurpose, setPaymentPurpose] = useState<'settle_due' | 'wallet_topup' | 'wallet_debit'>('settle_due');
   const [paymentAmount, setPaymentAmount] = useState<number | "">("");
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0]);
+  const [paymentDate, setPaymentDate] = useState(getTodayDateString());
   const [paymentMode, setPaymentMode] = useState("Cash");
   const [paymentNumber, setPaymentNumber] = useState(`PAY-${Math.floor(1000 + Math.random() * 9000)}`);
   const [paymentDiscount, setPaymentDiscount] = useState<number | "">("");
@@ -1149,11 +1151,10 @@ export function PosPaymentIn() {
             {/* Payment Date */}
             <div className="col-span-1">
               <label className="text-xs font-bold text-slate-700 block mb-1">Date</label>
-              <input
-                type="date"
+              <DatePickerInput
                 value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl h-11 px-3 text-xs bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                onChange={(val) => setPaymentDate(val)}
+                className="w-full"
               />
             </div>
           </div>

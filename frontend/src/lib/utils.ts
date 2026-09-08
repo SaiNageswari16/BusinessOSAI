@@ -62,3 +62,79 @@ export function formatCurrency(val?: number | null): string {
     maximumFractionDigits: 2
   }).format(amount);
 }
+
+// ── Global Date & Time Utilities ──────────────────────────────────────
+export function getTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function getCurrentTimeString(includeSeconds = true): string {
+  const d = new Date();
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  if (!includeSeconds) return `${hours}:${minutes}`;
+  const seconds = String(d.getSeconds()).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+export function addDaysToDateString(dateStr: string, days: number): string {
+  if (!dateStr) return getTodayDateString();
+  const parts = dateStr.split("-").map((p) => parseInt(p, 10));
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    d.setDate(d.getDate() + days);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function formatDisplayDate(dateInput?: string | Date | null): string {
+  if (!dateInput) return "";
+  try {
+    if (typeof dateInput === "string") {
+      const trimmed = dateInput.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        const [y, m, d] = trimmed.split("-");
+        return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+      }
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+        return trimmed;
+      }
+    }
+    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+    if (isNaN(d.getTime())) return String(dateInput);
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  } catch {
+    return String(dateInput || "");
+  }
+}
+
+export function formatDisplayDateTime(dateInput?: string | Date | null): string {
+  if (!dateInput) return "";
+  try {
+    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+    if (isNaN(d.getTime())) return String(dateInput);
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return `${day}/${month}/${year}, ${time}`;
+  } catch {
+    return String(dateInput || "");
+  }
+}

@@ -16,6 +16,13 @@ import { generateClientTenantBarcode } from "../../lib/code128";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
 import { FreeQtySettingsModal } from "./FreeQtySettingsModal";
+import {
+  PRODUCT_MASTER_FIELDS,
+  getMasterExportHeaders,
+  mapProductToMasterExportRow,
+  getMasterSampleRows,
+  mapMasterImportRowToProduct,
+} from "@/config/product-master-fields";
 
 // ── Types ───────────────────────────────────────────────────────────
 interface MasterResult {
@@ -37,108 +44,25 @@ interface MasterResult {
   [k: string]: any;
 }
 
-// ── Column definitions ──────────────────────────────────────────────
+// ── Master 70-Column definitions strictly adhering to sequence 1..70 ──
 const LOCAL_COLUMNS = [
-  // 1. Identity & Core
-  { id: "image", label: "Image", group: "Identity" },
-  { id: "name", label: "Item Name", group: "Identity" },
-  { id: "unique_item_name", label: "Unique Item Name", group: "Identity" },
-  { id: "sku", label: "SKU", group: "Identity" },
-  { id: "barcode", label: "BarCode", group: "Identity" },
-  { id: "secondary_barcode", label: "Secondary BarCode (BarCode.1)", group: "Identity" },
-  { id: "item_code", label: "Item CODE", group: "Identity" },
-  { id: "category", label: "Category", group: "Identity" },
-  { id: "sub_category", label: "Sub Category", group: "Identity" },
-  { id: "brand", label: "Brand", group: "Identity" },
-  { id: "uom", label: "Unit (UOM)", group: "Identity" },
-  { id: "sales_measuring_unit", label: "Sales Measuring Unit", group: "Identity" },
-  { id: "purchase_measuring_unit", label: "Purchase Measuring Unit", group: "Identity" },
-
-  // 2. Asian Paints & Colorant
-  { id: "base_name", label: "Base Code/Name (Col C)", group: "Asian Paints" },
-  { id: "product_base_code", label: "Product Base Code (Col D)", group: "Asian Paints" },
-  { id: "size_l_kg", label: "Size (L/Kg) (Col E)", group: "Asian Paints" },
-
-  // 3. Pricing & Tax
-  { id: "mrp", label: "MRP", group: "Pricing" },
-  { id: "selling_price", label: "Sales Price (Before Tax)", group: "Pricing" },
-  { id: "sales_tax_type", label: "Sales Tax Mode", group: "Pricing" },
-  { id: "sales_tax_name", label: "Sales Tax Name", group: "Pricing" },
-  { id: "tax_percent", label: "Sales Tax (%)", group: "Pricing" },
-  { id: "sales_price_after_tax", label: "Sales Price After Tax", group: "Pricing" },
-  { id: "discount_limit", label: "Disc1(%)", group: "Pricing" },
-  { id: "discount_amount", label: "Disc1(Rs)", group: "Pricing" },
-  { id: "wholesale_price", label: "Wholesale Price", group: "Pricing" },
-  { id: "min_wholesale_qty", label: "Min Wholesale Qty", group: "Pricing" },
-  { id: "b2b_price", label: "B2B Price", group: "Pricing" },
-  { id: "min_b2b_qty", label: "Min B2B Qty", group: "Pricing" },
-  { id: "distributor_price", label: "Distributor Price", group: "Pricing" },
-  { id: "min_distributor_qty", label: "Min Distributor Qty", group: "Pricing" },
-  { id: "hsn_code", label: "HSN Code", group: "Pricing" },
-
-  // 4. Purchasing & Supplier
-  { id: "purchase_price", label: "Purchase Price", group: "Purchasing" },
-  { id: "purchase_tax_type", label: "Purchase Tax Mode", group: "Purchasing" },
-  { id: "purchase_tax_name", label: "Purchase Tax Name", group: "Purchasing" },
-  { id: "purchase_tax_percent", label: "Purchase Tax (%)", group: "Purchasing" },
-  { id: "purchase_price_after_tax", label: "Purchase Price After Tax", group: "Purchasing" },
-  { id: "supplier", label: "Supplier Name", group: "Purchasing" },
-  { id: "preferred_supplier", label: "Preferred Supplier", group: "Purchasing" },
-  { id: "supplier_invoice_number", label: "Supplier Invoice #", group: "Purchasing" },
-  { id: "supplier_invoice_date", label: "Supplier Invoice Date", group: "Purchasing" },
-  { id: "item_received_date", label: "Item Received Date", group: "Purchasing" },
-
-  // 5. Inventory & Warehouse & Batches
-  { id: "initial_stock", label: "Opening Stock", group: "Inventory" },
-  { id: "stock", label: "Current Stock", group: "Inventory" },
-  { id: "reorder_level", label: "Stock Alert", group: "Inventory" },
-  { id: "safety_stock", label: "Safety Stock", group: "Inventory" },
-  { id: "mfg_date", label: "Manufacturing Date", group: "Inventory" },
-  { id: "expiry_date", label: "Expiry Date", group: "Inventory" },
-  { id: "warehouse", label: "Warehouse Name", group: "Inventory" },
-  { id: "location_in_warehouse", label: "Location in Warehouse", group: "Inventory" },
-  { id: "has_manual_batch", label: "Has Manual Batch", group: "Inventory" },
-  { id: "stock_batch_number", label: "Stock Batch #", group: "Inventory" },
-  { id: "stock_batch_expiry_date", label: "Stock Batch Expiry", group: "Inventory" },
-  { id: "opening_stock_batch_number", label: "Opening Stock Batch #", group: "Inventory" },
-  { id: "opening_stock_batch_expiry_date", label: "Opening Stock Batch Expiry", group: "Inventory" },
-
-  // 6. Flags & Operations
-  { id: "status", label: "Is Active / Status", group: "Operations" },
-  { id: "has_label", label: "Has Label", group: "Operations" },
-  { id: "label_headings", label: "Label Headings", group: "Operations" },
-  { id: "is_published_online", label: "Online Storefront", group: "Operations" },
-  { id: "need_to_print_barcode_sticker", label: "Print Barcode Sticker", group: "Operations" },
-  { id: "is_service_item", label: "Is Service Item", group: "Operations" },
-  { id: "not_for_sale", label: "Not For Sale", group: "Operations" },
-  { id: "only_for_portal", label: "Only For Portal", group: "Operations" },
-  { id: "not_for_portal", label: "Not For Portal", group: "Operations" },
-  { id: "conversion_factor", label: "Conversion Factor", group: "Operations" },
-  { id: "weighing_scale_code", label: "Weighing Scale Code", group: "Operations" },
-  { id: "display_index", label: "Display Index", group: "Operations" },
-  { id: "keywords", label: "Keywords", group: "Operations" },
-  { id: "accessories_keyword", label: "Accessories Keyword", group: "Operations" },
-  { id: "short_description", label: "Description", group: "Details" },
-  { id: "description_html", label: "Description HTML", group: "Details" },
-  { id: "source", label: "Source", group: "Details" },
+  { id: "image", label: "Image", group: "Media", seq: 0 },
+  ...PRODUCT_MASTER_FIELDS.filter((f) => f.type !== "blank").map((f) => ({
+    id: f.id,
+    label: f.excelHeader,
+    group: f.group || "General",
+    seq: f.seq,
+  })),
 ];
 
 const MASTER_COLUMNS = [
-  { id: "image", label: "Image" },
-  { id: "name", label: "Product Name" },
-  { id: "sku", label: "SKU" },
-  { id: "barcode", label: "Barcode" },
-  { id: "base_name", label: "Base Code/Name" },
-  { id: "product_base_code", label: "Product Base Code" },
-  { id: "size_l_kg", label: "Size (L/Kg)" },
-  { id: "category", label: "Category" },
-  { id: "brand", label: "Brand" },
-  { id: "mrp", label: "MRP" },
-  { id: "selling_price", label: "Retail Price" },
-  { id: "wholesale_price", label: "Wholesale Price" },
-  { id: "b2b_price", label: "B2B Price" },
-  { id: "specifications", label: "Specifications" },
-  { id: "source", label: "Source" },
+  { id: "image", label: "Image", seq: 0 },
+  ...PRODUCT_MASTER_FIELDS.filter((f) => f.type !== "blank").map((f) => ({
+    id: f.id,
+    label: f.excelHeader,
+    seq: f.seq,
+  })),
+  { id: "source", label: "Source", seq: 99 },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -247,12 +171,8 @@ const defaultFormData = () => ({
   custom_fields: [] as Array<{ key: string; value: string }>
 });
 
-const localVisibleDefault = [
-  "image", "name", "sku", "barcode", "base_name", "product_base_code", "size_l_kg",
-  "category", "brand", "mrp", "selling_price", "wholesale_price", "b2b_price",
-  "min_wholesale_qty", "tax_percent", "initial_stock", "is_published_online", "status"
-];
-const masterVisibleDefault = ["image", "name", "sku", "barcode", "base_name", "product_base_code", "size_l_kg", "category", "brand", "mrp", "selling_price", "source"];
+const localVisibleDefault = LOCAL_COLUMNS.map((c) => c.id);
+const masterVisibleDefault = MASTER_COLUMNS.map((c) => c.id);
 
 // ── Column menu sub-component with Search & Instant Presets ───────────
 function ColumnMenu({
@@ -276,12 +196,14 @@ function ColumnMenu({
   }, [columns, searchCol]);
 
   const presets = [
-    { label: "Default", ids: localVisibleDefault },
-    { label: "All 65 Excel Cols", ids: columns.map(c => c.id) },
-    { label: "Pricing & GST", ids: ["image", "name", "mrp", "selling_price", "sales_tax_type", "sales_tax_name", "tax_percent", "sales_price_after_tax", "discount_limit", "discount_amount", "wholesale_price", "b2b_price", "distributor_price", "hsn_code"] },
-    { label: "Purchasing", ids: ["image", "name", "purchase_price", "purchase_tax_type", "purchase_tax_name", "purchase_tax_percent", "purchase_price_after_tax", "supplier", "preferred_supplier", "supplier_invoice_number", "item_received_date"] },
-    { label: "Stock & Batch", ids: ["image", "name", "initial_stock", "stock", "reorder_level", "safety_stock", "warehouse", "location_in_warehouse", "mfg_date", "expiry_date", "has_manual_batch", "stock_batch_number", "stock_batch_expiry_date"] },
-    { label: "Asian Paints", ids: ["image", "name", "base_name", "product_base_code", "size_l_kg", "category", "sub_category", "brand", "mrp", "selling_price"] },
+    { label: "All Columns", ids: columns.map(c => c.id) },
+    { label: "Identity & Stock", ids: ["image", "name", "item_code", "barcode", "brand", "uom", "stock", "reorder_level", "mfg_date", "expiry_date", "category", "sub_category"] },
+    { label: "Pricing & GST", ids: ["image", "name", "hsn_code", "mrp", "purchase_price", "purchase_tax_type", "selling_price", "sales_tax_type", "b2b_price", "min_b2b_qty", "wholesale_price", "min_wholesale_qty"] },
+    { label: "Asian Paints & Base", ids: ["image", "name", "base_name", "product_base_code", "secondary_barcode", "short_description", "conversion_factor", "weighing_scale_code"] },
+    { label: "Taxes & Discounts", ids: ["image", "name", "sales_tax_name", "tax_percent", "sales_price_after_tax", "discount_limit", "discount_amount", "sales_measuring_unit", "purchase_tax_name", "purchase_tax_percent", "purchase_price_after_tax", "purchase_measuring_unit"] },
+    { label: "Logistics & Flags", ids: ["image", "name", "warehouse", "location_in_warehouse", "status", "has_label", "supplier", "need_to_print_barcode_sticker", "is_service_item", "not_for_sale", "only_for_portal", "not_for_portal"] },
+    { label: "Batches & Expiry", ids: ["image", "name", "has_manual_batch", "stock_batch_number", "stock_batch_expiry_date", "opening_stock_batch_number", "opening_stock_batch_expiry_date"] },
+    { label: "Media & Keywords", ids: ["image", "name", "display_index", "image_url", "category_image", "unique_item_name", "keywords", "accessories_keyword", "preferred_supplier"] },
   ];
 
   return (
@@ -1215,14 +1137,24 @@ export function Products() {
 
   // ── Column visibility ────────────────────────────────────────────
   const [localVisibleColumns, setLocalVisibleColumns] = useState<string[]>(() => {
-    const saved = localStorage.getItem("products_local_visible_columns");
-    if (saved) try { return JSON.parse(saved); } catch {}
-    return localVisibleDefault;
+    const saved = localStorage.getItem("products_master_70_visible_columns_v5");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= 50) return parsed;
+      } catch {}
+    }
+    return LOCAL_COLUMNS.map((c) => c.id);
   });
   const [masterVisibleColumns, setMasterVisibleColumns] = useState<string[]>(() => {
-    const saved = localStorage.getItem("products_master_visible_columns");
-    if (saved) try { return JSON.parse(saved); } catch {}
-    return masterVisibleDefault;
+    const saved = localStorage.getItem("products_master_catalog_visible_columns_v5");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= 50) return parsed;
+      } catch {}
+    }
+    return MASTER_COLUMNS.map((c) => c.id);
   });
   const [isColumnsMenuOpen, setIsColumnsMenuOpen] = useState(false);
 
@@ -2012,222 +1944,27 @@ export function Products() {
 
     setIsImporting(true);
 
-    const processData = (rows: any[]) => {
-      if (!rows || rows.length === 0) {
+    const processData = (data: any[]) => {
+      if (!data || data.length === 0) {
         toast.error("The uploaded file is empty.");
         setIsImporting(false);
         return;
       }
 
-      // Check if it's an Asian Paints format or standard 65-column sheet
-      const firstRow = rows[0] || {};
-      const colKeys = Object.keys(firstRow).map(k => k.trim().toLowerCase());
-      const isPaintCatalog = colKeys.some(k => k.includes("base code") || k.includes("product base code") || k.includes("size (l/kg)") || k.includes("asian paint"));
+      const isPaintCatalog = data.some(r => {
+        const rowStr = JSON.stringify(r).toLowerCase();
+        return rowStr.includes("base code") || rowStr.includes("asian paints") || rowStr.includes("0w0") || rowStr.includes("shade");
+      });
 
-      // Clean, format, and map all 65 catalog columns
-      const validItems = rows.map((r: any) => {
-        const findVal = (exactNames: string[], fuzzySubstrings: string[] = []) => {
-          for (const k of Object.keys(r)) {
-            const trimmed = k.trim();
-            if (exactNames.some(en => en.toLowerCase() === trimmed.toLowerCase())) {
-              return r[k] !== undefined && r[k] !== null ? String(r[k]).trim() : "";
-            }
-          }
-          for (const k of Object.keys(r)) {
-            const lower = k.trim().toLowerCase();
-            if (fuzzySubstrings.some(sub => lower.includes(sub.toLowerCase()))) {
-              return r[k] !== undefined && r[k] !== null ? String(r[k]).trim() : "";
-            }
-          }
-          return "";
-        };
-
-        const itemName = findVal(["ITEM NAME", "Item Name", "PRODUCT NAME", "Product Name", "name", "Item", "Description"], ["item name", "product name", "item"]);
-        if (!itemName) return null;
-
-        // Identity & Codes
-        const barcodeVal = findVal(["BarCode", "Barcode", "BARCODE", "barcode", "UPC", "EAN"], ["barcode"]);
-        const secondaryBarcodeVal = findVal(["BarCode.1", "Secondary Barcode", "secondary_barcode", "Alternate Barcode", "Barcode 2"]);
-        const skuVal = findVal(["SEARCHCODE", "SKU", "sku", "Item Code", "Product Code", "Item ID"], ["searchcode", "sku"]) || barcodeVal || `SKU-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-        const itemCodeVal = findVal(["Item CODE", "Item Code", "item_code", "ITM CODE"]);
-        const uniqueItemNameVal = findVal(["UNIQUE ITEM NAME", "Unique Item Name", "unique_item_name"]);
-
-        // Asian Paints & Hardware
-        const baseNameVal = findVal(["Base Code/Name", "Base Code / Name", "BASE CODE/NAME", "Base Name", "base_name", "Base", "BaseCode/Name"], ["base code/name", "base name"]);
-        const productBaseCodeVal = findVal(["Product Base Code", "PRODUCT BASE CODE", "ProductBaseCode", "product_base_code", "base_code", "Base Code"], ["product base code", "base code"]);
-        const sizeLKgVal = findVal(["Size (L/Kg)", "Size (L / Kg)", "Size (L/KG)", "SIZE (L/KG)", "Size", "size", "size_l_kg", "Pack Size", "pack_size"], ["size (l/kg)", "size"]);
-
-        // Categories & Brands
-        const categoryVal = findVal(["CATEGORY", "Category", "category", "Category Name"], ["category"]);
-        const subCategoryVal = findVal(["SUB CATEGORY", "Sub Category", "sub_category", "Subcategory"], ["sub category", "subcategory"]);
-        const brandVal = findVal(["Brand", "BRAND", "brand", "Brand Name", "Manufacturer"], ["brand"]);
-        const uomVal = findVal(["Unit", "UNIT", "uom", "UOM", "Unit of Measure"], ["unit", "uom"]);
-        const salesMeasuringUnitVal = findVal(["SALES MEASURING UNIT", "Sales Measuring Unit", "sales_measuring_unit"]);
-        const purchaseMeasuringUnitVal = findVal(["PURCHASE MEASURING UNIT", "Purchase Measuring Unit", "purchase_measuring_unit"]);
-
-        // Pricing & Tax
-        const mrpVal = parseFloat(findVal(["MRP", "mrp", "retail_price", "Maximum Retail Price"])) || 0;
-        const salesPriceVal = parseFloat(findVal(["SALES PRICE", "Sales Price", "selling_price", "SALESPRICE", "Price", "Rate"])) || 0;
-        const salesTaxTypeVal = findVal(["Sales Tax inclusive/Exclusive", "Sales Tax Mode", "sales_tax_type"]);
-        const isSalesTaxInclusive = salesTaxTypeVal.toLowerCase().includes("excl") ? false : true;
-        const salesTaxNameVal = findVal(["SALES TAX NAME", "Sales Tax Name", "sales_tax_name"]) || "GST";
-        const salesTaxPercentVal = parseFloat(findVal(["SALES TAX PERCENT", "Sales Tax Percent", "tax_percent", "GST (%)", "GST %", "Tax Rate", "TAX"])) || 0;
-        const salesPriceAfterTaxVal = parseFloat(findVal(["SALES PRICE AFTER TAX", "Sales Price After Tax", "sales_price_after_tax"])) || 0;
-        const disc1PctVal = parseFloat(findVal(["Disc1(%)", "Disc1%", "discount_limit", "Discount Limit (%)", "Discount (%)"])) || 0;
-        const disc1RsVal = parseFloat(findVal(["Disc1(Rs)", "Disc1 Rs", "discount_amount", "Discount (Rs)"])) || 0;
-        const hsnVal = findVal(["HSN", "hsn", "HSN Code", "hsn_code", "hsncode"]);
-
-        // Multi-tier rates
-        const wholesaleVal = parseFloat(findVal(["WHOLESALE PRICE", "Wholesale Price", "wholesale_price", "WHOLESALEPRICE"])) || 0;
-        const minWholesaleVal = parseInt(findVal(["MIN WHOLESALE QTY", "Min Wholesale Qty", "min_wholesale_qty", "MINWHOLESALEQTY"]), 10) || 1;
-        const b2bVal = parseFloat(findVal(["B2B PRICE", "B2B Price", "b2b_price", "B2BPRICE"])) || 0;
-        const minB2bVal = parseInt(findVal(["MIN B2B QTY", "Min B2B Qty", "min_b2b_qty", "MINB2BQTY"]), 10) || 1;
-        const distributorVal = parseFloat(findVal(["DISTRIBUTOR PRICE", "Distributor Price", "distributor_price"])) || 0;
-        const minDistributorVal = parseInt(findVal(["MIN DISTRIBUTOR QTY", "Min Distributor Qty", "min_distributor_qty"]), 10) || 1;
-
-        // Purchase & Sourcing
-        const purchasePriceVal = parseFloat(findVal(["PURCHASE PRICE ", "PURCHASE PRICE", "Purchase Price", "purchase_price", "cost_price", "Cost"])) || 0;
-        const purchaseTaxTypeVal = findVal(["PURCHASE Tax inclusive/Exclusive", "Purchase Tax Mode", "purchase_tax_type"]);
-        const isPurchaseTaxInclusive = purchaseTaxTypeVal.toLowerCase().includes("excl") ? false : true;
-        const purchaseTaxNameVal = findVal(["PURCHASE TAX NAME", "Purchase Tax Name", "purchase_tax_name"]) || "GST";
-        const purchaseTaxPercentVal = parseFloat(findVal(["PURCHASE TAX PERCENT", "Purchase Tax Percent", "purchase_tax_percent"])) || 0;
-        const purchasePriceAfterTaxVal = parseFloat(findVal(["PURCHASE PRICE AFTER TAX", "Purchase Price After Tax", "purchase_price_after_tax"])) || 0;
-        const supplierNameVal = findVal(["SUPPLIER NAME", "Supplier Name", "supplier", "Supplier", "Vendor"], ["supplier", "vendor"]);
-        const preferredSupplierVal = findVal(["PREFERRED SUPPLIER", "Preferred Supplier", "preferred_supplier"]) || supplierNameVal;
-        const supplierInvoiceNoVal = findVal(["SUPPLIER INVOICE NUMBER", "Supplier Invoice Number", "supplier_invoice_number"]);
-        const supplierInvoiceDateVal = findVal(["SUPPLIER INVOICE DATE", "Supplier Invoice Date", "supplier_invoice_date"]);
-        const itemReceivedDateVal = findVal(["ITEM RECEIVED DATE", "Item Received Date", "item_received_date"]);
-
-        // Stock & Warehouse
-        const openingStockVal = parseInt(findVal(["Opening Stock", "opening_stock", "initial_stock"]), 10) || 0;
-        const stockVal = parseInt(findVal(["STOCK", "Stock", "Quantity", "quantity", "Qty"]), 10) || openingStockVal;
-        const stockAlertVal = parseInt(findVal(["Stock Alert", "stock_alert", "Reorder Level", "reorder_level"]), 10) || 10;
-        const safetyStockVal = parseInt(findVal(["Safety Stock", "safety_stock"]), 10) || 0;
-        const warehouseNameVal = findVal(["WAREHOUSE NAME", "Warehouse Name", "warehouse", "Warehouse"]);
-        const locationInWarehouseVal = findVal(["LOCATION IN WAREHOUSE", "Location In Warehouse", "location_in_warehouse", "Rack Location", "Bin Location"]);
-        const mfgDateVal = findVal(["Manifacturing DATE", "Manufacturing Date", "mfg_date", "MFG DATE"]);
-        const expiryDateVal = findVal(["EXPIRY DATE", "Expiry Date", "expiry_date", "EXP DATE"]);
-        const hasManualBatchRaw = findVal(["HAS MANUAL BATCH", "Has Manual Batch", "has_manual_batch"]);
-        const hasManualBatch = hasManualBatchRaw.toLowerCase() === "yes" || hasManualBatchRaw.toLowerCase() === "true" || hasManualBatchRaw === "1";
-        const stockBatchNoVal = findVal(["STOCK BATCH NUMBER", "Stock Batch Number", "stock_batch_number"]);
-        const stockBatchExpVal = findVal(["STOCK BATCH EXPIRY DATE", "Stock Batch Expiry Date", "stock_batch_expiry_date"]);
-        const openingStockBatchNoVal = findVal(["OPENING STOCK BATCH NUMBER", "Opening Stock Batch Number", "opening_stock_batch_number"]);
-        const openingStockBatchExpVal = findVal(["OPENING STOCK BATCH EXPIRY DATE", "Opening Stock Batch Expiry Date", "opening_stock_batch_expiry_date"]);
-
-        // Operational Flags
-        const isActiveRaw = findVal(["IS ACTIVE", "ISACTIVE", "is_active", "Active", "Status"]);
-        const isActive = isActiveRaw === "" ? true : (isActiveRaw.toLowerCase() === "true" || isActiveRaw === "1" || isActiveRaw.toLowerCase() === "yes" || isActiveRaw.toLowerCase() === "active");
-        const hasLabelRaw = findVal(["HAS LABEL", "Has Label", "has_label"]);
-        const hasLabel = hasLabelRaw.toLowerCase() === "no" || hasLabelRaw.toLowerCase() === "false" || hasLabelRaw === "0" ? false : true;
-        const labelHeadingsVal = findVal(["LABEL HEADINGS", "Label Headings", "label_headings"]);
-        const needBarcodeStickerRaw = findVal(["NEED TO PRINT BARCODE STICKER", "Need To Print Barcode Sticker", "need_to_print_barcode_sticker"]);
-        const needBarcodeSticker = needBarcodeStickerRaw.toLowerCase() === "no" || needBarcodeStickerRaw.toLowerCase() === "false" || needBarcodeStickerRaw === "0" ? false : true;
-        const isServiceItemRaw = findVal(["IS SERVICE ITEM", "Is Service Item", "is_service_item"]);
-        const isServiceItem = isServiceItemRaw.toLowerCase() === "yes" || isServiceItemRaw.toLowerCase() === "true" || isServiceItemRaw === "1";
-        const notForSaleRaw = findVal(["NOTFORSALE", "Not For Sale", "not_for_sale"]);
-        const notForSale = notForSaleRaw.toLowerCase() === "yes" || notForSaleRaw.toLowerCase() === "true" || notForSaleRaw === "1";
-        const onlyForPortalRaw = findVal(["ONLY FOR PORTAL", "Only For Portal", "only_for_portal"]);
-        const onlyForPortal = onlyForPortalRaw.toLowerCase() === "yes" || onlyForPortalRaw.toLowerCase() === "true" || onlyForPortalRaw === "1";
-        const notForPortalRaw = findVal(["NOT FOR PORTAL", "Not For Portal", "not_for_portal"]);
-        const notForPortal = notForPortalRaw.toLowerCase() === "yes" || notForPortalRaw.toLowerCase() === "true" || notForPortalRaw === "1";
-        const conversionFactorVal = findVal(["CONVERSION FACTOR", "Conversion Factor", "conversion_factor"]) || "1";
-        const weighingScaleCodeVal = findVal(["WEIGHING SCALE ITEM CODE", "Weighing Scale Item Code", "weighing_scale_code", "WEIGHINGSCALEITEMCODE"]);
-        const displayIndexVal = findVal(["DISPLAYINDEX", "Display Index", "display_index"]);
-        const itemImageVal = findVal(["ITEMIMAGE", "Item Image", "item_image", "image_url"]);
-        const categoryImageVal = findVal(["CATEGORYIMAGE", "Category Image", "category_image"]);
-        const keywordsVal = findVal(["KEYWORDS", "Keywords", "keywords"]);
-        const accessoriesKeywordVal = findVal(["ACCESSORIES KEYWORD", "Accessories Keyword", "accessories_keyword"]);
-        const descVal = findVal(["DESCRIPTION", "Description", "description", "short_description"]);
-        const descHtmlVal = findVal(["DESCRIPTI ON HTML", "Description HTML", "description_html", "DESCRIPTI_ON_HTML"]);
-
-        const specs = {
-          unique_item_name: uniqueItemNameVal,
-          secondary_barcode: secondaryBarcodeVal,
-          item_code: itemCodeVal,
-          sub_category: subCategoryVal,
-          base_name: baseNameVal,
-          product_base_code: productBaseCodeVal,
-          size_l_kg: sizeLKgVal,
-          sales_measuring_unit: salesMeasuringUnitVal,
-          purchase_measuring_unit: purchaseMeasuringUnitVal,
-          sales_tax_name: salesTaxNameVal,
-          sales_tax_type: salesTaxTypeVal || (isSalesTaxInclusive ? "Inclusive" : "Exclusive"),
-          is_tax_inclusive: isSalesTaxInclusive,
-          sales_price_after_tax: salesPriceAfterTaxVal,
-          discount_amount: disc1RsVal,
-          wholesale_price: wholesaleVal,
-          min_wholesale_qty: minWholesaleVal,
-          wholesale_is_tax_inclusive: true,
-          b2b_price: b2bVal,
-          min_b2b_qty: minB2bVal,
-          b2b_is_tax_inclusive: true,
-          distributor_price: distributorVal,
-          min_distributor_qty: minDistributorVal,
-          distributor_is_tax_inclusive: true,
-          purchase_tax_name: purchaseTaxNameVal,
-          purchase_tax_type: purchaseTaxTypeVal || (isPurchaseTaxInclusive ? "Inclusive" : "Exclusive"),
-          purchase_tax_percent: purchaseTaxPercentVal,
-          is_purchase_tax_inclusive: isPurchaseTaxInclusive,
-          purchase_price_after_tax: purchasePriceAfterTaxVal,
-          supplier: supplierNameVal,
-          preferred_supplier: preferredSupplierVal,
-          supplier_invoice_number: supplierInvoiceNoVal,
-          supplier_invoice_date: supplierInvoiceDateVal,
-          item_received_date: itemReceivedDateVal,
-          location_in_warehouse: locationInWarehouseVal,
-          mfg_date: mfgDateVal,
-          expiry_date: expiryDateVal,
-          has_manual_batch: hasManualBatch,
-          stock_batch_number: stockBatchNoVal,
-          stock_batch_expiry_date: stockBatchExpVal,
-          opening_stock_batch_number: openingStockBatchNoVal,
-          opening_stock_batch_expiry_date: openingStockBatchExpVal,
-          has_label: hasLabel,
-          label_headings: labelHeadingsVal,
-          need_to_print_barcode_sticker: needBarcodeSticker,
-          is_service_item: isServiceItem,
-          not_for_sale: notForSale,
-          only_for_portal: onlyForPortal,
-          not_for_portal: notForPortal,
-          conversion_factor: conversionFactorVal,
-          weighing_scale_code: weighingScaleCodeVal,
-          display_index: displayIndexVal,
-          category_image: categoryImageVal,
-          keywords: keywordsVal,
-          accessories_keyword: accessoriesKeywordVal,
-          description_html: descHtmlVal,
-          custom_attributes: {}
-        };
-
-        return {
-          name: itemName,
-          sku: skuVal,
-          barcode: barcodeVal || null,
-          category_name: categoryVal || (isPaintCatalog ? "Paints & Wall Finishes" : "General"),
-          brand_name: brandVal || (isPaintCatalog ? "Asian Paints" : "General"),
-          uom_name: uomVal || (isPaintCatalog ? "Litre" : "Pieces"),
-          base_name: baseNameVal || null,
-          product_base_code: productBaseCodeVal || null,
-          size_l_kg: sizeLKgVal || null,
-          purchase_price: purchasePriceVal,
-          mrp: mrpVal,
-          selling_price: salesPriceVal || mrpVal,
-          tax_percent: salesTaxPercentVal,
-          discount_limit: disc1PctVal,
-          wholesale_price: wholesaleVal,
-          min_wholesale_qty: minWholesaleVal,
-          b2b_price: b2bVal,
-          initial_stock: openingStockVal || stockVal,
-          reorder_level: stockAlertVal,
-          safety_stock: safetyStockVal,
-          warehouse: warehouseNameVal || "Main Warehouse",
-          supplier: supplierNameVal || null,
-          hsn_code: hsnVal || null,
-          short_description: descVal || null,
-          image_url: itemImageVal || null,
-          status: isActive ? "active" : "inactive",
-          specifications: specs
-        };
+      const validItems = data.map((r: any) => {
+        if (!r || typeof r !== "object") return null;
+        const item = mapMasterImportRowToProduct(r);
+        const directName = r["ITEM NAME"] || r["Item Name"] || r["name"] || r["Product Name"] || r["ITEM_NAME"];
+        if (directName) {
+          item.name = String(directName).trim();
+        }
+        if (!item.name || item.name === "Untitled Product") return null;
+        return item;
       }).filter(Boolean);
 
       setIsImporting(false);
@@ -2284,252 +2021,22 @@ export function Products() {
       return;
     }
 
-    // Build complete 65-column dataset matching the standard business format
-    const exportData = products.map((p) => {
-      const specs = (p.specifications && typeof p.specifications === 'object') ? p.specifications : {};
-      return {
-        "ITEM NAME": p.name || "",
-        "BarCode": p.barcode || "",
-        "Base Code/Name": p.base_name || specs.base_name || "",
-        "Product Base Code": p.product_base_code || specs.product_base_code || "",
-        "Size (L/Kg)": p.size_l_kg || specs.size_l_kg || "",
-        "CATEGORY": p.category_name || "",
-        "SUB CATEGORY": specs.sub_category || (p as any).sub_category || "",
-        "BarCode.1": specs.secondary_barcode || (p as any).secondary_barcode || "",
-        "Brand": p.brand_name || p.brand || "",
-        "Item CODE": specs.item_code || (p as any).item_code || "",
-        "Unit": p.uom_name || "",
-        "Stock Alert": p.reorder_level ?? 10,
-        "DESCRIPTION": p.short_description || specs.short_description || "",
-        "DESCRIPTI ON HTML": specs.description_html || "",
-        "CONVERSION FACTOR": specs.conversion_factor || "1",
-        "WEIGHING SCALE ITEM CODE": specs.weighing_scale_code || "",
-        "HSN": p.hsn_code || specs.hsn_code || "",
-        "MRP": p.mrp ?? 0,
-        "B2B PRICE": p.b2b_price ?? specs.b2b_price ?? 0,
-        "MIN B2B QTY": specs.min_b2b_qty ?? 1,
-        "WHOLESALE PRICE": p.wholesale_price ?? specs.wholesale_price ?? 0,
-        "MIN WHOLESALE QTY": p.min_wholesale_qty ?? specs.min_wholesale_qty ?? 1,
-        "SALES PRICE": p.selling_price ?? 0,
-        "Sales Tax inclusive/Exclusive": specs.sales_tax_type || (p.is_tax_inclusive !== false ? "Inclusive" : "Exclusive"),
-        "SALES TAX NAME": specs.sales_tax_name || "GST",
-        "SALES TAX PERCENT": p.tax_percent ?? 0,
-        "SALES PRICE AFTER TAX": specs.sales_price_after_tax ?? (p.selling_price ?? 0),
-        "Disc1(%)": p.discount_limit ?? 0,
-        "Disc1(Rs)": specs.discount_amount ?? 0,
-        "SALES MEASURING UNIT": specs.sales_measuring_unit || p.uom_name || "",
-        "PURCHASE PRICE ": p.purchase_price ?? 0,
-        "PURCHASE Tax inclusive/Exclusive": specs.purchase_tax_type || "Inclusive",
-        "PURCHASE TAX NAME": specs.purchase_tax_name || "GST",
-        "PURCHASE TAX PERCENT": specs.purchase_tax_percent ?? 0,
-        "PURCHASE PRICE AFTER TAX": specs.purchase_price_after_tax ?? (p.purchase_price ?? 0),
-        "PURCHASE MEASURING UNIT": specs.purchase_measuring_unit || p.uom_name || "",
-        "Opening Stock": p.initial_stock ?? 0,
-        "STOCK": p.stock ?? p.initial_stock ?? 0,
-        "Manifacturing DATE": specs.mfg_date || "",
-        "EXPIRY DATE": specs.expiry_date || "",
-        "WAREHOUSE NAME": p.warehouse || "Main Warehouse",
-        "LOCATION IN WAREHOUSE": specs.location_in_warehouse || "",
-        "IS ACTIVE": p.status === "active" ? "TRUE" : "FALSE",
-        "HAS LABEL": specs.has_label !== false ? "TRUE" : "FALSE",
-        "LABEL HEADINGS": specs.label_headings || "",
-        "SUPPLIER NAME": p.supplier || specs.supplier || "",
-        "ITEM RECEIVED DATE": specs.item_received_date || "",
-        "SUPPLIER INVOICE NUMBER": specs.supplier_invoice_number || "",
-        "SUPPLIER INVOICE DATE": specs.supplier_invoice_date || "",
-        "NEED TO PRINT BARCODE STICKER": specs.need_to_print_barcode_sticker !== false ? "TRUE" : "FALSE",
-        "IS SERVICE ITEM": specs.is_service_item ? "TRUE" : "FALSE",
-        "NOTFORSALE": specs.not_for_sale ? "TRUE" : "FALSE",
-        "ONLY FOR PORTAL": specs.only_for_portal ? "TRUE" : "FALSE",
-        "NOT FOR PORTAL": specs.not_for_portal ? "TRUE" : "FALSE",
-        "HAS MANUAL BATCH": specs.has_manual_batch ? "TRUE" : "FALSE",
-        "STOCK BATCH NUMBER": specs.stock_batch_number || "",
-        "STOCK BATCH EXPIRY DATE": specs.stock_batch_expiry_date || "",
-        "OPENING STOCK BATCH NUMBER": specs.opening_stock_batch_number || "",
-        "OPENING STOCK BATCH EXPIRY DATE": specs.opening_stock_batch_expiry_date || "",
-        "DISPLAYINDEX": specs.display_index || "",
-        "ITEMIMAGE": p.image_url || "",
-        "CATEGORYIMAGE": specs.category_image || "",
-        "UNIQUE ITEM NAME": specs.unique_item_name || (p as any).unique_item_name || "",
-        "KEYWORDS": specs.keywords || "",
-        "ACCESSORIES KEYWORD": specs.accessories_keyword || "",
-        "PREFERRED SUPPLIER": specs.preferred_supplier || p.supplier || ""
-      };
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const exportData = products.map((p) => mapProductToMasterExportRow(p));
+    const worksheet = XLSX.utils.json_to_sheet(exportData, { header: getMasterExportHeaders() });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory Products");
-    XLSX.writeFile(workbook, `inventory_products_65cols_${new Date().toISOString().split("T")[0]}.xlsx`);
-    toast.success(`Exported ${products.length} products with all 65 catalog columns!`);
+    XLSX.writeFile(workbook, `inventory_products_70cols_${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success(`Exported ${products.length} products with all 70 master catalog columns in exact sequence!`);
   };
 
   const handleDownloadSample = () => {
-    // Generate complete sample file matching the official 65-column business template
-    const sampleHeaders = [
-      "ITEM NAME", "BarCode", "Base Code/Name", "Product Base Code", "Size (L/Kg)",
-      "CATEGORY", "SUB CATEGORY", "BarCode.1", "Brand", "Item CODE", "Unit",
-      "Stock Alert", "DESCRIPTION", "DESCRIPTI ON HTML", "CONVERSION FACTOR",
-      "WEIGHING SCALE ITEM CODE", "HSN", "MRP", "B2B PRICE", "MIN B2B QTY",
-      "WHOLESALE PRICE", "MIN WHOLESALE QTY", "SALES PRICE", "Sales Tax inclusive/Exclusive",
-      "SALES TAX NAME", "SALES TAX PERCENT", "SALES PRICE AFTER TAX", "Disc1(%)",
-      "Disc1(Rs)", "SALES MEASURING UNIT", "PURCHASE PRICE ", "PURCHASE Tax inclusive/Exclusive",
-      "PURCHASE TAX NAME", "PURCHASE TAX PERCENT", "PURCHASE PRICE AFTER TAX",
-      "PURCHASE MEASURING UNIT", "Opening Stock", "STOCK", "Manifacturing DATE",
-      "EXPIRY DATE", "WAREHOUSE NAME", "LOCATION IN WAREHOUSE", "IS ACTIVE",
-      "HAS LABEL", "LABEL HEADINGS", "SUPPLIER NAME", "ITEM RECEIVED DATE",
-      "SUPPLIER INVOICE NUMBER", "SUPPLIER INVOICE DATE", "NEED TO PRINT BARCODE STICKER",
-      "IS SERVICE ITEM", "NOTFORSALE", "ONLY FOR PORTAL", "NOT FOR PORTAL",
-      "HAS MANUAL BATCH", "STOCK BATCH NUMBER", "STOCK BATCH EXPIRY DATE",
-      "OPENING STOCK BATCH NUMBER", "OPENING STOCK BATCH EXPIRY DATE", "DISPLAYINDEX",
-      "ITEMIMAGE", "CATEGORYIMAGE", "UNIQUE ITEM NAME", "KEYWORDS", "ACCESSORIES KEYWORD",
-      "PREFERRED SUPPLIER"
-    ];
-
-    const sampleRows = [
-      {
-        "ITEM NAME": "Royale Luxury Emulsion White 1L",
-        "BarCode": "8901234567890",
-        "Base Code/Name": "Base White",
-        "Product Base Code": "ROY-WHT-1L",
-        "Size (L/Kg)": "1L",
-        "CATEGORY": "Paints & Finishes",
-        "SUB CATEGORY": "Interior Emulsion",
-        "BarCode.1": "8901234567891",
-        "Brand": "Asian Paints",
-        "Item CODE": "AP-ROY-1L",
-        "Unit": "Litre",
-        "Stock Alert": 15,
-        "DESCRIPTION": "Super luxury emulsion paint with Teflon surface protector for interior walls.",
-        "DESCRIPTI ON HTML": "<p>Super luxury interior emulsion with smooth sheen finish.</p>",
-        "CONVERSION FACTOR": "1",
-        "WEIGHING SCALE ITEM CODE": "WS-001",
-        "HSN": "32091000",
-        "MRP": 520,
-        "B2B PRICE": 430,
-        "MIN B2B QTY": 10,
-        "WHOLESALE PRICE": 450,
-        "MIN WHOLESALE QTY": 5,
-        "SALES PRICE": 490,
-        "Sales Tax inclusive/Exclusive": "Inclusive",
-        "SALES TAX NAME": "GST",
-        "SALES TAX PERCENT": 18,
-        "SALES PRICE AFTER TAX": 490,
-        "Disc1(%)": 5,
-        "Disc1(Rs)": 0,
-        "SALES MEASURING UNIT": "Litre",
-        "PURCHASE PRICE ": 380,
-        "PURCHASE Tax inclusive/Exclusive": "Inclusive",
-        "PURCHASE TAX NAME": "GST",
-        "PURCHASE TAX PERCENT": 18,
-        "PURCHASE PRICE AFTER TAX": 380,
-        "PURCHASE MEASURING UNIT": "Litre",
-        "Opening Stock": 50,
-        "STOCK": 50,
-        "Manifacturing DATE": "2026-01-15",
-        "EXPIRY DATE": "2029-01-15",
-        "WAREHOUSE NAME": "Main Warehouse",
-        "LOCATION IN WAREHOUSE": "Aisle-3-Rack-2",
-        "IS ACTIVE": "TRUE",
-        "HAS LABEL": "TRUE",
-        "LABEL HEADINGS": "Asian Paints Royale",
-        "SUPPLIER NAME": "Asian Paints Dist Ltd",
-        "ITEM RECEIVED DATE": "2026-01-20",
-        "SUPPLIER INVOICE NUMBER": "INV-AP-8921",
-        "SUPPLIER INVOICE DATE": "2026-01-18",
-        "NEED TO PRINT BARCODE STICKER": "TRUE",
-        "IS SERVICE ITEM": "FALSE",
-        "NOTFORSALE": "FALSE",
-        "ONLY FOR PORTAL": "FALSE",
-        "NOT FOR PORTAL": "FALSE",
-        "HAS MANUAL BATCH": "TRUE",
-        "STOCK BATCH NUMBER": "BATCH-2026-A1",
-        "STOCK BATCH EXPIRY DATE": "2029-01-15",
-        "OPENING STOCK BATCH NUMBER": "BATCH-2026-A1",
-        "OPENING STOCK BATCH EXPIRY DATE": "2029-01-15",
-        "DISPLAYINDEX": "1",
-        "ITEMIMAGE": "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=300",
-        "CATEGORYIMAGE": "",
-        "UNIQUE ITEM NAME": "Asian Paints Royale Luxury Emulsion White 1L",
-        "KEYWORDS": "paint, emulsion, interior, asian paints, white",
-        "ACCESSORIES KEYWORD": "roller, brush, primer, putty",
-        "PREFERRED SUPPLIER": "Asian Paints Dist Ltd"
-      },
-      {
-        "ITEM NAME": "Apex Ultima Weather Proof Exterior Emulsion 4L",
-        "BarCode": "8901234567892",
-        "Base Code/Name": "Base 01",
-        "Product Base Code": "APX-01-4L",
-        "Size (L/Kg)": "4L",
-        "CATEGORY": "Paints & Finishes",
-        "SUB CATEGORY": "Exterior Emulsion",
-        "BarCode.1": "",
-        "Brand": "Asian Paints",
-        "Item CODE": "AP-APX-4L",
-        "Unit": "Litre",
-        "Stock Alert": 10,
-        "DESCRIPTION": "Advanced exterior wall protection with high durability and anti-algal warranty.",
-        "DESCRIPTI ON HTML": "<p>Exterior wall emulsion paint with 7-year performance warranty.</p>",
-        "CONVERSION FACTOR": "1",
-        "WEIGHING SCALE ITEM CODE": "WS-002",
-        "HSN": "32091000",
-        "MRP": 1680,
-        "B2B PRICE": 1390,
-        "MIN B2B QTY": 6,
-        "WHOLESALE PRICE": 1450,
-        "MIN WHOLESALE QTY": 3,
-        "SALES PRICE": 1580,
-        "Sales Tax inclusive/Exclusive": "Inclusive",
-        "SALES TAX NAME": "GST",
-        "SALES TAX PERCENT": 18,
-        "SALES PRICE AFTER TAX": 1580,
-        "Disc1(%)": 5,
-        "Disc1(Rs)": 0,
-        "SALES MEASURING UNIT": "Litre",
-        "PURCHASE PRICE ": 1250,
-        "PURCHASE Tax inclusive/Exclusive": "Inclusive",
-        "PURCHASE TAX NAME": "GST",
-        "PURCHASE TAX PERCENT": 18,
-        "PURCHASE PRICE AFTER TAX": 1250,
-        "PURCHASE MEASURING UNIT": "Litre",
-        "Opening Stock": 30,
-        "STOCK": 30,
-        "Manifacturing DATE": "2026-02-01",
-        "EXPIRY DATE": "2029-02-01",
-        "WAREHOUSE NAME": "Main Warehouse",
-        "LOCATION IN WAREHOUSE": "Aisle-3-Rack-3",
-        "IS ACTIVE": "TRUE",
-        "HAS LABEL": "TRUE",
-        "LABEL HEADINGS": "Apex Ultima",
-        "SUPPLIER NAME": "Asian Paints Dist Ltd",
-        "ITEM RECEIVED DATE": "2026-02-05",
-        "SUPPLIER INVOICE NUMBER": "INV-AP-9012",
-        "SUPPLIER INVOICE DATE": "2026-02-03",
-        "NEED TO PRINT BARCODE STICKER": "TRUE",
-        "IS SERVICE ITEM": "FALSE",
-        "NOTFORSALE": "FALSE",
-        "ONLY FOR PORTAL": "FALSE",
-        "NOT FOR PORTAL": "FALSE",
-        "HAS MANUAL BATCH": "TRUE",
-        "STOCK BATCH NUMBER": "BATCH-2026-B2",
-        "STOCK BATCH EXPIRY DATE": "2029-02-01",
-        "OPENING STOCK BATCH NUMBER": "BATCH-2026-B2",
-        "OPENING STOCK BATCH EXPIRY DATE": "2029-02-01",
-        "DISPLAYINDEX": "2",
-        "ITEMIMAGE": "https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=300",
-        "CATEGORYIMAGE": "",
-        "UNIQUE ITEM NAME": "Asian Paints Apex Ultima Weather Proof 4L",
-        "KEYWORDS": "exterior paint, apex ultima, weather proof",
-        "ACCESSORIES KEYWORD": "roller, masking tape, exterior primer",
-        "PREFERRED SUPPLIER": "Asian Paints Dist Ltd"
-      }
-    ];
-
-    const ws = XLSX.utils.json_to_sheet(sampleRows, { header: sampleHeaders });
+    const headers = getMasterExportHeaders();
+    const sampleRows = getMasterSampleRows();
+    const ws = XLSX.utils.json_to_sheet(sampleRows, { header: headers });
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Sample Catalog 65 Cols");
-    XLSX.writeFile(wb, "products_65cols_sample_template.xlsx");
-    toast.success("Downloaded 65-column sample Excel template!");
+    XLSX.utils.book_append_sheet(wb, ws, "Product Master Template");
+    XLSX.writeFile(wb, "products_master_70cols_template.xlsx");
+    toast.success("Downloaded 70-column master Excel template!");
   };
   // ── Open create modal helper ────────────────────────────────────
   const openCreateModal = () => {
@@ -2696,15 +2203,15 @@ export function Products() {
             onApplyPreset={(presetIds) => {
               if (activeTab === "inventory") {
                 setLocalVisibleColumns(presetIds);
-                localStorage.setItem("products_local_visible_columns", JSON.stringify(presetIds));
+                localStorage.setItem("products_master_70_visible_columns_v5", JSON.stringify(presetIds));
               } else {
                 setMasterVisibleColumns(presetIds);
-                localStorage.setItem("products_master_visible_columns", JSON.stringify(presetIds));
+                localStorage.setItem("products_master_catalog_visible_columns_v5", JSON.stringify(presetIds));
               }
               toast.success("Applied column view preset!");
             }}
             onSave={() => {
-              const key = activeTab === "inventory" ? "products_local_visible_columns" : "products_master_visible_columns";
+              const key = activeTab === "inventory" ? "products_master_70_visible_columns_v5" : "products_master_catalog_visible_columns_v5";
               const cols = activeTab === "inventory" ? localVisibleColumns : masterVisibleColumns;
               localStorage.setItem(key, JSON.stringify(cols));
               setIsColumnsMenuOpen(false);
@@ -2713,10 +2220,10 @@ export function Products() {
             onReset={() => {
               const def = activeTab === "inventory" ? localVisibleDefault : masterVisibleDefault;
               const setter = activeTab === "inventory" ? setLocalVisibleColumns : setMasterVisibleColumns;
-              const key = activeTab === "inventory" ? "products_local_visible_columns" : "products_master_visible_columns";
+              const key = activeTab === "inventory" ? "products_master_70_visible_columns_v5" : "products_master_catalog_visible_columns_v5";
               setter(def);
               localStorage.setItem(key, JSON.stringify(def));
-              toast.info("Reset columns to default.");
+              toast.info("Reset columns to all 70 master fields.");
             }}
             onClose={() => setIsColumnsMenuOpen(false)}
           />
@@ -3284,10 +2791,71 @@ export function Products() {
                           variant="outline"
                           onClick={() => setBrandPopoverOpen(!brandPopoverOpen)}
                           className="h-10 w-10 shrink-0 rounded-xl"
+                          title="Add New Brand"
                         >
                           <Plus className="size-4" />
                         </Button>
                       </div>
+
+                      {brandPopoverOpen && (
+                        <div className="absolute top-full mt-2 left-0 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-3 z-30">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-slate-800">New Brand</span>
+                            <button type="button" onClick={() => setBrandPopoverOpen(false)} className="text-slate-400 hover:text-slate-600">
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Brand Name (e.g. Nestle, Apple, Nike)"
+                            id="new_brand_input"
+                            autoFocus
+                            className="w-full h-8 px-2.5 text-xs border border-slate-300 rounded-lg mb-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            onKeyDown={async (e) => {
+                              if (e.key === "Enter") {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                if (val) {
+                                  try {
+                                    const res: any = await inventoryApi.createBrand({ name: val });
+                                    const newBrand = res?.brand || res;
+                                    setBrands(prev => [...prev, newBrand]);
+                                    setCurrentForm(prev => ({ ...prev, brand_id: newBrand.id, brand: newBrand.name }));
+                                    setBrandPopoverOpen(false);
+                                    toast.success(`Brand "${val}" created!`);
+                                  } catch (err: any) {
+                                    toast.error(err.message || "Failed to create brand");
+                                  }
+                                }
+                              }
+                            }}
+                          />
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={async () => {
+                                const input = document.getElementById("new_brand_input") as HTMLInputElement;
+                                const val = input?.value?.trim();
+                                if (val) {
+                                  try {
+                                    const res: any = await inventoryApi.createBrand({ name: val });
+                                    const newBrand = res?.brand || res;
+                                    setBrands(prev => [...prev, newBrand]);
+                                    setCurrentForm(prev => ({ ...prev, brand_id: newBrand.id, brand: newBrand.name }));
+                                    setBrandPopoverOpen(false);
+                                    toast.success(`Brand "${val}" created!`);
+                                  } catch (err: any) {
+                                    toast.error(err.message || "Failed to create brand");
+                                  }
+                                }
+                              }}
+                              className="h-7 px-3 text-[11px] font-bold gradient-brand text-white rounded-lg border-0"
+                            >
+                              Add Brand
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -4484,13 +4052,24 @@ export function Products() {
     );
   };
 
+const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-right" => {
+  if (id === "image" || id === "source") return "text-center";
+  const masterField = PRODUCT_MASTER_FIELDS.find(f => f.id === id);
+  if (!masterField) return "text-left";
+  if (masterField.type === "number" || masterField.type === "date" || masterField.type === "boolean") {
+    return "text-center";
+  }
+  return "text-left";
+};
+
   // ══════════════════════════════════════════════════════════════════
   //  RENDER: Local product table row renderer (Handles all 65 Columns)
   // ══════════════════════════════════════════════════════════════════
   const renderLocalRow = (product: InventoryProduct, visible: string[], isExact = false) => {
     const specs = (product.specifications && typeof product.specifications === 'object') ? product.specifications : {};
-
-    const activeColumns = LOCAL_COLUMNS.filter(c => visible.includes(c.id));
+    const activeColumns = LOCAL_COLUMNS
+      .filter(c => visible.includes(c.id))
+      .sort((a, b) => a.seq - b.seq);
 
     return (
       <tr
@@ -4501,10 +4080,11 @@ export function Products() {
       >
         {activeColumns.map((col) => {
           const colId = col.id;
+          const alignClass = getFieldAlignment(colId);
           switch (colId) {
             case "image":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className="px-4 py-2.5 whitespace-nowrap text-center">
                   <div
                     onClick={() => {
                       if (product.image_url) {
@@ -4515,7 +4095,7 @@ export function Products() {
                         });
                       }
                     }}
-                    className={`size-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden transition-all ${
+                    className={`size-9 mx-auto rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden transition-all ${
                       product.image_url ? "cursor-pointer hover:ring-2 hover:ring-indigo-500 hover:scale-110 shadow-sm" : ""
                     }`}
                     title={product.image_url ? "Click to view full image" : "No image available"}
@@ -4531,7 +4111,7 @@ export function Products() {
 
             case "name":
               return (
-                <td key={colId} className="py-2.5 px-3 font-bold text-slate-900 min-w-[200px]">
+                <td key={colId} className={`px-4 py-2.5 font-bold text-slate-900 min-w-[200px] ${alignClass}`}>
                   <div className="flex flex-col">
                     <span className="truncate">{product.name}</span>
                     {specs.unique_item_name && specs.unique_item_name !== product.name && (
@@ -4543,21 +4123,21 @@ export function Products() {
 
             case "unique_item_name":
               return (
-                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-700 max-w-[220px] truncate">
+                <td key={colId} className={`px-4 py-2.5 font-semibold text-slate-700 min-w-[180px] truncate ${alignClass}`}>
                   {specs.unique_item_name || product.name || "-"}
                 </td>
               );
 
             case "sku":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {product.sku || "-"}
                 </td>
               );
 
             case "barcode":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {product.barcode ? (
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-slate-800">{product.barcode}</span>
@@ -4602,21 +4182,21 @@ export function Products() {
 
             case "secondary_barcode":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.secondary_barcode || (product as any).secondary_barcode || "-"}
                 </td>
               );
 
             case "item_code":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.item_code || (product as any).item_code || "-"}
                 </td>
               );
 
             case "base_name":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   {(product.base_name || specs.base_name) ? (
                     <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                       {product.base_name || specs.base_name}
@@ -4627,14 +4207,14 @@ export function Products() {
 
             case "product_base_code":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {product.product_base_code || specs.product_base_code || "-"}
                 </td>
               );
 
             case "size_l_kg":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   {(product.size_l_kg || specs.size_l_kg) ? (
                     <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                       {product.size_l_kg || specs.size_l_kg}
@@ -4645,280 +4225,280 @@ export function Products() {
 
             case "category":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap font-medium text-slate-700">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap font-medium text-slate-700 ${alignClass}`}>
                   {product.category_name || "-"}
                 </td>
               );
 
             case "sub_category":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap font-medium text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap font-medium text-slate-600 ${alignClass}`}>
                   {specs.sub_category || (product as any).sub_category || "-"}
                 </td>
               );
 
             case "brand":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap font-semibold text-slate-800">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap font-semibold text-slate-800 ${alignClass}`}>
                   {product.brand_name || product.brand || "-"}
                 </td>
               );
 
             case "uom":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {product.uom_name || "-"}
                 </td>
               );
 
             case "sales_measuring_unit":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {specs.sales_measuring_unit || product.uom_name || "-"}
                 </td>
               );
 
             case "purchase_measuring_unit":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {specs.purchase_measuring_unit || product.uom_name || "-"}
                 </td>
               );
 
             case "mrp":
               return (
-                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-semibold text-slate-700 whitespace-nowrap ${alignClass}`}>
                   {product.mrp ? formatCurrency(product.mrp) : "-"}
                 </td>
               );
 
             case "selling_price":
               return (
-                <td key={colId} className="py-2.5 px-3 font-black text-slate-900 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-bold text-slate-900 whitespace-nowrap ${alignClass}`}>
                   {product.selling_price ? formatCurrency(product.selling_price) : "-"}
                 </td>
               );
 
             case "sales_tax_type":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-[10px] font-semibold text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-[10px] font-semibold text-slate-600 ${alignClass}`}>
                   {specs.sales_tax_type || (product.is_tax_inclusive !== false ? "Inclusive" : "Exclusive")}
                 </td>
               );
 
             case "sales_tax_name":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-[10px] font-semibold text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-[10px] font-semibold text-slate-600 ${alignClass}`}>
                   {specs.sales_tax_name || "GST"}
                 </td>
               );
 
             case "tax_percent":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600 font-semibold">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 font-semibold ${alignClass}`}>
                   {product.tax_percent !== undefined && product.tax_percent !== null ? `${product.tax_percent}%` : "-"}
                 </td>
               );
 
             case "sales_price_after_tax":
               return (
-                <td key={colId} className="py-2.5 px-3 font-bold text-indigo-700 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-bold text-indigo-700 whitespace-nowrap ${alignClass}`}>
                   {specs.sales_price_after_tax ? formatCurrency(specs.sales_price_after_tax) : (product.selling_price ? formatCurrency(product.selling_price) : "-")}
                 </td>
               );
 
             case "discount_limit":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {product.discount_limit ? `${product.discount_limit}%` : "-"}
                 </td>
               );
 
             case "discount_amount":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {specs.discount_amount ? formatCurrency(specs.discount_amount) : "-"}
                 </td>
               );
 
             case "wholesale_price":
               return (
-                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-semibold text-slate-800 whitespace-nowrap ${alignClass}`}>
                   {(product.wholesale_price || specs.wholesale_price) ? formatCurrency(product.wholesale_price || specs.wholesale_price) : "-"}
                 </td>
               );
 
             case "min_wholesale_qty":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {product.min_wholesale_qty || specs.min_wholesale_qty || "-"}
                 </td>
               );
 
             case "b2b_price":
               return (
-                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-semibold text-slate-800 whitespace-nowrap ${alignClass}`}>
                   {(product.b2b_price || specs.b2b_price) ? formatCurrency(product.b2b_price || specs.b2b_price) : "-"}
                 </td>
               );
 
             case "min_b2b_qty":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {specs.min_b2b_qty || "-"}
                 </td>
               );
 
             case "distributor_price":
               return (
-                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-semibold text-slate-800 whitespace-nowrap ${alignClass}`}>
                   {specs.distributor_price ? formatCurrency(specs.distributor_price) : "-"}
                 </td>
               );
 
             case "min_distributor_qty":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {specs.min_distributor_qty || "-"}
                 </td>
               );
 
             case "hsn_code":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {product.hsn_code || specs.hsn_code || "-"}
                 </td>
               );
 
             case "purchase_price":
               return (
-                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-semibold text-slate-700 whitespace-nowrap ${alignClass}`}>
                   {product.purchase_price ? formatCurrency(product.purchase_price) : "-"}
                 </td>
               );
 
             case "purchase_tax_type":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-[10px] text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-[10px] text-slate-600 ${alignClass}`}>
                   {specs.purchase_tax_type || (specs.is_purchase_tax_inclusive !== false ? "Inclusive" : "Exclusive")}
                 </td>
               );
 
             case "purchase_tax_name":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-[10px] text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-[10px] text-slate-600 ${alignClass}`}>
                   {specs.purchase_tax_name || "GST"}
                 </td>
               );
 
             case "purchase_tax_percent":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {specs.purchase_tax_percent ? `${specs.purchase_tax_percent}%` : "-"}
                 </td>
               );
 
             case "purchase_price_after_tax":
               return (
-                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-semibold text-slate-700 whitespace-nowrap ${alignClass}`}>
                   {specs.purchase_price_after_tax ? formatCurrency(specs.purchase_price_after_tax) : "-"}
                 </td>
               );
 
             case "supplier":
               return (
-                <td key={colId} className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-medium text-slate-700 whitespace-nowrap ${alignClass}`}>
                   {product.supplier || specs.supplier || "-"}
                 </td>
               );
 
             case "preferred_supplier":
               return (
-                <td key={colId} className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-medium text-slate-700 whitespace-nowrap ${alignClass}`}>
                   {specs.preferred_supplier || product.supplier || "-"}
                 </td>
               );
 
             case "supplier_invoice_number":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.supplier_invoice_number || "-"}
                 </td>
               );
 
             case "supplier_invoice_date":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.supplier_invoice_date || "-"}
                 </td>
               );
 
             case "item_received_date":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.item_received_date || "-"}
                 </td>
               );
 
             case "initial_stock":
               return (
-                <td key={colId} className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-semibold text-slate-700 whitespace-nowrap ${alignClass}`}>
                   {product.initial_stock ?? 0}
                 </td>
               );
 
             case "stock":
               return (
-                <td key={colId} className="py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-bold text-slate-900 whitespace-nowrap ${alignClass}`}>
                   {product.stock ?? product.initial_stock ?? 0}
                 </td>
               );
 
             case "reorder_level":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {product.reorder_level ?? 10}
                 </td>
               );
 
             case "safety_stock":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {product.safety_stock ?? "-"}
                 </td>
               );
 
             case "mfg_date":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.mfg_date || (product as any).mfg_date || "-"}
                 </td>
               );
 
             case "expiry_date":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.expiry_date || (product as any).expiry_date || "-"}
                 </td>
               );
 
             case "warehouse":
               return (
-                <td key={colId} className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-medium text-slate-700 whitespace-nowrap ${alignClass}`}>
                   {product.warehouse || specs.warehouse || "-"}
                 </td>
               );
 
             case "location_in_warehouse":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.location_in_warehouse || (product as any).location_in_warehouse || "-"}
                 </td>
               );
 
             case "has_manual_batch":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
                     specs.has_manual_batch ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500"
                   }`}>
@@ -4929,35 +4509,35 @@ export function Products() {
 
             case "stock_batch_number":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.stock_batch_number || "-"}
                 </td>
               );
 
             case "stock_batch_expiry_date":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.stock_batch_expiry_date || "-"}
                 </td>
               );
 
             case "opening_stock_batch_number":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.opening_stock_batch_number || "-"}
                 </td>
               );
 
             case "opening_stock_batch_expiry_date":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.opening_stock_batch_expiry_date || "-"}
                 </td>
               );
 
             case "status":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                     product.status === "active" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500 border border-slate-200"
                   }`}>
@@ -4968,21 +4548,21 @@ export function Products() {
 
             case "has_label":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap text-slate-600 ${alignClass}`}>
                   {specs.has_label !== false ? "Yes" : "No"}
                 </td>
               );
 
             case "label_headings":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 max-w-[150px] truncate ${alignClass}`}>
                   {specs.label_headings || "-"}
                 </td>
               );
 
             case "need_to_print_barcode_sticker":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
                     specs.need_to_print_barcode_sticker !== false ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-slate-100 text-slate-500"
                   }`}>
@@ -4993,7 +4573,7 @@ export function Products() {
 
             case "is_service_item":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   {specs.is_service_item ? (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">SERVICE</span>
                   ) : "-"}
@@ -5003,7 +4583,7 @@ export function Products() {
             case "is_published_online": {
               const isOnline = specs.is_published_online !== false && (product as any).is_published_online !== false;
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   <button
                     type="button"
                     onClick={async (e) => {
@@ -5034,7 +4614,7 @@ export function Products() {
 
             case "not_for_sale":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   {specs.not_for_sale ? (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">NOT FOR SALE</span>
                   ) : "-"}
@@ -5043,7 +4623,7 @@ export function Products() {
 
             case "only_for_portal":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   {specs.only_for_portal ? (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">PORTAL ONLY</span>
                   ) : "-"}
@@ -5052,7 +4632,7 @@ export function Products() {
 
             case "not_for_portal":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   {specs.not_for_portal ? (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">NO PORTAL</span>
                   ) : "-"}
@@ -5061,73 +4641,77 @@ export function Products() {
 
             case "conversion_factor":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.conversion_factor || "1"}
                 </td>
               );
 
             case "weighing_scale_code":
               return (
-                <td key={colId} className="py-2.5 px-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.weighing_scale_code || "-"}
                 </td>
               );
 
             case "display_index":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap font-mono">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap font-mono ${alignClass}`}>
                   {specs.display_index || "-"}
                 </td>
               );
 
             case "keywords":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 max-w-[150px] truncate ${alignClass}`}>
                   {specs.keywords || "-"}
                 </td>
               );
 
             case "accessories_keyword":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 max-w-[150px] truncate ${alignClass}`}>
                   {specs.accessories_keyword || "-"}
                 </td>
               );
 
             case "short_description":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[200px] truncate">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 max-w-[200px] truncate ${alignClass}`}>
                   {product.short_description || specs.short_description || "-"}
                 </td>
               );
 
             case "description_html":
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate font-mono text-[10px]">
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 max-w-[150px] truncate font-mono text-[10px] ${alignClass}`}>
                   {specs.description_html || "-"}
                 </td>
               );
 
             case "source":
               return (
-                <td key={colId} className="py-2.5 px-3 whitespace-nowrap">
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
                   <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
                     Local
                   </span>
                 </td>
               );
 
-            default:
+            default: {
+              const masterField = PRODUCT_MASTER_FIELDS.find(f => f.id === colId);
+              let val = masterField ? masterField.getter(product) : (specs[colId] || (product as any)[colId]);
+              if (val === undefined || val === null || val === "") val = "-";
               return (
-                <td key={colId} className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
-                  {String(specs[colId] || (product as any)[colId] || "-")}
+                <td key={colId} className={`px-4 py-2.5 text-slate-600 whitespace-nowrap ${alignClass}`}>
+                  {typeof val === "boolean" ? (val ? "Yes" : "No") : String(val)}
                 </td>
               );
+            }
           }
         })}
 
         {/* Action column */}
-        <td className="py-2.5 px-3 whitespace-nowrap text-right sticky right-0 bg-white/95 backdrop-blur-xs border-l border-slate-100 shadow-sm">
+        <td className="px-4 py-2.5 whitespace-nowrap text-right sticky right-0 bg-white/95 backdrop-blur-xs border-l border-slate-100 z-10 min-w-[140px] shadow-[-4px_0_6px_rgba(0,0,0,0.02)]">
           <div className="flex items-center justify-end gap-1.5">
             {/* 1-Click Storefront Globe Toggle Button */}
             <Button
@@ -5210,59 +4794,60 @@ export function Products() {
     const isAISourced = item.source === "AI_WEB_SEARCH";
     const sourceLabel = isAISourced ? "AI Sourced" : "Global Catalog";
     return (
-      <tr key={item.id || Math.random()} className="hover:bg-indigo-50/20 bg-indigo-50/5 transition-colors border-b border-indigo-100/50">
-        {MASTER_COLUMNS.filter(c => visible.includes(c.id)).map(col => {
+      <tr key={item.id || Math.random()} className="hover:bg-indigo-50/20 bg-indigo-50/5 transition-colors border-b border-indigo-100/50 text-xs">
+        {MASTER_COLUMNS.filter(c => visible.includes(c.id)).sort((a, b) => a.seq - b.seq).map(col => {
+          const alignClass = getFieldAlignment(col.id);
           switch (col.id) {
             case "image":
               return (
-                <td key="image" className="px-6 py-4">
+                <td key="image" className="px-4 py-2.5 whitespace-nowrap text-center">
                   {item.image_url ? (
                     <img src={resolveImageUrl(item.image_url)} alt={item.name}
                       onClick={() => setPreviewImage(resolveImageUrl(item.image_url))}
-                      className="size-10 rounded-lg object-cover border bg-white cursor-zoom-in hover:opacity-90 transition-opacity" />
+                      className="size-9 mx-auto rounded-lg object-cover border bg-white cursor-zoom-in hover:opacity-90 transition-opacity" />
                   ) : (
-                    <div className="size-10 rounded-lg bg-indigo-100/30 flex items-center justify-center shrink-0">
-                      <Globe className="size-5 text-indigo-500" />
+                    <div className="size-9 mx-auto rounded-lg bg-indigo-100/30 flex items-center justify-center shrink-0">
+                      <Globe className="size-4 text-indigo-500" />
                     </div>
                   )}
                 </td>
               );
             case "name":
               return (
-                <td key="name" className="px-6 py-4 font-bold text-indigo-950">
-                  <div>{item.name}</div>
+                <td key="name" className={`px-4 py-2.5 font-bold text-indigo-950 min-w-[200px] ${alignClass}`}>
+                  <div className="truncate">{item.name}</div>
                   <div className="text-[10px] text-indigo-500 font-semibold uppercase mt-0.5">{sourceLabel}</div>
                 </td>
               );
             case "sku":
-              return <td key="sku" className="px-6 py-4 font-mono font-bold text-xs text-indigo-900">{item.sku_code || '-'}</td>;
+              return <td key="sku" className={`px-4 py-2.5 font-mono font-bold text-xs text-indigo-900 whitespace-nowrap ${alignClass}`}>{item.sku_code || '-'}</td>;
             case "barcode":
-              return <td key="barcode" className="px-6 py-4 font-mono text-xs text-indigo-750">{item.barcode || '-'}</td>;
+              return <td key="barcode" className={`px-4 py-2.5 font-mono text-xs text-indigo-750 whitespace-nowrap ${alignClass}`}>{item.barcode || '-'}</td>;
             case "base_name":
-              return <td key="base_name" className="px-6 py-4 text-xs font-semibold text-indigo-900">{item.base_name || '-'}</td>;
+              return <td key="base_name" className={`px-4 py-2.5 text-xs font-semibold text-indigo-900 whitespace-nowrap ${alignClass}`}>{item.base_name || '-'}</td>;
             case "product_base_code":
-              return <td key="product_base_code" className="px-6 py-4 text-xs font-mono text-indigo-800">{item.product_base_code || '-'}</td>;
+              return <td key="product_base_code" className={`px-4 py-2.5 text-xs font-mono text-indigo-800 whitespace-nowrap ${alignClass}`}>{item.product_base_code || '-'}</td>;
             case "size_l_kg":
-              return <td key="size_l_kg" className="px-6 py-4 text-xs font-bold text-indigo-700">{item.size_l_kg || '-'}</td>;
+              return <td key="size_l_kg" className={`px-4 py-2.5 text-xs font-bold text-indigo-700 whitespace-nowrap ${alignClass}`}>{item.size_l_kg || '-'}</td>;
             case "category":
-              return <td key="category" className="px-6 py-4 text-xs text-indigo-800">{item.category_name || item.category || '-'}</td>;
+              return <td key="category" className={`px-4 py-2.5 text-xs text-indigo-800 whitespace-nowrap ${alignClass}`}>{item.category_name || item.category || '-'}</td>;
             case "brand":
-              return <td key="brand" className="px-6 py-4 text-xs text-indigo-800">{item.brand_name || item.brand || '-'}</td>;
+              return <td key="brand" className={`px-4 py-2.5 text-xs text-indigo-800 whitespace-nowrap ${alignClass}`}>{item.brand_name || item.brand || '-'}</td>;
             case "mrp":
-              return <td key="mrp" className="px-6 py-4 font-bold text-indigo-950">{formatCurrency(item.mrp)}</td>;
+              return <td key="mrp" className={`px-4 py-2.5 font-bold text-indigo-950 whitespace-nowrap ${alignClass}`}>{formatCurrency(item.mrp)}</td>;
             case "selling_price":
-              return <td key="selling_price" className="px-6 py-4 text-indigo-800">{formatCurrency(item.sale_price)}</td>;
+              return <td key="selling_price" className={`px-4 py-2.5 text-indigo-800 whitespace-nowrap ${alignClass}`}>{formatCurrency(item.sale_price)}</td>;
             case "wholesale_price":
-              return <td key="wholesale_price" className="px-6 py-4 text-indigo-800">{formatCurrency(item.wholesale_price || 0)}</td>;
+              return <td key="wholesale_price" className={`px-4 py-2.5 text-indigo-800 whitespace-nowrap ${alignClass}`}>{formatCurrency(item.wholesale_price || 0)}</td>;
             case "b2b_price": {
               const bVal = (item as any).b2b_price ?? (item as any).specifications?.b2b_price ?? 0;
-              return <td key="b2b_price" className="px-6 py-4 text-indigo-800 font-semibold">{formatCurrency(bVal)}</td>;
+              return <td key="b2b_price" className={`px-4 py-2.5 text-indigo-800 font-semibold whitespace-nowrap ${alignClass}`}>{formatCurrency(bVal)}</td>;
             }
             case "specifications":
-              return <td key="specifications" className="px-6 py-4 text-xs text-indigo-800 max-w-xs truncate">{item.specifications || '-'}</td>;
+              return <td key="specifications" className={`px-4 py-2.5 text-xs text-indigo-800 max-w-xs truncate ${alignClass}`}>{item.specifications || '-'}</td>;
             case "source":
               return (
-                <td key="source" className="px-6 py-4">
+                <td key="source" className="px-4 py-2.5 whitespace-nowrap text-center">
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[10px] ${isAISourced ? "bg-amber-500/10 text-amber-600" : "bg-indigo-500/10 text-indigo-600"}`}>
                     <Sparkles className="size-3" /> {sourceLabel}
                   </span>
@@ -5272,7 +4857,7 @@ export function Products() {
               return null;
           }
         })}
-        <td className="px-6 py-4 text-right">
+        <td className="px-4 py-2.5 text-right whitespace-nowrap sticky right-0 bg-white/95 backdrop-blur-xs border-l border-slate-100 z-10 min-w-[120px] shadow-[-4px_0_6px_rgba(0,0,0,0.02)]">
           {(item.barcode && localBarcodes.has(item.barcode)) || localNames.has(item.name.toLowerCase()) ? (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
               <CheckCircle className="size-3" /> In Inventory
@@ -5426,12 +5011,17 @@ export function Products() {
         <div className="bg-card border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto w-full min-w-full">
             <table className="w-full text-sm text-left whitespace-nowrap min-w-[1000px]">
-              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+              <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold sticky top-0 z-20">
                 <tr>
-                  {LOCAL_COLUMNS.filter(c => localVisibleColumns.includes(c.id)).map((col) => (
-                    <th key={col.id} className="px-6 py-4 whitespace-nowrap">{col.label}</th>
-                  ))}
-                  <th className="px-6 py-4 text-right whitespace-nowrap">Actions</th>
+                  {LOCAL_COLUMNS.filter(c => localVisibleColumns.includes(c.id)).sort((a, b) => a.seq - b.seq).map((col) => {
+                    const alignClass = getFieldAlignment(col.id);
+                    return (
+                      <th key={col.id} className={`px-4 py-3.5 whitespace-nowrap ${alignClass}`}>{col.label}</th>
+                    );
+                  })}
+                  <th className="px-4 py-3.5 text-right whitespace-nowrap sticky right-0 bg-slate-50 border-l border-slate-200 z-30 min-w-[140px] shadow-[-4px_0_6px_rgba(0,0,0,0.02)]">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -5546,12 +5136,15 @@ export function Products() {
           <div className="bg-card border rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+                <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold sticky top-0 z-20">
                   <tr>
-                    {MASTER_COLUMNS.filter(c => masterVisibleColumns.includes(c.id)).map((col) => (
-                      <th key={col.id} className="px-6 py-4">{col.label}</th>
-                    ))}
-                    <th className="px-6 py-4 text-right">Action</th>
+                    {MASTER_COLUMNS.filter(c => masterVisibleColumns.includes(c.id)).sort((a, b) => a.seq - b.seq).map((col) => {
+                      const alignClass = getFieldAlignment(col.id);
+                      return (
+                        <th key={col.id} className={`px-4 py-3.5 whitespace-nowrap ${alignClass}`}>{col.label}</th>
+                      );
+                    })}
+                    <th className="px-4 py-3.5 text-right whitespace-nowrap sticky right-0 bg-slate-50 border-l border-slate-200 z-30 min-w-[120px] shadow-[-4px_0_6px_rgba(0,0,0,0.02)]">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">

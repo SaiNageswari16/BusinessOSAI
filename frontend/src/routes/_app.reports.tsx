@@ -1,110 +1,25 @@
 import React from "react";
-import { createFileRoute, useRouterState, useNavigate } from "@tanstack/react-router";
-import { motion, AnimatePresence } from "framer-motion";
+import { createFileRoute } from "@tanstack/react-router";
 import { useRbac } from "@/contexts/rbac-context";
 import { Unauthorized } from "@/components/unauthorized";
-import {
-  TrendingUp, LineChart as LucideLineChart, Building2, ShoppingCart, Boxes, ArrowRightLeft,
-  Warehouse, PieChart, ShoppingBag, Truck, FileCheck, Calculator,
-  Users, UserCog, Tags, Radio, Store, Clock, CreditCard, Briefcase,
-  Target, BrainCircuit, Skull, ShieldCheck, Settings, Activity
-} from "lucide-react";
-
-import * as Screens from "@/components/reports/screens";
-import { useCurrency } from "@/hooks/use-currency";
+import { ReportsHub } from "@/components/reports/ReportsHub";
 
 export const Route = createFileRoute("/_app/reports")({
   component: ReportsModule,
 });
 
-const componentMap: Record<string, React.ElementType> = {
-  sales_reports: Screens.SalesReports,
-  revenue_reports: Screens.RevenueReports,
-  branch_reports: Screens.BranchReports,
-  pos_reports: Screens.PosReports,
-  stock_reports: Screens.StockReports,
-  movement_reports: Screens.MovementReports,
-  warehouse_reports: Screens.WarehouseReports,
-  abc_analysis_reports: Screens.AbcAnalysisReports,
-  xyz_analysis_reports: Screens.XyzAnalysisReports,
-  purchase_reports: Screens.PurchaseReports,
-  supplier_reports: Screens.SupplierReports,
-  grn_reports: Screens.GrnReports,
-  spend_analysis_reports: Screens.SpendAnalysisReports,
-  customer_reports: Screens.CustomerReports,
-  lead_reports: Screens.LeadReports,
-  loyalty_reports: Screens.LoyaltyReports,
-  campaign_reports: Screens.CampaignReports,
-  vendor_reports: Screens.VendorReports,
-  marketplace_revenue: Screens.MarketplaceRevenue,
-  delivery_reports: Screens.DeliveryReports,
-  order_reports: Screens.OrderReports,
-  attendance_reports: Screens.AttendanceReports,
-  payroll_reports: Screens.PayrollReports,
-  recruitment_reports: Screens.RecruitmentReports,
-  performance_reports: Screens.PerformanceReports,
-  pnl_reports: Screens.PnlReports,
-  balance_sheet_reports: Screens.BalanceSheetReports,
-  cash_flow_reports: Screens.CashFlowReports,
-  gst_reports: Screens.GstReports,
-  expense_reports: Screens.ExpenseReports,
-  revenue_prediction: Screens.RevenuePrediction,
-  demand_forecast_reports: Screens.DemandForecastReports,
-  inventory_forecast: Screens.InventoryForecast,
-  customer_prediction: Screens.CustomerPrediction,
-  attrition_prediction_reports: Screens.AttritionPredictionReports,
-  fraud_detection_reports: Screens.FraudDetectionReports,
-  custom_reports: Screens.CustomReports,
-  saved_reports: Screens.SavedReports,
-  scheduled_reports: Screens.ScheduledReports,
-  exports: Screens.Exports,
-};
-
 function ReportsModule() {
   const { hasPermission } = useRbac();
-  const routerState = useRouterState();
-  const searchStr = routerState.location.searchStr;
 
-  if (!hasPermission("view:reports")) {
+  if (!hasPermission("view:reports") && !hasPermission("view:analytics")) {
     return <Unauthorized />;
   }
 
-  let activeTab = "sales_reports";
-  if (searchStr.includes("tab=")) {
-    const params = new URLSearchParams(searchStr);
-    activeTab = params.get("tab") || "sales_reports";
-  }
-
-  const ActiveComponent =
-    componentMap[activeTab] ||
-    (() => (
-      <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-4">
-        <div className="p-4 rounded-full bg-primary/10 text-primary">
-          <Activity className="size-10" />
-        </div>
-        <h3 className="text-xl font-bold text-foreground">Under Construction</h3>
-        <p className="text-muted-foreground">The bespoke view for {activeTab} is still being assembled.</p>
-      </div>
-    ));
-
   return (
-    <div className="flex min-h-full flex-col bg-background">
-      <div className="flex-1 relative bg-background/50 p-3">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="min-h-full"
-          >
-            <ComponentErrorBoundary componentName={activeTab}>
-              <ActiveComponent />
-            </ComponentErrorBoundary>
-          </motion.div>
-        </AnimatePresence>
-      </div>
+    <div className="flex min-h-full flex-col bg-slate-50">
+      <ComponentErrorBoundary componentName="ReportsHub">
+        <ReportsHub />
+      </ComponentErrorBoundary>
     </div>
   );
 }

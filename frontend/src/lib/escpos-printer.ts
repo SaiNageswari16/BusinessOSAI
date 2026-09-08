@@ -6,6 +6,7 @@
 
 import { getActiveReceiptTemplate } from './receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
+import { formatDisplayDate } from './utils';
 
 // Standard ESC/POS Command Constants
 const ESC = 0x1b;
@@ -76,7 +77,7 @@ export class ESCPOSPrinter {
     writeBytes(ESC, 0x61, 0);
 
     const billNo = bill.invoice_number || bill.id || '#90412';
-    const dateStr = bill.date ? new Date(bill.date).toLocaleDateString() : new Date().toLocaleDateString();
+    const dateStr = formatDisplayDate(bill.date || new Date());
     const timeStr = bill.date ? new Date(bill.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const custName = bill.customerName || 'Walk-in Guest';
 

@@ -20,7 +20,7 @@ import {
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
-import { formatCurrency } from "../../lib/utils";
+import { formatCurrency, getTodayDateString, getCurrentTimeString } from "../../lib/utils";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
@@ -1279,8 +1279,9 @@ function PosTerminalInner() {
           customer_gstin: (selectedCustomer as any)?.gst_number || "",
           sales_executive: currentSession?.cashier_name || "POS Cashier",
           sales_points_earned: Math.floor(total / 100),
-          invoice_date: new Date().toISOString().slice(0, 10),
-          due_date: new Date().toISOString().slice(0, 10),
+          invoice_date: getTodayDateString(),
+          due_date: getTodayDateString(),
+          created_at: new Date().toISOString(),
           payment_mode: billData.payment_method,
           payment_status: isCreditOnly ? "Unpaid" : (isPartial ? "Partially Paid" : "Paid"),
           subtotal: subtotal,

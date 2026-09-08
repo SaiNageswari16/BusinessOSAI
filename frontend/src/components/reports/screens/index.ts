@@ -38,3 +38,4 @@ export { CustomReports } from './CustomReports';
 export { SavedReports } from './SavedReports';
 export { ScheduledReports } from './ScheduledReports';
 export { Exports } from './Exports';
+export { ReportsHub } from '../ReportsHub';

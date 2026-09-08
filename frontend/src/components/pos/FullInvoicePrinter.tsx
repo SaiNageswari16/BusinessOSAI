@@ -5,6 +5,7 @@ import { getActiveInvoicePrintTemplate, getActiveBillingGst, getTenantTemplatesK
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, resolveImageUrl } from "@/lib/api-client";
+import { formatDisplayDate } from "@/lib/utils";
 
 export interface FullInvoiceData {
   invoice_number?: string;
@@ -653,7 +654,7 @@ export function FullInvoicePrinter({
                   </h1>
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 inline-block text-right mt-0.5">
                     <p className="text-xs font-bold text-slate-900">Invoice No: {invoice.invoice_number || '#INV'}</p>
-                    <p className="text-[11px] text-slate-600 font-medium">Date: {invoice.invoice_date || new Date().toLocaleDateString()}</p>
+                    <p className="text-[11px] text-slate-600 font-medium">Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}</p>
                   </div>
                 </div>
               </div>

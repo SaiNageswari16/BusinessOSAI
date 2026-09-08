@@ -137,7 +137,7 @@ function MarketingLandingPage() {
     {
       id: "accounting",
       title: "Finance & Accounting",
-      icon: Receipt,
+      icon: Calculator,
       badge: "Double-Entry",
       color: "from-purple-600 to-indigo-700",
       tagline: "Automated general ledger, accounts payable/receivable, and GST/Tax compliance.",

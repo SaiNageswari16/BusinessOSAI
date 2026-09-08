@@ -7,7 +7,7 @@ import {
   ShoppingBag, Receipt, UsersRound, BarChart3, Settings,
   LayoutDashboard, RadioTower, ExternalLink, Trash2,
   CheckCheck, Search, Filter, Clock, Sparkles, Inbox,
-  Eye, X, ArrowRight, Send, Megaphone, Bot, MessageCircle,
+  Eye, X, ArrowRight, Send, Megaphone, Bot, MessageCircle, Calculator,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -115,7 +115,7 @@ const moduleDisplayList = [
   { 
     group: "Accounting & Finance", 
     label: "Accounting", 
-    icon: Receipt, 
+    icon: Calculator, 
     defaultTo: "/accounting?tab=chart_of_accounts", 
     permission: "view:accounting",
     activeText: "text-purple-700",
@@ -428,10 +428,10 @@ export function AppTopbar() {
     }
   };
 
-  const handleDeleteNotification = async (notifId: string, e?: React.MouseEvent) => {
+  const handleDeleteNotification = async (notifId: string | number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
-      await liveNotificationsApi.delete(notifId);
+      await liveNotificationsApi.delete(String(notifId));
       setLiveNotifications(prev => prev.filter(n => n.id !== notifId));
       if (selectedNotif?.id === notifId) setSelectedNotif(null);
       toast.success("Notification dismissed");

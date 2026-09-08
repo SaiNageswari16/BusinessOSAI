@@ -6,6 +6,7 @@ import { getActiveReceiptTemplate, getActiveBillingGst, getTenantTemplatesKey, g
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { resolveImageUrl } from "@/lib/api-client";
+import { formatDisplayDate } from "@/lib/utils";
 
 interface ThermalReceiptPrinterProps {
   bill: any;
@@ -71,9 +72,9 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
   };
 
   const invoiceNum = bill.invoice_number || bill.id || bill.rawId?.substring(0, 8) || '#90412';
-  const dateStr = bill.date ? new Date(bill.date).toLocaleDateString() : '01/08/2026';
-  const timeStr = bill.date ? new Date(bill.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '12:14:35 PM';
-  const customerName = bill.customerName || 'ACME Enterprises';
+  const dateStr = formatDisplayDate(bill.date || new Date());
+  const timeStr = bill.date ? new Date(bill.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const customerName = bill.customerName || 'Walk-in Customer';
 
   const items = bill.items || [];
   const rawSubtotal = bill.subtotal || items.reduce((sum: number, i: any) => sum + ((i.quantity || 1) * (i.unit_price || i.price || 0)), 0);

@@ -63,6 +63,8 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
+import { getTodayDateString, addDaysToDateString } from "@/lib/utils";
+import { DatePickerInput } from "@/components/ui/date-picker-input";
 
 export interface FreeQtyItem {
   id: string;
@@ -118,8 +120,8 @@ export function PosSalesInvoice() {
   // Invoice Fields & Segregation (Official Tax Invoice vs Estimate / Non-GST Bill)
   const [invoiceType, setInvoiceType] = useState<"TAX_INVOICE" | "ESTIMATE_NON_GST">("TAX_INVOICE");
   const [invoiceNumber, setInvoiceNumber] = useState(`INV-${Date.now().toString().slice(-5)}`);
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0]);
-  const [dueDate, setDueDate] = useState(new Date().toISOString().split("T")[0]);
+  const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
+  const [dueDate, setDueDate] = useState(getTodayDateString());
   const [paymentTerms, setPaymentTerms] = useState("0");
   const [customPaymentTermsText, setCustomPaymentTermsText] = useState("");
   const [customPaymentDays, setCustomPaymentDays] = useState<number | "">(0);
@@ -1720,7 +1722,7 @@ export function PosSalesInvoice() {
     setEdcMetadata(null);
     setPricingMode("Retail");
     setBarcodeInput("");
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayDateString();
     setInvoiceDate(today);
     setDueDate(today);
     setPaymentTerms("0");
@@ -2374,21 +2376,15 @@ export function PosSalesInvoice() {
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-600">Invoice Date</label>
-                  <input
-                    type="date"
+                  <DatePickerInput
                     value={invoiceDate}
-                    onChange={(e) => {
-                      const newDate = e.target.value;
+                    onChange={(newDate) => {
                       setInvoiceDate(newDate);
                       if (paymentTerms !== "custom") {
                         const days = parseInt(paymentTerms, 10) || 0;
-                        const base = new Date(newDate).getTime();
-                        if (!isNaN(base)) {
-                          setDueDate(new Date(base + days * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
-                        }
+                        setDueDate(addDaysToDateString(newDate, days));
                       }
                     }}
-                    className="w-full h-8 bg-white border border-slate-200 rounded-xl px-2.5 text-[11px] text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
@@ -2402,11 +2398,8 @@ export function PosSalesInvoice() {
                       const val = e.target.value;
                       setPaymentTerms(val);
                       if (val !== "custom") {
-                        const days = parseInt(val, 10);
-                        if (!isNaN(days)) {
-                          const base = new Date(invoiceDate).getTime() || Date.now();
-                          setDueDate(new Date(base + days * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
-                        }
+                        const days = parseInt(val, 10) || 0;
+                        setDueDate(addDaysToDateString(invoiceDate, days));
                       }
                     }}
                     className="w-full h-8 bg-white border border-slate-200 rounded-xl px-2.5 text-[11px] font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
@@ -2424,11 +2417,9 @@ export function PosSalesInvoice() {
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-600">Due Date</label>
-                  <input
-                    type="date"
+                  <DatePickerInput
                     value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full h-8 bg-white border border-slate-200 rounded-xl px-2.5 text-[11px] text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                    onChange={(newDate) => setDueDate(newDate)}
                   />
                 </div>
               </div>
@@ -2774,11 +2765,10 @@ export function PosSalesInvoice() {
 
                           {/* Exp Date */}
                           <td className="px-3 py-2.5 align-middle">
-                            <input
-                              type="date"
+                            <DatePickerInput
                               value={item.expiry_date || ""}
-                              onChange={(e) => updateItem(item.id, "expiry_date", e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-lg px-2 py-1.5 text-[11px] text-left outline-none text-slate-700 font-medium"
+                              onChange={(val) => updateItem(item.id, "expiry_date", val)}
+                              className="w-full"
                             />
                           </td>
 
