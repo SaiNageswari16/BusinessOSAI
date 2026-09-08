@@ -97,12 +97,45 @@ async function resolveJid(client, phone) {
     return `${clean}@c.us`;
 }
 
-// Helper: clean stale Chromium lock files
+// Helper: global clean-up of ALL stale Chromium lock files across all sessions
+function cleanAllStaleLocks() {
+    try {
+        if (!fs.existsSync(AUTH_DIR)) return;
+        const entries = fs.readdirSync(AUTH_DIR);
+        for (const entry of entries) {
+            const sessionDir = path.join(AUTH_DIR, entry);
+            try {
+                if (fs.statSync(sessionDir).isDirectory()) {
+                    const lockFiles = [
+                        'SingletonLock',
+                        'SingletonCookie',
+                        'SingletonSocket',
+                        'DevToolsActivePort'
+                    ];
+                    for (const f of lockFiles) {
+                        const p = path.join(sessionDir, f);
+                        if (fs.existsSync(p)) {
+                            fs.unlinkSync(p);
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+        console.log('🧹 [Self-Healing] All stale Chromium locks successfully cleared.');
+    } catch (e) {
+        console.warn('Warning during global lock cleanup:', e.message);
+    }
+}
+
+// Clean on module load
+cleanAllStaleLocks();
+
+// Helper: clean stale Chromium lock files for a specific session
 function cleanStaleLocks(sessionId) {
     try {
         const sessionDir = path.join(AUTH_DIR, `session-${sessionId}`);
         if (fs.existsSync(sessionDir)) {
-            const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+            const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'DevToolsActivePort'];
             for (const f of lockFiles) {
                 const p = path.join(sessionDir, f);
                 if (fs.existsSync(p)) {
@@ -116,12 +149,36 @@ function cleanStaleLocks(sessionId) {
     }
 }
 
+// Graceful process shutdown handler
+async function gracefulShutdown(signal) {
+    console.log(`🛑 Received ${signal}. Gracefully destroying all WhatsApp clients...`);
+    const promises = Object.keys(clients).map(async (id) => {
+        try {
+            if (clients[id]?.client) {
+                await clients[id].client.destroy();
+            }
+        } catch (_) {}
+    });
+    await Promise.all(promises);
+    cleanAllStaleLocks();
+    process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // Core: Start a Client
-function startClient(rawId) {
+function startClient(rawId, forceRestart = false) {
     const id = cleanDigits(rawId);
     if (clients[id]) {
-        console.log(`Client for ${id} is already initialized / running.`);
-        return clients[id];
+        if (!forceRestart && (clients[id].status === 'CONNECTED' || clients[id].status === 'QR_READY')) {
+            console.log(`Client for ${id} is already active (${clients[id].status}).`);
+            return clients[id];
+        }
+        console.log(`🔄 Re-initializing stale/requested client for ${id}...`);
+        try {
+            if (clients[id].client) clients[id].client.destroy();
+        } catch (_) {}
+        delete clients[id];
     }
 
     cleanStaleLocks(id);
@@ -179,6 +236,19 @@ function startClient(rawId) {
         info: null
     };
 
+    // Watchdog timer: if stuck in INITIALIZING for >60s, cleanly reset
+    const watchdogTimer = setTimeout(() => {
+        if (clients[id] && clients[id].status === 'INITIALIZING') {
+            console.warn(`⏱️ [Watchdog] Session ${id} took too long in INITIALIZING. Resetting cleanly...`);
+            try {
+                client.destroy();
+            } catch (_) {}
+            cleanStaleLocks(id);
+            clients[id].status = 'DISCONNECTED';
+            clients[id].qr = null;
+        }
+    }, 60000);
+
     client.on('loading_screen', (percent, message) => {
         console.log(`⏳ [${id}] Loading screen: ${percent}% - ${message}`);
     });
@@ -188,6 +258,7 @@ function startClient(rawId) {
     });
 
     client.on('qr', async (qrText) => {
+        clearTimeout(watchdogTimer);
         console.log(`📲 [${id}] QR generated successfully`);
         try {
             const qrDataUrl = await qrcode.toDataURL(qrText);
@@ -199,13 +270,15 @@ function startClient(rawId) {
     });
 
     client.on('authenticated', () => {
-        console.log(`🔑 Session ${id} AUTHENTICATED`);
+        clearTimeout(watchdogTimer);
+        console.log(`🔑 [${id}] Session AUTHENTICATED`);
         clients[id].status = 'AUTHENTICATED';
         clients[id].qr = null;
     });
 
     client.on('ready', () => {
-        console.log(`✅ Session ${id} is fully CONNECTED and READY`);
+        clearTimeout(watchdogTimer);
+        console.log(`✅ [${id}] Session is fully CONNECTED and READY`);
         clients[id].status = 'CONNECTED';
         clients[id].qr = null;
         clients[id].info = client.info;
@@ -331,7 +404,8 @@ app.post('/sessions/:id/start', (req, res) => {
     if (!id) {
         return res.status(400).json({ success: false, error: 'Invalid session ID' });
     }
-    const session = startClient(id);
+    const force = req.query.force === 'true' || req.body?.force === true;
+    const session = startClient(id, force);
     res.json({
         success: true,
         status: session.status,
