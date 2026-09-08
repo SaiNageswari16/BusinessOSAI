@@ -53,7 +53,6 @@ import { Button } from "@/components/ui/button";
 export interface ReportItem {
   id: string;
   title: string;
-  hindi?: string;
   entity: string;
   description: string;
   icon: any;
@@ -75,14 +74,14 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: TrendingUp,
     badge: "8 Reports",
     reports: [
-      { id: "sales_summary", title: "Sales Summary Report", hindi: "बिक्री सारांश", entity: "sales_summary", description: "Comprehensive turnover, total invoices count, profit estimates & AOV.", icon: TrendingUp },
-      { id: "sales_invoice", title: "Sales Invoice Report", hindi: "बिक्री बिल रिपोर्ट", entity: "sales_invoice", description: "Granular register of all tax invoices, estimates & payment modes.", icon: FileText },
-      { id: "sales_return", title: "Sales Return & Credit Notes", hindi: "बिक्री वापसी रिपोर्ट", entity: "sales_return", description: "Returned items, refunds, credit notes issued and return reasons.", icon: ArrowDownRight },
-      { id: "sales_itemwise", title: "Item-wise Sales Report", hindi: "आइटम अनुसार बिक्री", entity: "sales_itemwise", description: "Product SKU velocity, units sold, revenue contribution and margins.", icon: Boxes },
-      { id: "sales_customerwise", title: "Customer-wise Sales Report", hindi: "ग्राहक अनुसार बिक्री", entity: "sales_customerwise", description: "Client purchase history, order frequency and outstanding status.", icon: Users },
-      { id: "sales_salesperson", title: "Salesperson-wise Sales Report", hindi: "विक्रेता अनुसार बिक्री", entity: "sales_salesperson", description: "Staff-level billing performance, targets achieved and commissions.", icon: UserCheck },
-      { id: "sales_periodic", title: "Daily / Weekly / Monthly Sales", hindi: "दैनिक / मासिक बिक्री", entity: "sales_periodic", description: "Periodic sales aggregation for seasonal trends and revenue forecasting.", icon: CalendarIcon },
-      { id: "sales_gst", title: "GST Sales Report", hindi: "जीएसटी बिक्री रिपोर्ट", entity: "sales_gst", description: "B2B and B2C outward supply tax breakdown with taxable rates.", icon: FileCheck },
+      { id: "sales_summary", title: "Sales Summary Report", entity: "sales_summary", description: "Comprehensive turnover, total invoices count, profit estimates & AOV.", icon: TrendingUp },
+      { id: "sales_invoice", title: "Sales Invoice Report", entity: "sales_invoice", description: "Granular register of all tax invoices, estimates & payment modes.", icon: FileText },
+      { id: "sales_return", title: "Sales Return & Credit Notes", entity: "sales_return", description: "Returned items, refunds, credit notes issued and return reasons.", icon: ArrowDownRight },
+      { id: "sales_itemwise", title: "Item-wise Sales Report", entity: "sales_itemwise", description: "Product SKU velocity, units sold, revenue contribution and margins.", icon: Boxes },
+      { id: "sales_customerwise", title: "Customer-wise Sales Report", entity: "sales_customerwise", description: "Client purchase history, order frequency and outstanding status.", icon: Users },
+      { id: "sales_salesperson", title: "Salesperson-wise Sales Report", entity: "sales_salesperson", description: "Staff-level billing performance, targets achieved and commissions.", icon: UserCheck },
+      { id: "sales_periodic", title: "Daily / Weekly / Monthly Sales", entity: "sales_periodic", description: "Periodic sales aggregation for seasonal trends and revenue forecasting.", icon: CalendarIcon },
+      { id: "sales_gst", title: "GST Sales Report", entity: "sales_gst", description: "B2B and B2C outward supply tax breakdown with taxable rates.", icon: FileCheck },
     ],
   },
   {
@@ -91,12 +90,12 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: ShoppingBag,
     badge: "6 Reports",
     reports: [
-      { id: "purchase_summary", title: "Purchase Summary", hindi: "खरीद सारांश", entity: "purchase_summary", description: "Total procurement volume, purchase orders & landed cost values.", icon: ShoppingBag },
-      { id: "purchase_invoice", title: "Purchase Invoice Report", hindi: "खरीद बिल रिपोर्ट", entity: "purchase_invoice", description: "Vendor bills register with tax details, payment terms and due dates.", icon: FileText },
-      { id: "purchase_return", title: "Purchase Return & Debit Notes", hindi: "खरीद वापसी रिपोर्ट", entity: "purchase_return", description: "Goods returned to vendors and debit note adjustments.", icon: ArrowUpRight },
-      { id: "purchase_supplierwise", title: "Supplier-wise Purchase Report", hindi: "सप्लायर अनुसार खरीद", entity: "purchase_supplierwise", description: "Procurement breakdown across vendor partners and volume ranks.", icon: Building2 },
-      { id: "purchase_itemwise", title: "Item-wise Purchase Report", hindi: "आइटम अनुसार खरीद", entity: "purchase_itemwise", description: "Purchase unit costs, price variation history and suppliers.", icon: Boxes },
-      { id: "purchase_gst", title: "GST Purchase (ITC) Report", hindi: "जीएसटी खरीद (आईटीसी)", entity: "purchase_gst", description: "Input Tax Credit (ITC) eligibility and vendor tax compliance.", icon: FileCheck },
+      { id: "purchase_summary", title: "Purchase Summary", entity: "purchase_summary", description: "Total procurement volume, purchase orders & landed cost values.", icon: ShoppingBag },
+      { id: "purchase_invoice", title: "Purchase Invoice Report", entity: "purchase_invoice", description: "Vendor bills register with tax details, payment terms and due dates.", icon: FileText },
+      { id: "purchase_return", title: "Purchase Return & Debit Notes", entity: "purchase_return", description: "Goods returned to vendors and debit note adjustments.", icon: ArrowUpRight },
+      { id: "purchase_supplierwise", title: "Supplier-wise Purchase Report", entity: "purchase_supplierwise", description: "Procurement breakdown across vendor partners and volume ranks.", icon: Building2 },
+      { id: "purchase_itemwise", title: "Item-wise Purchase Report", entity: "purchase_itemwise", description: "Purchase unit costs, price variation history and suppliers.", icon: Boxes },
+      { id: "purchase_gst", title: "GST Purchase (ITC) Report", entity: "purchase_gst", description: "Input Tax Credit (ITC) eligibility and vendor tax compliance.", icon: FileCheck },
     ],
   },
   {
@@ -105,14 +104,14 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: Boxes,
     badge: "8 Reports",
     reports: [
-      { id: "stock_summary", title: "Stock Summary Report", hindi: "स्टॉक सारांश", entity: "stock_summary", description: "Live catalog quantities, valuation at selling price and cost rate.", icon: Boxes },
-      { id: "stock_current", title: "Current Stock Report", hindi: "वर्तमान स्टॉक स्थिति", entity: "stock_current", description: "Warehouse and store real-time physical stock counts.", icon: Layers },
-      { id: "stock_in_out", title: "Stock In / Stock Out Movement", hindi: "स्टॉक इन / आउट मूवमेंट", entity: "stock_in_out", description: "Inward GRNs, POS sales outwards and warehouse transfers.", icon: ArrowRightLeft },
-      { id: "stock_low", title: "Low Stock / Reorder Report", hindi: "कम स्टॉक रिपोर्ट", entity: "stock_low", description: "Items below safe reorder levels needing immediate replenishment.", icon: AlertTriangle },
-      { id: "stock_out_of_stock", title: "Out-of-Stock Report", hindi: "स्टॉक खत्म रिपोर्ट", entity: "stock_out_of_stock", description: "Zero quantity SKU inventory to prevent lost sales opportunities.", icon: X },
-      { id: "stock_itemwise", title: "Item-wise Stock Report", hindi: "आइटम स्टॉक इतिहास", entity: "stock_itemwise", description: "Complete movement register for each product SKU.", icon: FileSpreadsheet },
-      { id: "stock_valuation", title: "Stock Valuation Report", hindi: "स्टॉक मूल्यांकन", entity: "stock_valuation", description: "Inventory asset value computed via FIFO and Landing costs.", icon: Banknote },
-      { id: "stock_batch_expiry", title: "Batch & Expiry Aging Report", hindi: "बैच और एक्सपायरी रिपोर्ट", entity: "stock_batch_expiry", description: "Lot/Batch numbers, manufacturing & upcoming expiry date monitoring.", icon: Clock },
+      { id: "stock_summary", title: "Stock Summary Report", entity: "stock_summary", description: "Live catalog quantities, valuation at selling price and cost rate.", icon: Boxes },
+      { id: "stock_current", title: "Current Stock Report", entity: "stock_current", description: "Warehouse and store real-time physical stock counts.", icon: Layers },
+      { id: "stock_in_out", title: "Stock In / Stock Out Movement", entity: "stock_in_out", description: "Inward GRNs, POS sales outwards and warehouse transfers.", icon: ArrowRightLeft },
+      { id: "stock_low", title: "Low Stock / Reorder Report", entity: "stock_low", description: "Items below safe reorder levels needing immediate replenishment.", icon: AlertTriangle },
+      { id: "stock_out_of_stock", title: "Out-of-Stock Report", entity: "stock_out_of_stock", description: "Zero quantity SKU inventory to prevent lost sales opportunities.", icon: X },
+      { id: "stock_itemwise", title: "Item-wise Stock Report", entity: "stock_itemwise", description: "Complete movement register for each product SKU.", icon: FileSpreadsheet },
+      { id: "stock_valuation", title: "Stock Valuation Report", entity: "stock_valuation", description: "Inventory asset value computed via FIFO and Landing costs.", icon: Banknote },
+      { id: "stock_batch_expiry", title: "Batch & Expiry Aging Report", entity: "stock_batch_expiry", description: "Lot/Batch numbers, manufacturing & upcoming expiry date monitoring.", icon: Clock },
     ],
   },
   {
@@ -121,14 +120,14 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: CreditCard,
     badge: "8 Reports",
     reports: [
-      { id: "customer_outstanding", title: "Customer Outstanding Report", hindi: "ग्राहक बकाया रिपोर्ट", entity: "customer_outstanding", description: "Receivables aging (0-30, 31-60, 61-90, 90+ days) and credit balances.", icon: Users },
-      { id: "supplier_outstanding", title: "Supplier Outstanding Report", hindi: "सप्लायर बकाया रिपोर्ट", entity: "supplier_outstanding", description: "Accounts payable aging and upcoming vendor due dates.", icon: Building2 },
-      { id: "receivables", title: "Accounts Receivable Register", hindi: "प्राप्य राशि रजिस्टर", entity: "receivables", description: "Complete list of unpaid sales bills with party contact details.", icon: Clock },
-      { id: "payables", title: "Accounts Payable Register", hindi: "देय राशि रजिस्टर", entity: "payables", description: "Pending vendor liabilities and purchase invoice settlements.", icon: CreditCard },
-      { id: "payment_collection", title: "Payment Collection Report", hindi: "भुगतान संग्रह रिपोर्ट", entity: "payment_collection", description: "Collections split across Cash, UPI, Cards, NetBanking and Wallets.", icon: CheckCircle2 },
-      { id: "pending_invoices", title: "Pending Invoice Report", hindi: "लंबित बिल रिपोर्ट", entity: "pending_invoices", description: "Unpaid & partially paid invoices awaiting payment reconciliation.", icon: FileText },
-      { id: "due_date_aging", title: "Due Date & Overdue Aging", hindi: "नियत तारीख एजिंग रिपोर्ट", entity: "due_date_aging", description: "Actionable priority list of defaulted and overdue bills.", icon: AlertTriangle },
-      { id: "cash_bank_transactions", title: "Cash & Bank Transaction Register", hindi: "रोकड़ और बैंक बही", entity: "cash_bank_transactions", description: "Consolidated cash drawer logs and bank account inflows/outflows.", icon: Landmark },
+      { id: "customer_outstanding", title: "Customer Outstanding Report", entity: "customer_outstanding", description: "Receivables aging (0-30, 31-60, 61-90, 90+ days) and credit balances.", icon: Users },
+      { id: "supplier_outstanding", title: "Supplier Outstanding Report", entity: "supplier_outstanding", description: "Accounts payable aging and upcoming vendor due dates.", icon: Building2 },
+      { id: "receivables", title: "Accounts Receivable Register", entity: "receivables", description: "Complete list of unpaid sales bills with party contact details.", icon: Clock },
+      { id: "payables", title: "Accounts Payable Register", entity: "payables", description: "Pending vendor liabilities and purchase invoice settlements.", icon: CreditCard },
+      { id: "payment_collection", title: "Payment Collection Report", entity: "payment_collection", description: "Collections split across Cash, UPI, Cards, NetBanking and Wallets.", icon: CheckCircle2 },
+      { id: "pending_invoices", title: "Pending Invoice Report", entity: "pending_invoices", description: "Unpaid & partially paid invoices awaiting payment reconciliation.", icon: FileText },
+      { id: "due_date_aging", title: "Due Date & Overdue Aging", entity: "due_date_aging", description: "Actionable priority list of defaulted and overdue bills.", icon: AlertTriangle },
+      { id: "cash_bank_transactions", title: "Cash & Bank Transaction Register", entity: "cash_bank_transactions", description: "Consolidated cash drawer logs and bank account inflows/outflows.", icon: Landmark },
     ],
   },
   {
@@ -137,12 +136,12 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: FileCheck,
     badge: "6 Reports",
     reports: [
-      { id: "gstr_1", title: "GSTR-1 Outward Tax Report", hindi: "जीएसटीआर-1 रिपोर्ट", entity: "gstr_1", description: "B2B, B2CL, B2CS, and Credit/Debit note outward return filing data.", icon: FileCheck },
-      { id: "gstr_3b", title: "GSTR-3B Monthly Return", hindi: "जीएसटीआर-3B सारांश", entity: "gstr_3b", description: "Consolidated monthly outward tax liability vs eligible input tax credit.", icon: FileSpreadsheet },
-      { id: "hsn_summary", title: "HSN / SAC Summary Report", hindi: "एचएसएन सारांश रिपोर्ट", entity: "hsn_summary", description: "HSN code wise taxable values, quantity, and GST tax rates.", icon: Layers },
-      { id: "gst_tax_summary", title: "GST Tax Rate Summary", hindi: "जीएसटी कर सारांश", entity: "gst_tax_summary", description: "Tax collected grouped by 0%, 5%, 12%, 18% & 28% slabs.", icon: Percent },
-      { id: "cgst_sgst_igst", title: "CGST / SGST / IGST Breakdown", hindi: "केंद्रीय / राज्य कर विवरण", entity: "cgst_sgst_igst", description: "Interstate vs Intrastate tax distribution register.", icon: Building2 },
-      { id: "taxable_nontaxable", title: "Taxable & Non-Taxable Sales", hindi: "कर योग्य व गैर-कर बिक्री", entity: "taxable_nontaxable", description: "Comparison between GST taxable supplies and exempt goods.", icon: Activity },
+      { id: "gstr_1", title: "GSTR-1 Outward Tax Report", entity: "gstr_1", description: "B2B, B2CL, B2CS, and Credit/Debit note outward return filing data.", icon: FileCheck },
+      { id: "gstr_3b", title: "GSTR-3B Monthly Return", entity: "gstr_3b", description: "Consolidated monthly outward tax liability vs eligible input tax credit.", icon: FileSpreadsheet },
+      { id: "hsn_summary", title: "HSN / SAC Summary Report", entity: "hsn_summary", description: "HSN code wise taxable values, quantity, and GST tax rates.", icon: Layers },
+      { id: "gst_tax_summary", title: "GST Tax Rate Summary", entity: "gst_tax_summary", description: "Tax collected grouped by 0%, 5%, 12%, 18% & 28% slabs.", icon: Percent },
+      { id: "cgst_sgst_igst", title: "CGST / SGST / IGST Breakdown", entity: "cgst_sgst_igst", description: "Interstate vs Intrastate tax distribution register.", icon: Building2 },
+      { id: "taxable_nontaxable", title: "Taxable & Non-Taxable Sales", entity: "taxable_nontaxable", description: "Comparison between GST taxable supplies and exempt goods.", icon: Activity },
     ],
   },
   {
@@ -151,13 +150,13 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: Building2,
     badge: "7 Reports",
     reports: [
-      { id: "profit_loss", title: "Profit & Loss (P&L) Statement", hindi: "लाभ और हानि खाता", entity: "profit_loss", description: "Revenue, COGS, operating overheads, and net business bottom-line.", icon: TrendingUp },
-      { id: "gross_profit", title: "Gross Profit Report", hindi: "सकल लाभ रिपोर्ट", entity: "gross_profit", description: "Sales turnover minus landed cost of goods sold.", icon: Percent },
-      { id: "expense_report", title: "Business Expense Report", hindi: "व्यापारिक खर्च रिपोर्ट", entity: "expense_report", description: "Categorized expenses (Rent, Electricity, Salaries, Marketing).", icon: CreditCard },
-      { id: "income_expense_summary", title: "Income & Expense Comparison", hindi: "आय और व्यय सारांश", entity: "income_expense_summary", description: "Monthly operating cash balance and profitability trends.", icon: Activity },
-      { id: "day_book", title: "Daily Day Book (डेबुक)", hindi: "दैनिक रोकड़ बही", entity: "day_book", description: "Chronological log of all daily receipts, sales and outgoings.", icon: CalendarIcon },
-      { id: "cash_flow", title: "Cash Flow Statement", hindi: "कैश फ्लो स्टेटमेंट", entity: "cash_flow", description: "Operational cash flow, investing activities and net liquidity.", icon: Wallet },
-      { id: "business_dashboard", title: "Executive Business Dashboard", hindi: "व्यापार प्रदर्शन बोर्ड", entity: "business_dashboard", description: "High-level overview of revenue, margins, collections and health.", icon: Sparkles },
+      { id: "profit_loss", title: "Profit & Loss (P&L) Statement", entity: "profit_loss", description: "Revenue, COGS, operating overheads, and net business bottom-line.", icon: TrendingUp },
+      { id: "gross_profit", title: "Gross Profit Report", entity: "gross_profit", description: "Sales turnover minus landed cost of goods sold.", icon: Percent },
+      { id: "expense_report", title: "Business Expense Report", entity: "expense_report", description: "Categorized expenses (Rent, Electricity, Salaries, Marketing).", icon: CreditCard },
+      { id: "income_expense_summary", title: "Income & Expense Comparison", entity: "income_expense_summary", description: "Monthly operating cash balance and profitability trends.", icon: Activity },
+      { id: "day_book", title: "Daily Day Book", entity: "day_book", description: "Chronological log of all daily receipts, sales and outgoings.", icon: CalendarIcon },
+      { id: "cash_flow", title: "Cash Flow Statement", entity: "cash_flow", description: "Operational cash flow, investing activities and net liquidity.", icon: Wallet },
+      { id: "business_dashboard", title: "Executive Business Dashboard", entity: "business_dashboard", description: "High-level overview of revenue, margins, collections and health.", icon: Sparkles },
     ],
   },
   {
@@ -166,12 +165,12 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: Users,
     badge: "6 Reports",
     reports: [
-      { id: "customer_ledger", title: "Customer Account Ledger", hindi: "ग्राहक खाता बही", entity: "customer_ledger", description: "Debit/Credit entries and running balances for specific clients.", icon: Users },
-      { id: "supplier_ledger", title: "Supplier Account Ledger", hindi: "सप्लायर खाता बही", entity: "supplier_ledger", description: "Purchase entries, payments made and vendor running balances.", icon: Building2 },
-      { id: "customer_statement", title: "Customer Account Statement", hindi: "ग्राहक खाता विवरण", entity: "customer_statement", description: "Printable official statement for payment settlement reminders.", icon: FileText },
-      { id: "supplier_statement", title: "Supplier Account Statement", hindi: "सप्लायर खाता विवरण", entity: "supplier_statement", description: "Vendor account reconciliation and confirmation of balance.", icon: FileSpreadsheet },
-      { id: "customer_purchase_history", title: "Customer Purchase History", hindi: "ग्राहक खरीद इतिहास", entity: "customer_purchase_history", description: "Itemized transaction logs for loyalty analysis.", icon: Boxes },
-      { id: "customer_sales_history", title: "Party Order History", hindi: "पार्टी ऑर्डर इतिहास", entity: "customer_sales_history", description: "Fulfilled vs pending sales orders by customer.", icon: Clock },
+      { id: "customer_ledger", title: "Customer Account Ledger", entity: "customer_ledger", description: "Debit/Credit entries and running balances for specific clients.", icon: Users },
+      { id: "supplier_ledger", title: "Supplier Account Ledger", entity: "supplier_ledger", description: "Purchase entries, payments made and vendor running balances.", icon: Building2 },
+      { id: "customer_statement", title: "Customer Account Statement", entity: "customer_statement", description: "Printable official statement for payment settlement reminders.", icon: FileText },
+      { id: "supplier_statement", title: "Supplier Account Statement", entity: "supplier_statement", description: "Vendor account reconciliation and confirmation of balance.", icon: FileSpreadsheet },
+      { id: "customer_purchase_history", title: "Customer Purchase History", entity: "customer_purchase_history", description: "Itemized transaction logs for loyalty analysis.", icon: Boxes },
+      { id: "customer_sales_history", title: "Party Order History", entity: "customer_sales_history", description: "Fulfilled vs pending sales orders by customer.", icon: Clock },
     ],
   },
   {
@@ -180,11 +179,11 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: UserCheck,
     badge: "5 Reports",
     reports: [
-      { id: "user_sales", title: "User / Cashier-wise Sales", hindi: "स्टाफ अनुसार बिक्री", entity: "user_sales", description: "Invoices created and cash collected by each POS cashier.", icon: Users },
-      { id: "salesperson_performance", title: "Salesperson Performance", hindi: "विक्रेता प्रदर्शन रिपोर्ट", entity: "salesperson_performance", description: "Sales quota achievement, target vs actuals and conversion.", icon: TrendingUp },
-      { id: "user_activity", title: "Staff Login & Activity Audit", hindi: "स्टाफ गतिविधि ऑडिट", entity: "user_activity", description: "Security audit logs, system access times and actions taken.", icon: ShieldCheck },
-      { id: "discount_audit", title: "Discount Audit Report", hindi: "छूट ऑडिट रिपोर्ट", entity: "discount_audit", description: "Manual bill discounts, coupon redemptions & staff overrides.", icon: Percent },
-      { id: "cancelled_invoices", title: "Cancelled / Void Invoices", hindi: "रद्द किए गए बिल", entity: "cancelled_invoices", description: "Audit trail of deleted, modified or cancelled sale transactions.", icon: AlertTriangle },
+      { id: "user_sales", title: "User / Cashier-wise Sales", entity: "user_sales", description: "Invoices created and cash collected by each POS cashier.", icon: Users },
+      { id: "salesperson_performance", title: "Salesperson Performance", entity: "salesperson_performance", description: "Sales quota achievement, target vs actuals and conversion.", icon: TrendingUp },
+      { id: "user_activity", title: "Staff Login & Activity Audit", entity: "user_activity", description: "Security audit logs, system access times and actions taken.", icon: ShieldCheck },
+      { id: "discount_audit", title: "Discount Audit Report", entity: "discount_audit", description: "Manual bill discounts, coupon redemptions & staff overrides.", icon: Percent },
+      { id: "cancelled_invoices", title: "Cancelled / Void Invoices", entity: "cancelled_invoices", description: "Audit trail of deleted, modified or cancelled sale transactions.", icon: AlertTriangle },
     ],
   },
   {
@@ -193,7 +192,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: SlidersHorizontal,
     badge: "Drag & Select",
     reports: [
-      { id: "custom_builder", title: "Interactive Query Builder", hindi: "कस्टम रिपोर्ट बिल्डर", entity: "custom_builder", description: "Build bespoke business reports by choosing custom dimensions, filters & aggregations.", icon: SlidersHorizontal }
+      { id: "custom_builder", title: "Interactive Query Builder", entity: "custom_builder", description: "Build bespoke business reports by choosing custom dimensions, filters & aggregations.", icon: SlidersHorizontal }
     ]
   }
 ];
@@ -511,7 +510,6 @@ export function ReportsHub() {
       reports: cat.reports.filter(
         (r) =>
           r.title.toLowerCase().includes(q) ||
-          (r.hindi && r.hindi.toLowerCase().includes(q)) ||
           r.description.toLowerCase().includes(q)
       ),
     })).filter((cat) => cat.reports.length > 0);
@@ -604,25 +602,14 @@ export function ReportsHub() {
                             key={item.id}
                             type="button"
                             onClick={() => handleSelectReport(cat.id, item)}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-[11px] font-medium transition-all flex flex-col gap-0.5 ${
+                            className={`w-full text-left px-3 py-2 rounded-lg text-[11px] font-medium transition-all flex items-center justify-between ${
                               isReportActive
                                 ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-200"
                                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                             }`}
                           >
-                            <div className="flex items-center justify-between w-full">
-                              <span className="truncate">{item.title}</span>
-                              {isReportActive && <ChevronRight className="size-3 shrink-0" />}
-                            </div>
-                            {item.hindi && (
-                              <span
-                                className={`text-[9px] leading-tight truncate ${
-                                  isReportActive ? "text-indigo-100" : "text-slate-400"
-                                }`}
-                              >
-                                {item.hindi}
-                              </span>
-                            )}
+                            <span className="truncate">{item.title}</span>
+                            {isReportActive && <ChevronRight className="size-3 shrink-0" />}
                           </button>
                         );
                       })}
@@ -644,14 +631,7 @@ export function ReportsHub() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* Title & Description */}
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-extrabold text-slate-900">{activeReport.title}</h1>
-                {activeReport.hindi && (
-                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                    {activeReport.hindi}
-                  </span>
-                )}
-              </div>
+              <h1 className="text-base font-extrabold text-slate-900">{activeReport.title}</h1>
               <p className="text-xs text-slate-500 mt-0.5">{activeReport.description}</p>
             </div>
 
