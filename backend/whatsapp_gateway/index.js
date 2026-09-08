@@ -136,7 +136,10 @@ function startClient(rawId) {
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--disable-extensions',
+            '--disable-software-rasterizer',
+            '--disable-features=IsolateOrigins,site-per-process'
         ]
     };
 
@@ -152,6 +155,7 @@ function startClient(rawId) {
         for (const p of possibleChromePaths) {
             if (fs.existsSync(p)) {
                 puppeteerOptions.executablePath = p;
+                console.log(`🧭 Using Linux system browser at: ${p}`);
                 break;
             }
         }
@@ -163,8 +167,7 @@ function startClient(rawId) {
             dataPath: AUTH_DIR
         }),
         webVersionCache: {
-            type: 'remote',
-            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+            type: 'none'
         },
         puppeteer: puppeteerOptions
     });
@@ -176,8 +179,16 @@ function startClient(rawId) {
         info: null
     };
 
+    client.on('loading_screen', (percent, message) => {
+        console.log(`⏳ [${id}] Loading screen: ${percent}% - ${message}`);
+    });
+
+    client.on('change_state', (state) => {
+        console.log(`🔄 [${id}] WhatsApp state changed: ${state}`);
+    });
+
     client.on('qr', async (qrText) => {
-        console.log(`📲 QR generated for session: ${id}`);
+        console.log(`📲 [${id}] QR generated successfully`);
         try {
             const qrDataUrl = await qrcode.toDataURL(qrText);
             clients[id].status = 'QR_READY';
