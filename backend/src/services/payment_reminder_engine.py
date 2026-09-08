@@ -91,16 +91,16 @@ async def get_or_create_policy(
             policy = PaymentReminderPolicy(
                 tenant_id=tenant_id,
                 company_id=company_id,
-                is_enabled=True,
+                is_enabled=False,  # Strict multi-tenancy: Disabled by default until tenant explicitly enables it
                 credit_period_days=30,
                 pre_due_reminder_days=[7, 3, 1, 0],
                 overdue_reminder_frequency_hours=12,
                 max_overdue_reminders=15,
-                penalty_enabled=True,
+                penalty_enabled=False,
                 penalty_type="percentage",
                 penalty_rate=2.0,
                 penalty_grace_days=0,
-                channels={"email": True, "whatsapp": True, "sms": True},
+                channels={"email": True, "whatsapp": True, "sms": False},
                 email_subject_template=DEFAULT_EMAIL_SUBJECT,
                 email_body_template=DEFAULT_EMAIL_BODY,
                 whatsapp_template=DEFAULT_WHATSAPP,
@@ -411,16 +411,17 @@ async def dispatch_multi_channel_reminder(
                 target_session_id = None
                 if sess_resp.status_code == 200:
                     live_sessions = sess_resp.json()
-                    # Strict multi-tenancy: Only use session owned by this tenant
+                    # Strict multi-tenancy: Only use session owned by this specific tenant
                     for sid in allowed_sessions:
                         info = live_sessions.get(sid)
                         if isinstance(info, dict) and info.get("status") == "CONNECTED":
                             target_session_id = sid
                             break
-                    # Fallback if only 1 connected session registered in gateway
-                    if not target_session_id and len(live_sessions) >= 1:
+
+                    if not target_session_id:
+                        # Check if session ID contains the tenant ID prefix
                         for sid, info in live_sessions.items():
-                            if isinstance(info, dict) and info.get("status") == "CONNECTED":
+                            if str(invoice.tenant_id) in sid and isinstance(info, dict) and info.get("status") == "CONNECTED":
                                 target_session_id = sid
                                 break
 
@@ -448,9 +449,9 @@ async def dispatch_multi_channel_reminder(
             company_id=invoice.company_id,
             invoice_id=invoice.id,
             customer_id=invoice.customer_id,
-            customer_name=invoice.customer_name,
-            recipient_email=invoice.customer_email,
-            recipient_phone=target_phone,
+            customer_name=target_name,
+            recipient_email=target_email,
+            recipient_phone=clean_phone,
             channel="whatsapp",
             reminder_type=reminder_type,
             days_relative_to_due=days_diff,
@@ -469,8 +470,8 @@ async def dispatch_multi_channel_reminder(
             company_id=invoice.company_id,
             invoice_id=invoice.id,
             customer_id=invoice.customer_id,
-            customer_name=invoice.customer_name,
-            recipient_email=invoice.customer_email,
+            customer_name=target_name,
+            recipient_email=target_email,
             recipient_phone=None,
             channel="whatsapp",
             reminder_type=reminder_type,
@@ -487,16 +488,16 @@ async def dispatch_multi_channel_reminder(
 
     # 3. SMS DISPATCH
     if channel_cfg.get("sms") and target_phone:
-        # SMS Gateway integration or simulated queue
-        sms_status = "SENT"
+        clean_phone = "".join(filter(str.isdigit, target_phone))
+        sms_status = "SENT (Simulated Gateway)"
         log_sms = PaymentReminderLog(
             tenant_id=invoice.tenant_id,
             company_id=invoice.company_id,
             invoice_id=invoice.id,
             customer_id=invoice.customer_id,
-            customer_name=invoice.customer_name,
-            recipient_email=invoice.customer_email,
-            recipient_phone=target_phone,
+            customer_name=target_name,
+            recipient_email=target_email,
+            recipient_phone=clean_phone,
             channel="sms",
             reminder_type=reminder_type,
             days_relative_to_due=days_diff,
@@ -514,8 +515,8 @@ async def dispatch_multi_channel_reminder(
             company_id=invoice.company_id,
             invoice_id=invoice.id,
             customer_id=invoice.customer_id,
-            customer_name=invoice.customer_name,
-            recipient_email=invoice.customer_email,
+            customer_name=target_name,
+            recipient_email=target_email,
             recipient_phone=None,
             channel="sms",
             reminder_type=reminder_type,
@@ -564,7 +565,7 @@ async def evaluate_and_send_reminders(
     company_id: uuid.UUID | None = None,
     force_invoice_id: uuid.UUID | None = None,
 ) -> dict:
-    """Batch evaluation engine: inspects all receivables and dispatches scheduled alerts."""
+    """Batch evaluation engine: strictly inspects receivables for tenants who have explicitly enabled reminders."""
     now_utc = datetime.now(timezone.utc)
     today = date.today()
 
@@ -578,6 +579,26 @@ async def evaluate_and_send_reminders(
     )
     if tenant_id:
         query = query.where(Invoice.tenant_id == tenant_id)
+    elif not force_invoice_id:
+        # Strict multi-tenancy: Only evaluate invoices for tenants who have explicitly enabled payment reminders
+        enabled_tenant_ids = (
+            await db.scalars(
+                select(PaymentReminderPolicy.tenant_id)
+                .where(PaymentReminderPolicy.is_enabled.is_(True))
+            )
+        ).all()
+        if not enabled_tenant_ids:
+            return {
+                "status": "success",
+                "invoices_evaluated": 0,
+                "reminders_sent": 0,
+                "penalties_applied": 0,
+                "message": "No organizations have enabled automated payment reminders",
+                "timestamp": now_utc.isoformat(),
+                "dispatched": [],
+            }
+        query = query.where(Invoice.tenant_id.in_(list(set(enabled_tenant_ids))))
+
     if company_id:
         query = query.where(
             or_(

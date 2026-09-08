@@ -90,6 +90,11 @@ export function WhatsappCampaigns() {
           setActiveSessionId(connected || activeIds[0]);
         }
       }
+
+      // If active session has QR code ready, auto open QR modal so user can scan immediately
+      if (activeSessionId && data?.[activeSessionId]?.qr && data?.[activeSessionId]?.status === "QR_READY") {
+        setShowQrModal(true);
+      }
     } catch (e: any) {
       console.warn("Failed to fetch WhatsApp sessions:", e);
     }
@@ -636,21 +641,30 @@ export function WhatsappCampaigns() {
         </div>
 
         {activeSession && activeSession.status !== "CONNECTED" && (
-          <div className="p-3 bg-amber-50 border-b border-amber-200 text-amber-900 flex justify-between items-center text-xs shrink-0">
+          <div className="p-3 bg-amber-50 border-b border-amber-200 text-amber-900 flex flex-wrap justify-between items-center gap-2 text-xs shrink-0">
             <div className="flex items-center gap-2">
               <QrCode className="size-4 text-amber-600 animate-pulse shrink-0" />
               <span>
-                <strong>Session is {activeSession.status}.</strong> Scan QR to link.
+                <strong>Session is {activeSession.status}.</strong> {activeSession.qr ? "Scan QR Code on your phone." : "Loading WhatsApp Web..."}
               </span>
             </div>
-            {activeSession.qr && (
+            <div className="flex items-center gap-1.5">
+              {activeSession.qr && (
+                <button
+                  onClick={() => setShowQrModal(true)}
+                  className="px-2.5 py-1 bg-[#00a884] hover:bg-[#008f72] text-white rounded-lg text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                >
+                  View QR Code
+                </button>
+              )}
               <button
-                onClick={() => setShowQrModal(true)}
-                className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold transition-colors cursor-pointer"
+                onClick={() => activeSessionId && handleDisconnect(activeSessionId)}
+                title="Reset session"
+                className="px-2 py-1 bg-white border border-amber-300 hover:bg-amber-100 text-amber-800 rounded-lg text-[10px] font-semibold transition-colors cursor-pointer"
               >
-                Scan QR Code
+                Reset
               </button>
-            )}
+            </div>
           </div>
         )}
 
