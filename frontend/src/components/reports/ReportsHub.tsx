@@ -41,7 +41,11 @@ import {
   Mail,
   Landmark,
   Wallet,
-  Banknote
+  Banknote,
+  UserPlus,
+  PhoneCall,
+  Headset,
+  Target
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -72,45 +76,45 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "sales",
     title: "Sales Reports",
     icon: TrendingUp,
-    badge: "8 Reports",
+    badge: "9 Reports",
     reports: [
       { id: "sales_summary", title: "Sales Summary Report", entity: "sales_summary", description: "Comprehensive turnover, total invoices count, profit estimates & AOV.", icon: TrendingUp },
-      { id: "sales_invoice", title: "Sales Invoice Report", entity: "sales_invoice", description: "Granular register of all tax invoices, estimates & payment modes.", icon: FileText },
-      { id: "sales_return", title: "Sales Return & Credit Notes", entity: "sales_return", description: "Returned items, refunds, credit notes issued and return reasons.", icon: ArrowDownRight },
-      { id: "sales_itemwise", title: "Item-wise Sales Report", entity: "sales_itemwise", description: "Product SKU velocity, units sold, revenue contribution and margins.", icon: Boxes },
+      { id: "sales_invoice", title: "Sales Invoice Register", entity: "sales_invoice", description: "Granular register of all tax invoices, estimates & payment modes.", icon: FileText },
+      { id: "sales_return", title: "Sales Return Register", entity: "sales_return", description: "Physical goods returned by customers, restock status, SKU details & return valuation.", icon: ArrowDownRight },
+      { id: "sales_credit_note", title: "Credit Note Register & Aging", entity: "sales_credit_note", description: "Financial credit notes issued, days count aging, unadjusted balances & redemption status.", icon: CreditCard },
+      { id: "sales_itemwise", title: "Item-wise Product Sales", entity: "sales_itemwise", description: "Product SKU velocity, units sold, revenue contribution and margins.", icon: Boxes },
       { id: "sales_customerwise", title: "Customer-wise Sales Report", entity: "sales_customerwise", description: "Client purchase history, order frequency and outstanding status.", icon: Users },
-      { id: "sales_salesperson", title: "Salesperson-wise Sales Report", entity: "sales_salesperson", description: "Staff-level billing performance, targets achieved and commissions.", icon: UserCheck },
-      { id: "sales_periodic", title: "Daily / Weekly / Monthly Sales", entity: "sales_periodic", description: "Periodic sales aggregation for seasonal trends and revenue forecasting.", icon: CalendarIcon },
-      { id: "sales_gst", title: "GST Sales Report", entity: "sales_gst", description: "B2B and B2C outward supply tax breakdown with taxable rates.", icon: FileCheck },
+      { id: "sales_salesperson", title: "Salesperson-wise Sales", entity: "sales_salesperson", description: "Staff-level billing performance, targets achieved and commissions.", icon: UserCheck },
+      { id: "sales_periodic", title: "Daily / Monthly Sales Trends", entity: "sales_periodic", description: "Periodic sales aggregation for seasonal trends and revenue forecasting.", icon: CalendarIcon },
+      { id: "sales_gst", title: "GST Outward Supply Sales", entity: "sales_gst", description: "B2B and B2C outward supply tax breakdown with taxable rates.", icon: FileCheck },
     ],
   },
   {
     id: "purchases",
     title: "Purchase Reports",
     icon: ShoppingBag,
-    badge: "6 Reports",
+    badge: "7 Reports",
     reports: [
       { id: "purchase_summary", title: "Purchase Summary", entity: "purchase_summary", description: "Total procurement volume, purchase orders & landed cost values.", icon: ShoppingBag },
-      { id: "purchase_invoice", title: "Purchase Invoice Report", entity: "purchase_invoice", description: "Vendor bills register with tax details, payment terms and due dates.", icon: FileText },
-      { id: "purchase_return", title: "Purchase Return & Debit Notes", entity: "purchase_return", description: "Goods returned to vendors and debit note adjustments.", icon: ArrowUpRight },
-      { id: "purchase_supplierwise", title: "Supplier-wise Purchase Report", entity: "purchase_supplierwise", description: "Procurement breakdown across vendor partners and volume ranks.", icon: Building2 },
-      { id: "purchase_itemwise", title: "Item-wise Purchase Report", entity: "purchase_itemwise", description: "Purchase unit costs, price variation history and suppliers.", icon: Boxes },
-      { id: "purchase_gst", title: "GST Purchase (ITC) Report", entity: "purchase_gst", description: "Input Tax Credit (ITC) eligibility and vendor tax compliance.", icon: FileCheck },
+      { id: "purchase_invoice", title: "Purchase Invoices Register", entity: "purchase_invoice", description: "Vendor bills register with tax details, payment terms and due dates.", icon: FileText },
+      { id: "purchase_return", title: "Purchase Return (Vendor Returns)", entity: "purchase_return", description: "Goods returned to suppliers, dispatch notes and replacement tracking.", icon: ArrowUpRight },
+      { id: "purchase_debit_note", title: "Debit Note Register & Vendor Aging", entity: "purchase_debit_note", description: "Debit notes issued to vendors, days aging count and purchase adjustments.", icon: Landmark },
+      { id: "purchase_supplierwise", title: "Supplier-wise Purchases", entity: "purchase_supplierwise", description: "Procurement breakdown across vendor partners and volume ranks.", icon: Building2 },
+      { id: "purchase_itemwise", title: "Item-wise Purchase History", entity: "purchase_itemwise", description: "Purchase unit costs, price variation history and suppliers.", icon: Boxes },
+      { id: "purchase_gst", title: "GST Input Tax Credit (ITC)", entity: "purchase_gst", description: "Input Tax Credit (ITC) eligibility and vendor tax compliance.", icon: FileCheck },
     ],
   },
   {
     id: "inventory",
     title: "Stock / Inventory Reports",
     icon: Boxes,
-    badge: "8 Reports",
+    badge: "6 Reports",
     reports: [
-      { id: "stock_summary", title: "Stock Summary Report", entity: "stock_summary", description: "Live catalog quantities, valuation at selling price and cost rate.", icon: Boxes },
-      { id: "stock_current", title: "Current Stock Report", entity: "stock_current", description: "Warehouse and store real-time physical stock counts.", icon: Layers },
-      { id: "stock_in_out", title: "Stock In / Stock Out Movement", entity: "stock_in_out", description: "Inward GRNs, POS sales outwards and warehouse transfers.", icon: ArrowRightLeft },
-      { id: "stock_low", title: "Low Stock / Reorder Report", entity: "stock_low", description: "Items below safe reorder levels needing immediate replenishment.", icon: AlertTriangle },
-      { id: "stock_out_of_stock", title: "Out-of-Stock Report", entity: "stock_out_of_stock", description: "Zero quantity SKU inventory to prevent lost sales opportunities.", icon: X },
-      { id: "stock_itemwise", title: "Item-wise Stock Report", entity: "stock_itemwise", description: "Complete movement register for each product SKU.", icon: FileSpreadsheet },
-      { id: "stock_valuation", title: "Stock Valuation Report", entity: "stock_valuation", description: "Inventory asset value computed via FIFO and Landing costs.", icon: Banknote },
+      { id: "stock_summary", title: "Stock Summary & Valuation", entity: "stock_summary", description: "Live catalog quantities, valuation at selling price and cost rate.", icon: Boxes },
+      { id: "stock_in_out", title: "Stock In / Out Movement", entity: "stock_in_out", description: "Inward GRNs, POS sales outwards and warehouse transfers.", icon: ArrowRightLeft },
+      { id: "stock_low", title: "Low Stock & Reorder Alerts", entity: "stock_low", description: "Items below safe reorder levels needing immediate replenishment.", icon: AlertTriangle },
+      { id: "stock_out_of_stock", title: "Out-of-Stock SKUs Report", entity: "stock_out_of_stock", description: "Zero quantity SKU inventory to prevent lost sales opportunities.", icon: X },
+      { id: "stock_itemwise", title: "Item-wise Stock History", entity: "stock_itemwise", description: "Complete movement register for each product SKU.", icon: FileSpreadsheet },
       { id: "stock_batch_expiry", title: "Batch & Expiry Aging Report", entity: "stock_batch_expiry", description: "Lot/Batch numbers, manufacturing & upcoming expiry date monitoring.", icon: Clock },
     ],
   },
@@ -118,15 +122,11 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "payments",
     title: "Payment & Outstanding",
     icon: CreditCard,
-    badge: "8 Reports",
+    badge: "4 Reports",
     reports: [
-      { id: "customer_outstanding", title: "Customer Outstanding Report", entity: "customer_outstanding", description: "Receivables aging (0-30, 31-60, 61-90, 90+ days) and credit balances.", icon: Users },
-      { id: "supplier_outstanding", title: "Supplier Outstanding Report", entity: "supplier_outstanding", description: "Accounts payable aging and upcoming vendor due dates.", icon: Building2 },
-      { id: "receivables", title: "Accounts Receivable Register", entity: "receivables", description: "Complete list of unpaid sales bills with party contact details.", icon: Clock },
-      { id: "payables", title: "Accounts Payable Register", entity: "payables", description: "Pending vendor liabilities and purchase invoice settlements.", icon: CreditCard },
-      { id: "payment_collection", title: "Payment Collection Report", entity: "payment_collection", description: "Collections split across Cash, UPI, Cards, NetBanking and Wallets.", icon: CheckCircle2 },
-      { id: "pending_invoices", title: "Pending Invoice Report", entity: "pending_invoices", description: "Unpaid & partially paid invoices awaiting payment reconciliation.", icon: FileText },
-      { id: "due_date_aging", title: "Due Date & Overdue Aging", entity: "due_date_aging", description: "Actionable priority list of defaulted and overdue bills.", icon: AlertTriangle },
+      { id: "customer_outstanding", title: "Customer Outstanding Aging (360°)", entity: "customer_outstanding", description: "Receivables aging (0-30, 31-60, 61-90, 90+ days) and credit balances.", icon: Users },
+      { id: "supplier_outstanding", title: "Supplier Outstanding & Payables", entity: "supplier_outstanding", description: "Accounts payable aging and upcoming vendor due dates.", icon: Building2 },
+      { id: "payment_collection", title: "Payment Collections & Receipts", entity: "payment_collection", description: "Collections split across Cash, UPI, Cards, NetBanking and Wallets.", icon: CheckCircle2 },
       { id: "cash_bank_transactions", title: "Cash & Bank Transaction Register", entity: "cash_bank_transactions", description: "Consolidated cash drawer logs and bank account inflows/outflows.", icon: Landmark },
     ],
   },
@@ -134,56 +134,96 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "gst",
     title: "GST & Tax Reports",
     icon: FileCheck,
-    badge: "6 Reports",
+    badge: "4 Reports",
     reports: [
-      { id: "gstr_1", title: "GSTR-1 Outward Tax Report", entity: "gstr_1", description: "B2B, B2CL, B2CS, and Credit/Debit note outward return filing data.", icon: FileCheck },
-      { id: "gstr_3b", title: "GSTR-3B Monthly Return", entity: "gstr_3b", description: "Consolidated monthly outward tax liability vs eligible input tax credit.", icon: FileSpreadsheet },
-      { id: "hsn_summary", title: "HSN / SAC Summary Report", entity: "hsn_summary", description: "HSN code wise taxable values, quantity, and GST tax rates.", icon: Layers },
-      { id: "gst_tax_summary", title: "GST Tax Rate Summary", entity: "gst_tax_summary", description: "Tax collected grouped by 0%, 5%, 12%, 18% & 28% slabs.", icon: Percent },
-      { id: "cgst_sgst_igst", title: "CGST / SGST / IGST Breakdown", entity: "cgst_sgst_igst", description: "Interstate vs Intrastate tax distribution register.", icon: Building2 },
-      { id: "taxable_nontaxable", title: "Taxable & Non-Taxable Sales", entity: "taxable_nontaxable", description: "Comparison between GST taxable supplies and exempt goods.", icon: Activity },
+      { id: "gstr_1", title: "GSTR-1 Outward Supply Return", entity: "gstr_1", description: "B2B, B2CL, B2CS, and Credit/Debit note outward return filing data.", icon: FileCheck },
+      { id: "gstr_3b", title: "GSTR-3B Monthly Return & ITC", entity: "gstr_3b", description: "Consolidated monthly outward tax liability vs eligible input tax credit.", icon: FileSpreadsheet },
+      { id: "hsn_summary", title: "HSN / SAC Code Summary", entity: "hsn_summary", description: "HSN code wise taxable values, quantity, and GST tax rates.", icon: Layers },
+      { id: "gst_tax_summary", title: "GST Tax Slabs Breakdown", entity: "gst_tax_summary", description: "Tax collected grouped by 0%, 5%, 12%, 18% & 28% slabs.", icon: Percent },
     ],
   },
   {
     id: "business",
     title: "Business & Financials",
     icon: Building2,
-    badge: "7 Reports",
+    badge: "4 Reports",
     reports: [
       { id: "profit_loss", title: "Profit & Loss (P&L) Statement", entity: "profit_loss", description: "Revenue, COGS, operating overheads, and net business bottom-line.", icon: TrendingUp },
-      { id: "gross_profit", title: "Gross Profit Report", entity: "gross_profit", description: "Sales turnover minus landed cost of goods sold.", icon: Percent },
-      { id: "expense_report", title: "Business Expense Report", entity: "expense_report", description: "Categorized expenses (Rent, Electricity, Salaries, Marketing).", icon: CreditCard },
-      { id: "income_expense_summary", title: "Income & Expense Comparison", entity: "income_expense_summary", description: "Monthly operating cash balance and profitability trends.", icon: Activity },
-      { id: "day_book", title: "Daily Day Book", entity: "day_book", description: "Chronological log of all daily receipts, sales and outgoings.", icon: CalendarIcon },
-      { id: "cash_flow", title: "Cash Flow Statement", entity: "cash_flow", description: "Operational cash flow, investing activities and net liquidity.", icon: Wallet },
-      { id: "business_dashboard", title: "Executive Business Dashboard", entity: "business_dashboard", description: "High-level overview of revenue, margins, collections and health.", icon: Sparkles },
+      { id: "gross_profit", title: "Gross Profit & Margin Analysis", entity: "gross_profit", description: "Sales turnover minus landed cost of goods sold.", icon: Percent },
+      { id: "expense_report", title: "Business Expense Audit Report", entity: "expense_report", description: "Categorized expenses (Rent, Electricity, Salaries, Marketing).", icon: CreditCard },
+      { id: "day_book", title: "Daily Day Book & Cash Ledger", entity: "day_book", description: "Chronological log of all daily receipts, sales and outgoings.", icon: CalendarIcon },
     ],
   },
   {
     id: "parties",
     title: "Customer & Supplier Ledgers",
     icon: Users,
-    badge: "6 Reports",
+    badge: "2 Reports",
     reports: [
-      { id: "customer_ledger", title: "Customer Account Ledger", entity: "customer_ledger", description: "Debit/Credit entries and running balances for specific clients.", icon: Users },
-      { id: "supplier_ledger", title: "Supplier Account Ledger", entity: "supplier_ledger", description: "Purchase entries, payments made and vendor running balances.", icon: Building2 },
-      { id: "customer_statement", title: "Customer Account Statement", entity: "customer_statement", description: "Printable official statement for payment settlement reminders.", icon: FileText },
-      { id: "supplier_statement", title: "Supplier Account Statement", entity: "supplier_statement", description: "Vendor account reconciliation and confirmation of balance.", icon: FileSpreadsheet },
-      { id: "customer_purchase_history", title: "Customer Purchase History", entity: "customer_purchase_history", description: "Itemized transaction logs for loyalty analysis.", icon: Boxes },
-      { id: "customer_sales_history", title: "Party Order History", entity: "customer_sales_history", description: "Fulfilled vs pending sales orders by customer.", icon: Clock },
+      { id: "customer_statement", title: "Customer Account Statement & 360° Ledger", entity: "customer_statement", description: "Detailed customer bill history, pending dues & itemized product drilldown.", icon: FileText },
+      { id: "supplier_statement", title: "Supplier Account Statement & Ledger", entity: "supplier_statement", description: "Vendor account reconciliation, purchase bills and confirmation of balance.", icon: FileSpreadsheet },
     ],
   },
   {
     id: "staff",
     title: "Staff & User Reports",
     icon: UserCheck,
-    badge: "5 Reports",
+    badge: "4 Reports",
     reports: [
       { id: "user_sales", title: "User / Cashier-wise Sales", entity: "user_sales", description: "Invoices created and cash collected by each POS cashier.", icon: Users },
-      { id: "salesperson_performance", title: "Salesperson Performance", entity: "salesperson_performance", description: "Sales quota achievement, target vs actuals and conversion.", icon: TrendingUp },
+      { id: "salesperson_performance", title: "Salesperson Quota & Performance", entity: "salesperson_performance", description: "Sales quota achievement, target vs actuals and conversion.", icon: TrendingUp },
       { id: "user_activity", title: "Staff Login & Activity Audit", entity: "user_activity", description: "Security audit logs, system access times and actions taken.", icon: ShieldCheck },
-      { id: "discount_audit", title: "Discount Audit Report", entity: "discount_audit", description: "Manual bill discounts, coupon redemptions & staff overrides.", icon: Percent },
-      { id: "cancelled_invoices", title: "Cancelled / Void Invoices", entity: "cancelled_invoices", description: "Audit trail of deleted, modified or cancelled sale transactions.", icon: AlertTriangle },
+      { id: "discount_audit", title: "Discount & Override Audit", entity: "discount_audit", description: "Manual bill discounts, coupon redemptions & staff overrides.", icon: Percent },
+    ],
+  },
+  {
+    id: "crm",
+    title: "CRM & Leads Pipeline",
+    icon: UserPlus,
+    badge: "6 Reports",
+    reports: [
+      { id: "crm_leads_pipeline", title: "Lead Master & Pipeline Register", entity: "crm_leads_pipeline", description: "Comprehensive leads registry, stages, lead sources, assigned owners and estimated values.", icon: UserPlus },
+      { id: "crm_lead_conversion", title: "Lead Conversion & Won/Lost Report", entity: "crm_lead_conversion", description: "Win rates, lost reasons analysis, sales cycle duration and conversion efficiency.", icon: Target },
+      { id: "crm_lead_activities", title: "Lead Activities & Interaction Logs", entity: "crm_lead_activities", description: "Outbound call logs, demo meetings, call dispositions and client responses.", icon: PhoneCall },
+      { id: "crm_deals_pipeline", title: "Deals & Opportunity Pipeline", entity: "crm_deals_pipeline", description: "Deal stages, win probability percentages, weighted pipeline and close dates.", icon: TrendingUp },
+      { id: "crm_quotations", title: "CRM Quotations & Estimates Register", entity: "crm_quotations", description: "Formal pricing quotations issued, tax breakdowns, discount and approval status.", icon: FileText },
+      { id: "crm_support_tickets", title: "CRM Support & Service Tickets", entity: "crm_support_tickets", description: "Client issue tickets, priority SLAs, categories and resolution rates.", icon: Headset },
+    ],
+  },
+  {
+    id: "hrms",
+    title: "HRMS & Workforce Suite",
+    icon: Users,
+    badge: "7 Reports",
+    reports: [
+      { id: "hrms_employee_directory", title: "Employee Master & Digital vCard Directory", entity: "hrms_employee_directory", description: "Complete staff master directory, contact vCards, departments & designation codes.", icon: Users },
+      { id: "hrms_attendance", title: "Biometric Attendance & Shift Logs", entity: "hrms_attendance", description: "Daily employee check-in/out timestamps, working hours, shift timings & overtime.", icon: Clock },
+      { id: "hrms_leaves", title: "Staff Leave Balances & Absence Register", entity: "hrms_leaves", description: "Leave requests, casual/sick leave quotas, approved leaves and pending approvals.", icon: CalendarIcon },
+      { id: "hrms_payroll", title: "Monthly Payroll Summary & Disbursals", entity: "hrms_payroll", description: "Basic salary, HRA allowances, gross earnings, PF/ESI deductions and net pay summary.", icon: Wallet },
+      { id: "hrms_payslips", title: "Employee Payslips & Salary Vault", entity: "hrms_payslips", description: "Individual salary slips, generated PDF vouchers and digital disbursement signatures.", icon: Banknote },
+      { id: "hrms_recruitment", title: "Recruitment Pipeline & Job Offers", entity: "hrms_recruitment", description: "Hiring pipeline candidates, offered CTC packages, joining dates and offer letters.", icon: UserPlus },
+      { id: "hrms_performance", title: "Employee KPI & Performance Reviews", entity: "hrms_performance", description: "Quarterly/annual staff appraisals, KPI scorecards, appraisal hikes and ratings.", icon: Target },
+    ],
+  },
+  {
+    id: "marketplace",
+    title: "Marketplace & Logistics",
+    icon: ShoppingBag,
+    badge: "2 Reports",
+    reports: [
+      { id: "marketplace_orders", title: "Multi-Channel Marketplace Orders", entity: "marketplace_orders", description: "Orders from Amazon, Flipkart, Blinkit, Swiggy & Shopify with commission splits.", icon: ShoppingBag },
+      { id: "delivery_logistics", title: "Delivery & Courier Tracking", entity: "delivery_logistics", description: "AWB dispatch tracking, carrier delivery turnaround time (TAT) and proof of delivery.", icon: ArrowRightLeft },
+    ],
+  },
+  {
+    id: "ai",
+    title: "AI Predictive Intelligence",
+    icon: Sparkles,
+    badge: "3 Reports",
+    reports: [
+      { id: "revenue_prediction", title: "AI Revenue & Sales Forecast", entity: "revenue_prediction", description: "Machine learning 6-month projected turnover, bounds and seasonal surge drivers.", icon: Sparkles },
+      { id: "demand_forecast", title: "AI Stock Demand & Reorder Forecast", entity: "demand_forecast", description: "SKU sales velocity, out-of-stock risk scoring and intelligent purchase recommendations.", icon: Boxes },
+      { id: "customer_prediction", title: "AI Retention & Churn Risk Score", entity: "customer_prediction", description: "Predictive customer churn probability, lifetime value and automated retention strategies.", icon: Users },
     ],
   },
   {
@@ -225,10 +265,24 @@ export function ReportsHub() {
   const [loading, setLoading] = useState<boolean>(false);
   const [reportData, setReportData] = useState<any>(null);
 
-  // Builder Specific State
+  // Expandable Nested Drilldown State
+  const [expandedInvoices, setExpandedInvoices] = useState<Record<string, boolean>>({});
+  const [expandedCustomers, setExpandedCustomers] = useState<Record<string, boolean>>({});
+
+  // Custom Report Builder States
   const [builderEntity, setBuilderEntity] = useState<string>("sales");
-  const [builderColumns, setBuilderColumns] = useState<string[]>(["date", "invoice_no", "customer", "total_amount"]);
+  const [builderColumns, setBuilderColumns] = useState<string[]>([]);
   const [builderGroupBy, setBuilderGroupBy] = useState<string>("none");
+
+  const toggleInvoice = (key: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setExpandedInvoices((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleCustomer = (key: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setExpandedCustomers((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   // Load report data from backend
   const loadReport = async (reportItem: ReportItem = activeReport) => {
@@ -262,19 +316,28 @@ export function ReportsHub() {
     loadReport(activeReport);
   }, [activeReport, dateRange, customStartDate, customEndDate, builderEntity, builderGroupBy]);
 
+  // Debounce search query so customer name search dynamically updates the live report
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadReport(activeReport);
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   // Handle category / report selection
   const handleSelectReport = (catId: string, item: ReportItem) => {
     setSelectedCategory(catId);
     setActiveReport(item);
   };
 
-  // ── CSV Export with Company Header & UTF-8 BOM (Fixes Excel â,¹ bug) ────────
+  // ── CSV Export with Company Header, Customer Details & Nested Products ───────
   const handleExportCSV = () => {
     if (!reportData?.tableData || reportData.tableData.length === 0) {
       toast.error("No data available to export.");
       return;
     }
 
+    const isCustomer360Statement = activeReport.id === "customer_statement";
     const cols = reportData.tableColumns || [];
     
     // 1. Company & Report metadata block at top of CSV
@@ -288,22 +351,69 @@ export function ReportsHub() {
       `""`, // blank line separator
     ].filter(Boolean).join("\n");
 
-    // 2. Column Headers
+    // 2. Customer Profile block ONLY if viewing Customer 360 Statement
+    let customerBlock = "";
+    if (isCustomer360Statement && reportData.customerDetails) {
+      const cd = reportData.customerDetails;
+      customerBlock = [
+        `"CUSTOMER 360 STATEMENT DETAILS"`,
+        `"Customer Name:","${(cd.name || "").replace(/"/g, '""')}"`,
+        `"Contact Phone:","${(cd.phone || "").replace(/"/g, '""')}"`,
+        `"GSTIN:","${(cd.gstin || "Unregistered").replace(/"/g, '""')}"`,
+        `"Billing Address:","${(cd.address || "").replace(/"/g, '""')}"`,
+        `"Total Invoices:","${cd.total_invoices || 0} Bills"`,
+        `"Gross Billed:","${String(cd.total_billed || "").replace(/^[₹Rs\.\s]+/, "")}"`,
+        `"Settled / Paid:","${String(cd.total_paid || "").replace(/^[₹Rs\.\s]+/, "")}"`,
+        `"Pending Balance:","${String(cd.pending_balance || "").replace(/^[₹Rs\.\s]+/, "")}"`,
+        `"Settlement Status:","${cd.pending_invoices_count > 0 ? `${cd.pending_invoices_count} Pending Invoices` : 'All Settled'}"`,
+        `""`,
+      ].join("\n") + "\n";
+    }
+
+    // 3. Column Headers
     const headers = cols.map((c: any) => `"${c.header.replace(/"/g, '""')}"`).join(",");
 
-    // 3. Rows (Format numbers cleanly so Excel calculates math formulas without currency string bugs)
-    const rows = reportData.tableData.map((row: any) =>
-      cols.map((c: any) => {
+    // 4. Rows (Itemized Product Sub-Lines ONLY for Customer 360 Statement)
+    const rowsList: string[] = [];
+    reportData.tableData.forEach((row: any, rIdx: number) => {
+      // Main row (Invoice / Customer / Summary line)
+      const mainRowStr = cols.map((c: any) => {
         let val = row[c.key] ?? "";
         const strVal = String(val).trim();
         if (strVal.startsWith("₹") || strVal.startsWith("Rs.")) {
           val = strVal.replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
         }
         return `"${String(val).replace(/"/g, '""')}"`;
-      }).join(",")
-    );
+      }).join(",");
+      rowsList.push(mainRowStr);
 
-    // 4. Summary Totals Footer
+      // Nested items under this invoice ONLY in Customer 360 Statement
+      if (isCustomer360Statement && Array.isArray(row.items) && row.items.length > 0) {
+        rowsList.push(`"","  ↳ ITEM #","PRODUCT / ITEM NAME","SKU / CODE","QUANTITY","UNIT PRICE (₹)","TAX (₹)","LINE TOTAL (₹)"`);
+        row.items.forEach((it: any, itIdx: number) => {
+          const pName = it.name || it.product_name || `Product Item #${itIdx + 1}`;
+          const pSku = it.sku || it.product_sku || "—";
+          const pQty = it.qty ?? it.quantity ?? 1;
+          const pPrice = typeof it.price === "number" ? it.price : String(it.price || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
+          const pTax = typeof it.tax === "number" ? it.tax : String(it.tax || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
+          const pTotal = typeof it.total === "number" ? it.total : String(it.total || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
+
+          rowsList.push([
+            `""`,
+            `"  ↳ Item ${itIdx + 1}"`,
+            `"${pName.replace(/"/g, '""')}"`,
+            `"${pSku.replace(/"/g, '""')}"`,
+            `"${pQty}"`,
+            `"${pPrice}"`,
+            `"${pTax}"`,
+            `"${pTotal}"`,
+          ].join(","));
+        });
+        rowsList.push(`""`); // Blank line separator after items
+      }
+    });
+
+    // 5. Summary Totals Footer
     let summaryBlock = "";
     if (reportData.summaryTotals && Object.keys(reportData.summaryTotals).length > 0) {
       summaryBlock = "\n\n" + Object.entries(reportData.summaryTotals)
@@ -311,7 +421,7 @@ export function ReportsHub() {
         .join("\n");
     }
 
-    const fullCsv = metaHeader + "\n" + headers + "\n" + rows.join("\n") + summaryBlock;
+    const fullCsv = metaHeader + "\n" + customerBlock + headers + "\n" + rowsList.join("\n") + summaryBlock;
 
     // Use UTF-8 BOM (\uFEFF) so Excel on Windows natively recognizes UTF-8 without â,¹ character artifacts
     const blob = new Blob(["\uFEFF" + fullCsv], { type: "text/csv;charset=utf-8;" });
@@ -323,16 +433,17 @@ export function ReportsHub() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    toast.success(`Exported ${activeReport.title} for ${companyName} to CSV`);
+    toast.success(`Exported ${activeReport.title} for ${companyName} to CSV (including itemized products)`);
   };
 
-  // ── PDF Print with Official Corporate Header ────────────────────────────────
+  // ── PDF Print with Official Corporate Header & Nested Itemized Products ─────
   const handlePrintPDF = () => {
     if (!reportData?.tableData || reportData.tableData.length === 0) {
       toast.error("No data available to print.");
       return;
     }
 
+    const isCustomer360Statement = activeReport.id === "customer_statement";
     const printWin = window.open("", "_blank");
     if (!printWin) {
       toast.error("Please allow popups to print report.");
@@ -341,21 +452,123 @@ export function ReportsHub() {
 
     const cols = reportData.tableColumns || [];
     const tableHeaderHtml = cols.map((c: any) => `<th>${c.header}</th>`).join("");
+    
+    // Build rows (with nested product tables ONLY if customer 360 statement)
     const tableRowsHtml = reportData.tableData
-      .map((row: any) => `<tr>${cols.map((c: any) => {
-        const val = row[c.key] ?? "—";
-        const isNumeric = String(val).includes("₹") || String(val).includes("%");
-        return `<td style="${isNumeric ? 'text-align: right;' : ''}">${val}</td>`;
-      }).join("")}</tr>`)
+      .map((row: any, rIdx: number) => {
+        const isEven = rIdx % 2 === 0;
+        const mainRowHtml = `<tr style="background: ${isEven ? '#ffffff' : '#f8fafc'}; font-weight: 500;">
+          ${cols.map((c: any) => {
+            const val = row[c.key] ?? "—";
+            const isNumeric = String(val).includes("₹") || String(val).includes("%");
+            const isStatus = c.key === "status";
+            const isPending = (c.key === "pending_amount" || c.key === "balance") && parseFloat(String(val).replace(/[^0-9.-]/g, "")) > 0;
+            
+            if (isStatus) {
+              const isPaid = String(val).toLowerCase().includes("paid") || String(val).toLowerCase().includes("completed");
+              return `<td style="white-space: nowrap;"><span style="display: inline-block; padding: 2px 7px; border-radius: 9999px; font-size: 8px; font-weight: 700; ${isPaid ? 'background: #dcfce7; color: #15803d; border: 1px solid #86efac;' : 'background: #fef3c7; color: #b45309; border: 1px solid #fde68a;'}">${val}</span></td>`;
+            }
+            if (isPending) {
+              return `<td style="text-align: right; font-weight: 700; color: #be123c;">${val}</td>`;
+            }
+            return `<td style="${isNumeric ? 'text-align: right;' : ''} ${c.key === 'invoice_no' ? 'font-weight: 700; color: #0f172a;' : ''}">${val}</td>`;
+          }).join("")}
+        </tr>`;
+
+        // Sub-table for itemized products ONLY in Customer 360 Statement
+        let itemsSubTableHtml = "";
+        if (isCustomer360Statement && Array.isArray(row.items) && row.items.length > 0) {
+          itemsSubTableHtml = `
+            <tr style="background: #faf5ff;">
+              <td colspan="${cols.length}" style="padding: 5px 12px 9px 12px; border-bottom: 1.5px solid #d8b4fe;">
+                <div style="background: #ffffff; border: 1px solid #e9d5ff; border-radius: 6px; padding: 6px 10px;">
+                  <div style="font-size: 8.5px; font-weight: 800; color: #6b21a8; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.3px;">
+                    📦 Itemized Products in Bill #${row.invoice_no || row.id} (${row.items.length} items):
+                  </div>
+                  <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; margin-top: 0;">
+                    <thead>
+                      <tr style="background: #f3e8ff; color: #581c87; border-top: 1px solid #e9d5ff; border-bottom: 1px solid #d8b4fe;">
+                        <th style="padding: 2.5px 6px; text-align: left; font-size: 8px;">#</th>
+                        <th style="padding: 2.5px 6px; text-align: left; font-size: 8px;">Product Name</th>
+                        <th style="padding: 2.5px 6px; text-align: left; font-size: 8px;">SKU / Code</th>
+                        <th style="padding: 2.5px 6px; text-align: right; font-size: 8px;">Quantity</th>
+                        <th style="padding: 2.5px 6px; text-align: right; font-size: 8px;">Unit Price (₹)</th>
+                        <th style="padding: 2.5px 6px; text-align: right; font-size: 8px;">Tax (₹)</th>
+                        <th style="padding: 2.5px 6px; text-align: right; font-size: 8px;">Line Total (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${row.items.map((it: any, idx: number) => {
+                        const pName = it.name || it.product_name || `Product Item #${idx + 1}`;
+                        const pSku = it.sku || it.product_sku || "—";
+                        const pQty = it.qty ?? it.quantity ?? 1;
+                        const pPrice = typeof it.price === "number" ? formatCurrency(it.price) : (it.price || "₹0.00");
+                        const pTax = typeof it.tax === "number" ? formatCurrency(it.tax) : (it.tax || "₹0.00");
+                        const pTotal = typeof it.total === "number" ? formatCurrency(it.total) : (it.total || "₹0.00");
+                        return `
+                          <tr style="border-bottom: 1px solid #f3e8ff;">
+                            <td style="padding: 2.5px 6px; color: #64748b;">${idx + 1}</td>
+                            <td style="padding: 2.5px 6px; font-weight: 700; color: #1e1b4b;">${pName}</td>
+                            <td style="padding: 2.5px 6px; color: #64748b;">${pSku}</td>
+                            <td style="padding: 2.5px 6px; text-align: right; font-weight: 600;">${pQty}</td>
+                            <td style="padding: 2.5px 6px; text-align: right;">${pPrice}</td>
+                            <td style="padding: 2.5px 6px; text-align: right; color: #64748b;">${pTax}</td>
+                            <td style="padding: 2.5px 6px; text-align: right; font-weight: 800; color: #0f172a;">${pTotal}</td>
+                          </tr>
+                        `;
+                      }).join("")}
+                    </tbody>
+                  </table>
+                </div>
+              </td>
+            </tr>
+          `;
+        }
+
+        return mainRowHtml + itemsSubTableHtml;
+      })
       .join("");
+
+    // Customer 360 Header Profile ONLY for printable customer statement
+    const customerProfileBannerHtml = (isCustomer360Statement && reportData.customerDetails) ? `
+      <div style="background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border: 1.5px solid #d8b4fe; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-size: 13.5px; font-weight: 800; color: #581c87; display: flex; align-items: gap: 8px;">
+            <span>${reportData.customerDetails.name}</span>
+            <span style="font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 9999px; ${reportData.customerDetails.pending_invoices_count > 0 ? 'background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;' : 'background: #dcfce7; color: #166534; border: 1px solid #86efac;'}">
+              ${reportData.customerDetails.pending_invoices_count > 0 ? `⚠️ ${reportData.customerDetails.pending_invoices_count} Pending Invoices` : '✓ All Invoices Settled'}
+            </span>
+          </div>
+          <div style="font-size: 9px; color: #475569; margin-top: 3px; line-height: 1.4;">
+            <span>Tel: <strong style="color: #0f172a;">${reportData.customerDetails.phone || '—'}</strong></span> &bull; 
+            <span>GSTIN: <strong style="color: #0f172a;">${reportData.customerDetails.gstin || 'Unregistered'}</strong></span> &bull; 
+            <span>${reportData.customerDetails.address || ''}</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; text-align: center;">
+          <div style="background: #ffffff; border: 1px solid #e9d5ff; padding: 4px 9px; border-radius: 6px; min-width: 75px;">
+            <div style="font-size: 7.5px; font-weight: 700; color: #64748b; text-transform: uppercase;">Total Bills</div>
+            <div style="font-size: 11px; font-weight: 800; color: #0f172a;">${reportData.customerDetails.total_invoices}</div>
+          </div>
+          <div style="background: #ffffff; border: 1px solid #e9d5ff; padding: 4px 9px; border-radius: 6px; min-width: 85px;">
+            <div style="font-size: 7.5px; font-weight: 700; color: #64748b; text-transform: uppercase;">Gross Billed</div>
+            <div style="font-size: 11px; font-weight: 800; color: #0f172a;">${reportData.customerDetails.total_billed}</div>
+          </div>
+          <div style="background: #ffffff; border: 1px solid #bbf7d0; padding: 4px 9px; border-radius: 6px; min-width: 85px;">
+            <div style="font-size: 7.5px; font-weight: 700; color: #166534; text-transform: uppercase;">Settled / Paid</div>
+            <div style="font-size: 11px; font-weight: 800; color: #166534;">${reportData.customerDetails.total_paid}</div>
+          </div>
+          <div style="background: #ffffff; border: 1.5px solid #fecdd3; padding: 4px 9px; border-radius: 6px; min-width: 95px;">
+            <div style="font-size: 7.5px; font-weight: 800; color: #be123c; text-transform: uppercase;">Pending Due</div>
+    ` : "";
 
     const summaryTotalsHtml = reportData.summaryTotals && Object.keys(reportData.summaryTotals).length > 0
       ? `
-        <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px 18px; margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 24px; font-size: 11px;">
+        <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px 16px; margin-top: 18px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 20px; font-size: 10px;">
           ${Object.entries(reportData.summaryTotals).map(([k, v]: [string, any]) => `
             <div>
-              <span style="color: #475569; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">${k.replace(/_/g, " ")}: </span>
-              <strong style="color: #1e1b4b; font-size: 13px;">${v}</strong>
+              <span style="color: #475569; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px;">${k.replace(/_/g, " ")}: </span>
+              <strong style="color: #1e1b4b; font-size: 12px;">${v}</strong>
             </div>
           `).join("")}
         </div>
@@ -369,10 +582,10 @@ export function ReportsHub() {
         <title>${activeReport.title} - ${companyName}</title>
         <meta charset="utf-8" />
         <style>
-          @page { size: A4 portrait; margin: 12mm 12mm 15mm 12mm; }
+          @page { size: A4 portrait; margin: 10mm 10mm 12mm 10mm; }
           body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
-            padding: 8px; 
+            padding: 4px; 
             color: #0f172a; 
             background: #fff;
             -webkit-print-color-adjust: exact;
@@ -383,11 +596,11 @@ export function ReportsHub() {
             justify-content: space-between;
             align-items: flex-start;
             border-bottom: 2.5px solid #4f46e5;
-            padding-bottom: 12px;
-            margin-bottom: 16px;
+            padding-bottom: 10px;
+            margin-bottom: 14px;
           }
           .company-title {
-            font-size: 20px;
+            font-size: 19px;
             font-weight: 800;
             color: #1e1b4b;
             letter-spacing: -0.5px;
@@ -395,65 +608,64 @@ export function ReportsHub() {
             line-height: 1.2;
           }
           .company-meta {
-            font-size: 10.5px;
+            font-size: 9.5px;
             color: #475569;
-            margin-top: 4px;
-            line-height: 1.4;
+            margin-top: 3px;
+            line-height: 1.35;
           }
           .report-badge {
             display: inline-block;
             background: #eef2ff;
             color: #4f46e5;
-            font-size: 9px;
+            font-size: 8.5px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.6px;
-            padding: 2px 8px;
+            padding: 2px 7px;
             border-radius: 4px;
-            margin-bottom: 3px;
+            margin-bottom: 2px;
           }
           .report-heading {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 800;
             color: #0f172a;
             margin: 2px 0;
           }
           .report-details {
-            font-size: 10px;
+            font-size: 9.5px;
             color: #64748b;
           }
           table { 
             width: 100%; 
             border-collapse: collapse; 
-            font-size: 10px; 
-            margin-top: 10px; 
+            font-size: 9.5px; 
+            margin-top: 6px; 
           }
           th { 
             background: #f1f5f9; 
             text-align: left; 
-            padding: 7px 9px; 
+            padding: 6px 8px; 
             font-weight: 700; 
             color: #334155; 
             border-top: 1px solid #cbd5e1;
             border-bottom: 1.5px solid #94a3b8; 
             text-transform: uppercase;
-            font-size: 9px;
+            font-size: 8.5px;
             letter-spacing: 0.3px;
           }
           td { 
-            padding: 6.5px 9px; 
+            padding: 5.5px 8px; 
             border-bottom: 1px solid #e2e8f0; 
             color: #1e293b;
           }
-          tr:nth-child(even) { background-color: #f8fafc; }
           .footer { 
-            margin-top: 25px; 
-            font-size: 9.5px; 
+            margin-top: 20px; 
+            font-size: 9px; 
             color: #94a3b8; 
             display: flex;
             justify-content: space-between;
             border-top: 1px solid #e2e8f0; 
-            padding-top: 8px; 
+            padding-top: 6px; 
           }
         </style>
       </head>
@@ -472,12 +684,14 @@ export function ReportsHub() {
             </div>
           </div>
           <div style="text-align: right;">
-            <div class="report-badge">Official Financial & Operations Audit</div>
+            <div class="report-badge">Official Financial & Operations Statement</div>
             <div class="report-heading">${activeReport.title}</div>
             <div class="report-details">Period: <strong>${reportData.dateRangeLabel || "All Time"}</strong></div>
             <div class="report-details">Generated: ${formatDisplayDateTime(new Date())}</div>
           </div>
         </div>
+
+        ${customerProfileBannerHtml}
 
         <table>
           <thead><tr>${tableHeaderHtml}</tr></thead>
@@ -488,7 +702,7 @@ export function ReportsHub() {
 
         <div class="footer">
           <span>Report Generated by BusinessOS for ${companyName}</span>
-          <span>Confidential Business Intelligence</span>
+          <span>Confidential Business Statement & Itemized Audit</span>
         </div>
       </body>
       </html>
@@ -515,8 +729,10 @@ export function ReportsHub() {
     })).filter((cat) => cat.reports.length > 0);
   }, [sidebarSearch]);
 
+  const isCustomer360Statement = activeReport.id === "customer_statement";
+
   return (
-    <div className="flex h-[calc(100vh-4rem)] w-full bg-slate-50 overflow-hidden font-sans">
+    <div className="flex flex-1 h-full w-full bg-slate-50 overflow-hidden font-sans">
       {/* ──────────────────────────────────────────────────────────────────────────
           LEFT NAVIGATION SIDEBAR (Categorized Hub)
       ────────────────────────────────────────────────────────────────────────── */}
@@ -797,6 +1013,103 @@ export function ReportsHub() {
 
 
           {/* ──────────────────────────────────────────────────────────────────────────
+              CUSTOMER 360 STATEMENT & PENDING INVOICES SUMMARY CARD
+          ────────────────────────────────────────────────────────────────────────── */}
+          {reportData?.customerDetails && isCustomer360Statement && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-gradient-to-r from-purple-50/90 via-indigo-50/60 to-white border border-purple-200/90 rounded-2xl p-4 shadow-sm"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                {/* Customer Identity */}
+                <div className="flex items-center gap-3">
+                  <div className="size-11 rounded-xl bg-purple-700 text-white flex items-center justify-center font-extrabold text-sm shadow-md shadow-purple-200 shrink-0">
+                    <Users className="size-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-extrabold text-slate-900 leading-tight">
+                        {reportData.customerDetails.name}
+                      </h3>
+                      {reportData.customerDetails.pending_invoices_count > 0 ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                          <AlertTriangle className="size-3" />
+                          {reportData.customerDetails.pending_invoices_count} Pending Invoices
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                          <CheckCircle2 className="size-3" /> All Invoices Settled
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500 font-medium mt-1">
+                      <span>Tel: <strong className="text-slate-700">{reportData.customerDetails.phone || "—"}</strong></span>
+                      <span>&bull;</span>
+                      <span>GSTIN: <strong className="text-slate-700">{reportData.customerDetails.gstin || "Unregistered"}</strong></span>
+                      <span>&bull;</span>
+                      <span className="truncate max-w-xs">{reportData.customerDetails.address || ""}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 6 Financial Stat Cards (including Returns and Credit Note Aging) */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="bg-white/90 border border-purple-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[95px]">
+                    <div className="text-[10px] uppercase font-bold text-slate-500">Total Bills</div>
+                    <div className="text-xs font-extrabold text-slate-900 mt-0.5">
+                      {reportData.customerDetails.total_invoices} Invoices
+                    </div>
+                  </div>
+
+                  <div className="bg-white/90 border border-purple-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[105px]">
+                    <div className="text-[10px] uppercase font-bold text-slate-500">Gross Billed</div>
+                    <div className="text-xs font-extrabold text-slate-900 mt-0.5">
+                      {reportData.customerDetails.total_billed}
+                    </div>
+                  </div>
+
+                  <div className="bg-white/90 border border-emerald-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[105px]">
+                    <div className="text-[10px] uppercase font-bold text-emerald-600">Settled / Paid</div>
+                    <div className="text-xs font-extrabold text-emerald-700 mt-0.5">
+                      {reportData.customerDetails.total_paid}
+                    </div>
+                  </div>
+
+                  {reportData.customerDetails.total_returns && (
+                    <div className="bg-white/90 border border-slate-200 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[95px]">
+                      <div className="text-[10px] uppercase font-bold text-slate-500">Sales Returns</div>
+                      <div className="text-xs font-extrabold text-slate-800 mt-0.5">
+                        {reportData.customerDetails.total_returns}
+                      </div>
+                    </div>
+                  )}
+
+                  {reportData.customerDetails.unadjusted_credit_balance && (
+                    <div className="bg-white/90 border border-indigo-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[110px]">
+                      <div className="text-[10px] uppercase font-bold text-indigo-600">
+                        Credit Note Bal ({reportData.customerDetails.oldest_credit_days || "Active"})
+                      </div>
+                      <div className="text-xs font-extrabold text-indigo-700 mt-0.5">
+                        {reportData.customerDetails.unadjusted_credit_balance}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="bg-gradient-to-r from-amber-50 to-rose-50 border border-rose-200 px-3.5 py-1.5 rounded-xl shadow-2xs text-center min-w-[125px]">
+                    <div className="text-[10px] uppercase font-extrabold text-rose-700 flex items-center justify-center gap-1">
+                      <Clock className="size-2.5" /> Pending Balance
+                    </div>
+                    <div className="text-xs font-extrabold text-rose-700 mt-0.5">
+                      {reportData.customerDetails.pending_balance}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ──────────────────────────────────────────────────────────────────────────
               REPORT DATA TABLE
           ────────────────────────────────────────────────────────────────────────── */}
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
@@ -804,6 +1117,7 @@ export function ReportsHub() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-200">
+                    <th className="w-8 px-3 py-3 text-[11px] font-bold text-slate-700 uppercase">#</th>
                     {reportData?.tableColumns?.map((col: any, idx: number) => (
                       <th
                         key={idx}
@@ -812,13 +1126,16 @@ export function ReportsHub() {
                         {col.header}
                       </th>
                     ))}
+                    {isCustomer360Statement && (
+                      <th className="px-3 py-3 text-[11px] font-bold text-slate-700 uppercase text-right">Details</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
                   {loading ? (
                     <tr>
                       <td
-                        colSpan={reportData?.tableColumns?.length || 6}
+                        colSpan={(reportData?.tableColumns?.length || 6) + (isCustomer360Statement ? 2 : 1)}
                         className="px-4 py-12 text-center text-slate-400"
                       >
                         <RefreshCw className="size-6 animate-spin mx-auto text-indigo-600 mb-2" />
@@ -828,7 +1145,7 @@ export function ReportsHub() {
                   ) : !reportData?.tableData || reportData.tableData.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={reportData?.tableColumns?.length || 6}
+                        colSpan={(reportData?.tableColumns?.length || 6) + (isCustomer360Statement ? 2 : 1)}
                         className="px-4 py-12 text-center text-slate-400"
                       >
                         <Boxes className="size-8 mx-auto text-slate-300 mb-2" />
@@ -836,40 +1153,153 @@ export function ReportsHub() {
                       </td>
                     </tr>
                   ) : (
-                    reportData.tableData.map((row: any, rIdx: number) => (
-                      <tr
-                        key={rIdx}
-                        className="hover:bg-indigo-50/30 transition-colors group cursor-default"
-                      >
-                        {reportData.tableColumns.map((col: any, cIdx: number) => {
-                          const val = row[col.key];
-                          const isStatus = col.key === "status";
-                          return (
-                            <td key={cIdx} className="px-4 py-2.5 whitespace-nowrap">
-                              {isStatus ? (
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                    String(val).toLowerCase().includes("paid") ||
-                                    String(val).toLowerCase().includes("optimal") ||
-                                    String(val).toLowerCase().includes("completed") ||
-                                    String(val).toLowerCase().includes("active")
-                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                      : String(val).toLowerCase().includes("low") ||
-                                        String(val).toLowerCase().includes("overdue")
-                                      ? "bg-rose-50 text-rose-700 border border-rose-200"
-                                      : "bg-slate-100 text-slate-700"
-                                  }`}
+                    reportData.tableData.map((row: any, rIdx: number) => {
+                      const rowKey = row.id || row.invoice_no || `row-${rIdx}`;
+                      const isRowExpanded = Boolean(expandedInvoices[rowKey]);
+                      const hasItems = Array.isArray(row.items) && row.items.length > 0;
+
+                      return (
+                        <React.Fragment key={rowKey}>
+                          <tr
+                            onClick={() => {
+                              if (isCustomer360Statement && hasItems) toggleInvoice(rowKey);
+                            }}
+                            className={`transition-colors group ${
+                              isCustomer360Statement && hasItems ? "cursor-pointer" : ""
+                            } ${
+                              isRowExpanded && isCustomer360Statement ? "bg-purple-50/50" : "hover:bg-slate-50/80"
+                            }`}
+                          >
+                            {/* Expand Indicator Icon (Customer 360 Statement only) or Row Number */}
+                            <td className="px-3 py-2.5 text-center text-slate-400">
+                              {isCustomer360Statement && hasItems ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => toggleInvoice(rowKey, e)}
+                                  className="p-1 rounded hover:bg-slate-200/60 text-slate-500 transition-transform"
                                 >
-                                  {val}
-                                </span>
+                                  <ChevronDown
+                                    className={`size-3.5 transition-transform duration-200 ${
+                                      isRowExpanded ? "rotate-180 text-purple-700" : "text-slate-400"
+                                    }`}
+                                  />
+                                </button>
                               ) : (
-                                <span>{val ?? "—"}</span>
+                                <span className="text-[10px] text-slate-400">{rIdx + 1}</span>
                               )}
                             </td>
-                          );
-                        })}
-                      </tr>
-                    ))
+
+                            {/* Main Columns */}
+                            {reportData.tableColumns.map((col: any, cIdx: number) => {
+                              const val = row[col.key];
+                              const isStatus = col.key === "status";
+                              const isPending = col.key === "pending_amount" || col.key === "balance";
+                              const isNumericPending = isPending && parseFloat(String(val).replace(/[^0-9.-]/g, "")) > 0;
+
+                              return (
+                                <td key={cIdx} className="px-4 py-2.5 whitespace-nowrap">
+                                  {isStatus ? (
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                        String(val).toLowerCase().includes("paid") ||
+                                        String(val).toLowerCase().includes("completed") ||
+                                        String(val).toLowerCase().includes("active")
+                                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                          : String(val).toLowerCase().includes("pending") ||
+                                            String(val).toLowerCase().includes("partial") ||
+                                            String(val).toLowerCase().includes("overdue")
+                                          ? "bg-amber-50 text-amber-700 border border-amber-200 font-extrabold"
+                                          : "bg-slate-100 text-slate-700"
+                                      }`}
+                                    >
+                                      {val}
+                                    </span>
+                                  ) : isNumericPending ? (
+                                    <span className="font-extrabold text-rose-600">{val}</span>
+                                  ) : (
+                                    <span className={col.key === "invoice_no" ? "font-bold text-slate-900" : ""}>
+                                      {val ?? "—"}
+                                    </span>
+                                  )}
+                                </td>
+                              );
+                            })}
+
+                            {/* View Products Dropdown Pill (Customer 360 Statement only) */}
+                            {isCustomer360Statement && (
+                              <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                                {hasItems && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => toggleInvoice(rowKey, e)}
+                                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer"
+                                  >
+                                    {`${row.items.length} Products`}
+                                  </button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+
+                          {/* ── EXPANDED ROW: Bill-Wise Products Drilldown Table (ONLY in Customer 360 Statement) ── */}
+                          {isCustomer360Statement && isRowExpanded && hasItems && (
+                            <tr className="bg-purple-50/30">
+                              <td colSpan={(reportData.tableColumns.length || 6) + 2} className="px-4 py-3">
+                                <div className="bg-white border border-purple-200 rounded-xl p-3.5 shadow-xs space-y-2">
+                                  <div className="flex items-center justify-between border-b border-purple-100 pb-2">
+                                    <div className="flex items-center gap-2">
+                                      <Boxes className="size-3.5 text-purple-700" />
+                                      <h4 className="text-xs font-extrabold text-slate-900">
+                                        Itemized Bill Products for Invoice #{row.invoice_no || row.id}
+                                      </h4>
+                                    </div>
+                                    <span className="text-[10.5px] font-semibold text-slate-500">
+                                      Total Bill Items: <strong>{row.items.length}</strong>
+                                    </span>
+                                  </div>
+
+                                  <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                      <tr className="bg-slate-50 text-[10px] font-bold text-slate-600 uppercase border-b border-slate-200">
+                                        <th className="py-1.5 px-3">#</th>
+                                        <th className="py-1.5 px-3">Product Name</th>
+                                        <th className="py-1.5 px-3">SKU / Code</th>
+                                        <th className="py-1.5 px-3 text-right">Quantity</th>
+                                        <th className="py-1.5 px-3 text-right">Unit Price</th>
+                                        <th className="py-1.5 px-3 text-right">Tax (₹)</th>
+                                        <th className="py-1.5 px-3 text-right">Line Total</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {row.items.map((it: any, itIdx: number) => {
+                                        const pName = it.name || it.product_name || `Product Item #${itIdx + 1}`;
+                                        const pSku = it.sku || it.product_sku || it.hsn || "—";
+                                        const pQty = it.qty ?? it.quantity ?? 1;
+                                        const pPrice = typeof it.price === "number" ? formatCurrency(it.price) : (it.price || "₹0.00");
+                                        const pTax = typeof it.tax === "number" ? formatCurrency(it.tax) : (it.tax || "₹0.00");
+                                        const pTotal = typeof it.total === "number" ? formatCurrency(it.total) : (it.total || "₹0.00");
+
+                                        return (
+                                          <tr key={itIdx} className="hover:bg-slate-50/60 text-slate-700 font-medium">
+                                            <td className="py-1.5 px-3 text-slate-400 font-bold text-[10px]">{itIdx + 1}</td>
+                                            <td className="py-1.5 px-3 font-bold text-slate-900">{pName}</td>
+                                            <td className="py-1.5 px-3 text-slate-500 text-[11px]">{pSku}</td>
+                                            <td className="py-1.5 px-3 text-right font-semibold">{pQty}</td>
+                                            <td className="py-1.5 px-3 text-right">{pPrice}</td>
+                                            <td className="py-1.5 px-3 text-right text-slate-500">{pTax}</td>
+                                            <td className="py-1.5 px-3 text-right font-extrabold text-slate-900">{pTotal}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

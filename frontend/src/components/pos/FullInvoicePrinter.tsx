@@ -6,6 +6,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, resolveImageUrl } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
+import { generateQRCodeSVG } from "@/lib/qr-generator";
 
 export interface FullInvoiceData {
   invoice_number?: string;
@@ -782,7 +783,7 @@ export function FullInvoicePrinter({
                     <div className="flex items-center gap-3 p-2.5 bg-amber-50/70 border border-amber-200/90 rounded-xl print:border-slate-300">
                       <div className="p-1 bg-white border border-amber-200 rounded-lg shrink-0 shadow-2xs">
                         <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=0&data=${encodeURIComponent(googleReviewUrl)}`}
+                          src={generateQRCodeSVG(googleReviewUrl, 140)}
                           alt="Google Review QR"
                           className="size-14 object-contain"
                         />

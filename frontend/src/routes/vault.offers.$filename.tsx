@@ -8,7 +8,7 @@ export const Route = createFileRoute("/vault/offers/$filename")({
   component: VaultOfferViewerPage,
 });
 
-export function VaultOfferViewerPage() {
+function VaultOfferViewerPage() {
   const { filename } = Route.useParams();
   const offerId = (filename || "").replace(/\.pdf$/i, "").trim();
 

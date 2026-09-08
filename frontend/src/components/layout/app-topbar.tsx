@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { motion } from "framer-motion";
 import {
   Bell, MessageSquare, LogOut,
   ChevronDown, Building2, ShieldCheck, ShieldAlert, Globe, Coins,
@@ -189,6 +190,7 @@ export function AppTopbar() {
   const location = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [activeCurrency, setActiveCurrencyState] = useState(getActiveCurrency());
+  const [hoveredModule, setHoveredModule] = useState<string | null>(null);
 
   const isPlatformSuperAdmin = Boolean(user?.isPlatformAdmin);
 
@@ -538,25 +540,49 @@ export function AppTopbar() {
       </div>
 
       {/* ── Center: Top Modules Navigation Ribbon (Zero scroll, perfectly flex-fitted, filtered by permission) ── */}
-      <div className="hidden lg:flex items-center justify-center flex-1 h-full px-0.5 min-w-0 overflow-hidden">
+      <div 
+        onMouseLeave={() => setHoveredModule(null)}
+        className="hidden lg:flex items-center justify-center flex-1 h-full px-0.5 min-w-0 overflow-hidden"
+      >
         {visibleModules.map((mod) => {
           const isActive = currentActiveGroup === mod.group;
+          const isHovered = hoveredModule === mod.group;
           const Icon = mod.icon;
           return (
-            <button
+            <motion.button
               key={mod.group}
+              whileTap={{ scale: 0.94 }}
+              onMouseEnter={() => setHoveredModule(mod.group)}
               onClick={() => handleNavigateModule(mod.defaultTo)}
               className={cn(
-                "relative flex flex-col items-center justify-center gap-1 flex-1 min-w-0 max-w-[82px] xl:max-w-[90px] h-full px-1 transition-all whitespace-nowrap cursor-pointer group",
+                "relative flex flex-col items-center justify-center gap-1 flex-1 min-w-0 max-w-[82px] xl:max-w-[90px] h-full px-1 transition-colors whitespace-nowrap cursor-pointer group z-10",
                 isActive
-                  ? `${mod.activeBg} ${mod.activeText} font-extrabold`
-                  : `text-slate-600 ${mod.hoverText} ${mod.hoverBg} font-bold`
+                  ? `${mod.activeText} font-extrabold`
+                  : `text-slate-600 ${mod.hoverText} font-bold`
               )}
             >
+              {/* Active Tab Background */}
+              {isActive && (
+                <motion.div
+                  layoutId="activeTopbarModuleBg"
+                  className="absolute inset-0 bg-purple-50/90 rounded-b-md -z-10 shadow-2xs"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+
+              {/* Hover Backdrop Aura */}
+              {isHovered && !isActive && (
+                <motion.div
+                  layoutId="hoverTopbarModuleBg"
+                  className="absolute inset-0 bg-slate-100/70 rounded-b-md -z-10"
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
+              )}
+
               <Icon
                 className={cn(
-                  "size-[18px] xl:size-[20px] transition-all group-hover:scale-110 shrink-0",
-                  isActive ? `${mod.activeText} stroke-[2.4]` : `text-slate-500 stroke-[1.8] ${mod.hoverText}`
+                  "size-[18px] xl:size-[20px] transition-transform shrink-0",
+                  isActive ? `${mod.activeText} stroke-[2.4] scale-105` : `text-slate-500 stroke-[1.8] ${mod.hoverText} group-hover:scale-105`
                 )}
               />
               <span className={cn(
@@ -566,9 +592,13 @@ export function AppTopbar() {
                 {mod.label}
               </span>
               {isActive && (
-                <div className={cn("absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full shadow-xs", mod.indicator)} />
+                <motion.div
+                  layoutId="activeTopbarModuleIndicator"
+                  className={cn("absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full shadow-[0_-1px_6px_rgba(124,58,237,0.4)]", mod.indicator)}
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
               )}
-            </button>
+            </motion.button>
           );
         })}
       </div>

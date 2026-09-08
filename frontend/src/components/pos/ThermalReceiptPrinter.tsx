@@ -7,6 +7,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { resolveImageUrl } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
+import { generateQRCodeSVG } from "@/lib/qr-generator";
 
 interface ThermalReceiptPrinterProps {
   bill: any;
@@ -218,13 +219,13 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
       {f.showPaymentQR && (
         <div className="flex flex-col items-center justify-center pt-1.5 my-1 border-t border-dashed border-black text-center">
           <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=0&data=${encodeURIComponent(
+            src={generateQRCodeSVG(
               `upi://pay?pa=${fallbackStore.upiId || 'merchant@upi'}&pn=${encodeURIComponent(
                 storeName
-              )}&am=${Number(grandTotal || 0).toFixed(2)}&cu=INR`
-            )}`}
+              )}&am=${Number(grandTotal || 0).toFixed(2)}&cu=INR`,
+              140
+            )}
             alt="UPI QR Code"
-            style={{ imageRendering: 'pixelated' }}
             className="w-20 h-20 object-contain border-[1.5px] border-black p-0.5 my-1"
           />
           <span className="text-[9.5px] font-extrabold block uppercase tracking-wider text-black">
@@ -257,11 +258,8 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
             LEAVE US A GOOGLE REVIEW
           </span>
           <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=0&data=${encodeURIComponent(
-              resolvedGoogleReviewUrl
-            )}`}
+            src={generateQRCodeSVG(resolvedGoogleReviewUrl, 140)}
             alt="Google Review QR Code"
-            style={{ imageRendering: 'pixelated' }}
             className="w-16 h-16 object-contain border-[1.5px] border-black p-0.5 my-1"
           />
           <span className="text-[8.5px] font-bold block text-black">

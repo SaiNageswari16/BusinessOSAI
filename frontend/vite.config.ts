@@ -40,6 +40,7 @@ export default defineConfig({
       "lucide-react",
       "@tanstack/react-query",
       "@tanstack/react-router",
+      "@tanstack/react-table",
       "framer-motion",
       "clsx",
       "tailwind-merge",
@@ -47,10 +48,28 @@ export default defineConfig({
       "date-fns",
       "papaparse"
     ],
+    esbuildOptions: {
+      target: "esnext",
+    },
   },
   server: {
     host: true,
     port: 8080,
     allowedHosts: true,
+    warmup: {
+      clientFiles: [
+        "./src/routes/__root.tsx",
+        "./src/routes/_app.tsx",
+        "./src/routes/_app.dashboard.tsx",
+        "./src/routes/_app.pos.tsx",
+        "./src/routes/_app.inventory.tsx",
+        "./src/routes/_app.reports.tsx",
+        "./src/components/pos/POSTerminal.tsx",
+        "./src/components/pos/ThermalReceiptPrinter.tsx",
+        "./src/components/pos/FullInvoicePrinter.tsx",
+        "./src/components/inventory/Products.tsx",
+        "./src/components/reports/ReportsHub.tsx"
+      ]
+    }
   },
 });

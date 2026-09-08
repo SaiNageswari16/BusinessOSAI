@@ -8,7 +8,7 @@ export const Route = createFileRoute("/vault/payslips/$filename")({
   component: VaultPayslipViewerPage,
 });
 
-export function VaultPayslipViewerPage() {
+function VaultPayslipViewerPage() {
   const { filename } = Route.useParams();
   const slipId = (filename || "").replace(/\.pdf$/i, "").trim();
 

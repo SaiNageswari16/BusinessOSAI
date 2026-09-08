@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { motion } from "framer-motion";
 import { nav, NavGroup, NavItem } from "@/data/navigation";
 import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
@@ -182,38 +183,60 @@ export function RibbonNavigation() {
     safeNavigate(sub.to);
   };
 
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [hoveredSubItem, setHoveredSubItem] = useState<string | null>(null);
+
   if (!activeGroup || !activeItem) return null;
 
   return (
     <div className="flex flex-col w-full shrink-0 bg-white z-40 relative no-print select-none">
       {/* ── Row 1: Section Sub-Navigation Tabs (Level 2) ── */}
       {!isTerminal && activeGroup.items.length > 0 && (
-        <div className="flex items-center px-6 overflow-x-auto bg-white border-b border-slate-200/90 gap-8 h-[44px] scrollbar-hide">
+        <div 
+          onMouseLeave={() => setHoveredItem(null)}
+          className="flex items-center px-6 overflow-x-auto bg-white border-b border-slate-200/90 gap-7 h-[44px] scrollbar-hide"
+        >
           {activeGroup.items.map((item) => {
             const isActive = activeItem.label === item.label;
+            const isHovered = hoveredItem === item.label;
             const Icon = item.icon;
             return (
-              <button
+              <motion.button
                 key={item.label}
+                whileTap={{ scale: 0.96 }}
+                onMouseEnter={() => setHoveredItem(item.label)}
                 onClick={() => handleItemClick(item)}
                 className={cn(
-                  "relative flex items-center gap-2 h-full px-1 text-[13px] transition-colors whitespace-nowrap cursor-pointer",
+                  "relative flex items-center gap-2 h-full px-2 text-[13px] transition-colors whitespace-nowrap cursor-pointer z-10",
                   isActive
                     ? "text-purple-700 font-bold"
                     : "text-slate-600 hover:text-purple-700 font-medium"
                 )}
               >
+                {/* Floating soft hover background */}
+                {isHovered && !isActive && (
+                  <motion.div
+                    layoutId="ribbonSubtabHover"
+                    className="absolute inset-x-0 inset-y-1.5 bg-slate-100/80 rounded-md -z-10"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                
                 <Icon
                   className={cn(
-                    "size-[16px] transition-colors",
-                    isActive ? "text-purple-700 stroke-[2.2]" : "text-slate-400 stroke-[1.75]"
+                    "size-[16px] transition-transform",
+                    isActive ? "text-purple-700 stroke-[2.2] scale-105" : "text-slate-400 stroke-[1.75]"
                   )}
                 />
                 <span>{item.label}</span>
                 {isActive && (
-                  <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-purple-700 rounded-t-full" />
+                  <motion.div
+                    layoutId="activeRibbonSubtab"
+                    className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-purple-700 rounded-t-full shadow-[0_-1px_6px_rgba(124,58,237,0.35)]"
+                    transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                  />
                 )}
-              </button>
+              </motion.button>
             );
           })}
         </div>
@@ -221,12 +244,15 @@ export function RibbonNavigation() {
 
       {/* ── Row 2: Feature Ribbon / Pills Bar (Level 3) ── */}
       {activeItem.subItems && activeItem.subItems.length > 0 && (
-        <div className="flex items-center px-6 py-2.5 overflow-x-auto bg-white border-b border-slate-200/80 gap-2.5 scrollbar-hide">
+        <div 
+          onMouseLeave={() => setHoveredSubItem(null)}
+          className="flex items-center px-6 py-2.5 overflow-x-auto bg-white border-b border-slate-200/80 gap-2 scrollbar-hide"
+        >
           {isTerminal && (
             <div className="flex items-center">
               <button
                 onClick={() => navigate({ to: '/dashboard' })}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] font-bold transition-all whitespace-nowrap rounded-full bg-slate-900 text-white hover:bg-slate-800"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] font-bold transition-all whitespace-nowrap rounded-full bg-slate-900 text-white hover:bg-slate-800 shadow-xs"
               >
                 <ArrowLeft className="size-3.5" />
                 Back to Dashboard
@@ -236,26 +262,47 @@ export function RibbonNavigation() {
           )}
           {activeItem.subItems.map((sub: any) => {
             const isActive = activeSubItem?.label === sub.label || matchesNavUrl(sub.to, currentPathWithSearch, currentPath);
+            const isHovered = hoveredSubItem === sub.label;
             const SubIcon = sub.icon;
             return (
-              <button
+              <motion.button
                 key={sub.label}
+                whileTap={{ scale: 0.95 }}
+                onMouseEnter={() => setHoveredSubItem(sub.label)}
                 onClick={() => handleSubItemClick(sub)}
                 className={cn(
-                  "relative flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] transition-all whitespace-nowrap rounded-full shadow-2xs cursor-pointer",
+                  "relative flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] whitespace-nowrap rounded-full cursor-pointer transition-colors z-10",
                   isActive
-                    ? "bg-purple-700 text-white font-bold shadow-xs ring-1 ring-purple-800"
-                    : "bg-white text-slate-700 border border-slate-200/90 hover:bg-purple-50/50 hover:text-purple-900 hover:border-purple-200 font-semibold"
+                    ? "text-white font-bold"
+                    : "text-slate-700 hover:text-purple-900 border border-slate-200/90 bg-white font-semibold"
                 )}
               >
+                {/* Active Pill Spring Indicator */}
+                {isActive && (
+                  <motion.div
+                    layoutId={`activeRibbonPill_${activeItem.label}`}
+                    className="absolute inset-0 bg-gradient-to-r from-purple-700 to-purple-800 rounded-full shadow-sm ring-1 ring-purple-800 -z-10"
+                    transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                  />
+                )}
+
+                {/* Hover Aura on Inactive Pills */}
+                {isHovered && !isActive && (
+                  <motion.div
+                    layoutId={`hoverRibbonPill_${activeItem.label}`}
+                    className="absolute inset-0 bg-purple-50/70 border border-purple-200/80 rounded-full -z-10"
+                    transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                  />
+                )}
+
                 <SubIcon
                   className={cn(
-                    "size-3.5 transition-colors",
-                    isActive ? "text-white stroke-[2.2]" : "text-slate-500 stroke-[2]"
+                    "size-3.5 transition-transform",
+                    isActive ? "text-white stroke-[2.2] scale-105" : "text-slate-500 stroke-[2]"
                   )}
                 />
                 <span>{sub.label}</span>
-              </button>
+              </motion.button>
             );
           })}
         </div>

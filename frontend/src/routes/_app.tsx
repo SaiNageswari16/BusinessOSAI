@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { RibbonNavigation } from "@/components/layout/ribbon-navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -19,6 +20,7 @@ function AppLayout() {
   
   const searchParams = new URLSearchParams(routerState.location.searchStr);
   const isPosTerminal = routerState.location.pathname.startsWith("/pos") && searchParams.get("tab") === "terminal";
+  const activeRouteKey = routerState.location.pathname + (searchParams.get("tab") ? `?tab=${searchParams.get("tab")}` : "");
 
   useEffect(() => {
     if (!authReady) return;
@@ -73,9 +75,17 @@ function AppLayout() {
           </>
         )}
 
-        {/* Main Content */}
+        {/* Main Content with Smooth Page Transition */}
         <main className="flex-1 min-h-0 overflow-y-auto bg-background">
-          <Outlet />
+          <motion.div
+            key={activeRouteKey}
+            initial={{ opacity: 0.8 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+            className="w-full h-full min-h-full"
+          >
+            <Outlet />
+          </motion.div>
         </main>
       </div>
     </TenantProvider>
