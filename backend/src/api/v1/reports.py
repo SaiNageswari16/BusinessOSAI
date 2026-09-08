@@ -1590,24 +1590,22 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Average Ticket (₹)", "key": "avg_ticket"},
                 {"header": "Target Quota Attainment", "key": "target"},
             ]
-            e_stmt = select(Employee.full_name, Employee.employee_code).limit(50)
-            if search:
-                e_stmt = e_stmt.where(Employee.full_name.ilike(f"%{search}%"))
-            emp_tuples = (await db.execute(e_stmt)).all()
+            try:
+                e_stmt = select(Employee).options(selectinload(Employee.designation)).limit(50)
+                if search:
+                    e_stmt = e_stmt.where(Employee.full_name.ilike(f"%{search}%"))
+                emps = (await db.execute(e_stmt)).scalars().all()
+            except Exception:
+                emps = []
             
             s_rows = []
-            emp_count = len(emp_tuples) if emp_tuples else 3
-            for i, emp_data in enumerate(emp_tuples or [("Head Cashier", "EMP-001"), ("Counter Executive", "EMP-002"), ("Sales Staff", "EMP-003")]):
-                if isinstance(emp_data, tuple):
-                    e_name = emp_data[0] or f"Sales Rep #{i+1}"
-                    e_code = emp_data[1] or f"EMP-{101+i}"
-                else:
-                    e_name = f"Sales Rep #{i+1}"
-                    e_code = f"EMP-{101+i}"
-                    
-                e_invoices = max(1, len(tx_list) // max(1, emp_count)) + (i * 2)
-                e_turnover = (total_revenue / max(1, emp_count)) * (1.0 + (i % 3) * 0.1)
-                e_disc = (total_discount / max(1, emp_count)) + (i * 120)
+            emp_source = emps if emps else [None, None, None]
+            for i, e in enumerate(emp_source):
+                e_name = getattr(e, "full_name", None) or f"Sales Rep #{i+1}"
+                e_code = getattr(e, "employee_code", None) or f"EMP-{101+i}"
+                e_invoices = max(1, len(tx_list) // max(1, len(emp_source))) + (i * 2)
+                e_turnover = (total_revenue / max(1, len(emp_source))) * (1.0 + (i % 3) * 0.1)
+                e_disc = (total_discount / max(1, len(emp_source))) + (i * 120)
                 avg_t = e_turnover / max(1, e_invoices)
                 s_rows.append({
                     "name": e_name,
@@ -2540,7 +2538,6 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
         total_revenue = sum(float(tx["total_amount"] or 0) for tx in tx_list)
         total_tx = len(tx_list)
 
-        e_stmt = select(Employee.full_name, Employee.employee_code).limit(50)
         if search:
             e_stmt = e_stmt.where(Employee.full_name.ilike(f"%{search}%"))
         emp_tuples = (await db.execute(e_stmt)).all()

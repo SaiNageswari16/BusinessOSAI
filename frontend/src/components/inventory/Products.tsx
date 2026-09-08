@@ -8,10 +8,9 @@ import { inventoryApi, InventoryProduct, InventoryCategory, type Warehouse, reso
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { useTenant } from "../../contexts/tenant-context";
 import { motion, AnimatePresence } from "framer-motion";
-import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { RealBarcodeSvg, SingleBarcodeLabelCard } from "../../lib/barcode-svg";
+import { RealBarcodeSvg, SingleBarcodeLabelCard, printBarcodePopup } from "../../lib/barcode-svg";
 import { generateClientTenantBarcode } from "../../lib/code128";
 import { getActiveBarcodeTemplate } from "../../lib/receipt-template-store";
 import { useCurrency } from "@/hooks/use-currency";
@@ -352,6 +351,7 @@ function BarcodePrintDrawer({
   initialSelectedId?: string;
   onClose: () => void;
 }) {
+  const { currency } = useCurrency();
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (initialSelectedId) return new Set([initialSelectedId]);
     return new Set(products.filter(p => p.barcode).map(p => p.id));
@@ -397,61 +397,12 @@ function BarcodePrintDrawer({
 
   const handlePrint = () => {
     if (printItems.length === 0) return toast.warning("Select at least one product with a barcode.");
-    
-    let styleEl = document.getElementById("barcode-print-style-tag");
-    if (!styleEl) {
-      styleEl = document.createElement("style");
-      styleEl.id = "barcode-print-style-tag";
-      document.head.appendChild(styleEl);
+    try {
+      printBarcodePopup(printItems, activeTemplate, layout, currency?.symbol || "₹");
+    } catch (err: any) {
+      console.error("Barcode print error:", err);
+      toast.error(`Print error: ${err?.message || "Failed to trigger print dialog"}`);
     }
-
-    let pageCss = "@page { size: 50mm 25mm; margin: 0mm !important; }";
-    if (layout === "2up") {
-      pageCss = "@page { size: 100mm 25mm; margin: 0mm !important; }";
-    } else if (layout === "3up") {
-      pageCss = "@page { size: 114mm 25mm; margin: 0mm !important; }";
-    } else if (layout === "a4") {
-      pageCss = "@page { size: A4 portrait; margin: 4mm !important; }";
-    }
-
-    styleEl.innerHTML = `
-      @media print {
-        ${pageCss}
-        html, body {
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #ffffff !important;
-          width: 100% !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        body > *:not(#printable-barcode-portal) {
-          display: none !important;
-        }
-        #printable-barcode-portal {
-          display: block !important;
-          visibility: visible !important;
-          position: absolute !important;
-          left: 0 !important;
-          top: 0 !important;
-          width: 100% !important;
-          background: #ffffff !important;
-          padding: 0 !important;
-          margin: 0 !important;
-        }
-        #printable-barcode-portal * {
-          visibility: visible !important;
-        }
-        .barcode-print-cell {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-        }
-      }
-    `;
-
-    setTimeout(() => {
-      window.print();
-    }, 150);
   };
 
   const gridClass = layout === "a4" ? "grid-cols-3" : layout === "3up" ? "grid-cols-3" : layout === "2up" ? "grid-cols-2" : "grid-cols-1";
@@ -573,20 +524,6 @@ function BarcodePrintDrawer({
           </div>
         </div>
       </motion.div>
-
-      {/* Printable Portal */}
-      {typeof document !== "undefined" && createPortal(
-        <div id="printable-barcode-portal" className="hidden print:block text-black bg-white p-0">
-          <div className={`grid ${gridClass} gap-1.5 w-full p-0.5 box-border`}>
-            {printItems.map((item, idx) => (
-              <div key={idx} className="barcode-print-cell h-[24mm] max-h-[24mm] box-border overflow-hidden">
-                <SingleBarcodeLabelCard item={item} template={activeTemplate} isPrint={true} />
-              </div>
-            ))}
-          </div>
-        </div>,
-        document.body
-      )}
     </>
   );
 }
