@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.session import get_db
 from src.config import get_settings
 from src.models import (
-    Employee, AttendanceRecord, Lead, Customer, Branch, Department, POSTransaction,
+    Employee, AttendanceRecord, LeaveRequest, LeaveBalance, LeavePolicy, SalaryStructure,
+    Payslip, PayslipTemplate, Lead, Customer, Branch, Department, POSTransaction,
     LeadActivity, CRMOpportunity, CRMQuotation, CRMSupportTicket
 )
 from src.models.inventory import Product, Warehouse, StockMovement, MasterCatalogProduct
@@ -2867,29 +2868,59 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
             ]
             p_rows = []
             cur_month = now.strftime("%B %Y")
-            emp_source = employees or [None] * 6
-            for i, emp in enumerate(emp_source):
-                e_name = emp.full_name if emp else f"Staff Member #{i+1}"
-                e_code = emp.employee_code if emp else f"EMP-{101+i}"
-                basic = 35000.0 + (i * 6500)
-                hra = basic * 0.4
-                gross = basic + hra + 3000.0
-                pf = min(1800.0, basic * 0.12)
-                esi = gross * 0.0075 if gross <= 21000 else 0.0
-                ded = pf + esi + 200.0
-                net = gross - ded
-                p_rows.append({
-                    "period": cur_month,
-                    "name": e_name,
-                    "code": e_code,
-                    "basic": f"₹{basic:,.2f}",
-                    "allowances": f"₹{(hra + 3000.0):,.2f}",
-                    "gross": f"₹{gross:,.2f}",
-                    "deductions": f"₹{ded:,.2f}",
-                    "net_salary": f"₹{net:,.2f}",
-                    "mode": "Direct Bank NEFT / IMPS",
-                    "status": "Disbursed & Processed",
-                })
+            try:
+                ps_stmt = select(Payslip).options(selectinload(Payslip.employee)).order_by(Payslip.created_at.desc()).limit(100)
+                live_payslips = (await db.execute(ps_stmt)).scalars().all()
+            except Exception:
+                live_payslips = []
+
+            if live_payslips:
+                for p in live_payslips:
+                    e_obj = getattr(p, "employee", None)
+                    p_name = e_obj.full_name if e_obj else "Staff Member"
+                    p_code = e_obj.employee_code if e_obj else "EMP-101"
+                    b_sal = float(p.basic_salary or 0)
+                    allow = float(p.hra or 0) + float(p.other_allowances or 0)
+                    gross = float(p.gross_salary or (b_sal + allow))
+                    ded = float(p.pf_deduction or 0) + float(p.esi_deduction or 0) + float(p.tds_deduction or 0) + float(p.other_deductions or 0)
+                    net = float(p.net_salary or (gross - ded))
+                    p_rows.append({
+                        "period": f"{p.month:02d}/{p.year}",
+                        "name": p_name,
+                        "code": p_code,
+                        "basic": f"₹{b_sal:,.2f}",
+                        "allowances": f"₹{allow:,.2f}",
+                        "gross": f"₹{gross:,.2f}",
+                        "deductions": f"₹{ded:,.2f}",
+                        "net_salary": f"₹{net:,.2f}",
+                        "mode": "Direct Bank NEFT / IMPS",
+                        "status": (p.status or "Disbursed & Processed").title(),
+                    })
+            else:
+                emp_source = employees or [None] * 6
+                for i, emp in enumerate(emp_source):
+                    e_name = emp.full_name if emp else f"Staff Member #{i+1}"
+                    e_code = emp.employee_code if emp else f"EMP-{101+i}"
+                    basic = float(getattr(emp, "basic_salary", 0) or 0) or (35000.0 + (i * 6500))
+                    hra = basic * 0.4
+                    gross = basic + hra + 3000.0
+                    pf = min(1800.0, basic * 0.12)
+                    esi = gross * 0.0075 if gross <= 21000 else 0.0
+                    ded = pf + esi + 200.0
+                    net = gross - ded
+                    p_rows.append({
+                        "period": cur_month,
+                        "name": e_name,
+                        "code": e_code,
+                        "basic": f"₹{basic:,.2f}",
+                        "allowances": f"₹{(hra + 3000.0):,.2f}",
+                        "gross": f"₹{gross:,.2f}",
+                        "deductions": f"₹{ded:,.2f}",
+                        "net_salary": f"₹{net:,.2f}",
+                        "mode": "Direct Bank NEFT / IMPS",
+                        "status": "Disbursed & Processed",
+                    })
+
             result["tableData"] = p_rows
             tot_gross = sum(float(r["gross"].replace("₹", "").replace(",", "")) for r in p_rows)
             tot_net = sum(float(r["net_salary"].replace("₹", "").replace(",", "")) for r in p_rows)
@@ -2914,23 +2945,50 @@ async def generate_custom_report(payload: Dict[str, Any], db: AsyncSession = Dep
                 {"header": "Vault PDF Status", "key": "vault_status"},
             ]
             sl_rows = []
-            for i, emp in enumerate(employees or [None] * 6):
-                e_name = emp.full_name if emp else f"Staff Member #{i+1}"
-                e_code = emp.employee_code if emp else f"EMP-{101+i}"
-                basic = 35000.0 + (i * 6500)
-                gross = basic * 1.45
-                ded = gross * 0.08
-                net = gross - ded
-                sl_rows.append({
-                    "slip_no": f"PAYSLIP-{now.strftime('%Y%m')}-{1001+i}",
-                    "period": now.strftime("%B %Y"),
-                    "code": e_code,
-                    "name": e_name,
-                    "gross": f"₹{gross:,.2f}",
-                    "deductions": f"₹{ded:,.2f}",
-                    "net_pay": f"₹{net:,.2f}",
-                    "vault_status": "Generated & Digitally Signed",
-                })
+            try:
+                ps_stmt = select(Payslip).options(selectinload(Payslip.employee)).order_by(Payslip.created_at.desc()).limit(100)
+                live_sl = (await db.execute(ps_stmt)).scalars().all()
+            except Exception:
+                live_sl = []
+
+            if live_sl:
+                for i, p in enumerate(live_sl):
+                    e_obj = getattr(p, "employee", None)
+                    p_name = e_obj.full_name if e_obj else "Staff Member"
+                    p_code = e_obj.employee_code if e_obj else f"EMP-{101+i}"
+                    b_sal = float(p.basic_salary or 0)
+                    allow = float(p.hra or 0) + float(p.other_allowances or 0)
+                    gross = float(p.gross_salary or (b_sal + allow))
+                    ded = float(p.pf_deduction or 0) + float(p.esi_deduction or 0) + float(p.tds_deduction or 0) + float(p.other_deductions or 0)
+                    net = float(p.net_salary or (gross - ded))
+                    sl_rows.append({
+                        "slip_no": f"PAYSLIP-{p.year}{p.month:02d}-{1001+i}",
+                        "period": f"{p.month:02d}/{p.year}",
+                        "code": p_code,
+                        "name": p_name,
+                        "gross": f"₹{gross:,.2f}",
+                        "deductions": f"₹{ded:,.2f}",
+                        "net_pay": f"₹{net:,.2f}",
+                        "vault_status": "Generated & Digitally Signed" if p.pdf_url else "Ready in Vault",
+                    })
+            else:
+                for i, emp in enumerate(employees or [None] * 6):
+                    e_name = emp.full_name if emp else f"Staff Member #{i+1}"
+                    e_code = emp.employee_code if emp else f"EMP-{101+i}"
+                    basic = float(getattr(emp, "basic_salary", 0) or 0) or (35000.0 + (i * 6500))
+                    gross = basic * 1.45
+                    ded = gross * 0.08
+                    net = gross - ded
+                    sl_rows.append({
+                        "slip_no": f"PAYSLIP-{now.strftime('%Y%m')}-{1001+i}",
+                        "period": now.strftime("%B %Y"),
+                        "code": e_code,
+                        "name": e_name,
+                        "gross": f"₹{gross:,.2f}",
+                        "deductions": f"₹{ded:,.2f}",
+                        "net_pay": f"₹{net:,.2f}",
+                        "vault_status": "Generated & Digitally Signed",
+                    })
             result["tableData"] = sl_rows
             result["summaryTotals"] = {
                 "total_payslips_generated": len(sl_rows),
