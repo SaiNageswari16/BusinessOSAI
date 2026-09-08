@@ -84,7 +84,9 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
     cust_data = payload.model_dump()
     if not cust_data.get("company_id") and ctx.active_company_id:
         cust_data["company_id"] = ctx.active_company_id
-    customer = Customer(tenant_id=ctx.tenant_id, **cust_data)
+    valid_keys = {c.name for c in Customer.__table__.columns}
+    filtered_data = {k: v for k, v in cust_data.items() if k in valid_keys}
+    customer = Customer(tenant_id=ctx.tenant_id, **filtered_data)
     db.add(customer); await db.flush()
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="customer_created", entity_type="customer", entity_id=customer.id, new_values=payload.model_dump(mode="json"), ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     return customer
