@@ -97,6 +97,25 @@ async function resolveJid(client, phone) {
     return `${clean}@c.us`;
 }
 
+// Helper: clean stale Chromium lock files
+function cleanStaleLocks(sessionId) {
+    try {
+        const sessionDir = path.join(AUTH_DIR, `session-${sessionId}`);
+        if (fs.existsSync(sessionDir)) {
+            const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+            for (const f of lockFiles) {
+                const p = path.join(sessionDir, f);
+                if (fs.existsSync(p)) {
+                    fs.unlinkSync(p);
+                    console.log(`🧹 Removed stale lock: ${f} for session ${sessionId}`);
+                }
+            }
+        }
+    } catch (e) {
+        console.warn(`Warning cleaning locks for ${sessionId}:`, e.message);
+    }
+}
+
 // Core: Start a Client
 function startClient(rawId) {
     const id = cleanDigits(rawId);
@@ -105,7 +124,39 @@ function startClient(rawId) {
         return clients[id];
     }
 
+    cleanStaleLocks(id);
+
     console.log(`🚀 Initializing WhatsApp client for session: ${id}`);
+    const puppeteerOptions = {
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
+        ]
+    };
+
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        puppeteerOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    } else if (process.platform === 'linux') {
+        const possibleChromePaths = [
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium'
+        ];
+        for (const p of possibleChromePaths) {
+            if (fs.existsSync(p)) {
+                puppeteerOptions.executablePath = p;
+                break;
+            }
+        }
+    }
+
     const client = new Client({
         authStrategy: new LocalAuth({
             clientId: id,
@@ -115,16 +166,7 @@ function startClient(rawId) {
             type: 'remote',
             remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
         },
-        puppeteer: {
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--no-zygote',
-                '--disable-gpu'
-            ]
-        }
+        puppeteer: puppeteerOptions
     });
 
     clients[id] = {
