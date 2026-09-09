@@ -189,10 +189,17 @@ export function ThermalReceiptPrinter({ bill, customTemplate }: ThermalReceiptPr
           <span className="font-bold">{Number(rawSubtotal || 0).toFixed(2)}</span>
         </div>
         {f.showTaxSplit && (
-          <div className="flex justify-between text-[10.5px] font-semibold text-black">
-            <span>CGST 2.5% + SGST 2.5%:</span>
-            <span>{Number(rawTax || 0).toFixed(2)}</span>
-          </div>
+          (bill as any)?.gst_type === 'igst' || (bill as any)?.is_interstate ? (
+            <div className="flex justify-between text-[10.5px] font-semibold text-black">
+              <span>IGST (Integrated Tax):</span>
+              <span>{Number(rawTax || 0).toFixed(2)}</span>
+            </div>
+          ) : (
+            <div className="flex justify-between text-[10.5px] font-semibold text-black">
+              <span>CGST + SGST:</span>
+              <span>{Number(rawTax || 0).toFixed(2)}</span>
+            </div>
+          )
         )}
         <div className="flex justify-between font-extrabold text-[14px] border-t-[2px] border-black pt-1 mt-1 text-black">
           <span>TOTAL AMOUNT:</span>

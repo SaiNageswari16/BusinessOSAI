@@ -55,6 +55,7 @@ import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi,
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
+import { getActiveBillingGst } from "../../lib/receipt-template-store";
 import { EWayBillModal } from "./EWayBillModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
@@ -129,6 +130,39 @@ export function PosSalesInvoice() {
   const [terms, setTerms] = useState(
     "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only."
   );
+
+  // GST Type: intra-state (CGST + SGST) or inter-state (IGST)
+  const [gstType, setGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
+
+  const getIsInterstate = useCallback((customerState?: string, customerGst?: string) => {
+    const activeBillingGst = getActiveBillingGst(tenant?.id);
+    const companyGst = (activeBillingGst?.gstin || (tenant as any)?.gstin || (tenant as any)?.tax_id || (tenant as any)?.raw?.tax_id || "").trim().toUpperCase();
+    const companyState = (activeBillingGst?.state_name || (tenant as any)?.state || (tenant as any)?.raw?.state || "Andhra Pradesh").trim().toLowerCase();
+    const companyStateCode = activeBillingGst?.state_code || (companyGst.length >= 2 ? companyGst.slice(0, 2) : "37");
+
+    const cleanCustGst = (customerGst || "").trim().toUpperCase();
+    if (cleanCustGst.length >= 2) {
+      const custStateCode = cleanCustGst.slice(0, 2);
+      if (/^\d{2}$/.test(custStateCode)) {
+        return custStateCode !== companyStateCode;
+      }
+    }
+
+    if (customerState && customerState.trim()) {
+      const cleanCustState = customerState.trim().toLowerCase();
+      const isSameState = cleanCustState === companyState ||
+        (companyState.includes("andhra") && (cleanCustState.includes("andhra") || cleanCustState === "ap")) ||
+        (companyState.includes("telangana") && (cleanCustState.includes("telangana") || cleanCustState === "ts" || cleanCustState === "tg")) ||
+        (companyState.includes("karnataka") && (cleanCustState.includes("karnataka") || cleanCustState === "ka")) ||
+        (companyState.includes("tamil") && (cleanCustState.includes("tamil") || cleanCustState === "tn")) ||
+        (companyState.includes("maharashtra") && (cleanCustState.includes("maharashtra") || cleanCustState === "mh")) ||
+        (companyState.includes("delhi") && (cleanCustState.includes("delhi") || cleanCustState === "dl"));
+
+      return !isSameState;
+    }
+
+    return false;
+  }, [tenant]);
 
   const handleRegenerateInvoiceNumber = (type: "TAX_INVOICE" | "ESTIMATE_NON_GST" = invoiceType) => {
     const seq = Math.floor(10000 + Math.random() * 90000);
@@ -262,7 +296,7 @@ export function PosSalesInvoice() {
   const [activeEditingAddrIndex, setActiveEditingAddrIndex] = useState(0);
   const [isSavingCustomerAddresses, setIsSavingCustomerAddresses] = useState(false);
 
-  // Auto-sync selected addresses when customer changes
+  // Auto-sync selected addresses and Tax Type when customer changes
   useEffect(() => {
     if (!selectedCustomer) {
       setSelectedBillingAddress(null);
@@ -272,18 +306,14 @@ export function PosSalesInvoice() {
     const cust = customers.find(c => c.id === selectedCustomer);
     if (!cust) return;
 
+    let defBilling: any = null;
+    let defShipping: any = null;
+
     if (Array.isArray(cust.addresses) && cust.addresses.length > 0) {
-      const defBilling = cust.addresses.find((a: any) => a.is_default_billing) || cust.addresses[0];
-      const defShipping = cust.addresses.find((a: any) => a.is_default_shipping) || cust.addresses.find((a: any) => a.type === "shipping" || a.type === "both") || cust.addresses[0];
-      setSelectedBillingAddress(defBilling);
-      setSelectedDeliveryAddress(defShipping);
-      if (defShipping?.state && (!defShipping.state.toLowerCase().includes("andhra") && !defShipping.state.toLowerCase().includes("ap"))) {
-        setGstType("igst");
-      } else {
-        setGstType("cgst_sgst");
-      }
+      defBilling = cust.addresses.find((a: any) => a.is_default_billing) || cust.addresses[0];
+      defShipping = cust.addresses.find((a: any) => a.is_default_shipping) || cust.addresses.find((a: any) => a.type === "shipping" || a.type === "both") || cust.addresses[0];
     } else {
-      const primaryBilling = {
+      defBilling = {
         id: "addr-def-b",
         tag: "Head Office / Billing",
         street: cust.billing_address || cust.address || "",
@@ -293,7 +323,7 @@ export function PosSalesInvoice() {
         is_default_billing: true,
         is_default_shipping: true,
       };
-      const primaryShipping = cust.shipping_address && cust.shipping_address !== (cust.billing_address || cust.address) ? {
+      defShipping = cust.shipping_address && cust.shipping_address !== (cust.billing_address || cust.address) ? {
         id: "addr-def-s",
         tag: "Delivery Location",
         street: cust.shipping_address,
@@ -302,11 +332,20 @@ export function PosSalesInvoice() {
         pincode: cust.postal_code || cust.pincode || "",
         is_default_billing: false,
         is_default_shipping: true,
-      } : primaryBilling;
-      setSelectedBillingAddress(primaryBilling);
-      setSelectedDeliveryAddress(primaryShipping);
+      } : defBilling;
     }
-  }, [selectedCustomer, customers]);
+
+    setSelectedBillingAddress(defBilling);
+    setSelectedDeliveryAddress(defShipping);
+
+    const custState = defShipping?.state || defBilling?.state || cust.state;
+    const custGst = defBilling?.gst_number || cust.gst_number || "";
+    if (getIsInterstate(custState, custGst)) {
+      setGstType("igst");
+    } else {
+      setGstType("cgst_sgst");
+    }
+  }, [selectedCustomer, customers, getIsInterstate]);
 
   const handleOpenEditCustomerAddresses = () => {
     const cust = customers.find(c => c.id === selectedCustomer);
@@ -450,9 +489,11 @@ export function PosSalesInvoice() {
       setSelectedBillingAddress(defaultBilling);
       setSelectedDeliveryAddress(defaultShipping);
 
-      if (defaultShipping?.state && (!defaultShipping.state.toLowerCase().includes("andhra") && !defaultShipping.state.toLowerCase().includes("ap"))) {
+      const custState = defaultShipping?.state || defaultBilling?.state || cust.state;
+      const custGst = defaultShipping?.gst_number || defaultBilling?.gst_number || cust.gst_number;
+      if (getIsInterstate(custState, custGst)) {
         setGstType("igst");
-        toast.info(`Updated destination: ${defaultShipping.tag} (${defaultShipping.state}) — Tax switched to IGST.`);
+        toast.info(`Updated destination: ${defaultShipping?.tag || "Address"} (${custState}) — Tax switched to IGST.`);
       } else {
         setGstType("cgst_sgst");
       }
@@ -1364,9 +1405,6 @@ export function PosSalesInvoice() {
   const [invoiceDiscountType, setInvoiceDiscountType] = useState<"percent" | "amount">("percent");
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState<number>(0);
 
-  // GST Type: intra-state (CGST + SGST) or inter-state (IGST)
-  const [gstType, setGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
-
   // Calculated totals with GST Inclusive vs Exclusive Tax Modes
   let subtotal = 0;
   let itemDiscountTotal = 0;
@@ -1481,14 +1519,11 @@ export function PosSalesInvoice() {
       setSelectedDeliveryAddress(primaryShipping);
 
       // Check Inter-State vs Intra-State
-      const primaryState = primaryBilling?.state || "";
+      const primaryState = primaryShipping?.state || primaryBilling?.state || "";
       const cleanGst = newPartyGST.trim().toUpperCase();
-      if (
-        (cleanGst.length >= 2 && !cleanGst.startsWith("37")) ||
-        (!primaryState.toLowerCase().includes("andhra") && !primaryState.toLowerCase().includes("ap"))
-      ) {
+      if (getIsInterstate(primaryState, cleanGst)) {
         setGstType("igst");
-        toast.info(`Inter-State Customer Created (${primaryState}). Tax switched to IGST.`);
+        toast.info(`Inter-State Customer Created (${primaryState || "Inter-State"}). Tax switched to IGST.`);
       } else {
         setGstType("cgst_sgst");
       }
@@ -1666,6 +1701,8 @@ export function PosSalesInvoice() {
       date: invoiceDate,
       customerName: customerObj?.name || 'Walk-in Customer',
       customerPhone: customerObj?.phone || '',
+      gst_type: gstType,
+      is_interstate: gstType === 'igst',
       items: items.map(it => ({
         name: it.product_name || 'Item',
         quantity: it.quantity,
@@ -1676,7 +1713,7 @@ export function PosSalesInvoice() {
       })),
       subtotal: subtotal,
       discount_amount: totalDiscount,
-      tax_amount: totalTax,
+      tax_amount: combinedTax,
       grand_total: grandTotal,
       payment_method: paymentMode,
       payment_status: paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')
@@ -2276,11 +2313,13 @@ export function PosSalesInvoice() {
                             type="button"
                             onClick={() => {
                               setSelectedDeliveryAddress(addr);
-                              if (addr.state && (!addr.state.toLowerCase().includes("andhra") && !addr.state.toLowerCase().includes("ap"))) {
+                              const custGst = addr.gst_number || selectedBillingAddress?.gst_number || activeCustomerObj?.gst_number;
+                              if (getIsInterstate(addr.state, custGst)) {
                                 setGstType("igst");
                                 toast.info(`Switched destination to ${addr.tag || `Location ${idx + 1}`} (${addr.state}). Tax: IGST.`);
                               } else {
                                 setGstType("cgst_sgst");
+                                toast.info(`Switched destination to ${addr.tag || `Location ${idx + 1}`} (${addr.state || "Same State"}). Tax: CGST+SGST.`);
                               }
                             }}
                             className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -3131,9 +3170,81 @@ export function PosSalesInvoice() {
               <span className="font-bold text-slate-900">{currency.symbol}{taxableValue.toFixed(2)}</span>
             </div>
 
-            <div className="flex justify-between text-xs text-slate-600 font-medium">
-              <span>GST Tax Amount:</span>
-              <span className="font-bold text-slate-900">+{currency.symbol}{combinedTax.toFixed(2)}</span>
+            {/* GST Breakdown (CGST+SGST vs IGST manual selection toggle & breakdown) */}
+            <div className="pt-2 pb-1 border-t border-slate-200/80 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-700 font-bold">Total Tax / GST</span>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider ${
+                    gstType === "cgst_sgst" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                  }`}>
+                    {gstType === "cgst_sgst" ? "Intra-State" : "Inter-State"}
+                  </span>
+                </div>
+                {/* Manual Selection Buttons */}
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGstType("cgst_sgst");
+                      toast.success("Switched Tax to CGST + SGST (Intra-State)");
+                    }}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold transition-all cursor-pointer ${
+                      gstType === "cgst_sgst"
+                        ? "bg-white text-indigo-700 shadow-xs border border-slate-200/60"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    CGST+SGST
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGstType("igst");
+                      toast.success("Switched Tax to IGST (Inter-State)");
+                    }}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold transition-all cursor-pointer ${
+                      gstType === "igst"
+                        ? "bg-white text-indigo-700 shadow-xs border border-slate-200/60"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    IGST
+                  </button>
+                </div>
+              </div>
+
+              {/* Dynamic Breakdown Display */}
+              {combinedTax > 0 ? (
+                <div className="bg-slate-50/90 rounded-xl p-2.5 border border-slate-200/70 space-y-1">
+                  {gstType === "cgst_sgst" ? (
+                    <>
+                      <div className="flex justify-between text-slate-600 text-[11px]">
+                        <span className="flex items-center gap-1 font-medium">• Central GST (CGST):</span>
+                        <span className="font-bold text-slate-800">+{currency.symbol}{(combinedTax / 2).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600 text-[11px]">
+                        <span className="flex items-center gap-1 font-medium">• State GST (SGST):</span>
+                        <span className="font-bold text-slate-800">+{currency.symbol}{(combinedTax / 2).toFixed(2)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-slate-600 text-[11px]">
+                      <span className="flex items-center gap-1 font-medium">• Integrated GST (IGST):</span>
+                      <span className="font-bold text-slate-800">+{currency.symbol}{combinedTax.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-slate-700 text-[11px] font-bold pt-1 border-t border-slate-200/60">
+                    <span>Total GST Amount:</span>
+                    <span className="text-slate-900">+{currency.symbol}{combinedTax.toFixed(2)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-between text-xs text-slate-500 font-medium pl-1">
+                  <span>GST Amount (0%):</span>
+                  <span>+{currency.symbol}0.00</span>
+                </div>
+              )}
             </div>
 
             {/* Auto Round-Off */}

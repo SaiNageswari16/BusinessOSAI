@@ -76,12 +76,8 @@ export function FullInvoicePrinter({
   onClose,
   invoice,
   autoPrint = false,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  invoice: FullInvoiceData | null;
-  autoPrint?: boolean;
-}) {
+  customTemplate,
+}: FullInvoicePrinterProps) {
   const { currency } = useCurrency();
   const { tenant } = useTenant();
   const printContainerRef = useRef<HTMLDivElement>(null);
@@ -291,6 +287,7 @@ export function FullInvoicePrinter({
 
   // 7. Bank Details Resolution
   const dynamicBank = (() => {
+    if (customTemplate?.bankDetails) return customTemplate.bankDetails;
     const rawTplBank = (template.bankDetails || '').trim();
     const isTplDummy = !rawTplBank ||
       rawTplBank.includes('334455667788') ||
@@ -311,7 +308,7 @@ export function FullInvoicePrinter({
     return '';
   })();
 
-  const hasRealBank = Boolean(f.showBankDetails && dynamicBank && dynamicBank.length > 5);
+  const hasRealBank = Boolean((customTemplate?.fields?.showBankDetails ?? f.showBankDetails) && dynamicBank && dynamicBank.length > 5);
 
   const googleReviewUrl = fetchedReviewUrl || activeBillingGst?.google_review_url || tenantRaw?.google_review_url || tenantSettings?.google_review_url || template?.googleReviewUrl || null;
   const showGoogleReview = Boolean(googleReviewUrl);
